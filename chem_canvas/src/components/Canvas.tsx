@@ -1,13 +1,13 @@
 import { useRef, useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan, Dna } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan, Dna, Search } from 'lucide-react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
 import MoleculeSearch from './MoleculeSearch';
 import MineralSearch from './MineralSearch';
 import ReagentSearch from './ReagentSearch';
 import ProteinSearch from './ProteinSearch';
-import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID } from '../services/pubchemService';
+import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID, getMoleculeByName } from '../services/pubchemService';
 import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
 import ChemistryWidgetPanel from './ChemistryWidgetPanel';
@@ -56,6 +56,74 @@ interface CanvasProps {
   onMoleculeInserted?: (moleculeData: any) => void;
 }
 
+// Comprehensive list of common molecules for autocomplete with CID
+const commonMolecules = [
+  { name: 'methane', cid: 297 },
+  { name: 'ethane', cid: 6324 },
+  { name: 'propane', cid: 6334 },
+  { name: 'butane', cid: 7843 },
+  { name: 'pentane', cid: 8003 },
+  { name: 'ethene', cid: 6325 },
+  { name: 'ethyne', cid: 6326 },
+  { name: 'benzene', cid: 241 },
+  { name: 'toluene', cid: 1140 },
+  { name: 'xylene', cid: 7237 },
+  { name: 'methanol', cid: 887 },
+  { name: 'ethanol', cid: 702 },
+  { name: 'propanol', cid: 1031 },
+  { name: 'butanol', cid: 263 },
+  { name: 'phenol', cid: 996 },
+  { name: 'acetone', cid: 180 },
+  { name: 'acetaldehyde', cid: 177 },
+  { name: 'formaldehyde', cid: 712 },
+  { name: 'water', cid: 962 },
+  { name: 'hydrogen', cid: 783 },
+  { name: 'oxygen', cid: 977 },
+  { name: 'nitrogen', cid: 947 },
+  { name: 'carbon dioxide', cid: 280 },
+  { name: 'carbon monoxide', cid: 281 },
+  { name: 'ammonia', cid: 222 },
+  { name: 'sulfur dioxide', cid: 1119 },
+  { name: 'nitrous oxide', cid: 948 },
+  { name: 'nitrogen dioxide', cid: 776 },
+  { name: 'glucose', cid: 5793 },
+  { name: 'fructose', cid: 5984 },
+  { name: 'sucrose', cid: 5988 },
+  { name: 'lactose', cid: 6134 },
+  { name: 'maltose', cid: 6255 },
+  { name: 'caffeine', cid: 2519 },
+  { name: 'aspirin', cid: 2244 },
+  { name: 'ibuprofen', cid: 3672 },
+  { name: 'acetaminophen', cid: 1983 },
+  { name: 'sodium chloride', cid: 5234 },
+  { name: 'potassium chloride', cid: 4873 },
+  { name: 'calcium carbonate', cid: 10112 },
+  { name: 'sulfuric acid', cid: 1118 },
+  { name: 'hydrochloric acid', cid: 313 },
+  { name: 'acetic acid', cid: 176 },
+  { name: 'formic acid', cid: 284 },
+  { name: 'sodium hydroxide', cid: 14798 },
+  { name: 'potassium hydroxide', cid: 14797 },
+  { name: 'ammonia solution', cid: 222 },
+  { name: 'hydrogen peroxide', cid: 784 },
+  { name: 'ethyl alcohol', cid: 702 },
+  { name: 'glycerol', cid: 753 },
+  { name: 'urea', cid: 1176 },
+  { name: 'DNA', cid: 5686 },
+  { name: 'RNA', cid: 6323494 },
+  { name: 'cholesterol', cid: 5997 },
+  { name: 'vitamin C', cid: 5785 },
+  { name: 'nicotine', cid: 89594 },
+  { name: 'CO2', cid: 280 },
+  { name: 'H2O', cid: 962 },
+  { name: 'H2', cid: 783 },
+  { name: 'O2', cid: 977 },
+  { name: 'N2', cid: 947 },
+  { name: 'NH3', cid: 222 },
+  { name: 'CH4', cid: 297 },
+  { name: 'C2H6', cid: 6324 },
+];
+
 export default function Canvas({
   currentTool,
   strokeWidth,
@@ -94,6 +162,10 @@ export default function Canvas({
   const [showMineralSearch, setShowMineralSearch] = useState(false);
   const [showReagentSearch, setShowReagentSearch] = useState(false);
   const [showProteinSearch, setShowProteinSearch] = useState(false);
+  const [inlineMoleculeSearchTerm, setInlineMoleculeSearchTerm] = useState('');
+  const [isInlineMoleculeSearching, setIsInlineMoleculeSearching] = useState(false);
+  const [inlineMoleculeSuggestions, setInlineMoleculeSuggestions] = useState<{name: string, cid: number}[]>([]);
+  const [showInlineMoleculeSuggestions, setShowInlineMoleculeSuggestions] = useState(false);
   const [forceRedraw, setForceRedraw] = useState(0); // New state for forcing redraw
   const [showChemistryWidgetPanel, setShowChemistryWidgetPanel] = useState(false);
   const [annotationLabelOptions, setAnnotationLabelOptions] = useState<string[]>(() => [...DEFAULT_ANNOTATION_LABELS]);
@@ -381,6 +453,24 @@ export default function Canvas({
       setIsResizingToolbar(false);
     }
   }, [showChemistryToolbar]);
+
+  // Handle clicking outside to hide suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showInlineMoleculeSuggestions) {
+        const target = event.target as Element;
+        // Check if the click is outside the search container
+        if (!target.closest('.inline-molecule-search-container')) {
+          setShowInlineMoleculeSuggestions(false);
+        }
+      }
+    };
+
+    if (showInlineMoleculeSuggestions) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showInlineMoleculeSuggestions]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -688,6 +778,68 @@ export default function Canvas({
     } catch (error) {
       console.warn('?? Failed to hydrate molecule assets from PubChem, using existing payload', error);
       return data;
+    }
+  };
+
+  const handleInlineMoleculeSearchTermChange = (value: string) => {
+    setInlineMoleculeSearchTerm(value);
+
+    // Generate suggestions
+    if (value.trim().length > 0) {
+      const filtered = commonMolecules.filter(mol =>
+        mol.name.toLowerCase().includes(value.toLowerCase())
+      );
+      setInlineMoleculeSuggestions(filtered.slice(0, 8)); // Show max 8 suggestions
+      setShowInlineMoleculeSuggestions(true);
+    } else {
+      setInlineMoleculeSuggestions([]);
+      setShowInlineMoleculeSuggestions(false);
+    }
+  };
+
+  const handleInlineMoleculeSuggestionClick = async (suggestion: {name: string, cid: number}) => {
+    setInlineMoleculeSearchTerm(suggestion.name);
+    setInlineMoleculeSuggestions([]);
+    setShowInlineMoleculeSuggestions(false);
+
+    // Auto-search for the suggestion
+    setIsInlineMoleculeSearching(true);
+    try {
+      const moleculeData = await getMoleculeByName(suggestion.name);
+      if (moleculeData) {
+        await insertMoleculeToCanvas(moleculeData);
+        setInlineMoleculeSearchTerm(''); // Clear the search term after successful search
+      } else {
+        console.warn(`Molecule "${suggestion.name}" not found`);
+      }
+    } catch (error) {
+      console.error('Failed to search molecule:', error);
+    } finally {
+      setIsInlineMoleculeSearching(false);
+    }
+  };
+
+  const handleInlineMoleculeSearch = async () => {
+    if (!inlineMoleculeSearchTerm.trim()) {
+      return;
+    }
+
+    setShowInlineMoleculeSuggestions(false); // Hide suggestions when searching
+    setIsInlineMoleculeSearching(true);
+    try {
+      const moleculeData = await getMoleculeByName(inlineMoleculeSearchTerm.trim());
+      if (moleculeData) {
+        await insertMoleculeToCanvas(moleculeData);
+        setInlineMoleculeSearchTerm(''); // Clear the search term after successful search
+      } else {
+        console.warn(`Molecule "${inlineMoleculeSearchTerm}" not found`);
+        // Could add a toast notification here in the future
+      }
+    } catch (error) {
+      console.error('Failed to search molecule:', error);
+      // Could add error handling UI here in the future
+    } finally {
+      setIsInlineMoleculeSearching(false);
     }
   };
 
@@ -2654,44 +2806,54 @@ export default function Canvas({
         </div>
       )}
 
-      {/* Help Instructions - Bottom Left */}
-      <div className="absolute bottom-8 left-8 z-10 max-w-sm rounded-xl border border-slate-700/50 bg-slate-800/90 p-4 shadow-lg backdrop-blur-sm">
-        <div className="mb-2">
-          <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-            <Lightbulb className="h-4 w-4 text-amber-300" />
-            Shape Controls
-          </p>
-        </div>
-        <div className="space-y-2">
-          <div>
-            <p className="text-xs text-slate-400 font-semibold text-cyan-400">Move:</p>
-            <ol className="text-xs text-slate-400 space-y-0.5 ml-2">
-              <li>1. Select Move Tool</li>
-              <li>2. Click shape</li>
-              <li>3. Drag to position</li>
-            </ol>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 font-semibold text-cyan-400">Rotate:</p>
-            <ol className="text-xs text-slate-400 space-y-0.5 ml-2">
-              <li>1. Select Rotate Tool</li>
-              <li>2. Right-click on shape</li>
-              <li>3. Drag to rotate</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-
       {/* Canvas Controls */}
       <div className="absolute top-8 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-3">
-        <button
-          onClick={() => setShowMoleculeSearch(true)}
-          className="inline-flex transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/70 disabled:cursor-not-allowed disabled:opacity-60"
-          title="Search Molecules"
-        >
-          <Atom size={18} className="text-blue-300" />
-          <span>Search Molecules</span>
-        </button>
+        <div className="relative inline-flex transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-3 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-400/70 inline-molecule-search-container">
+          <Atom size={18} className="text-blue-300 flex-shrink-0" />
+          <input
+            type="text"
+            value={inlineMoleculeSearchTerm}
+            onChange={(e) => handleInlineMoleculeSearchTermChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleInlineMoleculeSearch();
+              }
+            }}
+            placeholder="Search molecules..."
+            className="bg-transparent border-none outline-none text-slate-100 placeholder-slate-400 text-sm min-w-0 flex-1"
+            disabled={isInlineMoleculeSearching}
+          />
+          <button
+            onClick={handleInlineMoleculeSearch}
+            disabled={!inlineMoleculeSearchTerm.trim() || isInlineMoleculeSearching}
+            className="flex-shrink-0 p-1 rounded-md hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Search"
+          >
+            {isInlineMoleculeSearching ? (
+              <Loader2 size={16} className="animate-spin text-blue-300" />
+            ) : (
+              <Search size={16} className="text-blue-300" />
+            )}
+          </button>
+
+          {/* Autocomplete Suggestions Dropdown */}
+          {showInlineMoleculeSuggestions && inlineMoleculeSuggestions.length > 0 && (
+            <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-600 rounded-b-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+              {inlineMoleculeSuggestions.map((suggestion, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleInlineMoleculeSuggestionClick(suggestion)}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
+                >
+                  <div className="flex justify-between items-center">
+                    <span>{suggestion.name}</span>
+                    <span className="text-slate-400 text-xs">CID: {suggestion.cid}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <button
           onClick={() => setShowMineralSearch(true)}
