@@ -287,16 +287,16 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
           {/* Stroke & Fill */}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-300">Stroke &amp; Fill</h3>
-            <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Stroke</p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-6 gap-2">
                   {colors.map((color) => (
                     <button
                       key={`stroke-${color}`}
                       onClick={() => onStrokeColorChange(color)}
-                      className={`h-7 w-7 rounded-md border-2 transition-all shadow-sm hover:scale-105 ${
-                        strokeColor === color ? 'border-white ring-2 ring-white/30' : 'border-slate-600'
+                      className={`h-9 w-9 rounded-xl border-2 transition-all shadow-sm ${
+                        strokeColor === color ? 'border-white' : 'border-slate-600'
                       }`}
                       style={{ backgroundColor: color }}
                       title={`Stroke: ${color}`}
@@ -310,20 +310,20 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
                   <button
                     type="button"
                     onClick={() => onFillToggle(!fillEnabled)}
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase transition-all ${
+                    className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase transition-all ${
                       fillEnabled ? 'bg-primary/80 text-white' : 'bg-slate-800/80 text-slate-300'
                     }`}
                   >
                     {fillEnabled ? 'On' : 'Off'}
                   </button>
                 </p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-6 gap-2">
                   {colors.map((color) => (
                     <button
                       key={`fill-${color}`}
                       onClick={() => onFillColorChange(color)}
-                      className={`h-7 w-7 rounded-md border-2 transition-all shadow-sm hover:scale-105 ${
-                        fillColor === color ? 'border-white ring-2 ring-white/30' : 'border-slate-600'
+                      className={`h-9 w-9 rounded-xl border-2 transition-all shadow-sm ${
+                        fillColor === color ? 'border-white' : 'border-slate-600'
                       } ${fillEnabled ? '' : 'opacity-40'}`}
                       style={{ backgroundColor: color }}
                       title={`Fill: ${color}`}
