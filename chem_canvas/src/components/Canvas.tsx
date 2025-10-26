@@ -1,15 +1,17 @@
 import { useRef, useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan, Dna } from 'lucide-react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
 import MoleculeSearch from './MoleculeSearch';
 import MineralSearch from './MineralSearch';
 import ReagentSearch from './ReagentSearch';
+import ProteinSearch from './ProteinSearch';
 import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID } from '../services/pubchemService';
 import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
 import ChemistryWidgetPanel from './ChemistryWidgetPanel';
+import { QRCodeCanvas } from 'qrcode.react';
 
 const MIN_TOOLBAR_WIDTH = 280;
 const MAX_TOOLBAR_WIDTH = 480;
@@ -91,6 +93,7 @@ export default function Canvas({
   const [showMoleculeSearch, setShowMoleculeSearch] = useState(false);
   const [showMineralSearch, setShowMineralSearch] = useState(false);
   const [showReagentSearch, setShowReagentSearch] = useState(false);
+  const [showProteinSearch, setShowProteinSearch] = useState(false);
   const [forceRedraw, setForceRedraw] = useState(0); // New state for forcing redraw
   const [showChemistryWidgetPanel, setShowChemistryWidgetPanel] = useState(false);
   const [annotationLabelOptions, setAnnotationLabelOptions] = useState<string[]>(() => [...DEFAULT_ANNOTATION_LABELS]);
@@ -103,6 +106,7 @@ export default function Canvas({
     color: string;
   } | null>(null);
   const [annotationHint, setAnnotationHint] = useState<string | null>(null);
+  const [showArQrModal, setShowArQrModal] = useState(false);
 
   const addCustomAnnotationLabel = () => {
     const trimmed = customAnnotationLabel.trim();
@@ -195,6 +199,7 @@ export default function Canvas({
   const [isRotating3DShape, setIsRotating3DShape] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const canvasHistoryRef = useRef<Shape[]>([]);
+  const externalInsertRef = useRef<(data: MoleculeData) => Promise<void>>(async () => {});
   const rotate3DStateRef = useRef<{
     startClientX: number;
     startClientY: number;
@@ -277,7 +282,18 @@ export default function Canvas({
     }
 
     const targetUrl = `${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`;
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+
+    // Check if user is on mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                     window.innerWidth <= 768;
+
+    if (isMobile) {
+      // Open directly on mobile
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      // Show QR code modal on desktop
+      setShowArQrModal(true);
+    }
   };
 
   const toggleSelectedMolecule3D = (enabled: boolean) => {
@@ -373,30 +389,46 @@ export default function Canvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+    const resizeCanvas = () => {
+      // Set canvas size
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
 
-    // Fill canvas with background color
-    ctx.fillStyle = canvasBackground === 'dark' ? '#0f172a' : '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Fill canvas with background color
+      ctx.fillStyle = canvasBackground === 'dark' ? '#0f172a' : '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw grid if enabled
-    if (showGrid) {
-      drawGrid(ctx, canvas.width, canvas.height);
-    }
+      // Draw grid if enabled
+      if (showGrid) {
+        drawGrid(ctx, canvas.width, canvas.height);
+      }
 
-    // Redraw all saved shapes
-    redrawAllShapes(ctx);
+      // Redraw all saved shapes
+      redrawAllShapes(ctx);
 
-    if (areaEraseSelection?.isActive) {
-      drawAreaEraseOverlay(ctx, areaEraseSelection);
-    }
+      if (areaEraseSelection?.isActive) {
+        drawAreaEraseOverlay(ctx, areaEraseSelection);
+      }
 
-    // Draw lasso selection if active
-    if (lassoSelection.isActive && lassoSelection.points.length > 0) {
-      drawLassoOverlay(ctx, lassoSelection.points);
-    }
+      // Draw lasso selection if active
+      if (lassoSelection.isActive && lassoSelection.points.length > 0) {
+        drawLassoOverlay(ctx, lassoSelection.points);
+      }
+    };
+
+    // Initial resize
+    resizeCanvas();
+
+    // Set up resize observer
+    const resizeObserver = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+
+    resizeObserver.observe(canvas);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
   }, [showGrid, canvasBackground, shapes, forceRedraw, areaEraseSelection, lassoSelection]);
 
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
@@ -610,8 +642,16 @@ export default function Canvas({
   };
 
   const ensureCompleteMoleculeData = async (data: MoleculeData): Promise<MoleculeData> => {
+    const isCrystalPayload = data.role === 'mineral' || data.source === 'cod' || data.isCrystal;
+    const isProteinPayload = data.role === 'protein' || data.source === 'rcsb' || data.source === 'alphafold';
     const needsHydration = !data.svgData || !data.sdfData || !data.sdf3DData;
-    if (!needsHydration) {
+
+    // COD minerals and PDB proteins already arrive with purpose-built 3D assets.
+    if (isCrystalPayload || isProteinPayload || !needsHydration) {
+      return data;
+    }
+
+    if (!Number.isFinite(data.cid)) {
       return data;
     }
 
@@ -700,12 +740,20 @@ export default function Canvas({
     const baseDisplayName =
       moleculeData.displayName ?? moleculeData.name ?? `CID ${moleculeData.cid}`;
 
-    const displayName =
+    let displayName = baseDisplayName;
+    if (
       moleculeData.role === 'reagent' &&
       baseDisplayName &&
       !baseDisplayName.toLowerCase().includes('reagent')
-        ? `${baseDisplayName} (Reagent)`
-        : baseDisplayName;
+    ) {
+      displayName = `${baseDisplayName} (Reagent)`;
+    } else if (
+      moleculeData.role === 'protein' &&
+      baseDisplayName &&
+      !baseDisplayName.toLowerCase().includes('protein')
+    ) {
+      displayName = `${baseDisplayName} (Protein)`;
+    }
 
     const has3DSDF = Boolean(moleculeData.sdf3DData && moleculeData.sdf3DData.trim().length > 0);
 
@@ -744,6 +792,32 @@ export default function Canvas({
 
     console.log('? Molecule added to canvas:', newMolecule);
   };
+
+  useEffect(() => {
+    externalInsertRef.current = insertMoleculeToCanvas;
+  }, [insertMoleculeToCanvas]);
+
+  useEffect(() => {
+    const handleAlphaFoldInsert = (event: Event) => {
+      const detail = (event as CustomEvent<MoleculeData>).detail;
+      if (!detail) {
+        return;
+      }
+
+      const payload: MoleculeData = {
+        ...detail,
+        role: detail.role ?? 'protein',
+        source: detail.source ?? 'alphafold',
+      };
+
+      void externalInsertRef.current(payload);
+    };
+
+    window.addEventListener('studium:alphafold-insert', handleAlphaFoldInsert as EventListener);
+    return () => {
+      window.removeEventListener('studium:alphafold-insert', handleAlphaFoldInsert as EventListener);
+    };
+  }, []);
 
   const drawAreaEraseOverlay = (
     ctx: CanvasRenderingContext2D,
@@ -2532,7 +2606,7 @@ export default function Canvas({
   };
 
   return (
-    <div className="relative w-full h-full bg-slate-900">
+    <div className="relative w-full h-full min-h-[400px] bg-slate-900">
       {/* Chemistry Toolbar Toggle Button */}
       <div className="absolute top-8 left-8 z-10">
         <button
@@ -2568,6 +2642,7 @@ export default function Canvas({
             onOpenMoleculeSearch={() => setShowMoleculeSearch(true)}
             onOpenMineralSearch={() => setShowMineralSearch(true)}
             onOpenReagentSearch={() => setShowReagentSearch(true)}
+            onOpenProteinSearch={() => setShowProteinSearch(true)}
             onOpenArViewer={openArViewer}
             onOpenChemistryWidgets={() => setShowChemistryWidgetPanel(true)}
             isCollapsed={isToolbarCollapsed}
@@ -2608,10 +2683,10 @@ export default function Canvas({
       </div>
 
       {/* Canvas Controls */}
-      <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
+      <div className="absolute top-8 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-3">
         <button
           onClick={() => setShowMoleculeSearch(true)}
-          className="inline-flex w-52 transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/70 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/70 disabled:cursor-not-allowed disabled:opacity-60"
           title="Search Molecules"
         >
           <Atom size={18} className="text-blue-300" />
@@ -2620,7 +2695,7 @@ export default function Canvas({
 
         <button
           onClick={() => setShowMineralSearch(true)}
-          className="inline-flex w-52 transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/70 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/70 disabled:cursor-not-allowed disabled:opacity-60"
           title="Search Minerals"
         >
           <Gem size={18} className="text-emerald-300" />
@@ -2628,8 +2703,17 @@ export default function Canvas({
         </button>
 
         <button
+          onClick={() => setShowProteinSearch(true)}
+          className="inline-flex transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-purple-400/70 disabled:cursor-not-allowed disabled:opacity-60"
+          title="Search Proteins"
+        >
+          <Dna size={18} className="text-purple-200" />
+          <span>Search Proteins</span>
+        </button>
+
+        <button
           onClick={() => setShowReagentSearch(true)}
-          className="inline-flex w-52 transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-cyan-400/70 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-cyan-400/70 disabled:cursor-not-allowed disabled:opacity-60"
           title="Search Reagents"
         >
           <FlaskConical size={18} className="text-cyan-300" />
@@ -2639,13 +2723,16 @@ export default function Canvas({
         <button
           onClick={openArViewer}
           disabled={!selectedMoleculeCid}
-          className="inline-flex w-52 transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-purple-400/70 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex transform items-center gap-3 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-5 py-3 text-base font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-purple-400/70 disabled:cursor-not-allowed disabled:opacity-60"
           title={selectedMoleculeCid ? 'View selected molecule in AR' : 'Select a molecule on the canvas to enable AR viewer'}
         >
           <Scan size={18} className="text-purple-300" />
           <span>Start AR Viewer</span>
         </button>
+      </div>
 
+      {/* Right Side Controls */}
+      <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
         <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
           <button
             onClick={() => setShowGrid(!showGrid)}
@@ -2726,55 +2813,55 @@ export default function Canvas({
           </button>
         </div>
 
-            {/* Chemistry Conversion Button */}
-            <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
-              <button
-                onClick={convertToChemistry}
-                disabled={isConverting}
-                className={`p-3 rounded-lg transition-all flex items-center gap-2 ${
-                  isConverting
-                    ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
-                    : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                }`}
-                title={isConverting ? "Converting..." : "Convert to Chemistry Structure"}
-              >
-                {isConverting ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <Beaker size={18} />
-                )}
-                <span className="text-sm font-medium">
-                  {isConverting ? 'Converting...' : 'Convert'}
-                </span>
-              </button>
-            </div>
+        {/* Chemistry Conversion Button */}
+        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
+          <button
+            onClick={convertToChemistry}
+            disabled={isConverting}
+            className={`p-3 rounded-lg transition-all flex items-center gap-2 ${
+              isConverting
+                ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90'
+            }`}
+            title={isConverting ? "Converting..." : "Convert to Chemistry Structure"}
+          >
+            {isConverting ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Beaker size={18} />
+            )}
+            <span className="text-sm font-medium">
+              {isConverting ? 'Converting...' : 'Convert'}
+            </span>
+          </button>
+        </div>
 
-            {/* Correction Button */}
-            <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
-              <button
-                onClick={showCorrections ? clearCorrections : analyzeCanvas}
-                disabled={isAnalyzing}
-                className={`p-3 rounded-lg transition-all flex items-center gap-2 ${
-                  isAnalyzing
-                    ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
-                    : showCorrections
-                    ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-                    : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                }`}
-                title={isAnalyzing ? "Analyzing..." : showCorrections ? "Clear Corrections" : "Check My Work"}
-              >
-                {isAnalyzing ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : showCorrections ? (
-                  <CheckCircle size={18} />
-                ) : (
-                  <AlertCircle size={18} />
-                )}
-                <span className="text-sm font-medium">
-                  {isAnalyzing ? 'Analyzing...' : showCorrections ? 'Clear' : 'Check'}
-                </span>
-              </button>
-            </div>
+        {/* Correction Button */}
+        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
+          <button
+            onClick={showCorrections ? clearCorrections : analyzeCanvas}
+            disabled={isAnalyzing}
+            className={`p-3 rounded-lg transition-all flex items-center gap-2 ${
+              isAnalyzing
+                ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
+                : showCorrections
+                ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90'
+            }`}
+            title={isAnalyzing ? "Analyzing..." : showCorrections ? "Clear Corrections" : "Check My Work"}
+          >
+            {isAnalyzing ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : showCorrections ? (
+              <CheckCircle size={18} />
+            ) : (
+              <AlertCircle size={18} />
+            )}
+            <span className="text-sm font-medium">
+              {isAnalyzing ? 'Analyzing...' : showCorrections ? 'Clear' : 'Check'}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Zoom Indicator */}
@@ -3242,6 +3329,26 @@ export default function Canvas({
         />
       )}
 
+      {showProteinSearch && (
+        <ProteinSearch
+          onClose={() => setShowProteinSearch(false)}
+          onSelectProtein={(moleculeData) => {
+            void (async () => {
+              try {
+                await insertMoleculeToCanvas({
+                  ...moleculeData,
+                  role: moleculeData.role ?? 'protein',
+                });
+              } catch (error) {
+                console.error('Failed to insert protein structure:', error);
+              } finally {
+                setShowProteinSearch(false);
+              }
+            })();
+          }}
+        />
+      )}
+
       {/* Reagent Search Modal */}
       {showReagentSearch && (
         <ReagentSearch
@@ -3268,6 +3375,59 @@ export default function Canvas({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden">
             <ChemistryWidgetPanel onClose={() => setShowChemistryWidgetPanel(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* AR QR Code Modal */}
+      {showArQrModal && selectedMoleculeCid && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="text-center">
+              <div className="flex items-center justify-center mb-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-500">
+                  <Scan className="h-6 w-6 text-white" />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">AR Viewer</h3>
+              <p className="text-slate-300 text-sm mb-6">
+                Scan this QR code with your mobile device to view the molecule in Augmented Reality
+              </p>
+
+              <div className="flex justify-center mb-6">
+                <div className="bg-white p-4 rounded-lg">
+                  <QRCodeCanvas
+                    value={`${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`}
+                    size={200}
+                    level="H"
+                  />
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-400 mb-4">
+                Or copy this link: <br />
+                <span className="text-purple-400 break-all">
+                  {`${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`}
+                </span>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`);
+                  }}
+                  className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Copy Link
+                </button>
+                <button
+                  onClick={() => setShowArQrModal(false)}
+                  className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

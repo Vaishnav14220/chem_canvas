@@ -16,6 +16,7 @@ import {
   Move,
   RotateCw,
   Microscope,
+  Dna,
   ChevronDown,
   ChevronUp,
   GripVertical,
@@ -43,6 +44,7 @@ interface ChemistryToolbarProps {
   onOpenPeriodicTable?: () => void;
   onOpenMoleculeSearch?: () => void;
   onOpenReagentSearch?: () => void;
+  onOpenProteinSearch?: () => void;
   onOpenMineralSearch?: () => void;
   onOpenArViewer?: () => void;
   onOpenChemistryWidgets?: () => void;
@@ -78,6 +80,7 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
   onOpenPeriodicTable,
   onOpenMoleculeSearch,
   onOpenReagentSearch,
+  onOpenProteinSearch,
   onOpenMineralSearch,
   onOpenArViewer,
   onOpenChemistryWidgets,
@@ -120,8 +123,9 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
   { id: 'ar', name: 'AR Viewer', icon: Scan, description: 'Place molecules in AR', isSpecial: true },
     { id: 'periodic', name: 'Periodic Table', icon: Grid3X3, description: 'Interactive periodic table', isSpecial: true },
     { id: 'molecules', name: 'Search Molecules', icon: Microscope, description: 'Search molecules from PubChem', isSpecial: true },
-  { id: 'reagents', name: 'Search Reagents', icon: FlaskConical, description: 'Find reagent molecules', isSpecial: true },
-  { id: 'minerals', name: 'Search Minerals', icon: Gem, description: 'Pull 3D minerals from COD', isSpecial: true },
+    { id: 'reagents', name: 'Search Reagents', icon: FlaskConical, description: 'Find reagent molecules', isSpecial: true },
+    { id: 'proteins', name: 'Search Proteins', icon: Dna, description: 'Import PDB protein structures', isSpecial: true },
+    { id: 'minerals', name: 'Search Minerals', icon: Gem, description: 'Pull 3D minerals from COD', isSpecial: true },
     { id: 'widgets', name: 'Chemistry Widgets', icon: Beaker, description: 'Interactive chemistry tools', isSpecial: true },
     { id: 'move', name: 'Move', icon: Move, description: 'Move elements' },
     { id: 'rotate', name: 'Rotate', icon: RotateCw, description: 'Rotate elements' },
@@ -219,6 +223,8 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
                       onOpenMoleculeSearch();
                     } else if (tool.isSpecial && tool.id === 'reagents' && onOpenReagentSearch) {
                       onOpenReagentSearch();
+                    } else if (tool.isSpecial && tool.id === 'proteins' && onOpenProteinSearch) {
+                      onOpenProteinSearch();
                     } else if (tool.isSpecial && tool.id === 'minerals' && onOpenMineralSearch) {
                       onOpenMineralSearch();
                     } else if (tool.isSpecial && tool.id === 'widgets' && onOpenChemistryWidgets) {
@@ -409,4 +415,3 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
 };
 
 export default ChemistryToolbar;
-

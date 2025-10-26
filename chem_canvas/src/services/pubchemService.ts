@@ -1,8 +1,6 @@
 // PubChem API Service for fetching molecule structures
 // Documentation: https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest
 
-import type { MoleculeAnalysisResult } from './moleculeAnalysisService';
-
 const PUBCHEM_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov';
 const PUBCHEM_PUG_URL = `${PUBCHEM_BASE_URL}/rest/pug`;
 const EUTILS_BASE_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
@@ -26,7 +24,22 @@ export interface MoleculeData {
   codId?: string;
   cifData?: string;
   isCrystal?: boolean;
-  analysis?: MoleculeAnalysisResult;
+  pdbId?: string;
+  pdbUrl?: string;
+  organism?: string;
+  alphaFold?: {
+    uniprotId: string;
+    title?: string;
+    organism?: string;
+    pdbUrl: string;
+    cifUrl?: string;
+    bcifUrl?: string;
+    paeImageUrl?: string;
+    paeDocUrl?: string;
+    confidence?: number;
+    modelCreatedDate?: string;
+    sequenceLength?: number;
+  };
 }
 
 export const fetchCanonicalSmiles = async (input: string): Promise<string | null> => {

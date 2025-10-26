@@ -1,8 +1,7 @@
 import type { MoleculeData } from './pubchemService';
 
-const COD_SEARCH_ENDPOINT = 'https://www.crystallography.net/cod/result';
+const COD_API_BASE = 'https://www.crystallography.net/api/cod';
 const COD_DOWNLOAD_BASE = 'https://www.crystallography.net/cod';
-const COD_PROXY_PREFIX = 'https://corsproxy.io/?';
 
 const MOLVIEW_BASE = 'https://molview.org/php';
 const MOLVIEW_SEARCH_ENDPOINT = `${MOLVIEW_BASE}/cod.php`;
@@ -554,85 +553,33 @@ export const searchMinerals = async (
     return [];
   }
 
-  const params = new URLSearchParams();
-  params.set('format', 'json');
-  params.set('limit', String(maxResults));
-
-  const looksLikeId = /^\d{3,}$/.test(trimmed.replace(/[^0-9]/g, ''));
-  if (looksLikeId && /^\d+$/.test(trimmed)) {
-    params.set('id', trimmed);
-  } else {
-    params.set('text', trimmed);
-  }
-
-  const codUrl = `${COD_SEARCH_ENDPOINT}?${params.toString()}`;
-
-  try {
-    const molviewUrl = `${MOLVIEW_SEARCH_ENDPOINT}?q=${encodeURIComponent(trimmed)}`;
-    const molviewProxiedUrl = `${COD_PROXY_PREFIX}${encodeURIComponent(molviewUrl)}`;
-    const molviewResponse = await fetchWithRetry(molviewProxiedUrl);
-    if (molviewResponse && molviewResponse.ok) {
-      const molviewJson = await molviewResponse.json();
-      const records: any[] = Array.isArray(molviewJson?.records) ? molviewJson.records : [];
-      if (records.length > 0) {
-        return records
-          .map((entry) => {
-            const codId = entry?.codid ?? entry?.cod_id ?? entry?.file;
-            if (!codId) return null;
-            return {
-              codId: String(codId),
-              mineralName:
-                entry?.mineral ||
-                entry?.title ||
-                entry?.chemname ||
-                `COD ${codId}`,
-              formula: entry?.formula || '',
-              spaceGroup: undefined,
-              hallSymbol: undefined,
-            } as MineralSearchResult;
-          })
-          .filter((item): item is MineralSearchResult => Boolean(item?.codId));
-      }
-    }
-  } catch (error) {
-    console.warn('MolView mineral search failed, falling back to COD:', error);
-  }
-
-  let response = await fetchWithRetry(codUrl);
-  if ((!response || !response.ok) && !codUrl.startsWith(COD_PROXY_PREFIX)) {
-    const proxiedUrl = `${COD_PROXY_PREFIX}${encodeURIComponent(codUrl)}`;
-    console.warn('Mineral search falling back to COD proxy', proxiedUrl);
-    response = await fetchWithRetry(proxiedUrl);
-  }
+  const url = `${COD_API_BASE}/?q=${encodeURIComponent(trimmed)}&format=json&limit=${maxResults}`;
+  const response = await fetchWithRetry(url);
   if (!response || !response.ok) {
     console.warn('Mineral search request failed', response?.status);
     return [];
   }
 
   try {
-    const payloadText = await response.text();
-    const payload = payloadText.trim().length > 0 ? JSON.parse(payloadText) : [];
-    const rawResults: any[] = Array.isArray(payload) ? payload : [];
+    const payload = await response.json();
+    const rawResults: any[] = Array.isArray(payload?.results)
+      ? payload.results
+      : Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.items)
+          ? payload.items
+          : [];
 
     return rawResults
       .map((entry) => {
-        const codId = entry?.file ?? entry?.cod_id ?? entry?.id;
+        const codId = entry?.cod_id ?? entry?.entry_id ?? entry?.codid ?? entry?.id;
         if (!codId) {
           return null;
         }
-
-        const mineralName =
-          entry?.chemical_name_mineral ||
-          entry?.mineral ||
-          entry?.common_name ||
-          entry?.title ||
-          entry?.name ||
-          `COD ${codId}`;
-
-        const formula = entry?.formula || entry?.chemical_formula_sum || entry?.empirical_formula || '';
-        const spaceGroup = entry?.spacegroup || entry?.space_group_name_h_m || entry?.space_group_symbol;
-        const hallSymbol = entry?.space_group_hall;
-
+        const mineralName = entry?.chemical_name_mineral ?? entry?.mineral ?? entry?.title ?? `COD ${codId}`;
+        const formula = entry?.chemical_formula_sum ?? entry?.formula ?? '';
+        const spaceGroup = entry?.space_group_name_h_m ?? entry?.spacegroup;
+        const hallSymbol = entry?.space_group_hall ?? entry?.hall_symbol;
         return {
           codId: String(codId),
           mineralName,
@@ -654,28 +601,14 @@ export const getMineralByCodId = async (codId: string): Promise<MoleculeData | n
     return null;
   }
 
-  const fetchCifText = async (url: string): Promise<string | null> => {
-    const response = await fetchWithRetry(url);
-    if (!response || !response.ok) {
-      return null;
-    }
-    return response.text();
-  };
-
-  const molviewCifUrl = `${COD_PROXY_PREFIX}${encodeURIComponent(
-    `${MOLVIEW_CIF_ENDPOINT}?codid=${encodeURIComponent(trimmed)}`
-  )}`;
-  let cifText = await fetchCifText(molviewCifUrl);
-
-  if (!cifText) {
-    const cifUrl = `${COD_DOWNLOAD_BASE}/${encodeURIComponent(trimmed)}.cif`;
-    const proxiedCifUrl = `${COD_PROXY_PREFIX}${encodeURIComponent(cifUrl)}`;
-    cifText = await fetchCifText(proxiedCifUrl);
-    if (!cifText) {
-      console.warn('Failed to fetch CIF for COD ID', trimmed);
-      return null;
-    }
+  const cifUrl = `${COD_DOWNLOAD_BASE}/${encodeURIComponent(trimmed)}.cif`;
+  const response = await fetchWithRetry(cifUrl);
+  if (!response || !response.ok) {
+    console.warn('Failed to fetch CIF for COD ID', trimmed, response?.status);
+    return null;
   }
+
+  const cifText = await response.text();
   const structure = parseCIF(cifText);
   if (!structure) {
     return null;
