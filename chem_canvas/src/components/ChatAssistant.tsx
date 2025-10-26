@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
+  Send, 
   Upload, 
-  Settings,
+  Settings, 
   MessageSquare, 
   FileText, 
   Plus, 
@@ -12,7 +13,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import { ChatInputArea, ChatHeader, ChatList, ChatItem } from '@lobehub/ui/chat';
+import * as geminiService from '../services/geminiService';
 import { generateStreamingContent, isGeminiStreamingInitialized } from '../services/geminiStreaming';
 
 interface UploadedDocument {
@@ -269,10 +270,23 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-      <div className="bg-card border border-border rounded-lg shadow-lg w-[1000px] max-w-[95vw] h-[600px] flex flex-col animate-slide-up">
+      <div className="bg-card border border-border rounded-lg shadow-lg w-[1000px] max-w-[95vw] h-[90vh] flex flex-col animate-slide-up">
         {/* Header */}
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <ChatHeader title="AI Chat Assistant" />
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+              <MessageSquare className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">AI Chat Assistant</h2>
+              <p className="text-sm text-muted-foreground">
+                {uploadedDocuments.length > 0 
+                  ? `${uploadedDocuments.length} document(s) uploaded` 
+                  : 'Upload documents to get started'
+                }
+              </p>
+            </div>
+          </div>
           
           <div className="flex items-center gap-2">
             <button
@@ -346,71 +360,102 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Chat Messages */}
-        <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto p-6">
-            {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full min-h-0">
-                <div className="text-center max-w-md">
-                  <MessageSquare className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold mb-2">Welcome to AI Chat Assistant</h3>
-                  <p className="text-muted-foreground mb-6">
-                    Upload documents and ask questions to get AI-powered insights and analysis.
-                  </p>
-                  
-                  {!isApiKeyConfigured && (
-                    <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-4 mb-4">
-                      <p className="text-orange-700 dark:text-orange-400 text-sm">
-                        <strong>API Key Required:</strong> Configure your Gemini API key in Settings to start chatting.
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <p>💡 <strong>Try asking:</strong></p>
-                    <ul className="text-left space-y-1 ml-4">
-                      <li>• "Summarize the main points"</li>
-                      <li>• "Explain the key concepts"</li>
-                      <li>• "What are the important formulas?"</li>
-                      <li>• "Create study questions"</li>
-                    </ul>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {messages.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-md">
+                <MessageSquare className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Welcome to AI Chat Assistant</h3>
+                <p className="text-muted-foreground mb-6">
+                  Upload documents and ask questions to get AI-powered insights and analysis.
+                </p>
+                
+                {!isApiKeyConfigured && (
+                  <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-4 mb-4">
+                    <p className="text-orange-700 dark:text-orange-400 text-sm">
+                      <strong>API Key Required:</strong> Configure your Gemini API key in Settings to start chatting.
+                    </p>
+                  </div>
+                )}
+                
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>💡 <strong>Try asking:</strong></p>
+                  <ul className="text-left space-y-1 ml-4">
+                    <li>• "Summarize the main points"</li>
+                    <li>• "Explain the key concepts"</li>
+                    <li>• "What are the important formulas?"</li>
+                    <li>• "Create study questions"</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : (
+            messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-lg p-4 ${
+                    message.role === 'user'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted border border-border'
+                  }`}
+                >
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                    {message.content}
+                  </div>
+                  <div className={`text-xs mt-2 opacity-70 ${
+                    message.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                  }`}>
+                    {message.timestamp.toLocaleTimeString()}
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <ChatList
-                  data={messages.map((message) => ({
-                    id: message.id,
-                    role: message.role,
-                    content: message.content,
-                    createAt: message.timestamp.getTime(),
-                    updateAt: message.timestamp.getTime(),
-                    meta: {}
-                  }))}
-                />
+            ))
+          )}
+          
+          {isGenerating && (
+            <div className="flex justify-start">
+              <div className="bg-muted border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+                  <span className="text-sm text-muted-foreground">AI is thinking...</span>
+                </div>
               </div>
-            )}
-            
-            {isGenerating && (
-              <div className="space-y-4">
-                <ChatItem
-                  role="assistant"
-                  content="AI is thinking..."
-                  avatar={{}}
-                />
-              </div>
-            )}
-            
-            <div ref={messagesEndRef} />
-          </div>
+            </div>
+          )}
+          
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input Area */}
-        <ChatInputArea
-          onInput={(value: string) => setInputMessage(value)}
-          onSend={sendMessage}
-          loading={isGenerating}
-        />
+        <div className="px-6 py-4 border-t border-border">
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <textarea
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                placeholder="Ask a question about your uploaded documents..."
+                className="w-full min-h-[60px] max-h-[120px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isGenerating}
+              />
+            </div>
+            <button
+              onClick={sendMessage}
+              disabled={!inputMessage.trim() || isGenerating}
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 w-10"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
 
         {/* Output Format Customization Modal */}
         {showOutputFormatModal && (

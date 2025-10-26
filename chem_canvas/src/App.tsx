@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Settings, Search, Atom, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Plus, File, Video, Globe, Upload, Clipboard, Headphones, LineChart, Target, X, Dna } from 'lucide-react';
-import { ThemeProvider } from '@lobehub/ui';
+import { FileText, Settings, Search, Atom, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Plus, File, Video, Globe, Upload, Clipboard, Headphones, LineChart, Target, X } from 'lucide-react';
 import Canvas from './components/Canvas';
 import AIChat from './components/AIChat';
 import LlamaChat from './components/LlamaChat';
@@ -22,7 +21,6 @@ import * as geminiService from './services/geminiService';
 import ChemistryWidgetPanel from './components/ChemistryWidgetPanel';
 import ArMobileView from './components/ArMobileView';
 import SrlCoachWorkspace from './components/SrlCoachWorkspace';
-import AlphaFoldWorkspace from './components/AlphaFoldWorkspace';
 import type { AIInteraction, InteractionMode } from './types';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
@@ -54,9 +52,9 @@ const App: React.FC = () => {
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   
   // Canvas and UI state
-  const [currentTool] = useState('pen');
-  const [strokeWidth] = useState(2);
-  const [strokeColor] = useState('#00FFFF');
+  const [currentTool, setCurrentTool] = useState('pen');
+  const [strokeWidth, setStrokeWidth] = useState(2);
+  const [strokeColor, setStrokeColor] = useState('#00FFFF');
   const [isMolecularMode, setIsMolecularMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -90,11 +88,9 @@ const App: React.FC = () => {
   const [useLlamaChat, setUseLlamaChat] = useState(false);
   const [showLiveChat, setShowLiveChat] = useState(false);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
-  const [chemistryPanelInitialView] = useState<'overview' | 'nmr'>('overview');
+  const [chemistryPanelInitialView, setChemistryPanelInitialView] = useState<'overview' | 'nmr'>('overview');
   const [showNmrFullscreen, setShowNmrFullscreen] = useState(false);
-  const [showAlphaFoldWorkspace, setShowAlphaFoldWorkspace] = useState(false);
   const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
-  const [showCanvasFullscreen, setShowCanvasFullscreen] = useState(false);
   
   // Resize states
   const [isResizing, setIsResizing] = useState<'sources' | 'chat' | 'studyTools' | null>(null);
@@ -165,8 +161,7 @@ const App: React.FC = () => {
         const isInitialized = await checkApiKeysInitialized();
         if (!isInitialized) {
           console.log('Initializing API keys in Firebase...');
-          // Initialize with empty array for now - keys should be added through admin interface
-          await initializeApiKeys([]);
+          await initializeApiKeys();
           console.log('API keys initialized successfully!');
         } else {
           console.log('API keys already initialized in Firebase');
@@ -291,10 +286,9 @@ const App: React.FC = () => {
       newWidth = Math.max(250, Math.min(800, resizeStartWidth + deltaX));
       setSourcesWidth(newWidth);
     } else if (isResizing === 'chat') {
-      // For chat panel (right-side sidebar) the resize handle sits on its left edge.
-      // Dragging right (positive deltaX) should decrease the chat width (minimize it),
-      // so subtract deltaX from the starting width instead of adding it.
-      newWidth = Math.max(280, Math.min(800, resizeStartWidth - deltaX));
+      // For chat panel: dragging right (positive deltaX) should increase width
+      // Since resize handle is on the left of chat panel, we add deltaX
+      newWidth = Math.max(280, Math.min(800, resizeStartWidth + deltaX));
       console.log('Chat resize - Start:', resizeStartWidth, 'Delta:', deltaX, 'New:', newWidth);
       const boundedWidth = Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, newWidth));
       setChatWidth(boundedWidth);
@@ -488,8 +482,7 @@ Here is the learner's question: ${message}`
   }
 
   return (
-    <ThemeProvider>
-      <div className="min-h-screen bg-background text-foreground dark">
+    <div className="min-h-screen bg-background text-foreground dark">
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-20 max-w-screen-2xl items-center px-6">
@@ -565,7 +558,6 @@ Here is the learner's question: ${message}`
               <button
                 onClick={() => {
                   setShowSrlCoachWorkspace(true);
-                  setShowAlphaFoldWorkspace(false);
                   setShowChatPanel(false);
                   setShowNmrFullscreen(false);
                   setIsNmrAssistantActive(false);
@@ -579,47 +571,14 @@ Here is the learner's question: ${message}`
               
               <button
                 onClick={() => {
-                  setShowAlphaFoldWorkspace(true);
-                  setShowSrlCoachWorkspace(false);
-                  setShowNmrFullscreen(false);
-                  setShowChatPanel(false);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                }}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 px-4"
-              >
-                <Dna className="mr-2 h-5 w-5" />
-                AlphaFold
-              </button>
-
-              <button
-                onClick={() => {
                   setShowNmrFullscreen(true);
                   setIsNmrAssistantActive(false);
                   setShowChatPanel(false);
-                  setShowAlphaFoldWorkspace(false);
-                  setShowSrlCoachWorkspace(false);
                 }}
                 className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 px-4"
               >
                 <LineChart className="mr-2 h-5 w-5" />
                 NMR Viewer
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowCanvasFullscreen(true);
-                  setShowNmrFullscreen(false);
-                  setShowChatPanel(false);
-                  setShowAlphaFoldWorkspace(false);
-                  setShowSrlCoachWorkspace(false);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                }}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 px-4"
-              >
-                <Edit3 className="mr-2 h-5 w-5" />
-                Canvas Fullscreen
               </button>
               
               
@@ -701,47 +660,8 @@ Here is the learner's question: ${message}`
         />
       )}
 
-      {/* Fullscreen utilities */}
-      {showCanvasFullscreen ? (
-        <div className="flex h-[calc(100vh-5rem)] flex-col bg-slate-900">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-slate-900 border-b border-slate-800 px-4 md:px-6 py-3">
-            <div>
-              <h2 className="text-sm font-semibold text-white">Canvas (Fullscreen)</h2>
-              <p className="text-xs text-slate-400">Full-screen drawing and chemistry workspace.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => {
-                  setShowCanvasFullscreen(false);
-                }}
-                className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-500"
-              >
-                Exit Fullscreen
-              </button>
-            </div>
-          </div>
-          <div className="flex-1">
-            {isMolecularMode ? (
-              <MoldrawEmbed />
-            ) : (
-              <Canvas
-                currentTool={currentTool}
-                strokeWidth={strokeWidth}
-                strokeColor={strokeColor}
-                onOpenCalculator={handleOpenCalculator}
-                onOpenMolView={handleOpenMolView}
-                onOpenPeriodicTable={handleOpenPeriodicTable}
-              />
-            )}
-          </div>
-        </div>
-      ) : showAlphaFoldWorkspace ? (
-        <AlphaFoldWorkspace
-          onClose={() => {
-            setShowAlphaFoldWorkspace(false);
-          }}
-        />
-      ) : showSrlCoachWorkspace ? (
+      {/* Fullscreen NMR viewer */}
+      {showSrlCoachWorkspace ? (
         <SrlCoachWorkspace
           interactions={interactions}
           onSendMessage={handleSendMessage}
@@ -832,9 +752,6 @@ Here is the learner's question: ${message}`
                     interactions={interactions}
                     isLoading={chatLoading}
                     documentName="NMRium Workspace"
-                    onClear={() => setInteractions([])}
-                    useLlamaChat={useLlamaChat}
-                    onToggleModel={() => setUseLlamaChat(prev => !prev)}
                   />
                 </div>
               </aside>
@@ -1253,72 +1170,68 @@ Here is the learner's question: ${message}`
             </div>
 
 
-            {/* AI Chat (sidebar) */}
+            {/* AI Chat */}
             {showChatPanel && (
-              <>
-                {/* Resize handle between canvas and chat */}
+              <div className="absolute inset-0 z-30 pointer-events-none">
                 <div
-                  className="w-2 bg-muted hover:bg-primary/50 cursor-col-resize transition-colors border-l border-border"
-                  onMouseDown={(e) => handleMouseDown('chat', e)}
-                />
-
-                <aside
-                  className="border-l-2 border-border bg-card flex flex-col shadow-lg"
-                  style={{ width: `${chatWidth}px`, maxWidth: 'min(92vw, 420px)', minWidth: `${CHAT_MIN_WIDTH}px` }}
+                  className="absolute top-24 right-4 sm:right-6 pointer-events-auto"
+                  style={{
+                    width: Math.min(chatWidth, 420),
+                    maxWidth: 'min(92vw, 420px)'
+                  }}
                 >
-                  <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between">
+                  <div className="relative">
+                    <button
+                      className="hidden"
+                      aria-hidden
+                      tabIndex={-1}
+                    />
+                    <div
+                      className="absolute inset-y-4 -left-2 w-2 cursor-col-resize rounded-full bg-primary/20 hover:bg-primary/40 transition-colors"
+                      onMouseDown={(e) => handleMouseDown('chat', e)}
+                      title="Drag to resize chat"
+                    />
+                    <div className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[82vh]">
+                      <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
                         <MessageSquare className="h-4 w-4 text-primary-foreground" />
                       </div>
                       <div>
                         <h3 className="text-sm font-semibold">AI Chat</h3>
-                        <p className="text-xs text-muted-foreground">Reference answers while you work</p>
+                            <p className="text-xs text-muted-foreground">Reference answers while you work</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="hidden sm:inline text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded flex-shrink-0">
+                        <div className="flex items-center gap-2">
+                          <span className="hidden sm:inline text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded">
                         {Math.round(chatWidth)}px
                       </span>
-                      {/* Model toggle */}
-                      <button
-                        onClick={() => setUseLlamaChat(prev => !prev)}
-                        title={useLlamaChat ? 'Switch to Gemini' : 'Switch to Llama'}
-                        className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none h-8 px-3 flex-shrink-0 ${useLlamaChat ? 'bg-amber-600 text-white hover:bg-amber-500' : 'bg-slate-700 text-white hover:bg-slate-600'}`}
-                      >
-                        {useLlamaChat ? 'Llama' : 'Gemini'}
-                      </button>
-
                       <button
                         onClick={() => setShowChatPanel(false)}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 flex-shrink-0"
-                        aria-label="Close chat"
+                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
+                            aria-label="Close chat"
                       >
                         <X className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
-
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <div className="h-full overflow-y-auto">
-                      {useLlamaChat ? (
-                        <LlamaChat onClose={() => setUseLlamaChat(false)} />
-                      ) : (
-                        <AIChat
-                          onSendMessage={handleSendMessage}
-                          interactions={interactions}
-                          isLoading={chatLoading}
-                          documentName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
-                          onOpenDocument={() => setDocumentViewerOpen(true)}
-                          onClear={() => setInteractions([])}
-                          useLlamaChat={useLlamaChat}
-                          onToggleModel={() => setUseLlamaChat(prev => !prev)}
-                        />
-                      )}
-                    </div>
+                      <div className="flex-1 min-h-[240px]">
+                        {useLlamaChat ? (
+                          <LlamaChat onClose={() => setUseLlamaChat(false)} />
+                        ) : (
+                    <AIChat
+                      onSendMessage={handleSendMessage}
+                      interactions={interactions}
+                      isLoading={chatLoading}
+                      documentName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
+                      onOpenDocument={() => setDocumentViewerOpen(true)}
+                    />
+                        )}
                   </div>
-                </aside>
-              </>
+                </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Study Tools Panel */}
@@ -1588,7 +1501,6 @@ Here is the learner's question: ${message}`
         </div>
       )}
     </div>
-    </ThemeProvider>
   );
 };
 

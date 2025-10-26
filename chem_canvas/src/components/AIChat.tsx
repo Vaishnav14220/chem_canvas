@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Loader2, Sparkles, FileText, Trash } from 'lucide-react';
+import { Send, Loader2, Sparkles, FileText } from 'lucide-react';
 import type { AIInteraction, InteractionMode } from '../types';
 import { LLMMessage, VerifiedSmilesBlock } from './LLMResponseBlocks';
 
@@ -9,9 +9,6 @@ interface AIChatProps {
   isLoading: boolean;
   documentName?: string;
   onOpenDocument?: () => void;
-  onClear?: () => void;
-  useLlamaChat?: boolean;
-  onToggleModel?: () => void;
 }
 
 const AIChat: React.FC<AIChatProps> = ({
@@ -19,14 +16,10 @@ const AIChat: React.FC<AIChatProps> = ({
   interactions,
   isLoading,
   documentName,
-  onOpenDocument,
-  onClear,
-  useLlamaChat,
-  onToggleModel
+  onOpenDocument
 }) => {
   const [message, setMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [ExternalChat, setExternalChat] = useState<any>(null);
 
   const chatInteractions = useMemo(
     () => interactions.filter((interaction) => interaction.mode === 'chat'),
@@ -36,32 +29,6 @@ const AIChat: React.FC<AIChatProps> = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatInteractions, isLoading]);
-
-  // Try to dynamically load the Lobe Chat UI library if present. If it's not
-  // installed, we silently fall back to the built-in UI.
-  useEffect(() => {
-    let isMounted = true;
-    const tryLoad = async () => {
-      const candidates = ['@lobehub/lobe-chat', 'lobe-chat'];
-      for (const pkgName of candidates) {
-        try {
-          // Use a non-literal import to avoid Vite's static resolution.
-          // @ts-ignore: optional dynamic dependency
-          const mod = await import(/* @vite-ignore */ pkgName as any);
-          if (!isMounted) return;
-          setExternalChat(mod?.default ?? mod);
-          return;
-        } catch (err) {
-          // try next candidate
-        }
-      }
-      // No external chat found — keep the built-in UI
-      console.log('Lobe Chat UI not available at runtime');
-    };
-
-    void tryLoad();
-    return () => { isMounted = false; };
-  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -77,29 +44,6 @@ const AIChat: React.FC<AIChatProps> = ({
     }
   };
 
-  // If an external Lobe chat UI was loaded, render it and map a few expected
-  // props. We provide common callbacks (send, clear, toggle model). This mapping
-  // is intentionally permissive because the external package may have different
-  // prop names — the external UI will receive the provided props as best-effort.
-  if (ExternalChat) {
-    const LobeComponent = ExternalChat;
-    return (
-      <div className="h-full">
-        {/* Render the external component; pass a friendly mapping of props */}
-        <LobeComponent
-          interactions={interactions}
-          onSend={onSendMessage}
-          isLoading={isLoading}
-          documentName={documentName}
-          onOpenDocument={onOpenDocument}
-          onClear={onClear}
-          useLlamaChat={useLlamaChat}
-          onToggleModel={onToggleModel}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="bg-gray-800 rounded-2xl shadow-2xl flex flex-col h-full border border-gray-700 overflow-hidden">
       <div className="bg-gradient-to-r from-gray-800 to-gray-750 text-white px-4 md:px-6 py-3 md:py-4 border-b border-gray-700 shadow-lg">
@@ -111,26 +55,6 @@ const AIChat: React.FC<AIChatProps> = ({
             <h2 className="font-bold text-lg text-white">Chemistry AI Assistant</h2>
             <p className="text-xs text-gray-400">Powered by Gemini 2.5 Flash</p>
           </div>
-        </div>
-        <div className="absolute right-3 top-3 flex items-center gap-2">
-          {onToggleModel && (
-            <button
-              onClick={onToggleModel}
-              title={useLlamaChat ? 'Switch to Gemini' : 'Switch to Llama'}
-              className={`inline-flex items-center gap-2 text-xs px-2 py-1 rounded-md ${useLlamaChat ? 'bg-amber-600 text-slate-900' : 'bg-slate-700 text-white'}`}>
-              <span className="font-medium">{useLlamaChat ? 'Llama' : 'Gemini'}</span>
-            </button>
-          )}
-          {onClear && (
-            <button
-              onClick={onClear}
-              title="Clear conversation"
-              className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-md bg-transparent hover:bg-red-700/40"
-            >
-              <Trash size={14} />
-              <span className="hidden sm:inline text-xs">Clear</span>
-            </button>
-          )}
         </div>
         {documentName && (
           <div className="mt-3 bg-blue-900/30 backdrop-blur-sm px-3 py-2 rounded-lg flex items-center justify-between border border-blue-700/50">
@@ -207,7 +131,7 @@ const AIChat: React.FC<AIChatProps> = ({
             <div key={interaction.id} className="space-y-3 animate-slide-up">
               {interaction.prompt?.trim() && (
                 <div className="flex justify-end">
-                  <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm p-4 max-w-[calc(100%-64px)] w-full md:w-auto shadow-lg break-words">
+                  <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm p-4 max-w-[75ch] shadow-lg break-words">
                     <p className="text-xs font-semibold mb-1 opacity-90">You</p>
                     <p className="text-sm">{interaction.prompt}</p>
                   </div>
@@ -215,7 +139,7 @@ const AIChat: React.FC<AIChatProps> = ({
               )}
               {interaction.response?.trim() && (
                 <div className="flex justify-start">
-                  <div className="bg-gray-800 rounded-2xl rounded-tl-sm p-4 max-w-[calc(100%-64px)] w-full md:w-auto shadow-md border border-gray-700 space-y-3 break-words">
+                  <div className="bg-gray-800 rounded-2xl rounded-tl-sm p-4 max-w-[75ch] shadow-md border border-gray-700 space-y-3 break-words">
                     <div className="flex items-center gap-2">
                       <div className="bg-gradient-to-br from-blue-600/20 to-indigo-600/20 p-1.5 rounded-lg">
                         <Sparkles size={14} className="text-blue-400" />

@@ -5,6 +5,14 @@
   # Default build command
   command = "npm run build"
 
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/analyze-molecule"
+  to = "/.netlify/functions/analyze_molecule"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
