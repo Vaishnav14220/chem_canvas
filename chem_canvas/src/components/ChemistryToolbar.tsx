@@ -15,7 +15,6 @@ import {
   Grid3X3,
   Move,
   RotateCw,
-  Microscope,
   ChevronDown,
   ChevronUp,
   GripVertical,
@@ -41,7 +40,6 @@ interface ChemistryToolbarProps {
   onOpenCalculator?: () => void;
   onOpenMolView?: () => void;
   onOpenPeriodicTable?: () => void;
-  onOpenMoleculeSearch?: () => void;
   onOpenReagentSearch?: () => void;
   onOpenMineralSearch?: () => void;
   onOpenArViewer?: () => void;
@@ -76,7 +74,6 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
   onOpenCalculator,
   onOpenMolView,
   onOpenPeriodicTable,
-  onOpenMoleculeSearch,
   onOpenReagentSearch,
   onOpenMineralSearch,
   onOpenArViewer,
@@ -119,7 +116,6 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
   { id: 'molview', name: '3D Molecules', icon: MolViewIcon, description: '3D molecular viewer', isSpecial: true },
   { id: 'ar', name: 'AR Viewer', icon: Scan, description: 'Place molecules in AR', isSpecial: true },
     { id: 'periodic', name: 'Periodic Table', icon: Grid3X3, description: 'Interactive periodic table', isSpecial: true },
-    { id: 'molecules', name: 'Search Molecules', icon: Microscope, description: 'Search molecules from PubChem', isSpecial: true },
   { id: 'reagents', name: 'Search Reagents', icon: FlaskConical, description: 'Find reagent molecules', isSpecial: true },
   { id: 'minerals', name: 'Search Minerals', icon: Gem, description: 'Pull 3D minerals from COD', isSpecial: true },
     { id: 'widgets', name: 'Chemistry Widgets', icon: Beaker, description: 'Interactive chemistry tools', isSpecial: true },
@@ -215,8 +211,6 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
                       onOpenArViewer();
                     } else if (tool.isSpecial && tool.id === 'periodic' && onOpenPeriodicTable) {
                       onOpenPeriodicTable();
-                    } else if (tool.isSpecial && tool.id === 'molecules' && onOpenMoleculeSearch) {
-                      onOpenMoleculeSearch();
                     } else if (tool.isSpecial && tool.id === 'reagents' && onOpenReagentSearch) {
                       onOpenReagentSearch();
                     } else if (tool.isSpecial && tool.id === 'minerals' && onOpenMineralSearch) {
