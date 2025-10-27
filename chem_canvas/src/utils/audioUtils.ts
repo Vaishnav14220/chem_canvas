@@ -297,6 +297,35 @@ export async function validateAudioContent(audioBlob: Blob, trackedDuration?: nu
 
     // Check audio levels to detect if it's just silence/noise
     const hasAudioContent = await detectAudioContent(audioBlob);
+    
+    // For short recordings with tracked duration, be more lenient
+    if (!hasAudioContent && trackedDuration && trackedDuration > 0 && trackedDuration <= 10) {
+      console.log('🎵 Short recording detected, being more lenient with content detection');
+      // For short recordings, if there's any signal at all, accept it
+      try {
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const channelData = audioBuffer.getChannelData(0);
+        
+        // Check if there's any non-zero audio data
+        let hasAnySignal = false;
+        for (let i = 0; i < Math.min(channelData.length, 10000); i++) { // Check first 10000 samples
+          if (Math.abs(channelData[i]) > 0.00001) { // Very small threshold
+            hasAnySignal = true;
+            break;
+          }
+        }
+        
+        if (hasAnySignal) {
+          console.log('🎵 Found minimal audio signal in short recording, accepting');
+          return { isValid: true };
+        }
+      } catch (error) {
+        console.warn('Error in lenient content check:', error);
+      }
+    }
+    
     if (!hasAudioContent) {
       return { isValid: false, reason: 'No detectable speech content (likely silence or noise)' };
     }
@@ -341,6 +370,12 @@ export async function detectAudioContent(audioBlob: Blob): Promise<boolean> {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const fileReader = new FileReader();
     
+    // Add timeout to prevent hanging
+    const timeout = setTimeout(() => {
+      console.warn('🎵 Audio content detection timed out, assuming has content');
+      resolve(true); // Assume has content if analysis hangs
+    }, 3000); // 3 second timeout
+    
     fileReader.onload = async () => {
       try {
         const arrayBuffer = fileReader.result as ArrayBuffer;
@@ -366,18 +401,40 @@ export async function detectAudioContent(audioBlob: Blob): Promise<boolean> {
         const dynamicRange = max - min;
         
         // Speech typically has RMS > 0.005 and dynamic range > 0.05 (more lenient)
-        const hasContent = rms > 0.005 && dynamicRange > 0.05;
+        // Made more lenient for various microphone conditions
+        const hasContent = rms > 0.001 && dynamicRange > 0.01;
         
-        console.log(`Audio analysis - RMS: ${rms.toFixed(4)}, Dynamic Range: ${dynamicRange.toFixed(4)}, Has Content: ${hasContent}`);
+        console.log(`🎵 Audio analysis - RMS: ${rms.toFixed(4)}, Dynamic Range: ${dynamicRange.toFixed(4)}, Has Content: ${hasContent}`);
         
+        // Additional check: if RMS is very low but dynamic range exists, it might still be speech
+        if (!hasContent && rms > 0.0005 && dynamicRange > 0.005) {
+          console.log('🎵 Low volume speech detected, accepting as valid');
+          clearTimeout(timeout);
+          resolve(true);
+          return;
+        }
+        
+        // Final fallback: if there's any detectable signal at all, accept it for short recordings
+        if (!hasContent && (rms > 0.0001 || dynamicRange > 0.001)) {
+          console.log('🎵 Minimal audio signal detected, accepting for short recordings');
+          clearTimeout(timeout);
+          resolve(true);
+          return;
+        }
+        
+        clearTimeout(timeout);
         resolve(hasContent);
       } catch (error) {
         console.error('Error analyzing audio:', error);
+        clearTimeout(timeout);
         resolve(false); // Assume no content if analysis fails
       }
     };
     
-    fileReader.onerror = () => reject(new Error('Failed to read audio file'));
+    fileReader.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error('Failed to read audio file'));
+    };
     fileReader.readAsArrayBuffer(audioBlob);
   });
 }
