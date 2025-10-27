@@ -874,6 +874,34 @@ export default function Canvas({
     return null;
   };
 
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Only deselect if clicking on empty canvas space (not on shapes)
+    // This prevents deselection when clicking on shapes during operations
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / zoom;
+    const y = (e.clientY - rect.top) / zoom;
+
+    // Check if click is on any shape
+    let clickedOnShape = false;
+    for (let i = canvasHistoryRef.current.length - 1; i >= 0; i--) {
+      const shape = canvasHistoryRef.current[i];
+      const bounds = getShapeBounds(shape);
+      if (x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY) {
+        clickedOnShape = true;
+        break;
+      }
+    }
+
+    // If not clicking on a shape, deselect current selection
+    if (!clickedOnShape) {
+      setSelectedShapeId(null);
+      setSelectedShape(null);
+    }
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -2843,6 +2871,7 @@ export default function Canvas({
         onMouseMove={draw}
         onMouseUp={stopDrawing}
         onMouseLeave={stopDrawing}
+        onClick={handleCanvasClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
