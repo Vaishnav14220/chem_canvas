@@ -595,36 +595,65 @@ export const searchReagentMolecules = async (
   }
 };
 
-// Autocomplete function using PubChem's autocomplete API
+// Autocomplete function using PubChem's multiple autocomplete APIs (like molview.org)
 export const getMoleculeAutocomplete = async (query: string, limit: number = 15): Promise<string[]> => {
   if (!query || query.trim().length < 1) {
     return [];
   }
 
   const trimmedQuery = query.trim();
-  
+
   try {
-    // Use PubChem's autocomplete API
-    const autocompleteUrl = `${PUBCHEM_BASE_URL}/rest/autocomplete/compound/${encodeURIComponent(trimmedQuery)}/json?limit=${limit}`;
-    
-    const response = await fetchWithRetry(autocompleteUrl);
-    if (!response || !response.ok) {
-      console.warn('Autocomplete API failed, falling back to common molecules');
-      return getFallbackSuggestions(trimmedQuery, limit);
+    // Use multiple PubChem autocomplete endpoints like molview.org does
+    const endpoints = [
+      `${PUBCHEM_BASE_URL}/rest/autocomplete/compound/${encodeURIComponent(trimmedQuery)}/json?limit=${Math.ceil(limit / 3)}`,
+      `${PUBCHEM_BASE_URL}/rest/autocomplete/synonym/${encodeURIComponent(trimmedQuery)}/json?limit=${Math.ceil(limit / 3)}`,
+      `${PUBCHEM_BASE_URL}/rest/autocomplete/name/${encodeURIComponent(trimmedQuery)}/json?limit=${Math.ceil(limit / 3)}`
+    ];
+
+    const results: string[] = [];
+    const seen = new Set<string>();
+
+    // Fetch from all endpoints in parallel
+    const responses = await Promise.allSettled(
+      endpoints.map(url => fetchWithRetry(url))
+    );
+
+    for (const result of responses) {
+      if (result.status === 'fulfilled') {
+        const response = result.value;
+        if (response && response.ok) {
+          try {
+            const data = await response.json();
+            const suggestions = data?.autocomplete || data?.synonym || data?.name || [];
+
+            if (Array.isArray(suggestions)) {
+              // Add unique suggestions
+              for (const suggestion of suggestions) {
+                if (typeof suggestion === 'string' && suggestion.trim() && !seen.has(suggestion.toLowerCase())) {
+                  seen.add(suggestion.toLowerCase());
+                  results.push(suggestion.trim());
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to parse autocomplete response:', error);
+          }
+        }
+      }
     }
 
-    const data = await response.json();
-    const suggestions = data?.autocomplete || [];
-    
-    if (Array.isArray(suggestions) && suggestions.length > 0) {
-      console.log(`✅ Found ${suggestions.length} autocomplete suggestions for "${trimmedQuery}"`);
-      return suggestions.slice(0, limit);
+    // If we got results from PubChem APIs, return them
+    if (results.length > 0) {
+      const finalResults = results.slice(0, limit);
+      console.log(`✅ Found ${finalResults.length} comprehensive autocomplete suggestions for "${trimmedQuery}"`);
+      return finalResults;
     }
 
-    // Fallback to common molecules if API returns empty
+    // Fallback to common molecules if APIs return empty
     return getFallbackSuggestions(trimmedQuery, limit);
   } catch (error) {
-    console.warn('Autocomplete API error, using fallback:', error);
+    console.warn('Comprehensive autocomplete error, using fallback:', error);
     return getFallbackSuggestions(trimmedQuery, limit);
   }
 };

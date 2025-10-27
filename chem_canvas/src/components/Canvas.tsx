@@ -2606,7 +2606,7 @@ export default function Canvas({
       </div>
 
       {/* Canvas Controls */}
-      <div className="absolute top-4 left-1/2 z-10 transform -translate-x-1/2">
+      <div className="absolute top-16 left-1/2 z-10 transform -translate-x-1/2">
         <InlineMoleculeSearch
           onSelectMolecule={(moleculeData) => {
             void (async () => {
@@ -2624,30 +2624,30 @@ export default function Canvas({
 
         <button
           onClick={() => setShowMineralSearch(true)}
-          className="inline-flex w-40 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-4 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/70 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-32 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-3 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/70 disabled:cursor-not-allowed disabled:opacity-60"
           title="Search Minerals"
         >
           <Gem size={16} className="text-emerald-300" />
-          <span>Search Minerals</span>
+          <span>Minerals</span>
         </button>
 
         <button
           onClick={() => setShowReagentSearch(true)}
-          className="inline-flex w-40 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-4 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-cyan-400/70 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-32 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-3 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-cyan-400/70 disabled:cursor-not-allowed disabled:opacity-60"
           title="Search Reagents"
         >
           <FlaskConical size={16} className="text-cyan-300" />
-          <span>Search Reagents</span>
+          <span>Reagents</span>
         </button>
 
         <button
           onClick={openArViewer}
           disabled={!selectedMoleculeCid}
-          className="inline-flex w-40 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-4 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-purple-400/70 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-32 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-3 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-purple-400/70 disabled:cursor-not-allowed disabled:opacity-60"
           title={selectedMoleculeCid ? 'View selected molecule in AR' : 'Select a molecule on the canvas to enable AR viewer'}
         >
           <Scan size={16} className="text-purple-300" />
-          <span>Start AR Viewer</span>
+          <span>AR Viewer</span>
         </button>
 
         </div>
