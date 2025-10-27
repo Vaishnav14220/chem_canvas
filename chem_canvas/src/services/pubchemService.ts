@@ -595,6 +595,65 @@ export const searchReagentMolecules = async (
   }
 };
 
+// Autocomplete function using PubChem's autocomplete API
+export const getMoleculeAutocomplete = async (query: string, limit: number = 8): Promise<string[]> => {
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
+
+  const trimmedQuery = query.trim();
+  
+  try {
+    // Use PubChem's autocomplete API
+    const autocompleteUrl = `${PUBCHEM_BASE_URL}/rest/autocomplete/compound/${encodeURIComponent(trimmedQuery)}/json?limit=${limit}`;
+    
+    const response = await fetchWithRetry(autocompleteUrl);
+    if (!response || !response.ok) {
+      console.warn('Autocomplete API failed, falling back to common molecules');
+      return getFallbackSuggestions(trimmedQuery, limit);
+    }
+
+    const data = await response.json();
+    const suggestions = data?.autocomplete || [];
+    
+    if (Array.isArray(suggestions) && suggestions.length > 0) {
+      console.log(`✅ Found ${suggestions.length} autocomplete suggestions for "${trimmedQuery}"`);
+      return suggestions.slice(0, limit);
+    }
+
+    // Fallback to common molecules if API returns empty
+    return getFallbackSuggestions(trimmedQuery, limit);
+  } catch (error) {
+    console.warn('Autocomplete API error, using fallback:', error);
+    return getFallbackSuggestions(trimmedQuery, limit);
+  }
+};
+
+// Fallback suggestions from common molecules when API fails
+const getFallbackSuggestions = (query: string, limit: number): string[] => {
+  const commonMolecules = [
+    'methane', 'ethane', 'propane', 'butane', 'pentane',
+    'ethene', 'ethyne', 'benzene', 'toluene', 'xylene',
+    'methanol', 'ethanol', 'propanol', 'butanol', 'phenol',
+    'acetone', 'acetaldehyde', 'formaldehyde',
+    'water', 'hydrogen', 'oxygen', 'nitrogen', 'carbon dioxide', 'carbon monoxide',
+    'ammonia', 'sulfur dioxide', 'nitrous oxide', 'nitrogen dioxide',
+    'glucose', 'fructose', 'sucrose', 'lactose', 'maltose',
+    'caffeine', 'aspirin', 'ibuprofen', 'acetaminophen',
+    'sodium chloride', 'potassium chloride', 'calcium carbonate',
+    'sulfuric acid', 'hydrochloric acid', 'acetic acid', 'formic acid',
+    'sodium hydroxide', 'potassium hydroxide', 'ammonia solution',
+    'hydrogen peroxide', 'ethyl alcohol', 'glycerol', 'urea',
+    'DNA', 'RNA', 'cholesterol', 'vitamin C', 'nicotine',
+    'CO2', 'H2O', 'H2', 'O2', 'N2', 'NH3', 'CH4', 'C2H6',
+  ];
+
+  const lowerQuery = query.toLowerCase();
+  return commonMolecules
+    .filter(mol => mol.toLowerCase().includes(lowerQuery))
+    .slice(0, limit);
+};
+
 // Interface for parsed SDF atom data
 export interface AtomData {
   x: number;

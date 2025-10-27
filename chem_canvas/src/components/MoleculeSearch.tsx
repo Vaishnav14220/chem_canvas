@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, X, Loader2, AlertCircle, CheckCircle, Eye } from 'lucide-react';
-import { getMoleculeByName, get2DStructureUrl, getMolViewUrl, type MoleculeData } from '../services/pubchemService';
+import { getMoleculeByName, get2DStructureUrl, getMolViewUrl, getMoleculeAutocomplete, type MoleculeData } from '../services/pubchemService';
 
 interface MoleculeSearchProps {
   onSelectMolecule?: (moleculeData: MoleculeData) => void;
@@ -16,41 +16,58 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Comprehensive list of common molecules for autocomplete
-  const commonMolecules = [
-    'methane', 'ethane', 'propane', 'butane', 'pentane',
-    'ethene', 'ethyne', 'benzene', 'toluene', 'xylene',
-    'methanol', 'ethanol', 'propanol', 'butanol', 'phenol',
-    'acetone', 'acetaldehyde', 'formaldehyde',
-    'water', 'hydrogen', 'oxygen', 'nitrogen', 'carbon dioxide', 'carbon monoxide',
-    'ammonia', 'sulfur dioxide', 'nitrous oxide', 'nitrogen dioxide',
-    'glucose', 'fructose', 'sucrose', 'lactose', 'maltose',
-    'caffeine', 'aspirin', 'ibuprofen', 'acetaminophen',
-    'sodium chloride', 'potassium chloride', 'calcium carbonate',
-    'sulfuric acid', 'hydrochloric acid', 'acetic acid', 'formic acid',
-    'sodium hydroxide', 'potassium hydroxide', 'ammonia solution',
-    'hydrogen peroxide', 'ethyl alcohol', 'glycerol', 'urea',
-    'DNA', 'RNA', 'cholesterol', 'vitamin C', 'nicotine',
-    'CO2', 'H2O', 'H2', 'O2', 'N2', 'NH3', 'CH4', 'C2H6',
-  ];
-
-  const handleSearchTermChange = (value: string) => {
+  const handleSearchTermChange = useCallback((value: string) => {
     setSearchTerm(value);
     
-    // Generate suggestions
-    if (value.trim().length > 0) {
-      const filtered = commonMolecules.filter(mol =>
-        mol.toLowerCase().includes(value.toLowerCase())
-      );
-      setSuggestions(filtered.slice(0, 8)); // Show max 8 suggestions
-      setShowSuggestions(true);
-    } else {
+    // Clear previous timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    // Clear previous suggestions and errors
+    if (value.trim().length === 0) {
       setSuggestions([]);
       setShowSuggestions(false);
+      setIsLoadingSuggestions(false);
+      return;
     }
-  };
+
+    // Only show suggestions for queries with at least 2 characters
+    if (value.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    setIsLoadingSuggestions(true);
+    setShowSuggestions(true);
+    
+    // Debounce the API call
+    debounceTimeoutRef.current = setTimeout(async () => {
+      try {
+        const autocompleteSuggestions = await getMoleculeAutocomplete(value.trim(), 8);
+        setSuggestions(autocompleteSuggestions);
+      } catch (error) {
+        console.error('Error fetching autocomplete suggestions:', error);
+        setSuggestions([]);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    }, 300);
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSuggestionClick = async (suggestion: string) => {
     setSearchTerm(suggestion);
@@ -192,49 +209,71 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
         <div className="p-6 space-y-4">
           {/* Search Input */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-300">Molecule Name</label>
-            <div className="flex gap-2 relative">
+            <label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <Search size={16} className="text-cyan-400" />
+              Search Molecules
+            </label>
+            <div className="relative">
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => handleSearchTermChange(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Type molecule name and press Enter or click suggestion..."
-                className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                placeholder="Type molecule name (e.g., benzene, glucose, caffeine)..."
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                autoFocus
               />
-              <button
-                onClick={handleSearch}
-                disabled={isLoading}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white rounded-lg flex items-center gap-2 transition font-semibold"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Searching...
-                  </>
-                ) : (
-                  <>
-                    <Search size={18} />
-                    Add to Canvas
-                  </>
-                )}
-              </button>
               
-              {/* Autocomplete Suggestions Dropdown */}
-              {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-12 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-                  {suggestions.map((suggestion, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleSuggestionClick(suggestion)}
-                      className="w-full text-left px-4 py-2 hover:bg-slate-700 text-slate-200 border-b border-slate-700 last:border-b-0 transition flex items-center gap-2"
-                    >
-                      <Search size={16} className="text-cyan-400" />
-                      <span>{suggestion}</span>
-                    </button>
-                  ))}
+              {/* Loading indicator for suggestions */}
+              {isLoadingSuggestions && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <Loader2 size={16} className="animate-spin text-cyan-400" />
                 </div>
               )}
+              
+              {/* Autocomplete Suggestions Dropdown */}
+              {showSuggestions && (suggestions.length > 0 || isLoadingSuggestions) && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                  {isLoadingSuggestions ? (
+                    <div className="px-4 py-3 text-center text-slate-400">
+                      <Loader2 size={16} className="animate-spin inline mr-2" />
+                      Searching PubChem...
+                    </div>
+                  ) : suggestions.length > 0 ? (
+                    suggestions.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleSuggestionClick(suggestion)}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-700 text-slate-200 border-b border-slate-700/50 last:border-b-0 transition-all duration-150 flex items-center gap-3 group"
+                      >
+                        <Search size={16} className="text-cyan-400 group-hover:text-cyan-300 flex-shrink-0" />
+                        <span className="truncate">{suggestion}</span>
+                        <span className="text-xs text-slate-500 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                          Click to add
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-4 py-3 text-center text-slate-500">
+                      No suggestions found
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Quick Search Buttons */}
+            <div className="flex flex-wrap gap-2 mt-3">
+              <span className="text-xs text-slate-400 mr-2 self-center">Quick search:</span>
+              {['benzene', 'glucose', 'caffeine', 'aspirin', 'water'].map((molecule) => (
+                <button
+                  key={molecule}
+                  onClick={() => handleSuggestionClick(molecule)}
+                  className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-full text-sm transition-colors duration-150 border border-slate-600 hover:border-slate-500"
+                >
+                  {molecule}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -347,12 +386,12 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
           {/* Tips */}
           {!successMessage && !error && (
             <div className="bg-slate-800/50 border border-slate-600 rounded-lg p-4 space-y-2">
-              <p className="text-sm font-semibold text-slate-300">💡 Tips:</p>
+              <p className="text-sm font-semibold text-slate-300">💡 How to Search:</p>
               <ul className="text-sm text-slate-400 space-y-1 list-disc list-inside">
-                <li>Try common molecule names: benzene, glucose, caffeine, water, ethanol</li>
-                <li>Use IUPAC names for more specific results</li>
-                <li>Molecules are automatically added to your canvas when found</li>
-                <li>Click suggestions or press Enter to instantly add molecules</li>
+                <li>Start typing a molecule name (2+ characters) to see PubChem suggestions</li>
+                <li>Click any suggestion or press Enter to instantly add it to your canvas</li>
+                <li>Try common molecules: benzene, glucose, caffeine, aspirin, water</li>
+                <li>Use IUPAC names or chemical formulas for precise results</li>
               </ul>
             </div>
           )}
@@ -362,8 +401,8 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
             <div className="bg-blue-900/20 border border-blue-600/30 rounded-lg p-4 space-y-2">
               <p className="text-sm font-semibold text-blue-300">📚 How to Create a Reaction:</p>
               <ol className="text-sm text-blue-200 space-y-1 list-decimal list-inside">
-                <li>Type a molecule name and press <span className="font-semibold text-cyan-400">Enter</span> or click a suggestion</li>
-                <li>The molecule will be <span className="font-semibold text-green-400">automatically added</span> to your canvas</li>
+                <li>Start typing a molecule name to see real-time suggestions from PubChem</li>
+                <li>Click any suggestion or press <span className="font-semibold text-cyan-400">Enter</span> to instantly add it to your canvas</li>
                 <li>Repeat for other molecules in your reaction (reactants and products)</li>
                 <li>Use the arrow tool to show the reaction direction</li>
                 <li>Add conditions (heat, catalyst, etc.) above the arrow</li>
