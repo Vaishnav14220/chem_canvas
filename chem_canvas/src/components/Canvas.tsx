@@ -1,12 +1,12 @@
 import { useRef, useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan, Search, X } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
-import MoleculeSearch from './MoleculeSearch';
 import MineralSearch from './MineralSearch';
 import ReagentSearch from './ReagentSearch';
-import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID } from '../services/pubchemService';
+import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID, getMoleculeByName } from '../services/pubchemService';
 import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
 import ChemistryWidgetPanel from './ChemistryWidgetPanel';
@@ -26,6 +26,24 @@ const ATOM_COLORS: Record<string, string> = {
   F: '#22d3ee',
   I: '#a78bfa'
 };
+
+// Comprehensive list of common molecules for autocomplete
+const COMMON_MOLECULES = [
+  'methane', 'ethane', 'propane', 'butane', 'pentane',
+  'ethene', 'ethyne', 'benzene', 'toluene', 'xylene',
+  'methanol', 'ethanol', 'propanol', 'butanol', 'phenol',
+  'acetone', 'acetaldehyde', 'formaldehyde',
+  'water', 'hydrogen', 'oxygen', 'nitrogen', 'carbon dioxide', 'carbon monoxide',
+  'ammonia', 'sulfur dioxide', 'nitrous oxide', 'nitrogen dioxide',
+  'glucose', 'fructose', 'sucrose', 'lactose', 'maltose',
+  'caffeine', 'aspirin', 'ibuprofen', 'acetaminophen',
+  'sodium chloride', 'potassium chloride', 'calcium carbonate',
+  'sulfuric acid', 'hydrochloric acid', 'acetic acid', 'formic acid',
+  'sodium hydroxide', 'potassium hydroxide', 'ammonia solution',
+  'hydrogen peroxide', 'ethyl alcohol', 'glycerol', 'urea',
+  'DNA', 'RNA', 'cholesterol', 'vitamin C', 'nicotine',
+  'CO2', 'H2O', 'H2', 'O2', 'N2', 'NH3', 'CH4', 'C2H6',
+];
 
 const DEFAULT_ANNOTATION_LABELS = [
   'Active center',
@@ -88,7 +106,6 @@ export default function Canvas({
   const [chemistryStructure, setChemistryStructure] = useState<any>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [canvasBackground, setCanvasBackground] = useState<'dark' | 'white'>('dark');
-  const [showMoleculeSearch, setShowMoleculeSearch] = useState(false);
   const [showMineralSearch, setShowMineralSearch] = useState(false);
   const [showReagentSearch, setShowReagentSearch] = useState(false);
   const [forceRedraw, setForceRedraw] = useState(0); // New state for forcing redraw
@@ -103,6 +120,12 @@ export default function Canvas({
     color: string;
   } | null>(null);
   const [annotationHint, setAnnotationHint] = useState<string | null>(null);
+  const [moleculeSearchTerm, setMoleculeSearchTerm] = useState('');
+  const [moleculeSuggestions, setMoleculeSuggestions] = useState<string[]>([]);
+  const [showMoleculeSuggestions, setShowMoleculeSuggestions] = useState(false);
+  const [isSearchingMolecule, setIsSearchingMolecule] = useState(false);
+  const [moleculeSearchError, setMoleculeSearchError] = useState<string | null>(null);
+  const [showArQrModal, setShowArQrModal] = useState(false);
 
   const addCustomAnnotationLabel = () => {
     const trimmed = customAnnotationLabel.trim();
@@ -229,6 +252,69 @@ export default function Canvas({
     setChemistryColor(color);
   };
 
+  const handleMoleculeSearchTermChange = (value: string) => {
+    setMoleculeSearchTerm(value);
+    
+    // Generate suggestions
+    if (value.trim().length > 0) {
+      const filtered = COMMON_MOLECULES.filter(mol =>
+        mol.toLowerCase().includes(value.toLowerCase())
+      );
+      setMoleculeSuggestions(filtered.slice(0, 8)); // Show max 8 suggestions
+      setShowMoleculeSuggestions(true);
+    } else {
+      setMoleculeSuggestions([]);
+      setShowMoleculeSuggestions(false);
+    }
+  };
+
+  const handleMoleculeSuggestionClick = async (suggestion: string) => {
+    setMoleculeSearchTerm(suggestion);
+    setMoleculeSuggestions([]);
+    setShowMoleculeSuggestions(false);
+    
+    // Auto-search for the suggestion
+    await handleMoleculeSearch(suggestion);
+  };
+
+  const handleMoleculeSearch = async (searchTerm?: string) => {
+    const term = searchTerm || moleculeSearchTerm;
+    if (!term.trim()) {
+      setMoleculeSearchError('Please enter a molecule name');
+      return;
+    }
+
+    setIsSearchingMolecule(true);
+    setMoleculeSearchError(null);
+
+    try {
+      console.log(`Searching for molecule: ${term}`);
+      const data = await getMoleculeByName(term);
+      console.log('Search result:', data);
+      
+      if (data) {
+        console.log('Inserting molecule to canvas:', data.name);
+        await insertMoleculeToCanvas(data);
+        setMoleculeSearchTerm(''); // Clear search after successful insertion
+        setShowMoleculeSuggestions(false);
+        setMoleculeSearchError(null);
+      } else {
+        setMoleculeSearchError(`Molecule "${term}" not found in PubChem database. Try another name.`);
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+      setMoleculeSearchError('Failed to search molecule. Please try again.');
+    } finally {
+      setIsSearchingMolecule(false);
+    }
+  };
+
+  const handleMoleculeSearchKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleMoleculeSearch();
+    }
+  };
+
   const updateShapeById = (id: string, updater: (shape: Shape) => Shape) => {
     let didUpdate = false;
     const updated = canvasHistoryRef.current.map(shape => {
@@ -276,8 +362,19 @@ export default function Canvas({
       return;
     }
 
-    const targetUrl = `${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`;
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    // Check if it's a mobile/touch device
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                    ('ontouchstart' in window) || 
+                    (window.innerWidth <= 768);
+
+    if (isMobile) {
+      // On mobile, open directly
+      const targetUrl = `${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`;
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      // On desktop, show QR code modal
+      setShowArQrModal(true);
+    }
   };
 
   const toggleSelectedMolecule3D = (enabled: boolean) => {
@@ -652,12 +749,15 @@ export default function Canvas({
   };
 
   const insertMoleculeToCanvas = async (incomingData: MoleculeData) => {
+    console.log('Starting molecule insertion:', incomingData.name);
     const canvas = canvasRef.current;
     if (!canvas) {
+      console.error('No canvas ref available');
       return;
     }
 
     const moleculeData = await ensureCompleteMoleculeData(incomingData);
+    console.log('Molecule data after ensureComplete:', moleculeData);
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
@@ -2565,7 +2665,6 @@ export default function Canvas({
             onOpenCalculator={onOpenCalculator}
             onOpenMolView={onOpenMolView}
             onOpenPeriodicTable={onOpenPeriodicTable}
-            onOpenMoleculeSearch={() => setShowMoleculeSearch(true)}
             onOpenMineralSearch={() => setShowMineralSearch(true)}
             onOpenReagentSearch={() => setShowReagentSearch(true)}
             onOpenArViewer={openArViewer}
@@ -2609,14 +2708,44 @@ export default function Canvas({
 
       {/* Canvas Controls */}
       <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-3 transform">
-        <button
-          onClick={() => setShowMoleculeSearch(true)}
-          className="inline-flex w-40 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-4 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/70 disabled:cursor-not-allowed disabled:opacity-60"
-          title="Search Molecules"
-        >
-          <Atom size={16} className="text-blue-300" />
-          <span>Search Molecules</span>
-        </button>
+        {/* Molecule Search Bar */}
+        <div className="relative">
+          <div className="inline-flex w-64 items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-4 py-2 text-sm shadow-xl">
+            <Search size={16} className="text-blue-300 flex-shrink-0" />
+            <input
+              type="text"
+              value={moleculeSearchTerm}
+              onChange={(e) => handleMoleculeSearchTermChange(e.target.value)}
+              onKeyPress={handleMoleculeSearchKeyPress}
+              placeholder="Search molecules..."
+              className="flex-1 bg-transparent text-slate-100 placeholder-slate-400 outline-none"
+              disabled={isSearchingMolecule}
+            />
+            {isSearchingMolecule && <Loader2 size={16} className="text-blue-300 animate-spin flex-shrink-0" />}
+          </div>
+          
+          {/* Suggestions Dropdown */}
+          {showMoleculeSuggestions && moleculeSuggestions.length > 0 && (
+            <div className="absolute top-full mt-1 w-64 rounded-xl border border-slate-600/60 bg-slate-900/95 shadow-xl backdrop-blur-sm max-h-48 overflow-y-auto z-20">
+              {moleculeSuggestions.map((suggestion, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleMoleculeSuggestionClick(suggestion)}
+                  className="w-full px-4 py-2 text-left text-sm text-slate-100 hover:bg-slate-700/50 first:rounded-t-xl last:rounded-b-xl transition-colors"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          )}
+          
+          {/* Error Message */}
+          {moleculeSearchError && (
+            <div className="absolute top-full mt-1 w-64 rounded-xl border border-red-500/60 bg-red-900/95 px-4 py-2 shadow-xl backdrop-blur-sm z-20">
+              <p className="text-sm text-red-200">{moleculeSearchError}</p>
+            </div>
+          )}
+        </div>
 
         <button
           onClick={() => setShowMineralSearch(true)}
@@ -3211,24 +3340,6 @@ export default function Canvas({
         />
       )}
 
-      {/* Molecule Search Modal */}
-      {showMoleculeSearch && (
-        <MoleculeSearch
-          onClose={() => setShowMoleculeSearch(false)}
-          onSelectMolecule={(moleculeData) => {
-            void (async () => {
-              try {
-                await insertMoleculeToCanvas(moleculeData);
-              } catch (error) {
-                console.error('Failed to insert molecule from search:', error);
-              } finally {
-                setShowMoleculeSearch(false);
-              }
-            })();
-          }}
-        />
-      )}
-
       {showMineralSearch && (
         <MineralSearch
           onClose={() => setShowMineralSearch(false)}
@@ -3272,6 +3383,57 @@ export default function Canvas({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden">
             <ChemistryWidgetPanel onClose={() => setShowChemistryWidgetPanel(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* AR QR Code Modal */}
+      {showArQrModal && selectedMoleculeCid && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Scan size={24} className="text-white" />
+                  <h2 className="text-xl font-bold text-white">AR Viewer</h2>
+                </div>
+                <button
+                  onClick={() => setShowArQrModal(false)}
+                  className="text-white/70 hover:text-white transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="text-center">
+                <p className="text-slate-300 mb-4">
+                  Scan this QR code with your mobile device to view the molecule in Augmented Reality.
+                </p>
+                <div className="flex justify-center mb-4">
+                  <QRCodeSVG 
+                    value={`${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`}
+                    size={200}
+                    includeMargin
+                    className="border border-slate-600 rounded-lg p-2 bg-white"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mb-4">
+                  Or visit this URL on your mobile device:
+                </p>
+                <p className="text-xs text-slate-400 break-all bg-slate-800 p-2 rounded">
+                  {`${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`}
+                </p>
+              </div>
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setShowArQrModal(false)}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
