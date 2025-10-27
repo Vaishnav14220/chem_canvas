@@ -9,10 +9,13 @@ import {
   Sparkles
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { ARButton } from 'three/addons/webxr/ARButton.js';
 
 declare global {
   interface XRSystem {
-    isSessionSupported: (feature: string) => Promise<boolean>;
+    isSessionSupported: (mode: XRSessionMode) => Promise<boolean>;
   }
 
   interface Navigator {
@@ -203,15 +206,15 @@ const parseSdf = (sdf: string): ParsedMolecule | null => {
 };
 
 type ViewerReferences = {
-  THREE: typeof import('three');
-  renderer: import('three').WebGLRenderer;
-  scene: import('three').Scene;
-  camera: import('three').PerspectiveCamera;
-  controls: import('three/addons/controls/OrbitControls.js').OrbitControls | null;
+  THREE: typeof THREE;
+  renderer: THREE.WebGLRenderer;
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  controls: OrbitControls | null;
   arButton: HTMLElement | null;
-  moleculeGroup: import('three').Group | null;
-  ambientLight: import('three').AmbientLight | null;
-  directionalLight: import('three').DirectionalLight | null;
+  moleculeGroup: THREE.Group | null;
+  ambientLight: THREE.AmbientLight | null;
+  directionalLight: THREE.DirectionalLight | null;
   frameId: number | null;
 };
 
@@ -240,23 +243,15 @@ const MoleculeStage: React.FC<{
       const container = containerRef.current;
       if (!container) return;
 
-      const [
-        THREE,
-        { OrbitControls },
-        { ARButton }
-      ] = await Promise.all([
-        import('three'),
-        import('three/addons/controls/OrbitControls.js'),
-        import('three/addons/webxr/ARButton.js')
-      ]);
-
+      // Three.js modules are now statically imported at the top
       if (disposed) return;
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(container.clientWidth, container.clientHeight);
       renderer.xr.enabled = arSupported;
-      renderer.outputEncoding = THREE.sRGBEncoding;
+      // Note: outputEncoding may not be available in this Three.js version
+      // renderer.outputEncoding = THREE.sRGBEncoding;
       container.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
@@ -295,30 +290,32 @@ const MoleculeStage: React.FC<{
           domOverlay: overlayRef.current ? { root: overlayRef.current } : undefined
         });
 
-        arButton.textContent = 'Enter AR';
-        arButton.classList.add(
-          'inline-flex',
-          'items-center',
-          'justify-center',
-          'gap-2',
-          'rounded-lg',
-          'border',
-          'border-blue-400/60',
-          'bg-blue-600/70',
-          'px-3',
-          'py-2',
-          'text-[11px]',
-          'font-semibold',
-          'uppercase',
-          'tracking-wide',
-          'text-blue-50',
-          'transition',
-          'hover:bg-blue-600/80'
-        );
-        arButton.style.pointerEvents = 'auto';
+        if (arButton) {
+          arButton.textContent = 'Enter AR';
+          arButton.classList.add(
+            'inline-flex',
+            'items-center',
+            'justify-center',
+            'gap-2',
+            'rounded-lg',
+            'border',
+            'border-blue-400/60',
+            'bg-blue-600/70',
+            'px-3',
+            'py-2',
+            'text-[11px]',
+            'font-semibold',
+            'uppercase',
+            'tracking-wide',
+            'text-blue-50',
+            'transition',
+            'hover:bg-blue-600/80'
+          );
+          arButton.style.pointerEvents = 'auto';
 
-        buttonContainer?.appendChild(arButton);
-        onArButtonReady?.(arButton);
+          buttonContainer?.appendChild(arButton);
+          onArButtonReady?.(arButton);
+        }
 
         renderer.xr.addEventListener('sessionstart', () => {
           if (controls?.enabled) {
@@ -409,15 +406,20 @@ const MoleculeStage: React.FC<{
 
     if (viewer.moleculeGroup) {
       scene.remove(viewer.moleculeGroup);
-      viewer.moleculeGroup.traverse((child) => {
-        if ('geometry' in child && child.geometry) {
-          child.geometry.dispose();
+      viewer.moleculeGroup.traverse((child: THREE.Object3D) => {
+        const meshChild = child as THREE.Mesh;
+        if (meshChild.geometry && typeof meshChild.geometry.dispose === 'function') {
+          meshChild.geometry.dispose();
         }
-        if ('material' in child && child.material) {
-          const materials = Array.isArray(child.material)
-            ? child.material
-            : [child.material];
-          materials.forEach((material) => material.dispose?.());
+        if (meshChild.material) {
+          const materials = Array.isArray(meshChild.material)
+            ? meshChild.material
+            : [meshChild.material];
+          materials.forEach((material: any) => {
+            if (material && typeof material.dispose === 'function') {
+              material.dispose();
+            }
+          });
         }
       });
       viewer.moleculeGroup = null;

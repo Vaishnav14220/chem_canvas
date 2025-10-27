@@ -1,7 +1,12 @@
 // PubChem API Service for fetching molecule structures
 // Documentation: https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest
 
-import type { MoleculeAnalysisResult } from './moleculeAnalysisService';
+export interface MoleculeAnalysisResult {
+  properties?: Record<string, any>;
+  descriptors?: Record<string, any>;
+  toxicity?: any;
+  bioactivity?: any;
+}
 
 const PUBCHEM_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov';
 const PUBCHEM_PUG_URL = `${PUBCHEM_BASE_URL}/rest/pug`;
@@ -73,26 +78,15 @@ export const fetchCanonicalSmiles = async (input: string): Promise<string | null
 const fetchWithRetry = async (url: string, retries = 3): Promise<Response | null> => {
   for (let i = 0; i < retries; i++) {
     try {
-      console.log(`Fetching URL (attempt ${i + 1}): ${url}`);
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        },
-      });
-      console.log(`Response status: ${response.status}, ok: ${response.ok}`);
+      const response = await fetch(url);
       if (response.ok) return response;
       if (response.status === 429) {
         // Rate limiting - wait before retry
-        console.log('Rate limited, waiting...');
         await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
         continue;
       }
-      if (i === retries - 1) {
-        console.log(`Final response status: ${response.status}`);
-        return response; // Return final response
-      }
+      if (i === retries - 1) return response; // Return final response
     } catch (error) {
-      console.error(`Fetch error (attempt ${i + 1}):`, error);
       if (i === retries - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
     }
@@ -169,24 +163,14 @@ export const searchMolecule = async (moleculeName: string): Promise<number | nul
     } as const;
 
     const tryFetch = async (label: string, url: string, parser: (data: any) => number | null) => {
-      console.log(`Trying ${label} with URL: ${url}`);
       const response = await fetchWithRetry(url);
       if (!response || !response.ok) {
         console.warn(`⚠️ ${label} request failed with status ${response?.status}`);
-        if (response) {
-          try {
-            const text = await response.text();
-            console.warn(`Response text: ${text.substring(0, 200)}`);
-          } catch (e) {
-            console.warn('Could not read response text');
-          }
-        }
         return null;
       }
 
       try {
         const data = await response.json();
-        console.log(`${label} response data:`, data);
         const cid = parser(data);
         if (cid) {
           console.log(`✅ Found CID ${cid} using ${label}`);
@@ -277,7 +261,6 @@ export const fetchMoleculeStructure = async (cid: number): Promise<MoleculeData 
     // Use PUG REST API for compound properties
     // Endpoint: /rest/pug/compound/CID/{cid}/property/{properties}/JSON
     const propertiesUrl = `${PUBCHEM_PUG_URL}/compound/CID/${cid}/property/MolecularFormula,MolecularWeight,IUPACName,CanonicalSMILES/JSON`;
-    console.log(`Fetching properties from: ${propertiesUrl}`);
     
     const propsResponse = await fetchWithRetry(propertiesUrl);
 

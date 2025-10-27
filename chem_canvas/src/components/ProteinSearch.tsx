@@ -3,7 +3,6 @@ import { Search, X, Loader2, AlertCircle, CheckCircle, Eye, Atom, Database } fro
 import {
   type PDBProteinData,
   searchPDBProteins,
-  fetchPDBStructure,
   getPDBViewerUrl,
   getPDBEntryUrl,
 } from '../services/pdbService';

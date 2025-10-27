@@ -10,7 +10,6 @@ interface MoleculeSearchProps {
 
 export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClose }: MoleculeSearchProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [moleculeData, setMoleculeData] = useState<MoleculeData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -75,7 +74,6 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
     setShowSuggestions(false);
     
     // Auto-search and insert for the suggestion
-    setIsLoading(true);
     setError(null);
     setMoleculeData(null);
     setSuccessMessage(null);
@@ -107,7 +105,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
       console.error('Search error:', err);
       setError('Failed to search molecule. Please try again.');
     } finally {
-      setIsLoading(false);
+      // Loading completed
     }
   };
 
@@ -117,7 +115,6 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
       return;
     }
 
-    setIsLoading(true);
     setError(null);
     setMoleculeData(null);
     setSuccessMessage(null);
@@ -153,7 +150,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
       console.error('Search error:', err);
       setError('Failed to search molecule. Please try again.');
     } finally {
-      setIsLoading(false);
+      // Loading completed
     }
   };
 
