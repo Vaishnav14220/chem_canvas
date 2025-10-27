@@ -16,6 +16,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Comprehensive list of common molecules for autocomplete
   const commonMolecules = [
@@ -56,14 +57,28 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
     setSuggestions([]);
     setShowSuggestions(false);
     
-    // Auto-search for the suggestion
+    // Auto-search and insert for the suggestion
     setIsLoading(true);
     setError(null);
     setMoleculeData(null);
+    setSuccessMessage(null);
 
     try {
       const data = await getMoleculeByName(suggestion);
       if (data) {
+        // Automatically insert the molecule to canvas
+        if (onSelectMolecule) {
+          onSelectMolecule(data);
+          setSuccessMessage(`✅ "${data.name}" has been added to your canvas!`);
+          setSearchTerm('');
+          // Close after a short delay to show success message
+          setTimeout(() => {
+            if (onClose) onClose();
+          }, 1500);
+          return;
+        }
+        
+        // Fallback: show the data if no onSelectMolecule callback
         setMoleculeData(data);
         if (!searchHistory.includes(suggestion)) {
           setSearchHistory([suggestion, ...searchHistory].slice(0, 5));
@@ -88,12 +103,26 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
     setIsLoading(true);
     setError(null);
     setMoleculeData(null);
+    setSuccessMessage(null);
 
     try {
       console.log(`Searching for molecule: ${searchTerm}`);
       const data = await getMoleculeByName(searchTerm);
       
       if (data) {
+        // Automatically insert the molecule to canvas
+        if (onSelectMolecule) {
+          onSelectMolecule(data);
+          setSuccessMessage(`✅ "${data.name}" has been added to your canvas!`);
+          setSearchTerm('');
+          // Close after a short delay to show success message
+          setTimeout(() => {
+            if (onClose) onClose();
+          }, 1500);
+          return;
+        }
+        
+        // Fallback: show the data if no onSelectMolecule callback
         setMoleculeData(data);
         // Add to search history
         if (!searchHistory.includes(searchTerm)) {
@@ -147,7 +176,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
         <div className="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Search size={24} className="text-white" />
-            <h2 className="text-xl font-bold text-white">Search Molecules</h2>
+            <h2 className="text-xl font-bold text-white">Quick Add Molecules</h2>
           </div>
           {onClose && (
             <button
@@ -170,7 +199,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
                 value={searchTerm}
                 onChange={(e) => handleSearchTermChange(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="e.g., benzene, glucose, caffeine, water..."
+                placeholder="Type molecule name and press Enter or click suggestion..."
                 className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
               <button
@@ -186,7 +215,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
                 ) : (
                   <>
                     <Search size={18} />
-                    Search
+                    Add to Canvas
                   </>
                 )}
               </button>
@@ -235,8 +264,16 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
             </div>
           )}
 
-          {/* Molecule Details */}
-          {moleculeData && (
+          {/* Success Message */}
+          {successMessage && (
+            <div className="flex gap-3 p-4 bg-green-900/30 border border-green-600/50 rounded-lg">
+              <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+              <p className="text-green-300 text-sm">{successMessage}</p>
+            </div>
+          )}
+
+          {/* Molecule Details (fallback only) */}
+          {moleculeData && !successMessage && (
             <div className="space-y-4 border border-slate-700 rounded-lg p-4 bg-slate-800/50">
               <div className="flex justify-between items-start">
                 <div className="space-y-2 flex-1">
@@ -308,28 +345,28 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
           )}
 
           {/* Tips */}
-          {!moleculeData && !error && (
+          {!successMessage && !error && (
             <div className="bg-slate-800/50 border border-slate-600 rounded-lg p-4 space-y-2">
               <p className="text-sm font-semibold text-slate-300">💡 Tips:</p>
               <ul className="text-sm text-slate-400 space-y-1 list-disc list-inside">
                 <li>Try common molecule names: benzene, glucose, caffeine, water, ethanol</li>
                 <li>Use IUPAC names for more specific results</li>
-                <li>Results include molecular formula, weight, and 2D structure</li>
-                <li>Click "View 3D" to see the 3D structure in MolView</li>
+                <li>Molecules are automatically added to your canvas when found</li>
+                <li>Click suggestions or press Enter to instantly add molecules</li>
               </ul>
             </div>
           )}
 
           {/* How to Use Section */}
-          {moleculeData && (
+          {!successMessage && (
             <div className="bg-blue-900/20 border border-blue-600/30 rounded-lg p-4 space-y-2">
               <p className="text-sm font-semibold text-blue-300">📚 How to Create a Reaction:</p>
               <ol className="text-sm text-blue-200 space-y-1 list-decimal list-inside">
-                <li>Click <span className="font-semibold text-green-400">"Insert into Canvas"</span> to add this molecule</li>
+                <li>Type a molecule name and press <span className="font-semibold text-cyan-400">Enter</span> or click a suggestion</li>
+                <li>The molecule will be <span className="font-semibold text-green-400">automatically added</span> to your canvas</li>
                 <li>Repeat for other molecules in your reaction (reactants and products)</li>
                 <li>Use the arrow tool to show the reaction direction</li>
                 <li>Add conditions (heat, catalyst, etc.) above the arrow</li>
-                <li>Arrange molecules to show the complete reaction</li>
               </ol>
             </div>
           )}
