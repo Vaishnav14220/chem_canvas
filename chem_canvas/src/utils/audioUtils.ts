@@ -264,11 +264,19 @@ export async function validateAudioContent(audioBlob: Blob): Promise<{ isValid: 
 
     // Check duration (should be at least 0.5 seconds and max 30 seconds)
     const duration = await getAudioDuration(audioBlob);
+    console.log('🎵 Audio duration check:', { duration, blobSize: audioBlob.size, blobType: audioBlob.type });
+    
     if (duration < 0.5) {
       return { isValid: false, reason: 'Audio too short (less than 0.5 seconds)' };
     }
     if (duration > 30) {
       return { isValid: false, reason: 'Audio too long (more than 30 seconds)' };
+    }
+
+    // Additional check: if duration is suspiciously long compared to blob size, it might be corrupted
+    const estimatedDuration = audioBlob.size / (44100 * 2); // Rough estimate for 44.1kHz 16-bit audio
+    if (duration > estimatedDuration * 2) {
+      console.warn('🎵 Audio duration seems inconsistent with blob size, but allowing it');
     }
 
     // Check audio levels to detect if it's just silence/noise

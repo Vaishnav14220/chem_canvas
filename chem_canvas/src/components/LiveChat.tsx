@@ -20,7 +20,8 @@ import {
   requestMicrophonePermission, 
   checkAudioSupport,
   convertWebmToWav,
-  validateAudioContent
+  validateAudioContent,
+  detectAudioContent
 } from '../utils/audioUtils';
 
 interface LiveChatProps {
@@ -177,7 +178,15 @@ export default function LiveChat({ onClose, className = '' }: LiveChatProps) {
       
       // Start recording duration timer
       recordingIntervalRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 0.1);
+        setRecordingDuration(prev => {
+          const newDuration = prev + 0.1;
+          // Auto-stop recording if it exceeds 25 seconds (to leave buffer for 30s limit)
+          if (newDuration >= 25) {
+            handleStopRecording();
+            return prev;
+          }
+          return newDuration;
+        });
       }, 100);
       
       console.log('Recording started successfully');
@@ -202,9 +211,28 @@ export default function LiveChat({ onClose, className = '' }: LiveChatProps) {
       
       if (connectionStatus === 'connected') {
         // Validate audio content before sending
+        console.log('🎵 Validating audio blob:', {
+          size: audioBlob.size,
+          type: audioBlob.type,
+          trackedDuration: recordingDuration
+        });
+        
         const validation = await validateAudioContent(audioBlob);
         
-        if (!validation.isValid) {
+        console.log('🎵 Audio validation result:', validation);
+        
+        // Additional check: if validation fails due to duration but tracked duration is reasonable, allow it
+        if (!validation.isValid && validation.reason?.includes('too long') && recordingDuration <= 25) {
+          console.log('🎵 Overriding duration validation - tracked duration is reasonable');
+          // Check if audio has content despite duration issue
+          const hasContent = await detectAudioContent(audioBlob);
+          if (hasContent) {
+            console.log('🎵 Audio has content, proceeding despite duration warning');
+          } else {
+            setError(`Recording issue: ${validation.reason}. Please try speaking more clearly and closer to the microphone, or use text messages instead.`);
+            return;
+          }
+        } else if (!validation.isValid) {
           console.log('Audio validation failed:', validation.reason);
           setError(`Recording issue: ${validation.reason}. Please try speaking more clearly and closer to the microphone, or use text messages instead.`);
           return;
@@ -432,7 +460,7 @@ export default function LiveChat({ onClose, className = '' }: LiveChatProps) {
               }`}
             >
               {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
-              {isRecording ? `Recording... ${recordingDuration.toFixed(1)}s` : 'Voice Message'}
+              {isRecording ? `Recording... ${recordingDuration.toFixed(1)}s${recordingDuration >= 20 ? ' (will auto-stop soon)' : ''}` : 'Voice Message'}
             </button>
             
             {isRecording && (
