@@ -13,6 +13,7 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const componentRef = useRef<HTMLDivElement>(null);
 
   const handleSearchTermChange = useCallback((value: string) => {
     setSearchTerm(value);
@@ -59,6 +60,20 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
     };
   }, []);
 
+  // Handle click outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (componentRef.current && !componentRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const handleSuggestionClick = async (suggestion: string) => {
     setSearchTerm(suggestion);
     setSuggestions([]);
@@ -93,7 +108,7 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
   };
 
   return (
-    <div className={`relative ${className}`}>
+    <div ref={componentRef} className={`relative ${className}`}>
       <div className="relative">
         <input
           type="text"
