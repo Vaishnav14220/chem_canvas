@@ -73,8 +73,8 @@ export const getAvailableApiKeyMetadata = async (): Promise<any[]> => {
 export const assignRandomApiKey = async (): Promise<string> => {
   try {
     // For client-side usage, get the API key from localStorage
-    // This is a temporary solution - in production, API keys should be handled server-side
-    const storedApiKey = localStorage.getItem('gemini-api-key');
+    // Check both possible keys for compatibility
+    const storedApiKey = localStorage.getItem('gemini-api-key') || localStorage.getItem('gemini_api_key');
 
     if (storedApiKey && storedApiKey.trim()) {
       const sanitizedKey = storedApiKey.trim();
@@ -82,17 +82,14 @@ export const assignRandomApiKey = async (): Promise<string> => {
       return sanitizedKey;
     }
 
-    // Fallback: try to get metadata of available keys (for future server-side implementation)
-    const keyMetadata = await getAvailableApiKeyMetadata();
-
-    if (keyMetadata.length === 0) {
-      throw new Error('No API keys available. Please set your Gemini API key in the application settings.');
-    }
-
-    // For now, since we don't have server-side key retrieval, return empty string
-    // This will trigger the error that the user sees
-    console.warn('⚠️ API key metadata found but no actual key available. Please ensure your API key is stored in localStorage.');
-    return '';
+    // Temporary fallback: use the provided API key
+    const fallbackKey = 'AIzaSyDDYVFDvc3sgJMc_HJ25QycEEDpYyFEomE';
+    console.log('⚠️ No API key found in localStorage, using fallback key for testing');
+    console.log(`✅ Using fallback API key: ${fallbackKey.substring(0, 10)}...`);
+    // Store it for future use
+    localStorage.setItem('gemini-api-key', fallbackKey);
+    localStorage.setItem('gemini_api_key', fallbackKey);
+    return fallbackKey;
   } catch (error) {
     console.error('❌ Error assigning API key:', error);
     return '';

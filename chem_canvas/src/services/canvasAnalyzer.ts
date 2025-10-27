@@ -393,6 +393,6 @@ export const storeAPIKey = (apiKey: string): void => {
 
 // Initialize with the provided API key
 export const initializeWithProvidedAPIKey = (): void => {
-  const providedApiKey = 'AIzaSyAwGF4lDUDNCe_zHirFrZI6D_7Wnfh2Muk';
+  const providedApiKey = 'AIzaSyDDYVFDvc3sgJMc_HJ25QycEEDpYyFEomE';
   storeAPIKey(providedApiKey);
 };

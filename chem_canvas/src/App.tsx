@@ -332,6 +332,8 @@ const App: React.FC = () => {
     storeAPIKey(apiKey);
     initializeWithProvidedAPIKey();
     geminiService.setApiKey(apiKey);
+    // Also set for live chat compatibility
+    localStorage.setItem('gemini-api-key', apiKey);
     setShowSettings(false);
     alert('Settings saved successfully!');
   };
