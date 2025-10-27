@@ -3169,6 +3169,7 @@ export default function Canvas({
             </ol>
           </div>
         </div>
+      </div>
       {/* Canvas Controls - Clean Header Layout */}
       <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-4 transform">
         {/* Molecule Search Bar */}
