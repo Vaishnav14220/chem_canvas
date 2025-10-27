@@ -217,22 +217,11 @@ export default function LiveChat({ onClose, className = '' }: LiveChatProps) {
           trackedDuration: recordingDuration
         });
         
-        const validation = await validateAudioContent(audioBlob);
+        const validation = await validateAudioContent(audioBlob, recordingDuration);
         
         console.log('🎵 Audio validation result:', validation);
         
-        // Additional check: if validation fails due to duration but tracked duration is reasonable, allow it
-        if (!validation.isValid && validation.reason?.includes('too long') && recordingDuration <= 25) {
-          console.log('🎵 Overriding duration validation - tracked duration is reasonable');
-          // Check if audio has content despite duration issue
-          const hasContent = await detectAudioContent(audioBlob);
-          if (hasContent) {
-            console.log('🎵 Audio has content, proceeding despite duration warning');
-          } else {
-            setError(`Recording issue: ${validation.reason}. Please try speaking more clearly and closer to the microphone, or use text messages instead.`);
-            return;
-          }
-        } else if (!validation.isValid) {
+        if (!validation.isValid) {
           console.log('Audio validation failed:', validation.reason);
           setError(`Recording issue: ${validation.reason}. Please try speaking more clearly and closer to the microphone, or use text messages instead.`);
           return;

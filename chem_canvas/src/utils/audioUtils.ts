@@ -255,7 +255,7 @@ export function checkAudioSupport(): boolean {
 }
 
 // Audio validation utilities
-export async function validateAudioContent(audioBlob: Blob): Promise<{ isValid: boolean; reason?: string }> {
+export async function validateAudioContent(audioBlob: Blob, trackedDuration?: number): Promise<{ isValid: boolean; reason?: string }> {
   try {
     // Check if blob is empty or too small
     if (audioBlob.size < 1000) { // Less than 1KB
@@ -264,19 +264,35 @@ export async function validateAudioContent(audioBlob: Blob): Promise<{ isValid: 
 
     // Check duration (should be at least 0.5 seconds and max 30 seconds)
     const duration = await getAudioDuration(audioBlob);
-    console.log('🎵 Audio duration check:', { duration, blobSize: audioBlob.size, blobType: audioBlob.type });
+    console.log('🎵 Audio duration check:', { 
+      duration, 
+      blobSize: audioBlob.size, 
+      blobType: audioBlob.type,
+      trackedDuration 
+    });
     
     if (duration < 0.5) {
       return { isValid: false, reason: 'Audio too short (less than 0.5 seconds)' };
     }
-    if (duration > 30) {
+    
+    // If we have tracked duration and it's reasonable, use that instead
+    const effectiveDuration = (trackedDuration && trackedDuration > 0 && trackedDuration <= 30) ? trackedDuration : duration;
+    
+    // For very short recordings (under 10 seconds), skip duration validation if tracked duration is available
+    if (trackedDuration && trackedDuration > 0 && trackedDuration < 10) {
+      console.log('🎵 Short recording detected, using tracked duration');
+      // Skip duration check for short recordings
+    } else if (effectiveDuration > 30) {
       return { isValid: false, reason: 'Audio too long (more than 30 seconds)' };
     }
 
     // Additional check: if duration is suspiciously long compared to blob size, it might be corrupted
     const estimatedDuration = audioBlob.size / (44100 * 2); // Rough estimate for 44.1kHz 16-bit audio
     if (duration > estimatedDuration * 2) {
-      console.warn('🎵 Audio duration seems inconsistent with blob size, but allowing it');
+      console.warn('🎵 Audio duration seems inconsistent with blob size, using tracked duration if available');
+      if (trackedDuration && trackedDuration <= 30) {
+        console.log('🎵 Using tracked duration instead of blob duration');
+      }
     }
 
     // Check audio levels to detect if it's just silence/noise
@@ -297,12 +313,21 @@ async function getAudioDuration(audioBlob: Blob): Promise<number> {
     const audio = new Audio();
     const url = URL.createObjectURL(audioBlob);
     
+    // Add timeout to prevent hanging
+    const timeout = setTimeout(() => {
+      URL.revokeObjectURL(url);
+      console.warn('🎵 Audio duration detection timed out, returning 0');
+      resolve(0);
+    }, 2000); // 2 second timeout
+    
     audio.onloadedmetadata = () => {
+      clearTimeout(timeout);
       URL.revokeObjectURL(url);
       resolve(audio.duration);
     };
     
     audio.onerror = () => {
+      clearTimeout(timeout);
       URL.revokeObjectURL(url);
       reject(new Error('Failed to load audio metadata'));
     };
