@@ -1,5 +1,5 @@
-import type { ComponentType } from 'react';
 import type { AssessmentMode, PriorKnowledgeSnapshot } from '../types/srlCoach';
+import type { LucideIcon } from 'lucide-react';
 import { Sparkles, Target, ClipboardList, PenTool } from 'lucide-react';
 
 interface PriorKnowledgePanelProps {
@@ -12,7 +12,7 @@ interface PriorKnowledgePanelProps {
 
 const MODE_CONFIG: Record<
   AssessmentMode,
-  { label: string; description: string; icon: ComponentType<{ size?: number; className?: string }> }
+  { label: string; description: string; icon: LucideIcon }
 > = {
   quiz: {
     label: 'Adaptive Quiz',

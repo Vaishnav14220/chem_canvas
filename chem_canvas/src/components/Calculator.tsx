@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calculator as CalculatorIcon, X, RotateCcw, Pi, SquareRoot, Power, Log, Sine, Cosine, Tangent, Function } from 'lucide-react';
+import { Calculator as CalculatorIcon, X } from 'lucide-react';
 
 interface CalculatorProps {
   isOpen: boolean;

@@ -3,9 +3,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { useLLMOutput, type LLMOutputComponent } from '@llm-ui/react';
-import { markdownLookBack } from '@llm-ui/markdown';
-import { codeBlockLookBack, findCompleteCodeBlock, findPartialCodeBlock } from '@llm-ui/code';
 import { Copy, Loader2 } from 'lucide-react';
 import { fetchCanonicalSmiles } from '../services/pubchemService';
 import 'katex/dist/katex.min.css';
@@ -193,155 +190,84 @@ export const VerifiedSmilesBlock = ({ sourceText }: { sourceText: string }) => {
   }
 };
 
-const MarkdownComponent: LLMOutputComponent = ({ blockMatch }) => {
+const MarkdownRenderer = ReactMarkdown as unknown as (props: any) => JSX.Element;
+
+const renderMarkdown = (text: string) => {
   try {
-    const content = blockMatch.output;
-    const onCitationClick = (blockMatch as any).onCitationClick;
-
-    const renderMarkdown = (text: string) => {
-      try {
-        return (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-            components={{
-              a: ({ node, ...props }) => (
-                <a {...props} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer" />
-              ),
-              code: ({ inline, className, children, ...props }) => {
-                const match = /language-(\w+)/.exec(className || '');
-                if (!inline && match) {
-                  return (
-                    <pre className="bg-gray-900 border border-gray-700 rounded-lg p-3 overflow-x-auto text-xs" {...props}>
-                      <code className={className}>{children}</code>
-                    </pre>
-                  );
-                }
-                return (
-                  <code className="bg-gray-800/80 border border-gray-700 rounded px-1.5 py-0.5 text-xs" {...props}>
-                    {children}
-                  </code>
-                );
-              },
-              table: ({ children }) => (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse border border-gray-700">
-                    {children}
-                  </table>
-                </div>
-              ),
-              th: ({ children }) => (
-                <th className="border border-gray-700 px-3 py-2 bg-gray-800 font-semibold text-sm">
-                  {children}
-                </th>
-              ),
-              td: ({ children }) => (
-                <td className="border border-gray-700 px-3 py-2 text-sm">
-                  {children}
-                </td>
-              ),
-              li: ({ children }) => (
-                <li className="mb-1">
-                  {children}
-                </li>
-              ),
-            }}
-            className="prose prose-sm prose-invert max-w-none space-y-3"
-          >
-            {text}
-          </ReactMarkdown>
-        );
-      } catch (markdownError) {
-        console.warn('Error rendering markdown:', markdownError);
-        return (
-          <div className="text-sm text-gray-200 break-words">
-            {text}
-          </div>
-        );
-      }
-    };
-
-    const citationRegex = /(\[\[(\d+)\]\]|\[(\d+)\])/g;
-    const parts = content.split(citationRegex);
-
     return (
-      <div className="space-y-2">
-        {parts.map((part: string, idx: number) => {
-          try {
-            const citationMatch = part?.match?.(/^\[\[?(\d+)\]\]?$/);
-            if (citationMatch) {
-              const pageNum = citationMatch[1];
+      <MarkdownRenderer
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          a: ({ node, ...linkProps }: any) => (
+            <a
+              {...linkProps}
+              className="text-blue-400 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            />
+          ),
+          code: ({ inline, className, children, ...codeProps }: any) => {
+            const { node, ...rest } = codeProps;
+            const match = /language-(\w+)/.exec(className || '');
+            if (!inline && match) {
               return (
-                <button
-                  key={`cite-${idx}`}
-                  onClick={onCitationClick}
-                  className="inline-flex items-center px-2 py-1 mx-1 text-xs font-medium bg-blue-600/20 text-blue-300 rounded-md hover:bg-blue-600/30 transition-colors border border-blue-600/30"
+                <pre
+                  className="bg-gray-900 border border-gray-700 rounded-lg p-3 overflow-x-auto text-xs"
+                  {...rest}
                 >
-                  Page {pageNum}
-                </button>
+                  <code className={className}>{children}</code>
+                </pre>
               );
             }
-            const trimmed = part?.trim?.();
-            if (!trimmed) return null;
             return (
-              <div key={`md-${idx}`}>{renderMarkdown(part)}</div>
+              <code
+                className="bg-gray-800/80 border border-gray-700 rounded px-1.5 py-0.5 text-xs"
+                {...rest}
+              >
+                {children}
+              </code>
             );
-          } catch (partError) {
-            console.warn('Error rendering markdown part:', partError);
-            return (
-              <div key={`md-${idx}`} className="text-sm text-gray-200 break-words">
-                {part}
-              </div>
-            );
-          }
-        })}
-      </div>
+          },
+          table: ({ node, children, ...tableProps }: any) => (
+            <div className="overflow-x-auto">
+              <table
+                className="w-full text-left border-collapse border border-gray-700"
+                {...tableProps}
+              >
+                {children}
+              </table>
+            </div>
+          ),
+          th: ({ node, children, ...thProps }: any) => (
+            <th
+              className="border border-gray-700 px-3 py-2 bg-gray-800 font-semibold text-sm"
+              {...thProps}
+            >
+              {children}
+            </th>
+          ),
+          td: ({ node, children, ...tdProps }: any) => (
+            <td className="border border-gray-700 px-3 py-2 text-sm" {...tdProps}>
+              {children}
+            </td>
+          ),
+          li: ({ node, children, ...liProps }: any) => (
+            <li className="mb-1" {...liProps}>
+              {children}
+            </li>
+          ),
+        }}
+        className="prose prose-sm prose-invert max-w-none space-y-3"
+      >
+        {text}
+      </MarkdownRenderer>
     );
-  } catch (error) {
-    console.warn('Error in MarkdownComponent:', error);
+  } catch (markdownError) {
+    console.warn('Error rendering markdown:', markdownError);
     return (
       <div className="text-sm text-gray-200 break-words">
-        {blockMatch?.output || 'Error rendering content'}
-      </div>
-    );
-  }
-};
-
-// Code block component
-const CodeBlockComponent: LLMOutputComponent = ({ blockMatch }) => {
-  try {
-    const code = blockMatch.output;
-    const language = blockMatch.arguments?.language ?? 'plaintext';
-
-    const handleCopyCode = async () => {
-      try {
-        await navigator.clipboard.writeText(code);
-      } catch (error) {
-        console.warn('Failed to copy code:', error);
-      }
-    };
-
-    return (
-      <div className="relative">
-        <div className="absolute right-2 top-2">
-          <button
-            onClick={handleCopyCode}
-            className="inline-flex items-center gap-1 rounded border border-gray-600 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-300 hover:border-blue-500/60 hover:text-blue-200 transition-colors"
-          >
-            <Copy size={12} />
-            Copy
-          </button>
-        </div>
-        <pre className="bg-gray-950 border border-gray-800/80 rounded-lg p-4 overflow-x-auto text-xs">
-          <code className={`language-${language}`}>{code}</code>
-        </pre>
-      </div>
-    );
-  } catch (error) {
-    console.warn('Error in CodeBlockComponent:', error);
-    return (
-      <div className="text-sm text-gray-200 break-words">
-        {blockMatch?.output || 'Error rendering code block'}
+        {text}
       </div>
     );
   }
@@ -352,44 +278,40 @@ export function LLMMessage({ content, onCitationClick }: { content: string; onCi
     return null;
   }
 
-  try {
-    const llmOutput = useLLMOutput({
-      content,
-      components: {
-        markdown: MarkdownComponent,
-        codeblock: CodeBlockComponent,
-      },
-      lookbacks: [markdownLookBack(), codeBlockLookBack()],
-    });
+  const citationRegex = /(\[\[(\d+)\]\]|\[(\d+)\])/g;
+  const parts = content.split(citationRegex);
 
-    return (
-      <div className="space-y-3">
-        {llmOutput.blocks.map((block) => (
-          <div key={block.id}>
-            {(() => {
-              try {
-                return block.render({ onCitationClick });
-              } catch (blockError) {
-                console.warn('Error rendering LLM block:', blockError);
-                // Fallback to plain text rendering
-                return (
-                  <div className="text-sm text-gray-200 break-words">
-                    {block.content || content}
-                  </div>
-                );
-              }
-            })()}
-          </div>
-        ))}
-      </div>
-    );
-  } catch (error) {
-    console.warn('Error in LLMMessage rendering:', error);
-    // Fallback to plain text rendering
-    return (
-      <div className="text-sm text-gray-200 break-words">
-        {content}
-      </div>
-    );
-  }
+  return (
+    <div className="space-y-3">
+      {parts.map((part: string, idx: number) => {
+        try {
+          const citationMatch = part?.match?.(/^\[\[?(\d+)\]\]?$/);
+          if (citationMatch) {
+            const pageNum = citationMatch[1];
+            return (
+              <button
+                key={`cite-${idx}`}
+                onClick={onCitationClick}
+                className="inline-flex items-center px-2 py-1 mx-1 text-xs font-medium bg-blue-600/20 text-blue-300 rounded-md hover:bg-blue-600/30 transition-colors border border-blue-600/30"
+              >
+                Page {pageNum}
+              </button>
+            );
+          }
+          const trimmed = part?.trim?.();
+          if (!trimmed) return null;
+          return (
+            <div key={`md-${idx}`}>{renderMarkdown(part)}</div>
+          );
+        } catch (partError) {
+          console.warn('Error rendering markdown part:', partError);
+          return (
+            <div key={`md-${idx}`} className="text-sm text-gray-200 break-words">
+              {part}
+            </div>
+          );
+        }
+      })}
+    </div>
+  );
 }

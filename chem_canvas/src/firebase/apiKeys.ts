@@ -7,7 +7,7 @@ import { db } from './config';
 
 // Initialize API keys in Firebase (admin-only function)
 // Call this ONLY from a secure backend or admin dashboard
-export const initializeApiKeys = async (apiKeys: string[]): Promise<void> => {
+export const initializeApiKeys = async (apiKeys: string[] = []): Promise<void> => {
   try {
     if (!apiKeys || apiKeys.length === 0) {
       console.warn('⚠️ No API keys provided for initialization');
@@ -72,21 +72,27 @@ export const getAvailableApiKeyMetadata = async (): Promise<any[]> => {
 // This should be called from a Cloud Function or backend
 export const assignRandomApiKey = async (): Promise<string> => {
   try {
-    // Get metadata of available keys
-    const keyMetadata = await getAvailableApiKeyMetadata();
-    
-    if (keyMetadata.length === 0) {
-      throw new Error('No API keys available in Firebase');
+    // For client-side usage, get the API key from localStorage
+    // This is a temporary solution - in production, API keys should be handled server-side
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+
+    if (storedApiKey && storedApiKey.trim()) {
+      const sanitizedKey = storedApiKey.trim();
+      console.log(`✅ Using stored API key: ${sanitizedKey.substring(0, 10)}...`);
+      return sanitizedKey;
     }
-    
-    // Randomly select an API key ID
-    const randomIndex = Math.floor(Math.random() * keyMetadata.length);
-    const selectedKeyId = keyMetadata[randomIndex].id;
-    
-    console.log(`✅ Assigned API key: ${keyMetadata[randomIndex].keyPreview}`);
-    
-    // Return the key ID only (actual key should be retrieved server-side)
-    return selectedKeyId;
+
+    // Fallback: try to get metadata of available keys (for future server-side implementation)
+    const keyMetadata = await getAvailableApiKeyMetadata();
+
+    if (keyMetadata.length === 0) {
+      throw new Error('No API keys available. Please set your Gemini API key in the application settings.');
+    }
+
+    // For now, since we don't have server-side key retrieval, return empty string
+    // This will trigger the error that the user sees
+    console.warn('⚠️ API key metadata found but no actual key available. Please ensure your API key is stored in localStorage.');
+    return '';
   } catch (error) {
     console.error('❌ Error assigning API key:', error);
     return '';

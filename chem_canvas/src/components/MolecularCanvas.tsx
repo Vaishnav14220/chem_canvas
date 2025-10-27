@@ -14,7 +14,6 @@ import {
   Undo,
   Redo,
   Copy,
-  Paste,
   Settings,
   Maximize2,
   Minimize2

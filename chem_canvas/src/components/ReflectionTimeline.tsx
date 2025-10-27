@@ -1,3 +1,4 @@
+import type { FC } from 'react';
 import type { ReflectionEntry } from '../types/srlCoach';
 import { NotebookPen, Image, Share2 } from 'lucide-react';
 
@@ -8,7 +9,7 @@ interface ReflectionTimelineProps {
   isBusy?: boolean;
 }
 
-const ReflectionTimeline = ({
+const ReflectionTimeline: FC<ReflectionTimelineProps> = ({
   entries,
   onCreateReflection,
   onGenerateHighlightReel,
@@ -50,7 +51,7 @@ const ReflectionTimeline = ({
           </div>
         ) : (
           <ol className="relative border-l border-purple-400/40 pl-4">
-            {entries.map((entry) => (
+            {entries.map((entry: ReflectionEntry) => (
               <li key={entry.id} className="mb-6 ml-2">
                 <div className="absolute -left-[9px] mt-1 h-4 w-4 rounded-full border border-purple-300 bg-purple-500/70 shadow" />
                 <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3 text-xs text-purple-100">
@@ -66,16 +67,16 @@ const ReflectionTimeline = ({
                   ) : null}
                   {entry.highlightMediaUrls && entry.highlightMediaUrls.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {entry.highlightMediaUrls.map((url, index) => (
+                      {entry.highlightMediaUrls.map((url, mediaIndex) => (
                         <a
-                          key={`${entry.id}-media-${index}`}
+                          key={`${entry.id}-media-${mediaIndex}`}
                           href={url}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 rounded-lg border border-purple-400/40 bg-purple-400/10 px-2 py-1 text-[11px] font-semibold text-purple-100 transition hover:bg-purple-400/20"
                         >
                           <Share2 size={12} />
-                          Snapshot {index + 1}
+                          Snapshot {mediaIndex + 1}
                         </a>
                       ))}
                     </div>

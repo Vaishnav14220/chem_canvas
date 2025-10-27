@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan, ExternalLink, Database } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, FlaskConical, Gem, Scan, ExternalLink, Database } from 'lucide-react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
 import MineralSearch from './MineralSearch';
@@ -2951,34 +2951,6 @@ export default function Canvas({
           />
         </div>
       )}
-
-      {/* Help Instructions - Bottom Left */}
-      <div className="absolute bottom-8 left-8 z-10 max-w-sm rounded-xl border border-slate-700/50 bg-slate-800/90 p-4 shadow-lg backdrop-blur-sm">
-        <div className="mb-2">
-          <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-            <Lightbulb className="h-4 w-4 text-amber-300" />
-            Shape Controls
-          </p>
-        </div>
-        <div className="space-y-2">
-          <div>
-            <p className="text-xs text-slate-400 font-semibold text-cyan-400">Move:</p>
-            <ol className="text-xs text-slate-400 space-y-0.5 ml-2">
-              <li>1. Select Move Tool</li>
-              <li>2. Click shape</li>
-              <li>3. Drag to position</li>
-            </ol>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 font-semibold text-cyan-400">Rotate:</p>
-            <ol className="text-xs text-slate-400 space-y-0.5 ml-2">
-              <li>1. Select Rotate Tool</li>
-              <li>2. Right-click on shape</li>
-              <li>3. Drag to rotate</li>
-            </ol>
-          </div>
-        </div>
-      </div>
 
       {/* Canvas Controls - Clean Header Layout */}
       <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-4 transform">

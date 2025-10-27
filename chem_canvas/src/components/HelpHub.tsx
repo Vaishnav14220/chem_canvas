@@ -1,5 +1,5 @@
-import type { ComponentType } from 'react';
 import type { HelpChannel, HelpRequest } from '../types/srlCoach';
+import type { LucideIcon } from 'lucide-react';
 import { LifeBuoy, SendHorizonal, UsersRound, Bot, CheckCircle2, AlertTriangle, Compass } from 'lucide-react';
 
 interface HelpHubProps {
@@ -10,21 +10,21 @@ interface HelpHubProps {
   isBusy?: boolean;
 }
 
-const CHANNEL_CONFIG: Record<HelpChannel, { label: string; description: string; icon: ComponentType<{ size?: number; className?: string }> }> = {
+const CHANNEL_CONFIG: Record<HelpChannel, { label: string; description: string; icon: LucideIcon }> = {
   ai: {
     label: 'AI Hint',
     description: 'Get a scaffolded explanation or a gentle nudge from ChemCanvas.',
-    icon: Bot
+  icon: Bot as LucideIcon
   },
   community: {
     label: 'Community Forum',
     description: 'Ask peers and mentors in the moderated workspace.',
-    icon: UsersRound
+  icon: UsersRound as LucideIcon
   },
   tutor: {
     label: 'Tutor Session',
     description: 'Schedule a deeper dive with a live chemistry coach.',
-    icon: LifeBuoy
+  icon: LifeBuoy as LucideIcon
   }
 };
 

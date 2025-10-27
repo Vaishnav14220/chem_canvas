@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileText, Settings, Search, Atom, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Plus, File, Video, Globe, Upload, Clipboard, Headphones, LineChart, Target, X } from 'lucide-react';
 import Canvas from './components/Canvas';
 import AIChat from './components/AIChat';
-import LlamaChat from './components/LlamaChat';
+import LobeChat from './components/LobeChat';
 import LiveChat from './components/LiveChat';
 import CommandPalette from './components/CommandPalette';
 import StudyTools from './components/StudyTools';
@@ -14,11 +14,12 @@ import MolecularViewer from './components/MolecularViewer';
 import PeriodicTable from './components/PeriodicTable';
 import { getStoredAPIKey, storeAPIKey, initializeWithProvidedAPIKey } from './services/canvasAnalyzer';
 import { UserProfile, setupAuthStateListener } from './firebase/auth';
-import { initializeApiKeys, checkApiKeysInitialized, displayAllApiKeys } from './firebase/apiKeys';
+import { checkApiKeysInitialized, displayAllApiKeys } from './firebase/apiKeys';
 import { initializeFirebaseOnStartup } from './utils/initializeFirebase';
 import { loadSession, saveSession, getSessionStatus, extendSession } from './utils/sessionStorage';
 import * as geminiService from './services/geminiService';
 import ChemistryWidgetPanel from './components/ChemistryWidgetPanel';
+import DarkButtonWithIcon from './components/DarkButtonWithIcon';
 import ArMobileView from './components/ArMobileView';
 import SrlCoachWorkspace from './components/SrlCoachWorkspace';
 import type { AIInteraction, InteractionMode } from './types';
@@ -52,9 +53,9 @@ const App: React.FC = () => {
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
   
   // Canvas and UI state
-  const [currentTool, setCurrentTool] = useState('pen');
-  const [strokeWidth, setStrokeWidth] = useState(2);
-  const [strokeColor, setStrokeColor] = useState('#00FFFF');
+  const [currentTool] = useState('pen');
+  const [strokeWidth] = useState(2);
+  const [strokeColor] = useState('#00FFFF');
   const [isMolecularMode, setIsMolecularMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -82,13 +83,12 @@ const App: React.FC = () => {
   const [chatWidth, setChatWidth] = useState(320);
   const CHAT_MIN_WIDTH = 280;
   const CHAT_MAX_WIDTH = 520;
-  const [studyToolsWidth, setStudyToolsWidth] = useState(320);
+  const [studyToolsWidth, setStudyToolsWidth] = useState(360);
   const [showStudyToolsPanel, setShowStudyToolsPanel] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(false);
-  const [useLlamaChat, setUseLlamaChat] = useState(false);
   const [showLiveChat, setShowLiveChat] = useState(false);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
-  const [chemistryPanelInitialView, setChemistryPanelInitialView] = useState<'overview' | 'nmr'>('overview');
+  const [chemistryPanelInitialView] = useState<'overview' | 'nmr'>('overview');
   const [showNmrFullscreen, setShowNmrFullscreen] = useState(false);
   const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
   
@@ -104,7 +104,13 @@ const App: React.FC = () => {
       // Initialize Firebase API keys first
       await initializeFirebaseOnStartup();
       
-      const storedKey = getStoredAPIKey();
+      let storedKey = getStoredAPIKey();
+      if (!storedKey) {
+        // Initialize with provided API key if none exists
+        initializeWithProvidedAPIKey();
+        storedKey = getStoredAPIKey();
+      }
+      
       if (storedKey) {
         setApiKey(storedKey);
       }
@@ -160,11 +166,9 @@ const App: React.FC = () => {
       try {
         const isInitialized = await checkApiKeysInitialized();
         if (!isInitialized) {
-          console.log('Initializing API keys in Firebase...');
-          await initializeApiKeys();
-          console.log('API keys initialized successfully!');
+          console.log('API keys not initialized in Firebase - this is expected for client-side');
         } else {
-          console.log('API keys already initialized in Firebase');
+          console.log('API keys initialized in Firebase');
         }
         
         // Display all API keys in console
@@ -1150,89 +1154,12 @@ Here is the learner's question: ${message}`
                 />
               )}
               
-              {/* Chat Start Button - Floating */}
-              {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && (
-                <div className="absolute top-28 right-8 z-10">
-                  <button
-                    onClick={() => {
-                      console.log('Starting chat panel...');
-                      setIsNmrAssistantActive(false);
-                      setShowChatPanel(true);
-                    }}
-                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                  >
-                    <MessageSquare className="h-5 w-5" />
-                    <span className="font-medium">Start Chat</span>
-                  </button>
-                </div>
-              )}
+
               
             </div>
 
 
-            {/* AI Chat */}
-            {showChatPanel && (
-              <div className="absolute inset-0 z-30 pointer-events-none">
-                <div
-                  className="absolute top-24 right-4 sm:right-6 pointer-events-auto"
-                  style={{
-                    width: Math.min(chatWidth, 420),
-                    maxWidth: 'min(92vw, 420px)'
-                  }}
-                >
-                  <div className="relative">
-                    <button
-                      className="hidden"
-                      aria-hidden
-                      tabIndex={-1}
-                    />
-                    <div
-                      className="absolute inset-y-4 -left-2 w-2 cursor-col-resize rounded-full bg-primary/20 hover:bg-primary/40 transition-colors"
-                      onMouseDown={(e) => handleMouseDown('chat', e)}
-                      title="Drag to resize chat"
-                    />
-                    <div className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[82vh]">
-                      <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                        <MessageSquare className="h-4 w-4 text-primary-foreground" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold">AI Chat</h3>
-                            <p className="text-xs text-muted-foreground">Reference answers while you work</p>
-                      </div>
-                    </div>
-                        <div className="flex items-center gap-2">
-                          <span className="hidden sm:inline text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded">
-                        {Math.round(chatWidth)}px
-                      </span>
-                      <button
-                        onClick={() => setShowChatPanel(false)}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
-                            aria-label="Close chat"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                      <div className="flex-1 min-h-[240px]">
-                        {useLlamaChat ? (
-                          <LlamaChat onClose={() => setUseLlamaChat(false)} />
-                        ) : (
-                    <AIChat
-                      onSendMessage={handleSendMessage}
-                      interactions={interactions}
-                      isLoading={chatLoading}
-                      documentName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
-                      onOpenDocument={() => setDocumentViewerOpen(true)}
-                    />
-                        )}
-                  </div>
-                </div>
-                  </div>
-                </div>
-              </div>
-            )}
+
 
             {/* Study Tools Panel */}
             {showStudyToolsPanel && (
@@ -1265,16 +1192,16 @@ Here is the learner's question: ${message}`
                         { name: 'Flashcards', icon: '📚', toolType: 'flashcards' },
                         { name: 'Quiz', icon: '❓', toolType: 'quiz' },
                       ].map((tool) => (
-                        <button 
+                        <DarkButtonWithIcon
                           key={tool.name}
                           onClick={() => setShowStudyTools(true)}
-                          className="flex flex-col items-center space-y-2 p-4 bg-secondary hover:bg-primary/10 border border-border rounded-lg transition-all duration-200 hover:shadow-sm hover:border-primary/50"
+                          className="flex flex-col items-center space-y-2 p-4 h-auto"
                         >
-                          <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary`}>
+                          <div className={`flex h-10 w-10 items-center justify-center bg-primary/10 text-primary`}>
                             <span className="text-lg">{tool.icon}</span>
                           </div>
                           <p className="text-xs font-medium text-center text-foreground">{tool.name}</p>
-                        </button>
+                        </DarkButtonWithIcon>
                       ))}
                     </div>
                     
@@ -1284,33 +1211,31 @@ Here is the learner's question: ${message}`
                       
                       {/* Primary Tools */}
                       <div className="grid grid-cols-2 gap-3 mb-4">
-                        <button 
+                        <DarkButtonWithIcon
                           onClick={() => {
                             setShowChatPanel(true);
-                            setUseLlamaChat(false);
                           }}
-                          className="flex flex-col items-center space-y-2 p-4 bg-secondary hover:bg-primary/10 border border-border rounded-lg transition-all duration-200 hover:shadow-sm hover:border-primary/50"
+                          className="flex flex-col items-center space-y-2 p-4 h-auto"
                         >
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <div className="flex h-10 w-10 items-center justify-center bg-primary/10 text-primary">
                             <MessageSquare className="h-5 w-5" />
                           </div>
                           <p className="text-xs font-medium text-center">Chat</p>
-                        </button>
+                        </DarkButtonWithIcon>
 
-                        <button 
+                        <DarkButtonWithIcon
                           onClick={() => {
                             setShowChatPanel(true);
-                            setUseLlamaChat(true);
                           }}
-                          className="flex flex-col items-center space-y-2 p-4 bg-secondary hover:bg-primary/10 border border-border rounded-lg transition-all duration-200 hover:shadow-sm hover:border-primary/50"
+                          className="flex flex-col items-center space-y-2 p-4 h-auto"
                         >
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400">
+                          <div className="flex h-10 w-10 items-center justify-center bg-purple-500/10 text-purple-400">
                             <Headphones className="h-5 w-5" />
                           </div>
                           <p className="text-xs font-medium text-center">Canvas Chat</p>
-                        </button>
+                        </DarkButtonWithIcon>
                         
-                        <button 
+                        <DarkButtonWithIcon
                           onClick={() => {
                             setShowStudyTools(true);
                             setTimeout(() => {
@@ -1318,19 +1243,19 @@ Here is the learner's question: ${message}`
                               if (testButton) (testButton as HTMLElement).click();
                             }, 100);
                           }}
-                          className="flex flex-col items-center space-y-2 p-4 bg-secondary hover:bg-primary/10 border border-border rounded-lg transition-all duration-200 hover:shadow-sm hover:border-primary/50"
+                          className="flex flex-col items-center space-y-2 p-4 h-auto"
                         >
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <div className="flex h-10 w-10 items-center justify-center bg-primary/10 text-primary">
                             <BookOpen className="h-5 w-5" />
                           </div>
                           <p className="text-xs font-medium text-center">AI Tests</p>
-                        </button>
+                        </DarkButtonWithIcon>
                       </div>
                       
                       {/* Secondary Tools */}
                       <h4 className="text-sm font-medium text-muted-foreground mb-3">Tools</h4>
                       <div className="grid grid-cols-2 gap-3">
-                        <button 
+                        <DarkButtonWithIcon
                           onClick={() => {
                             setShowStudyTools(true);
                             setTimeout(() => {
@@ -1338,15 +1263,15 @@ Here is the learner's question: ${message}`
                               if (docButton) (docButton as HTMLElement).click();
                             }, 100);
                           }}
-                          className="flex flex-col items-center space-y-2 p-3 bg-secondary hover:bg-primary/10 border border-border rounded-lg transition-all duration-200 hover:shadow-sm hover:border-primary/50"
+                          className="flex flex-col items-center space-y-2 p-3 h-auto"
                         >
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <div className="flex h-8 w-8 items-center justify-center bg-primary/10 text-primary">
                             <FileText className="h-4 w-4" />
                           </div>
                           <p className="text-xs font-medium text-center">Docs</p>
-                        </button>
+                        </DarkButtonWithIcon>
                         
-                        <button 
+                        <DarkButtonWithIcon
                           onClick={() => {
                             setShowStudyTools(true);
                             setTimeout(() => {
@@ -1354,15 +1279,15 @@ Here is the learner's question: ${message}`
                               if (notesButton) (notesButton as HTMLElement).click();
                             }, 100);
                           }}
-                          className="flex flex-col items-center space-y-2 p-3 bg-secondary hover:bg-primary/10 border border-border rounded-lg transition-all duration-200 hover:shadow-sm hover:border-primary/50"
+                          className="flex flex-col items-center space-y-2 p-3 h-auto"
                         >
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <div className="flex h-8 w-8 items-center justify-center bg-primary/10 text-primary">
                             <Edit3 className="h-4 w-4" />
                           </div>
                           <p className="text-xs font-medium text-center">Notes</p>
-                        </button>
+                        </DarkButtonWithIcon>
                         
-                        <button 
+                        <DarkButtonWithIcon
                           onClick={() => {
                             setShowStudyTools(true);
                             setTimeout(() => {
@@ -1370,13 +1295,13 @@ Here is the learner's question: ${message}`
                               if (designerButton) (designerButton as HTMLElement).click();
                             }, 100);
                           }}
-                          className="flex flex-col items-center space-y-2 p-3 bg-secondary hover:bg-primary/10 border border-border rounded-lg transition-all duration-200 hover:shadow-sm hover:border-primary/50"
+                          className="flex flex-col items-center space-y-2 p-3 h-auto"
                         >
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <div className="flex h-8 w-8 items-center justify-center bg-primary/10 text-primary">
                             <Palette className="h-4 w-4" />
                           </div>
                           <p className="text-xs font-medium text-center">Design</p>
-                        </button>
+                        </DarkButtonWithIcon>
                       </div>
                     </div>
                   </div>
@@ -1386,6 +1311,70 @@ Here is the learner's question: ${message}`
                 <div
                   className="w-2 bg-muted hover:bg-primary/50 cursor-col-resize transition-colors border-l border-border"
                   onMouseDown={(e) => handleMouseDown('studyTools', e)}
+                />
+              </>
+            )}
+
+            {/* Chat Start Button - Floating */}
+            {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && (
+              <div className="absolute top-28 right-8 z-10">
+                <DarkButtonWithIcon
+                  onClick={() => {
+                    console.log('Starting chat panel...');
+                    setIsNmrAssistantActive(false);
+                    setShowChatPanel(true);
+                  }}
+                  className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                >
+                  <span className='mr-[10px]'>
+                    <MessageSquare className="h-5 w-5" />
+                  </span>
+                  Start Chat
+                </DarkButtonWithIcon>
+              </div>
+            )}
+
+            {/* Chat Panel */}
+            {showChatPanel && (
+              <>
+                <div
+                  className="border-l-2 border-border bg-card flex flex-col shadow-lg"
+                  style={{ width: chatWidth }}
+                >
+                  {/* Chat Header */}
+                  <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                        <MessageSquare className="h-4 w-4 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold">AI Chat</h3>
+                        <p className="text-xs text-muted-foreground">Reference answers while you work</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="hidden sm:inline text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded">
+                        {Math.round(chatWidth)}px
+                      </span>
+                      <button
+                        onClick={() => setShowChatPanel(false)}
+                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
+                        aria-label="Close chat"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Chat Content */}
+                  <div className="flex-1 min-h-[240px]">
+                    <LobeChat />
+                  </div>
+                </div>
+
+                {/* Resize Handle */}
+                <div
+                  className="w-2 bg-muted hover:bg-primary/50 cursor-col-resize transition-colors border-l border-border"
+                  onMouseDown={(e) => handleMouseDown('chat', e)}
                 />
               </>
             )}

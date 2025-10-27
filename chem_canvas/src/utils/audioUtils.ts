@@ -27,8 +27,6 @@ class AudioRecorderImpl implements AudioRecorder {
           autoGainControl: true,
           sampleRate: 44100, // Higher sample rate for better quality
           channelCount: 1, // Mono channel
-          volume: 1.0, // Full volume
-          latency: 0.01, // Low latency
         },
       });
 
@@ -244,12 +242,16 @@ export async function requestMicrophonePermission(): Promise<boolean> {
 }
 
 export function checkAudioSupport(): boolean {
-  return !!(
-    navigator.mediaDevices &&
-    navigator.mediaDevices.getUserMedia &&
-    window.MediaRecorder &&
-    window.Audio
-  );
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
+    return false;
+  }
+
+  const mediaDevices = navigator.mediaDevices;
+  const hasGetUserMedia = typeof mediaDevices?.getUserMedia === 'function';
+  const hasMediaRecorder = typeof (window as any).MediaRecorder !== 'undefined';
+  const hasAudio = typeof (window as any).Audio === 'function';
+
+  return Boolean(hasGetUserMedia && hasMediaRecorder && hasAudio);
 }
 
 // Audio validation utilities

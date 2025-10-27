@@ -1,27 +1,10 @@
 import {
   GoogleGenAI,
   LiveServerMessage,
-  MediaResolution,
   Modality,
   Session,
 } from '@google/genai';
 import { assignRandomApiKey } from '../firebase/apiKeys';
-
-export interface LiveChatConfig {
-  responseModalities: Modality[];
-  mediaResolution: MediaResolution;
-  speechConfig: {
-    voiceConfig: {
-      prebuiltVoiceConfig: {
-        voiceName: string;
-      };
-    };
-  };
-  contextWindowCompression: {
-    triggerTokens: string;
-    slidingWindow: { targetTokens: string };
-  };
-}
 
 export interface LiveChatMessage {
   id: string;
@@ -39,6 +22,13 @@ export interface LiveChatCallbacks {
   onStatusChange?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void;
 }
 
+interface LiveModelStrategy {
+  model: string;
+  description: string;
+  type: 'native' | 'half';
+  config: Record<string, unknown>;
+}
+
 class GeminiLiveService {
   private ai: GoogleGenAI | null = null;
   private session: Session | null = null;
@@ -46,6 +36,10 @@ class GeminiLiveService {
   private audioParts: string[] = [];
   private callbacks: LiveChatCallbacks = {};
   private isConnected = false;
+  private currentApiKey: string | null = null;
+  private activeModel: string | null = null;
+  private remainingStrategies: LiveModelStrategy[] = [];
+  private readonly systemInstruction = "You are ChemAssist, a helpful chemistry assistant. You can help with chemical concepts, equations, molecular structures, laboratory techniques, and answer questions about chemistry. Be friendly, accurate, and provide clear explanations.";
 
   constructor() {
     this.handleModelTurn = this.handleModelTurn.bind(this);
@@ -55,16 +49,19 @@ class GeminiLiveService {
     try {
       console.log('🔧 Initializing Gemini Live service...');
       const apiKey = await assignRandomApiKey();
-      console.log('🔑 API Key obtained:', apiKey ? `${apiKey.substring(0, 10)}...` : 'No');
+      const sanitizedKey = apiKey?.trim();
+      console.log('🔑 API Key obtained:', sanitizedKey ? `${sanitizedKey.substring(0, 10)}...` : 'No');
       
-      if (!apiKey) {
+      if (!sanitizedKey) {
         throw new Error('No API key available');
       }
       
       console.log('🏗️ Creating GoogleGenAI instance...');
       this.ai = new GoogleGenAI({
-        apiKey,
+        apiKey: sanitizedKey,
       });
+
+      this.currentApiKey = sanitizedKey;
       
       console.log('🔍 Checking available AI methods:', Object.keys(this.ai));
       console.log('🔍 Live API available:', !!this.ai.live);
@@ -95,92 +92,195 @@ class GeminiLiveService {
 
     try {
       console.log('🚀 Attempting to connect to Gemini Live...');
-      
-      // Check if live API is available
+
       if (!this.ai!.live) {
-        console.warn('⚠️ Gemini Live API is not available, using fallback mode');
-        
-        // Fallback to regular chat mode
-        this.isConnected = true;
-        this.callbacks.onStatusChange?.('connected');
-        
-        // Add a welcome message in fallback mode
-        const welcomeMessage: LiveChatMessage = {
-          id: `welcome_${Date.now()}`,
-          type: 'ai',
-          content: '🎤 Live voice chat is not available in this browser/API version, but you can still use text messages for chatting! I\'m ready to help you with chemistry questions.',
-          timestamp: new Date(),
-          isAudio: false,
-        };
-        this.callbacks.onMessage?.(welcomeMessage);
+        console.warn('⚠️ Gemini Live API is not available in this SDK version, enabling text fallback.');
+        this.handleLiveFallback();
         return;
       }
 
-      // Configure for proper audio support (matching Google's official implementation)
-      const config = {
-        responseModalities: [Modality.AUDIO, Modality.TEXT],
-        mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: 'Zephyr',
+      this.remainingStrategies = this.getModelStrategies();
+      await this.tryNextStrategy();
+    } catch (error) {
+      this.handleConnectionFailure(error);
+    }
+  }
+
+  private async tryNextStrategy(lastError?: Error | null): Promise<void> {
+    const strategy = this.remainingStrategies.shift();
+
+    if (!strategy) {
+      this.handleLiveFallback(lastError);
+      return;
+    }
+
+    try {
+      await this.openSessionWithStrategy(strategy);
+      this.activeModel = strategy.model;
+      console.log(`✅ Connected to Gemini Live using ${strategy.model}`);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.warn(`⚠️ Connection attempt with ${strategy.model} failed: ${err.message}`);
+      await this.tryNextStrategy(err);
+    }
+  }
+
+  private getModelStrategies(): LiveModelStrategy[] {
+    return [
+      {
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        description: 'Gemini 2.5 Flash Native Audio (preview)',
+        type: 'native',
+        config: {
+          responseModalities: [Modality.AUDIO],
+          systemInstruction: this.systemInstruction,
+        },
+      },
+      {
+        model: 'gemini-live-2.5-flash-preview',
+        description: 'Gemini Live 2.5 Flash (half-cascade preview)',
+        type: 'half',
+        config: {
+          responseModalities: [Modality.AUDIO, Modality.TEXT],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: 'Puck',
+              },
             },
           },
+          systemInstruction: this.systemInstruction,
         },
-      };
-
-      console.log('🔧 Connecting with config:', config);
-
-      // Use the official Google implementation approach
-      this.session = await this.ai!.live.connect({
-        model: 'models/gemini-2.5-flash-native-audio-preview-09-2025',
-        config,
-        callbacks: {
-          onopen: () => {
-            console.log('✅ Live chat connection opened');
-            this.isConnected = true;
-            this.callbacks.onStatusChange?.('connected');
+      },
+      {
+        model: 'gemini-2.0-flash-live-001',
+        description: 'Gemini 2.0 Flash Live (GA)',
+        type: 'half',
+        config: {
+          responseModalities: [Modality.AUDIO, Modality.TEXT],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: 'Puck',
+              },
+            },
           },
-          onmessage: (message: LiveServerMessage) => {
-            console.log('📨 Received message:', message);
-            this.responseQueue.push(message);
-          },
-          onerror: (e: ErrorEvent) => {
-            console.error('❌ Live chat error:', e);
-            this.isConnected = false;
-            this.callbacks.onError?.(new Error(e.message || 'Connection error'));
-            this.callbacks.onStatusChange?.('error');
-          },
-          onclose: (e: CloseEvent) => {
-            console.log('🔌 Live chat connection closed:', e.reason);
-            this.isConnected = false;
-            this.callbacks.onStatusChange?.('disconnected');
-          },
+          systemInstruction: this.systemInstruction,
         },
-      });
+      },
+    ];
+  }
 
-      console.log('✅ Session created successfully, starting message processing...');
-      // Start processing messages
-      this.processMessages();
-    } catch (error) {
-      console.error('❌ Failed to connect to Gemini Live:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown connection error';
-      console.error('🔍 Error details:', { message: errorMessage, error });
-      
-      // Provide user-friendly error message and fall back to text mode
-      const errorMsg: LiveChatMessage = {
-        id: `error_${Date.now()}`,
-        type: 'ai',
-        content: `⚠️ Live connection encountered an issue: ${errorMessage}. Falling back to text-only mode. You can still chat using text messages!`,
-        timestamp: new Date(),
-        isAudio: false,
-      };
-      this.callbacks.onMessage?.(errorMsg);
-      
-      // Still mark as connected for text chat
-      this.isConnected = true;
-      this.callbacks.onStatusChange?.('connected');
+  private async openSessionWithStrategy(strategy: LiveModelStrategy): Promise<void> {
+    console.log(`🎯 Trying live model ${strategy.model} (${strategy.description})`);
+
+    // Reset session state before attempting a new connection
+    if (this.session) {
+      try {
+        this.session.close();
+      } catch (error) {
+        console.warn('⚠️ Error closing previous session:', error);
+      }
+      this.session = null;
     }
+    this.responseQueue = [];
+    this.audioParts = [];
+    this.isConnected = false;
+
+    if (this.currentApiKey) {
+      console.log(`🔐 Using API key ending with ${this.currentApiKey.slice(-4)} for live connection.`);
+    }
+
+    this.session = await this.ai!.live.connect({
+      model: strategy.model,
+      config: strategy.config,
+      callbacks: this.buildCallbacks(strategy.model),
+    });
+  }
+
+  private buildCallbacks(modelName: string) {
+    return {
+      onopen: () => {
+        console.log(`✅ Live chat connection opened for model ${modelName}`);
+        this.isConnected = true;
+        this.activeModel = modelName;
+        this.callbacks.onStatusChange?.('connected');
+        void this.processMessages();
+      },
+      onmessage: (message: LiveServerMessage) => {
+        console.log('📨 Received message:', message);
+        this.responseQueue.push(message);
+      },
+      onerror: (e: ErrorEvent) => {
+        console.error(`❌ Live chat streaming error (${modelName}):`, e);
+        this.isConnected = false;
+        const errorMessage = e.message || 'Unknown streaming error';
+
+        if (errorMessage.includes('API key') && this.remainingStrategies.length > 0) {
+          console.warn('🔁 Live streaming error indicates key issue for this model. Trying next available model.');
+          void this.tryNextStrategy(new Error(errorMessage));
+          return;
+        }
+
+        this.callbacks.onError?.(new Error(`Live session error (${modelName}): ${errorMessage}`));
+        this.callbacks.onStatusChange?.('error');
+      },
+      onclose: (e: CloseEvent) => {
+        console.log(`🔌 Live chat connection closed for ${modelName}:`, e.reason, 'Code:', e.code);
+        this.isConnected = false;
+        this.activeModel = null;
+
+        if (e.code !== 1000) {
+          const reason = e.reason || 'Unknown reason';
+
+          if ((reason.includes('API key') || reason.includes('API_KEY')) && this.remainingStrategies.length > 0) {
+            console.warn(`🔁 Model ${modelName} closed due to key issue. Trying next model...`);
+            void this.tryNextStrategy(new Error(reason));
+            return;
+          }
+
+          this.callbacks.onError?.(new Error(`Connection closed unexpectedly (${modelName}): ${reason}`));
+          this.callbacks.onStatusChange?.('error');
+        } else {
+          this.callbacks.onStatusChange?.('disconnected');
+        }
+      },
+    };
+  }
+
+  private handleLiveFallback(lastError?: Error | null): void {
+    const reason = lastError?.message ?? 'Live API not available.';
+    console.log('🔄 Falling back to text-only mode:', reason);
+
+    const fallbackMsg: LiveChatMessage = {
+      id: `fallback_${Date.now()}`,
+      type: 'ai',
+  content: `🎤 Live voice features are not available right now (${reason}). I\'m switching to text chat mode.`,
+      timestamp: new Date(),
+      isAudio: false,
+    };
+
+    if (this.activeModel) {
+      console.log(`ℹ️ Previous live model ${this.activeModel} is not available, continuing in text mode.`);
+    }
+    this.session = null;
+    this.activeModel = null;
+    this.callbacks.onMessage?.(fallbackMsg);
+    this.isConnected = true;
+    this.callbacks.onStatusChange?.('connected');
+  }
+
+  private handleConnectionFailure(error: unknown): void {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error('❌ Failed to connect to Gemini Live:', err);
+
+    if (err.message.includes('API key') || err.message.includes('API_KEY') || err.message.includes('UNAUTHENTICATED')) {
+      this.callbacks.onError?.(new Error(`Live API rejected the key: ${err.message}. Ensure your key is Live API enabled in Google AI Studio.`));
+      this.callbacks.onStatusChange?.('error');
+      return;
+    }
+
+    this.handleLiveFallback(err);
   }
 
   private async processMessages(): Promise<void> {
@@ -198,55 +298,44 @@ class GeminiLiveService {
 
   private async handleModelTurn(message: LiveServerMessage): Promise<void> {
     console.log('Processing message:', message);
-    
-    if (message.serverContent?.modelTurn?.parts) {
-      const parts = message.serverContent.modelTurn.parts;
 
-      for (const part of parts) {
-        // Handle text responses
-        if (part.text) {
-          const textMessage: LiveChatMessage = {
-            id: `msg_${Date.now()}_${Math.random()}`,
-            type: 'ai',
-            content: part.text,
-            timestamp: new Date(),
-            isAudio: false,
-          };
-          this.callbacks.onMessage?.(textMessage);
-        }
+    if (message.data) {
+      // Handle audio data directly
+      console.log('Received audio data:', message.data.length);
 
-        // Handle audio responses
-        if (part.inlineData) {
-          const inlineData = part.inlineData;
-          console.log('Received audio data:', inlineData.mimeType, inlineData.data?.length);
-          
-          this.audioParts.push(inlineData?.data ?? '');
+      this.audioParts.push(message.data);
 
-          // Convert to WAV and create blob
-          const buffer = this.convertToWav(this.audioParts, inlineData.mimeType ?? '');
-          const audioBlob = new Blob([buffer], { type: 'audio/wav' });
+      // Convert to WAV and create blob
+      const buffer = this.convertToWav(this.audioParts, 'audio/pcm;rate=24000');
+      const audioBlob = new Blob([buffer], { type: 'audio/wav' });
 
-          const audioMessage: LiveChatMessage = {
-            id: `audio_${Date.now()}_${Math.random()}`,
-            type: 'ai',
-            content: 'Audio response',
-            timestamp: new Date(),
-            audioBlob,
-            isAudio: true,
-          };
+      const audioMessage: LiveChatMessage = {
+        id: `audio_${Date.now()}_${Math.random()}`,
+        type: 'ai',
+        content: 'Audio response',
+        timestamp: new Date(),
+        audioBlob,
+        isAudio: true,
+      };
 
-          this.callbacks.onMessage?.(audioMessage);
-          this.callbacks.onAudioReceived?.(audioBlob);
-        }
-
-        // Handle file data
-        if (part.fileData) {
-          console.log(`File received: ${part.fileData.fileUri}`);
-        }
-      }
+      this.callbacks.onMessage?.(audioMessage);
+      this.callbacks.onAudioReceived?.(audioBlob);
+      this.audioParts = []; // Clear after processing
     }
 
-    // Check if turn is complete
+    if (message.text) {
+      // Handle text responses
+      const textMessage: LiveChatMessage = {
+        id: `msg_${Date.now()}_${Math.random()}`,
+        type: 'ai',
+        content: message.text,
+        timestamp: new Date(),
+        isAudio: false,
+      };
+      this.callbacks.onMessage?.(textMessage);
+    }
+
+    // Handle server content for turn completion
     if (message.serverContent?.turnComplete) {
       console.log('Turn complete, clearing audio parts');
       this.audioParts = []; // Clear audio parts when turn is complete
@@ -271,8 +360,8 @@ class GeminiLiveService {
 
       // If we have a session, use live API
       if (this.session) {
-        this.session.sendClientContent({
-          turns: [message],
+        this.session.sendRealtimeInput({
+          text: message,
         });
       } else {
         // Fallback to regular Gemini API
@@ -289,16 +378,16 @@ class GeminiLiveService {
   private async sendFallbackMessage(message: string): Promise<void> {
     try {
       console.log('🔄 Using fallback message mode with text API...');
-      
+
       // Try the new API structure with models.generateContent
       const result = await this.ai!.models.generateContent({
         model: 'gemini-2.0-flash-exp',
         contents: [{ role: 'user', parts: [{ text: message }] }]
       });
-      
+
       // Extract text from the response - handle different response structures
       let responseText = 'Sorry, I could not process your message.';
-      
+
       if (result.candidates && result.candidates[0]) {
         const candidate = result.candidates[0];
         if (candidate.content && candidate.content.parts && candidate.content.parts[0]) {
@@ -318,7 +407,7 @@ class GeminiLiveService {
       this.callbacks.onMessage?.(aiMessage);
     } catch (error) {
       console.error('❌ Fallback message failed:', error);
-      
+
       // Provide a simple fallback response if API call fails
       const aiMessage: LiveChatMessage = {
         id: `ai_${Date.now()}_${Math.random()}`,
@@ -356,17 +445,13 @@ class GeminiLiveService {
         const base64Data = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
         // Send with proper audio configuration
-        this.session.sendClientContent({
-          turns: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: audioBlob.type || 'audio/wav',
-              },
-            },
-          ],
+        this.session.sendRealtimeInput({
+          audio: {
+            data: base64Data,
+            mimeType: "audio/pcm;rate=16000"
+          }
         });
-        
+
         console.log('Audio sent successfully to Gemini Live');
       } else {
         // Fallback mode - provide better feedback
@@ -407,6 +492,7 @@ class GeminiLiveService {
     this.isConnected = false;
     this.responseQueue = [];
     this.audioParts = [];
+    this.activeModel = null;
     this.callbacks.onStatusChange?.('disconnected');
   }
 

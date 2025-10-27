@@ -88,11 +88,13 @@ export default function LiveChat({ onClose, className = '' }: LiveChatProps) {
       
       // Add detailed debugging information
       console.log('🔍 Starting Live Chat connection process...');
+      const extendedWindow = window as typeof window & { webkitRTCPeerConnection?: RTCPeerConnection };
+
       console.log('📋 Browser info:', {
         userAgent: navigator.userAgent,
         mediaDevices: !!navigator.mediaDevices,
         mediaRecorder: !!window.MediaRecorder,
-        webRTC: !!(window.RTCPeerConnection || window.webkitRTCPeerConnection)
+        webRTC: !!(extendedWindow.RTCPeerConnection || extendedWindow.webkitRTCPeerConnection)
       });
       
       const callbacks: LiveChatCallbacks = {
@@ -273,6 +275,7 @@ export default function LiveChat({ onClose, className = '' }: LiveChatProps) {
             </div>
             <div>
               <h2 className="font-bold text-lg text-white">Live Chat</h2>
+              <p className="text-xs text-purple-300">Powered by Gemini Live API</p>
               <div className="flex items-center gap-2">
                 {getStatusIcon()}
                 <span className={`text-xs font-medium ${getStatusColor()}`}>

@@ -7,7 +7,6 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   Controls,
-  Background,
   MiniMap,
   NodeTypes,
   EdgeTypes,
@@ -18,6 +17,7 @@ import ReactFlow, {
   Handle,
   Position,
 } from 'reactflow';
+import { Background, BackgroundVariant } from '@reactflow/background';
 import 'reactflow/dist/style.css';
 import * as geminiService from '../services/geminiService';
 import { 
@@ -213,7 +213,7 @@ const ListNode = ({ data, isConnectable }: any) => {
   };
 
   const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
+    setItems(items.filter((_item: string, currentIndex: number) => currentIndex !== index));
   };
 
   return (
@@ -990,7 +990,7 @@ ${outputNode.data.content}
           >
             <Controls />
             <MiniMap />
-            <Background variant="dots" gap={12} size={1} />
+            <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
           </ReactFlow>
         </div>
       </div>

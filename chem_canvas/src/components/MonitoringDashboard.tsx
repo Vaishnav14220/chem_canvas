@@ -1,3 +1,4 @@
+import type { FC } from 'react';
 import type { MonitoringCheckin } from '../types/srlCoach';
 import { Activity, Flame, Zap, TrendingUp, CalendarClock, MessageCircle } from 'lucide-react';
 
@@ -13,7 +14,7 @@ interface MonitoringDashboardProps {
   isBusy?: boolean;
 }
 
-const MonitoringDashboard = ({
+const MonitoringDashboard: FC<MonitoringDashboardProps> = ({
   momentumScore,
   phaseStreak,
   coachEnergy,
@@ -96,7 +97,7 @@ const MonitoringDashboard = ({
           </p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {latestCheckins.map((entry) => (
+            {latestCheckins.map((entry: MonitoringCheckin) => (
               <li
                 key={entry.id}
                 className="rounded-lg border border-emerald-500/30 bg-emerald-900/10 p-2 text-xs text-emerald-100"

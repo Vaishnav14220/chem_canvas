@@ -48,6 +48,9 @@ interface TestResult {
   maxScore: number;
   feedback: string;
   mistakes?: string[];
+  strengths?: string[];
+  weaknesses?: string[];
+  expectedAnswer?: string;
 }
 
 interface Test {
@@ -456,9 +459,9 @@ Evaluate the answer thoroughly and respond with ONLY the JSON object.`;
           const score = isCorrect ? question.points : 0;
           
           let detailedFeedback = '';
-          let mistakes = [];
-          let strengths = [];
-          let weaknesses = [];
+          let mistakes: string[] = [];
+          let strengths: string[] = [];
+          let weaknesses: string[] = [];
           
           if (isCorrect) {
             detailedFeedback = `Excellent! Your answer "${userAnswer}" is correct. You demonstrated good understanding of the concept and provided the right response.`;
