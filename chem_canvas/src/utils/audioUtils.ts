@@ -311,7 +311,7 @@ async function getAudioDuration(audioBlob: Blob): Promise<number> {
   });
 }
 
-async function detectAudioContent(audioBlob: Blob): Promise<boolean> {
+export async function detectAudioContent(audioBlob: Blob): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const fileReader = new FileReader();
