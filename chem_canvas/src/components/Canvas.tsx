@@ -3,13 +3,12 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan } from 'lucide-react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
-import MoleculeSearch from './MoleculeSearch';
 import MineralSearch from './MineralSearch';
 import ReagentSearch from './ReagentSearch';
 import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID } from '../services/pubchemService';
 import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
-import ChemistryWidgetPanel from './ChemistryWidgetPanel';
+import InlineMoleculeSearch from './InlineMoleculeSearch';
 
 const MIN_TOOLBAR_WIDTH = 280;
 const MAX_TOOLBAR_WIDTH = 480;
@@ -88,7 +87,6 @@ export default function Canvas({
   const [chemistryStructure, setChemistryStructure] = useState<any>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [canvasBackground, setCanvasBackground] = useState<'dark' | 'white'>('dark');
-  const [showMoleculeSearch, setShowMoleculeSearch] = useState(false);
   const [showMineralSearch, setShowMineralSearch] = useState(false);
   const [showReagentSearch, setShowReagentSearch] = useState(false);
   const [forceRedraw, setForceRedraw] = useState(0); // New state for forcing redraw
@@ -2608,15 +2606,21 @@ export default function Canvas({
       </div>
 
       {/* Canvas Controls */}
+      <div className="absolute top-4 left-4 z-10 max-w-sm">
+        <InlineMoleculeSearch
+          onSelectMolecule={(moleculeData) => {
+            void (async () => {
+              try {
+                await insertMoleculeToCanvas(moleculeData);
+              } catch (error) {
+                console.error('Failed to insert molecule from search:', error);
+              }
+            })();
+          }}
+        />
+      </div>
+
       <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-3 transform">
-        <button
-          onClick={() => setShowMoleculeSearch(true)}
-          className="inline-flex w-40 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-4 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/70 disabled:cursor-not-allowed disabled:opacity-60"
-          title="Search Molecules"
-        >
-          <Atom size={16} className="text-blue-300" />
-          <span>Search Molecules</span>
-        </button>
 
         <button
           onClick={() => setShowMineralSearch(true)}
@@ -3211,23 +3215,7 @@ export default function Canvas({
         />
       )}
 
-      {/* Molecule Search Modal */}
-      {showMoleculeSearch && (
-        <MoleculeSearch
-          onClose={() => setShowMoleculeSearch(false)}
-          onSelectMolecule={(moleculeData) => {
-            void (async () => {
-              try {
-                await insertMoleculeToCanvas(moleculeData);
-              } catch (error) {
-                console.error('Failed to insert molecule from search:', error);
-              } finally {
-                setShowMoleculeSearch(false);
-              }
-            })();
-          }}
-        />
-      )}
+
 
       {showMineralSearch && (
         <MineralSearch
