@@ -17,6 +17,7 @@ class AudioRecorderImpl implements AudioRecorder {
   private audioStream: MediaStream | null = null;
   private recordedChunks: Blob[] = [];
   private isRecordingState = false;
+  private recordingMimeType = 'audio/webm;codecs=opus';
 
   async startRecording(): Promise<void> {
     try {
@@ -38,13 +39,15 @@ class AudioRecorderImpl implements AudioRecorder {
         'audio/mp4'
       ];
       
-      let selectedMimeType = 'audio/wav';
+      let selectedMimeType = 'audio/webm;codecs=opus';
       for (const mimeType of mimeTypes) {
         if (MediaRecorder.isTypeSupported(mimeType)) {
           selectedMimeType = mimeType;
           break;
         }
       }
+
+      this.recordingMimeType = selectedMimeType;
 
       this.mediaRecorder = new MediaRecorder(this.audioStream, {
         mimeType: selectedMimeType,
@@ -77,8 +80,9 @@ class AudioRecorderImpl implements AudioRecorder {
       }
 
       this.mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(this.recordedChunks, { type: 'audio/webm;codecs=opus' });
+        const audioBlob = new Blob(this.recordedChunks, { type: this.recordingMimeType });
         this.isRecordingState = false;
+        console.log(`🎵 Recording stopped. MIME type: ${this.recordingMimeType}, Size: ${audioBlob.size} bytes`);
         resolve(audioBlob);
       };
 
@@ -176,26 +180,42 @@ class AudioPlayerImpl implements AudioPlayer {
 
 // Utility functions for audio format conversion
 export function convertWebmToWav(webmBlob: Blob): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const arrayBuffer = reader.result as ArrayBuffer;
-        const wavBlob = createWavBlob(arrayBuffer);
-        resolve(wavBlob);
-      } catch (error) {
-        reject(error);
+  return new Promise(async (resolve, reject) => {
+    try {
+      // If it's already WAV, return as-is
+      if (webmBlob.type.includes('wav')) {
+        console.log('🎵 Audio is already WAV format, skipping conversion');
+        resolve(webmBlob);
+        return;
       }
-    };
-    reader.onerror = () => reject(new Error('Failed to read audio file'));
-    reader.readAsArrayBuffer(webmBlob);
+
+      // Decode the WebM/Opus audio to raw PCM data
+      const arrayBuffer = await webmBlob.arrayBuffer();
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Decode the compressed audio
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      // Convert to WAV format
+      const wavBlob = audioBufferToWav(audioBuffer);
+      console.log(`🎵 Converted ${webmBlob.type} to WAV. Original size: ${webmBlob.size}, WAV size: ${wavBlob.size}`);
+      resolve(wavBlob);
+    } catch (error) {
+      console.error('Error converting audio:', error);
+      reject(error);
+    }
   });
 }
 
-function createWavBlob(audioData: ArrayBuffer): Blob {
-  const buffer = new ArrayBuffer(44 + audioData.byteLength);
-  const view = new DataView(buffer);
-
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const length = buffer.length;
+  const sampleRate = buffer.sampleRate;
+  const numChannels = buffer.numberOfChannels;
+  
+  // Create WAV file buffer
+  const arrayBuffer = new ArrayBuffer(44 + length * numChannels * 2);
+  const view = new DataView(arrayBuffer);
+  
   // WAV header
   const writeString = (offset: number, string: string) => {
     for (let i = 0; i < string.length; i++) {
@@ -204,25 +224,30 @@ function createWavBlob(audioData: ArrayBuffer): Blob {
   };
 
   writeString(0, 'RIFF');
-  view.setUint32(4, 36 + audioData.byteLength, true);
+  view.setUint32(4, 36 + length * numChannels * 2, true);
   writeString(8, 'WAVE');
   writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, 16000, true);
-  view.setUint32(28, 32000, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
+  view.setUint32(16, 16, true); // PCM format
+  view.setUint16(20, 1, true); // PCM format code
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * 2, true); // bytes per second
+  view.setUint16(32, numChannels * 2, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
   writeString(36, 'data');
-  view.setUint32(40, audioData.byteLength, true);
+  view.setUint32(40, length * numChannels * 2, true);
 
-  // Copy audio data
-  const uint8Array = new Uint8Array(buffer);
-  const audioArray = new Uint8Array(audioData);
-  uint8Array.set(audioArray, 44);
+  // Write audio data
+  let offset = 44;
+  for (let i = 0; i < length; i++) {
+    for (let channel = 0; channel < numChannels; channel++) {
+      const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+      view.setInt16(offset, sample * 0x7FFF, true);
+      offset += 2;
+    }
+  }
 
-  return new Blob([buffer], { type: 'audio/wav' });
+  return new Blob([arrayBuffer], { type: 'audio/wav' });
 }
 
 // Export instances
