@@ -1,14 +1,17 @@
 import { useRef, useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, Lightbulb, FlaskConical, Gem, Scan, ExternalLink } from 'lucide-react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
 import MineralSearch from './MineralSearch';
 import ReagentSearch from './ReagentSearch';
+import ProteinSearch from './ProteinSearch';
 import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID } from '../services/pubchemService';
+import { type PDBProteinData, fetchPDBStructure } from '../services/pdbService';
 import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
 import InlineMoleculeSearch from './InlineMoleculeSearch';
+import PDBViewerEmbedded from './PDBViewerEmbedded';
 
 const MIN_TOOLBAR_WIDTH = 280;
 const MAX_TOOLBAR_WIDTH = 480;
@@ -89,8 +92,11 @@ export default function Canvas({
   const [canvasBackground, setCanvasBackground] = useState<'dark' | 'white'>('dark');
   const [showMineralSearch, setShowMineralSearch] = useState(false);
   const [showReagentSearch, setShowReagentSearch] = useState(false);
+  const [showProteinSearch, setShowProteinSearch] = useState(false);
   const [forceRedraw, setForceRedraw] = useState(0); // New state for forcing redraw
   const [showChemistryWidgetPanel, setShowChemistryWidgetPanel] = useState(false);
+  const [showPDBViewer, setShowPDBViewer] = useState(false);
+  const [pdbViewerData, setPdbViewerData] = useState<{ pdbId: string; title?: string } | null>(null);
   const [annotationLabelOptions, setAnnotationLabelOptions] = useState<string[]>(() => [...DEFAULT_ANNOTATION_LABELS]);
   const [annotationLabel, setAnnotationLabel] = useState(DEFAULT_ANNOTATION_LABELS[0]);
   const [customAnnotationLabel, setCustomAnnotationLabel] = useState('');
@@ -140,7 +146,7 @@ export default function Canvas({
   // Shape tracking for repositioning
   interface Shape {
     id: string;
-    type: 'arrow' | 'circle' | 'square' | 'triangle' | 'hexagon' | 'plus' | 'minus' | 'molecule';
+    type: 'arrow' | 'circle' | 'square' | 'triangle' | 'hexagon' | 'plus' | 'minus' | 'molecule' | 'protein';
     startX: number;
     startY: number;
     endX: number;
@@ -159,6 +165,8 @@ export default function Canvas({
     moleculeData?: MoleculeData & {
       displayName?: string;
     };
+    // PDB Protein-specific properties
+    proteinData?: PDBProteinData;
     use3D?: boolean;
     rotation3D?: {
       x: number;
@@ -781,6 +789,72 @@ export default function Canvas({
     console.log('? Molecule added to canvas:', newMolecule);
   };
 
+  const insertProteinToCanvas = async (proteinData: PDBProteinData) => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      console.error('Canvas not available for protein insertion');
+      return;
+    }
+
+    // Validate protein data
+    if (!proteinData || !proteinData.entryId) {
+      console.error('Invalid protein data provided:', proteinData);
+      return;
+    }
+
+    // Fetch the PDB structure data
+    try {
+      const pdbStructure = await fetchPDBStructure(proteinData.entryId, 'pdb');
+      if (!pdbStructure) {
+        throw new Error('Failed to fetch PDB structure');
+      }
+
+      proteinData.pdbData = pdbStructure;
+    } catch (error) {
+      console.warn('Failed to fetch PDB structure, proceeding without it:', error);
+    }
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // For PDB proteins, use a fixed aspect ratio and size
+    const aspectRatio = 1.5; // Typical protein structure aspect ratio
+    const baseHeight = 200;
+    const baseWidth = baseHeight * aspectRatio;
+    const startX = centerX - baseWidth / 2;
+    const startY = centerY - baseHeight / 2;
+    const endX = centerX + baseWidth / 2;
+    const endY = centerY + baseHeight / 2;
+
+    const newProtein: Shape = {
+      id: `protein-${Date.now()}`,
+      type: 'protein',
+      startX,
+      startY,
+      endX,
+      endY,
+      color: '#f97316', // Orange color for proteins
+      strokeColor: '#f97316',
+      size: Math.max(baseWidth, baseHeight),
+      rotation: 0,
+      maintainAspect: true,
+      aspectRatio,
+      originalWidth: baseWidth,
+      originalHeight: baseHeight,
+      use3D: true, // PDB structures are always 3D
+      rotation3D: { ...DEFAULT_MOLECULE_3D_ROTATION },
+      proteinData,
+    };
+
+    const updatedShapes = [...canvasHistoryRef.current, newProtein];
+    setShapes(updatedShapes);
+    canvasHistoryRef.current = updatedShapes;
+    setSelectedShapeId(newProtein.id);
+    setChemistryTool('move');
+
+    console.log('🧬 PDB Protein added to canvas:', newProtein);
+  };
+
   const drawAreaEraseOverlay = (
     ctx: CanvasRenderingContext2D,
     selection: { startX: number; startY: number; currentX: number; currentY: number }
@@ -874,9 +948,7 @@ export default function Canvas({
     return null;
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Only deselect if clicking on empty canvas space (not on shapes)
-    // This prevents deselection when clicking on shapes during operations
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -884,7 +956,7 @@ export default function Canvas({
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
 
-    // Check if click is on any shape
+    // Check if clicking on empty canvas space (not on shapes) for deselection
     let clickedOnShape = false;
     for (let i = canvasHistoryRef.current.length - 1; i >= 0; i--) {
       const shape = canvasHistoryRef.current[i];
@@ -899,16 +971,8 @@ export default function Canvas({
     if (!clickedOnShape) {
       setSelectedShapeId(null);
       setSelectedShape(null);
+      // Don't return here - allow other logic to run if needed
     }
-  };
-
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / zoom;
-    const y = (e.clientY - rect.top) / zoom;
 
     if (annotationMode && annotationMode.shapeId === selectedShapeId && e.button === 0) {
       e.preventDefault();
@@ -2132,6 +2196,281 @@ export default function Canvas({
     img.src = pngUrl;
   };
 
+  const drawProtein = (ctx: CanvasRenderingContext2D, shape: Shape) => {
+    const data = shape.proteinData;
+    if (!data) {
+      console.warn('Protein data not available for shape:', shape);
+      return;
+    }
+
+    const width = Math.abs(shape.endX - shape.startX);
+    const height = Math.abs(shape.endY - shape.startY);
+    const centerX = shape.startX + width / 2;
+    const centerY = shape.startY + height / 2;
+
+    // If we have PDB data, render a basic 3D representation
+    if (data.pdbData) {
+      try {
+        const pdbAtoms = parsePDBAtoms(data.pdbData);
+        if (pdbAtoms.length > 0) {
+          renderPDBStructure(ctx, shape, pdbAtoms, centerX, centerY, width, height);
+          return;
+        }
+      } catch (error) {
+        console.warn('Failed to parse PDB data:', error);
+      }
+    }
+
+    // Fallback: Draw placeholder
+    ctx.save();
+    ctx.fillStyle = '#dc2626'; // Red color for proteins
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(shape.startX, shape.startY, width, height);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = 1;
+    ctx.fillText(data.title || 'Protein Structure', centerX, centerY);
+    ctx.restore();
+  };
+
+  // PDB parsing and rendering utilities
+  interface PDBAtom {
+    serial: number;
+    name: string;
+    altLoc: string;
+    resName: string;
+    chainID: string;
+    resSeq: number;
+    iCode: string;
+    x: number;
+    y: number;
+    z: number;
+    occupancy: number;
+    tempFactor: number;
+    element: string;
+    charge: string;
+  }
+
+  const parsePDBAtoms = (pdbData: string): PDBAtom[] => {
+    if (!pdbData || typeof pdbData !== 'string') {
+      console.warn('Invalid PDB data provided to parsePDBAtoms');
+      return [];
+    }
+
+    const atoms: PDBAtom[] = [];
+    const lines = pdbData.split('\n');
+
+    for (const line of lines) {
+      if (line.startsWith('ATOM') || line.startsWith('HETATM')) {
+        try {
+          const atom: PDBAtom = {
+            serial: parseInt(line.substring(6, 11).trim()) || 0,
+            name: line.substring(12, 16).trim(),
+            altLoc: line.substring(16, 17).trim(),
+            resName: line.substring(17, 20).trim(),
+            chainID: line.substring(21, 22).trim(),
+            resSeq: parseInt(line.substring(22, 26).trim()) || 0,
+            iCode: line.substring(26, 27).trim(),
+            x: parseFloat(line.substring(30, 38).trim()) || 0,
+            y: parseFloat(line.substring(38, 46).trim()) || 0,
+            z: parseFloat(line.substring(46, 54).trim()) || 0,
+            occupancy: parseFloat(line.substring(54, 60).trim()) || 1.0,
+            tempFactor: parseFloat(line.substring(60, 66).trim()) || 0.0,
+            element: line.substring(76, 78).trim(),
+            charge: line.substring(78, 80).trim(),
+          };
+
+          // Validate that we have valid coordinates
+          if (isNaN(atom.x) || isNaN(atom.y) || isNaN(atom.z)) {
+            continue; // Skip invalid atoms
+          }
+
+          atoms.push(atom);
+        } catch (error) {
+          console.warn('Failed to parse PDB atom line:', line, error);
+        }
+      }
+    }
+
+    return atoms;
+  };
+
+  const renderPDBStructure = (
+    ctx: CanvasRenderingContext2D,
+    shape: Shape,
+    atoms: PDBAtom[],
+    centerX: number,
+    centerY: number,
+    width: number,
+    height: number
+  ) => {
+    if (atoms.length === 0) return;
+
+    // Calculate bounds of the protein structure
+    const bounds = atoms.reduce(
+      (acc, atom) => ({
+        minX: Math.min(acc.minX, atom.x),
+        maxX: Math.max(acc.maxX, atom.x),
+        minY: Math.min(acc.minY, atom.y),
+        maxY: Math.max(acc.maxY, atom.y),
+        minZ: Math.min(acc.minZ, atom.z),
+        maxZ: Math.max(acc.maxZ, atom.z)
+      }),
+      {
+        minX: Number.POSITIVE_INFINITY,
+        maxX: Number.NEGATIVE_INFINITY,
+        minY: Number.POSITIVE_INFINITY,
+        maxY: Number.NEGATIVE_INFINITY,
+        minZ: Number.POSITIVE_INFINITY,
+        maxZ: Number.NEGATIVE_INFINITY
+      }
+    );
+
+    const structureWidth = bounds.maxX - bounds.minX;
+    const structureHeight = bounds.maxY - bounds.minY;
+    const structureDepth = bounds.maxZ - bounds.minZ;
+
+    // Safety check: ensure we have valid dimensions
+    if (structureWidth <= 0 || structureHeight <= 0 || isNaN(structureWidth) || isNaN(structureHeight)) {
+      console.warn('Invalid protein structure dimensions, falling back to placeholder');
+      return;
+    }
+
+    // Calculate scale to fit within the shape bounds
+    const padding = Math.min(width, height) * 0.1;
+    const availableWidth = width - padding * 2;
+    const availableHeight = height - padding * 2;
+    const scaleX = availableWidth / structureWidth;
+    const scaleY = availableHeight / structureHeight;
+    const scale = Math.min(scaleX, scaleY, 2); // Limit max scale
+
+    // Center the structure
+    const centerAtomX = (bounds.minX + bounds.maxX) / 2;
+    const centerAtomY = (bounds.minY + bounds.maxY) / 2;
+    const centerAtomZ = (bounds.minZ + bounds.maxZ) / 2;
+
+    // Apply 3D rotation if available
+    const rotation3D = shape.rotation3D ?? { x: -25, y: 35 };
+    const yaw = (rotation3D.y * Math.PI) / 180;
+    const pitch = (rotation3D.x * Math.PI) / 180;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+
+    // Group atoms by residue for better visualization
+    const residues: Record<string, PDBAtom[]> = {};
+    atoms.forEach(atom => {
+      const key = `${atom.chainID}-${atom.resSeq}`;
+      if (!residues[key]) residues[key] = [];
+      residues[key].push(atom);
+    });
+
+    // Render backbone atoms (CA, N, C) as connected structure
+    const backboneAtoms = atoms.filter(atom =>
+      atom.name === 'CA' || atom.name === 'N' || atom.name === 'C'
+    );
+
+    // Sort backbone atoms by residue sequence for proper connection
+    backboneAtoms.sort((a, b) => {
+      if (a.chainID !== b.chainID) return a.chainID.localeCompare(b.chainID);
+      return a.resSeq - b.resSeq;
+    });
+
+    // Draw backbone connections
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = Math.max(1, scale * 0.5);
+    ctx.beginPath();
+
+    for (let i = 0; i < backboneAtoms.length - 1; i++) {
+      const atom1 = backboneAtoms[i];
+      const atom2 = backboneAtoms[i + 1];
+
+      // Only connect atoms from the same chain and consecutive residues
+      if (atom1.chainID === atom2.chainID && Math.abs(atom1.resSeq - atom2.resSeq) === 1) {
+        // Apply 3D rotation and projection
+        const x1 = (atom1.x - centerAtomX) * scale;
+        const y1 = (atom1.y - centerAtomY) * scale;
+        const z1 = (atom1.z - centerAtomZ) * scale;
+
+        const x2 = (atom2.x - centerAtomX) * scale;
+        const y2 = (atom2.y - centerAtomY) * scale;
+        const z2 = (atom2.z - centerAtomZ) * scale;
+
+        // Simple 3D to 2D projection (isometric-like)
+        const projX1 = x1 * 0.866 - y1 * 0.866; // cos(30°) and sin(30°)
+        const projY1 = x1 * 0.5 + y1 * 0.5 - z1 * 0.707; // cos(45°) for depth
+
+        const projX2 = x2 * 0.866 - y2 * 0.866;
+        const projY2 = x2 * 0.5 + y2 * 0.5 - z2 * 0.707;
+
+        if (i === 0) {
+          ctx.moveTo(projX1, projY1);
+        }
+        ctx.lineTo(projX2, projY2);
+      }
+    }
+    ctx.stroke();
+
+    // Draw atoms
+    const atomRadius = Math.max(2, Math.min(width, height) * 0.008);
+
+    // Draw CA atoms (alpha carbons) as larger spheres
+    backboneAtoms.forEach(atom => {
+      if (atom.name === 'CA') {
+        const x = (atom.x - centerAtomX) * scale;
+        const y = (atom.y - centerAtomY) * scale;
+        const z = (atom.z - centerAtomZ) * scale;
+
+        // Simple 3D projection
+        const projX = x * 0.866 - y * 0.866;
+        const projY = x * 0.5 + y * 0.5 - z * 0.707;
+
+        // Color based on secondary structure (simplified)
+        ctx.fillStyle = '#3b82f6'; // Blue for alpha carbons
+        ctx.beginPath();
+        ctx.arc(projX, projY, atomRadius * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Add subtle shadow/highlight for 3D effect
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.arc(projX - atomRadius * 0.5, projY - atomRadius * 0.5, atomRadius * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+
+    // Draw side chain atoms as smaller spheres
+    const sideChainAtoms = atoms.filter(atom =>
+      !['CA', 'N', 'C', 'O'].includes(atom.name) && atom.name !== 'H'
+    );
+
+    sideChainAtoms.forEach(atom => {
+      const x = (atom.x - centerAtomX) * scale;
+      const y = (atom.y - centerAtomY) * scale;
+      const z = (atom.z - centerAtomZ) * scale;
+
+      const projX = x * 0.866 - y * 0.866;
+      const projY = x * 0.5 + y * 0.5 - z * 0.707;
+
+      // Color based on element
+      const color = ATOM_COLORS[atom.element] || '#cbd5f5';
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(projX, projY, atomRadius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.restore();
+
+    // Draw label
+    ctx.fillStyle = '#dc2626';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(shape.proteinData?.title || 'Protein', centerX, shape.startY - 10);
+  };
+
   const stopDrawing = () => {
     // Handle lasso selection for eraser
     if (lassoSelection.isActive && lassoSelection.points.length > 3) {
@@ -2315,6 +2654,8 @@ export default function Canvas({
         drawMinus(ctx, centerX, centerY, distance / 2, shape.size, strokeColor);
       } else if (shape.type === 'molecule') {
         drawMolecule(ctx, shape);
+      } else if (shape.type === 'protein') {
+        drawProtein(ctx, shape);
       }
 
       // Restore context if rotation was applied
@@ -2695,6 +3036,15 @@ export default function Canvas({
           </button>
 
           <button
+            onClick={() => setShowProteinSearch(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-rose-300 hover:bg-slate-700/50 rounded-lg transition-all"
+            title="Search Proteins"
+          >
+            <Atom size={14} className="text-rose-400" />
+            <span>Proteins</span>
+          </button>
+
+          <button
             onClick={openArViewer}
             disabled={!selectedMoleculeCid}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-purple-300 hover:bg-slate-700/50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2868,7 +3218,6 @@ export default function Canvas({
         onMouseMove={draw}
         onMouseUp={stopDrawing}
         onMouseLeave={stopDrawing}
-        onClick={handleCanvasClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -3091,6 +3440,67 @@ export default function Canvas({
             >
               View in MolView
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Selected Protein Display */}
+      {selectedShape?.type === 'protein' && selectedShape.proteinData && (
+        <div className="absolute top-8 right-8 z-20 flex flex-col gap-3 max-w-xs">
+          <div className="rounded-xl border border-slate-700/70 bg-slate-900/90 backdrop-blur-sm p-4 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Selected Protein</p>
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-500/20 border border-rose-400/40">
+                <Atom className="text-rose-300" size={18} />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium text-slate-200 leading-tight">
+                  {selectedShape.proteinData.displayName || `PDB ${selectedShape.proteinData.entryId}`}
+                </p>
+                <p className="text-xs text-slate-400">{selectedShape.proteinData.title}</p>
+                {selectedShape.proteinData.organism && (
+                  <p className="text-xs text-slate-500">{selectedShape.proteinData.organism}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedShape.proteinData?.entryId && selectedShape.proteinData.entryId.trim() !== '') {
+                    try {
+                      setPdbViewerData({
+                        pdbId: selectedShape.proteinData.entryId.toUpperCase(),
+                        title: selectedShape.proteinData.title || `PDB ${selectedShape.proteinData.entryId}`
+                      });
+                      setShowPDBViewer(true);
+                    } catch (error) {
+                      console.error('Failed to open PDB viewer:', error);
+                    }
+                  } else {
+                    console.error('No valid protein data or entryId available for 3D viewer');
+                  }
+                }}
+                className="w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 bg-rose-600/90 text-white hover:bg-rose-500"
+                title="Open interactive 3D PDB viewer"
+              >
+                <Database size={16} />
+                View 3D Structure
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(`https://www.rcsb.org/structure/${selectedShape.proteinData!.entryId.toUpperCase()}`, '_blank');
+                }}
+                className="w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 bg-slate-800/80 text-slate-200 border border-slate-700/60 hover:bg-slate-800"
+                title="Open PDB entry page"
+              >
+                <ExternalLink size={16} />
+                PDB Entry Page
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3319,6 +3729,24 @@ export default function Canvas({
         />
       )}
 
+      {/* Protein Search Modal */}
+      {showProteinSearch && (
+        <ProteinSearch
+          onClose={() => setShowProteinSearch(false)}
+          onSelectProtein={(proteinData) => {
+            void (async () => {
+              try {
+                await insertProteinToCanvas(proteinData);
+              } catch (error) {
+                console.error('Failed to insert PDB protein:', error);
+              } finally {
+                setShowProteinSearch(false);
+              }
+            })();
+          }}
+        />
+      )}
+
       {/* Chemistry Widget Panel Modal */}
       {showChemistryWidgetPanel && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -3326,6 +3754,19 @@ export default function Canvas({
             <ChemistryWidgetPanel onClose={() => setShowChemistryWidgetPanel(false)} />
           </div>
         </div>
+      )}
+
+      {/* PDB 3D Viewer Modal */}
+      {showPDBViewer && pdbViewerData && (
+        <PDBViewerEmbedded
+          pdbId={pdbViewerData.pdbId}
+          title={pdbViewerData.title}
+          isOpen={showPDBViewer}
+          onClose={() => {
+            setShowPDBViewer(false);
+            setPdbViewerData(null);
+          }}
+        />
       )}
     </div>
   );

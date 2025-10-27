@@ -595,6 +595,94 @@ export const searchReagentMolecules = async (
   }
 };
 
+export const searchProteinMolecules = async (
+  query: string,
+  maxResults = 12
+): Promise<MoleculeData[]> => {
+  const rawTerm = query.trim() || 'protein[Title]';
+  const cappedMax = Math.min(Math.max(maxResults, 1), 30);
+
+  try {
+    const executeSearch = async (term: string) => {
+      const searchUrl = `${EUTILS_BASE_URL}/esearch.fcgi?db=pccompound&term=${encodeURIComponent(
+        term
+      )}&retmax=${cappedMax}&retmode=json`;
+
+      const response = await fetchWithRetry(searchUrl);
+      if (!response || !response.ok) {
+        console.warn(`?? Protein search failed for term: ${term}`);
+        return { ids: [] as string[], term };
+      }
+
+      let data: any = null;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.warn('?? Failed to parse protein search response as JSON', parseError);
+        return { ids: [] as string[], term };
+      }
+
+      const idList: string[] = Array.isArray(data?.esearchresult?.idlist)
+        ? data.esearchresult.idlist
+        : [];
+
+      return { ids: idList, term };
+    };
+
+    const prefer3DTerm = rawTerm.toLowerCase().includes('has_3d_structure')
+      ? rawTerm
+      : `(${rawTerm}) AND has_3d_structure[Filter]`;
+
+    let searchResult = await executeSearch(prefer3DTerm);
+
+    if (searchResult.ids.length === 0 && prefer3DTerm !== rawTerm) {
+      console.warn('?? No proteins found with 3D filter, retrying without filter');
+      searchResult = await executeSearch(rawTerm);
+    }
+
+    if (searchResult.ids.length === 0) {
+      console.warn(`?? No protein compounds found for term: ${searchResult.term}`);
+      return [];
+    }
+
+    const limitedIds = searchResult.ids.slice(0, cappedMax);
+    const molecules = await Promise.all(
+      limitedIds.map(async (id) => {
+        const cid = Number(id);
+        if (!Number.isFinite(cid)) {
+          return null;
+        }
+
+        const molecule = await getMoleculeByCID(cid);
+        if (!molecule) {
+          return null;
+        }
+
+        let displayName = molecule.displayName || molecule.name || '';
+        if (!displayName || /^CID\s+\d+$/i.test(displayName)) {
+          const synonym = await fetchPreferredSynonym(cid);
+          if (synonym) {
+            displayName = synonym;
+          }
+        }
+
+        return {
+          ...molecule,
+          role: 'protein',
+          sourceQuery: searchResult.term,
+          displayName: displayName || `CID ${cid}`,
+          source: 'pubchem',
+        } as MoleculeData;
+      })
+    );
+
+    return molecules.filter((molecule): molecule is MoleculeData => molecule !== null);
+  } catch (error) {
+    console.error(`? Error searching protein molecules with term "${rawTerm}":`, error);
+    return [];
+  }
+};
+
 // Autocomplete function using PubChem's multiple autocomplete APIs (like molview.org)
 export const getMoleculeAutocomplete = async (query: string, limit: number = 15): Promise<string[]> => {
   if (!query || query.trim().length < 1) {
