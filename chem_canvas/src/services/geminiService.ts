@@ -466,11 +466,12 @@ export const compileDocumentOutput = async (blocks: any[]): Promise<string> => {
 };
 
 export const getApiKey = (): string | null => {
-  return localStorage.getItem('gemini_api_key');
+  return localStorage.getItem('gemini_api_key') || localStorage.getItem('gemini-api-key');
 };
 
 export const setApiKey = (apiKey: string): void => {
   localStorage.setItem('gemini_api_key', apiKey);
+  localStorage.setItem('gemini-api-key', apiKey);
   cachedModelName = null; // Clear cached model when new key is set
   initializeGemini(apiKey);
 };
@@ -483,6 +484,7 @@ export const initializeWithProvidedKey = (): void => {
 
 export const removeApiKey = (): void => {
   localStorage.removeItem('gemini_api_key');
+  localStorage.removeItem('gemini-api-key');
   genAI = null;
   cachedModelName = null; // Clear cached model
 };

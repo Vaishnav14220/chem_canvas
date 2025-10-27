@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Copy, ThumbsUp, ThumbsDown, RotateCcw } from 'lucide-react';
+import * as geminiService from '../services/geminiService';
 
 interface Message {
   id: string;
@@ -16,7 +17,7 @@ const LobeChat: React.FC<LobeChatProps> = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: 'Hello! I\'m your AI assistant. How can I help you with your chemistry work today?',
+      content: 'Hello! I\'m ChemAssist, your AI chemistry assistant. Ask me anything about chemistry, molecules, reactions, or scientific concepts!',
       role: 'assistant',
       timestamp: new Date(),
     },
@@ -47,17 +48,48 @@ const LobeChat: React.FC<LobeChatProps> = () => {
     setInput('');
     setIsLoading(true);
 
-    // Simulate AI response (replace with actual API call)
-    setTimeout(() => {
+    try {
+      // Check if Gemini API is initialized
+      if (!geminiService.isGeminiInitialized()) {
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: '🔑 **API Key Required**\n\nTo use the chat assistant, please configure your Gemini API key first.\n\n1. Click the Settings button (⚙️) in the toolbar\n2. Enter your Google Gemini API key\n3. Save the configuration\n\nGet your free API key at: https://makersuite.google.com/app/apikey',
+          role: 'assistant',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Call Gemini API
+      const aiResponse = await geminiService.streamTextContent(
+        `You are ChemAssist, a helpful chemistry assistant. Answer this question: ${userMessage.content}`,
+        (chunk) => {
+          // For streaming, we could update the message in real-time
+          // But for simplicity, we'll wait for the full response
+        }
+      );
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `I understand you're asking about: "${userMessage.content}". This is a placeholder response. In a real implementation, this would connect to an AI service like OpenAI, Anthropic, or another LLM provider to generate contextual responses about chemistry, molecular structures, and scientific concepts.`,
+        content: aiResponse,
         role: 'assistant',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, aiMessage]);
+    } catch (error: any) {
+      console.error('Gemini API error:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `❌ **Error**: ${error.message || 'Failed to generate response'}\n\nPlease check:\n• Your API key is correct\n• You have internet connection\n• You haven't exceeded API quota`,
+        role: 'assistant',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
