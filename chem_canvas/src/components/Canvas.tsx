@@ -161,6 +161,7 @@ export default function Canvas({
 
   // Cache for projected atom positions on canvas for annotation placement
   const moleculeProjectionRef = useRef<Map<string, Array<{ atomIndex: number; x: number; y: number }>>>(new Map());
+  const moleculeButtonBoundsRef = useRef<Map<string, { x: number; y: number; width: number; height: number }>>(new Map());
 
   // Shape tracking for repositioning
   interface Shape {
@@ -244,6 +245,9 @@ export default function Canvas({
     points: [],
     isActive: false
   });
+
+  // Molecule properties display state
+  const [moleculePropertiesVisible, setMoleculePropertiesVisible] = useState<Set<string>>(new Set());
 
   const FILLABLE_SHAPES = new Set(['circle', 'square', 'triangle', 'hexagon']);
 
@@ -945,6 +949,28 @@ export default function Canvas({
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
+
+    // Check if clicked on a molecule properties button
+    if (moleculeButtonBoundsRef.current) {
+      for (const [shapeId, bounds] of moleculeButtonBoundsRef.current) {
+        if (x >= bounds.x && x <= bounds.x + bounds.width &&
+            y >= bounds.y && y <= bounds.y + bounds.height) {
+          e.preventDefault();
+          // Toggle properties visibility for this molecule
+          setMoleculePropertiesVisible(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(shapeId)) {
+              newSet.delete(shapeId);
+            } else {
+              newSet.add(shapeId);
+            }
+            return newSet;
+          });
+          setForceRedraw(prev => prev + 1); // Trigger redraw to update button appearance
+          return;
+        }
+      }
+    }
 
     if (annotationMode && annotationMode.shapeId === selectedShapeId && e.button === 0) {
       e.preventDefault();
@@ -2168,6 +2194,39 @@ export default function Canvas({
     img.src = pngUrl;
   };
 
+  // Render properties button below molecule
+  const buttonWidth = 80;
+  const buttonHeight = 24;
+  const buttonY = shape.endY + 8;
+  const buttonX = centerX - buttonWidth / 2;
+
+  // Button background
+  ctx.fillStyle = moleculePropertiesVisible.has(shape.id) ? '#3b82f6' : '#6b7280';
+  ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+  // Button border
+  ctx.strokeStyle = '#374151';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+  // Button text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Properties', centerX, buttonY + buttonHeight / 2);
+
+  // Store button bounds for click detection
+  if (!moleculeButtonBoundsRef.current) {
+    moleculeButtonBoundsRef.current = new Map();
+  }
+  moleculeButtonBoundsRef.current.set(shape.id, {
+    x: buttonX,
+    y: buttonY,
+    width: buttonWidth,
+    height: buttonHeight
+  });
+
   const stopDrawing = () => {
     // Handle lasso selection for eraser
     if (lassoSelection.isActive && lassoSelection.points.length > 3) {
@@ -2934,6 +2993,77 @@ export default function Canvas({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       />
+
+      {/* Molecule Properties Display */}
+      {shapes
+        .filter(shape => shape.type === 'molecule' && shape.moleculeData && moleculePropertiesVisible.has(shape.id))
+        .map(shape => {
+          const moleculeData = shape.moleculeData!;
+          const centerX = shape.startX + (shape.endX - shape.startX) / 2;
+          const propertiesY = shape.endY + 40; // Position below the properties button
+
+          return (
+            <div
+              key={`properties-${shape.id}`}
+              className="absolute z-30 rounded-lg border border-slate-600 bg-slate-800/95 backdrop-blur-sm p-3 shadow-lg max-w-xs"
+              style={{
+                left: `${centerX - 120}px`, // Center the properties box
+                top: `${propertiesY}px`,
+                transform: `scale(${1/zoom})`, // Compensate for canvas zoom
+                transformOrigin: 'top center'
+              }}
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-slate-200">Properties</h4>
+                  <button
+                    onClick={() => {
+                      setMoleculePropertiesVisible(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(shape.id);
+                        return newSet;
+                      });
+                      setForceRedraw(prev => prev + 1);
+                    }}
+                    className="text-slate-400 hover:text-slate-200 text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-1 text-xs">
+                  {moleculeData.molecularFormula && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Formula:</span>
+                      <span className="text-slate-200 font-mono">{moleculeData.molecularFormula}</span>
+                    </div>
+                  )}
+
+                  {moleculeData.molecularWeight && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">MW:</span>
+                      <span className="text-slate-200">{moleculeData.molecularWeight.toFixed(2)} g/mol</span>
+                    </div>
+                  )}
+
+                  {moleculeData.cid && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">CID:</span>
+                      <span className="text-slate-200">{moleculeData.cid}</span>
+                    </div>
+                  )}
+
+                  {moleculeData.name && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Name:</span>
+                      <span className="text-slate-200">{moleculeData.name}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
 
       {selectedShape?.type === 'molecule' && selectedShape.moleculeData && (
         <div className="absolute top-8 right-8 z-20 flex flex-col gap-3 max-w-xs">
