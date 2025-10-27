@@ -2606,7 +2606,7 @@ export default function Canvas({
       </div>
 
       {/* Canvas Controls */}
-      <div className="absolute top-4 left-4 z-10 max-w-sm">
+      <div className="absolute top-4 left-1/2 z-10 transform -translate-x-1/2">
         <InlineMoleculeSearch
           onSelectMolecule={(moleculeData) => {
             void (async () => {

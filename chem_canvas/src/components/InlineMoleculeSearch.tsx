@@ -29,8 +29,8 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
       return;
     }
 
-    // Only show suggestions for queries with at least 2 characters
-    if (value.trim().length < 2) {
+    // Only show suggestions for queries with at least 1 character
+    if (value.trim().length < 1) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -41,13 +41,13 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
     // Debounce the API call
     debounceTimeoutRef.current = setTimeout(async () => {
       try {
-        const autocompleteSuggestions = await getMoleculeAutocomplete(value.trim(), 6);
+        const autocompleteSuggestions = await getMoleculeAutocomplete(value.trim(), 12);
         setSuggestions(autocompleteSuggestions);
       } catch (error) {
         console.error('Error fetching autocomplete suggestions:', error);
         setSuggestions([]);
       }
-    }, 300);
+    }, 200);
   }, []);
 
   // Cleanup timeout on unmount
@@ -101,7 +101,7 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
           onChange={(e) => handleSearchTermChange(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder="Search molecules..."
-          className="w-64 px-4 py-2 pr-10 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm"
+          className="w-80 px-4 py-2 pr-10 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm"
         />
 
         {/* Loading/Search icon */}
@@ -115,7 +115,7 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
 
         {/* Autocomplete Suggestions Dropdown */}
         {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute top-full left-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto w-64">
+          <div className="absolute top-full left-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto w-80">
             {suggestions.map((suggestion, index) => (
               <button
                 key={index}

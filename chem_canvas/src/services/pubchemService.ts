@@ -596,8 +596,8 @@ export const searchReagentMolecules = async (
 };
 
 // Autocomplete function using PubChem's autocomplete API
-export const getMoleculeAutocomplete = async (query: string, limit: number = 8): Promise<string[]> => {
-  if (!query || query.trim().length < 2) {
+export const getMoleculeAutocomplete = async (query: string, limit: number = 15): Promise<string[]> => {
+  if (!query || query.trim().length < 1) {
     return [];
   }
 
