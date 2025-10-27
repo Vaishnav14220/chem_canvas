@@ -2671,184 +2671,181 @@ export default function Canvas({
         </div>
       </div>
 
-      {/* Canvas Controls */}
-      <div className="absolute top-16 left-1/2 z-10 transform -translate-x-1/2">
-        <InlineMoleculeSearch
-          onSelectMolecule={(moleculeData) => {
-            void (async () => {
-              try {
-                await insertMoleculeToCanvas(moleculeData);
-              } catch (error) {
-                console.error('Failed to insert molecule from search:', error);
-              }
-            })();
-          }}
-        />
-      </div>
+      {/* Canvas Controls - Clean Header Layout */}
+      <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-4 transform">
 
-      <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-3 transform">
+        {/* Search Controls Group */}
+        <div className="flex items-center gap-2 bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
+          <button
+            onClick={() => setShowMineralSearch(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-emerald-300 hover:bg-slate-700/50 rounded-lg transition-all"
+            title="Search Minerals"
+          >
+            <Gem size={14} className="text-emerald-400" />
+            <span>Minerals</span>
+          </button>
 
-        <button
-          onClick={() => setShowMineralSearch(true)}
-          className="inline-flex w-32 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-3 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/70 disabled:cursor-not-allowed disabled:opacity-60"
-          title="Search Minerals"
-        >
-          <Gem size={16} className="text-emerald-300" />
-          <span>Minerals</span>
-        </button>
+          <button
+            onClick={() => setShowReagentSearch(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-cyan-300 hover:bg-slate-700/50 rounded-lg transition-all"
+            title="Search Reagents"
+          >
+            <FlaskConical size={14} className="text-cyan-400" />
+            <span>Reagents</span>
+          </button>
 
-        <button
-          onClick={() => setShowReagentSearch(true)}
-          className="inline-flex w-32 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-3 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-cyan-400/70 disabled:cursor-not-allowed disabled:opacity-60"
-          title="Search Reagents"
-        >
-          <FlaskConical size={16} className="text-cyan-300" />
-          <span>Reagents</span>
-        </button>
-
-        <button
-          onClick={openArViewer}
-          disabled={!selectedMoleculeCid}
-          className="inline-flex w-32 transform items-center gap-2 rounded-2xl border border-slate-600/60 bg-slate-900/90 px-3 py-2 text-sm font-semibold text-slate-100 shadow-xl transition-transform transition-colors hover:-translate-y-0.5 hover:bg-slate-700/70 focus:outline-none focus:ring-2 focus:ring-purple-400/70 disabled:cursor-not-allowed disabled:opacity-60"
-          title={selectedMoleculeCid ? 'View selected molecule in AR' : 'Select a molecule on the canvas to enable AR viewer'}
-        >
-          <Scan size={16} className="text-purple-300" />
-          <span>AR Viewer</span>
-        </button>
-
+          <button
+            onClick={openArViewer}
+            disabled={!selectedMoleculeCid}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-purple-300 hover:bg-slate-700/50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            title={selectedMoleculeCid ? 'View selected molecule in AR' : 'Select a molecule on the canvas to enable AR viewer'}
+          >
+            <Scan size={14} className="text-purple-400" />
+            <span>AR</span>
+          </button>
         </div>
 
-        {/* Right-side Controls */}
-        <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
-          <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
-            <button
-              onClick={() => setShowGrid(!showGrid)}
-              className={`p-2 rounded-lg transition-all ${
-                showGrid 
-                  ? 'bg-blue-600 text-white' 
-                  : 'text-slate-400 hover:bg-slate-700/50'
-              }`}
-              title="Toggle Grid"
-            >
-              <Grid3x3 size={18} />
-            </button>
-          </div>
+        {/* Molecule Search */}
+        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-lg">
+          <InlineMoleculeSearch
+            onSelectMolecule={(moleculeData) => {
+              void (async () => {
+                try {
+                  await insertMoleculeToCanvas(moleculeData);
+                } catch (error) {
+                  console.error('Failed to insert molecule from search:', error);
+                }
+              })();
+            }}
+          />
+        </div>
 
-        {/* Canvas Background Toggle */}
-        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
+      </div>
+
+        {/* Right-side Controls - Consolidated */}
+        <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
+          <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3 shadow-lg space-y-3">
+
+          {/* Grid Toggle */}
+          <button
+            onClick={() => setShowGrid(!showGrid)}
+            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center ${
+              showGrid
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-400 hover:bg-slate-700/50'
+            }`}
+            title="Toggle Grid"
+          >
+            <Grid3x3 size={16} />
+          </button>
+
+          {/* Background Toggle */}
           <div className="flex flex-col gap-1">
             <button
               onClick={() => setCanvasBackground('dark')}
-              className={`flex items-center justify-center gap-2 rounded-lg p-2 text-xs font-medium transition-all ${
+              className={`p-2 rounded-lg transition-all ${
                 canvasBackground === 'dark'
-                  ? 'bg-primary text-primary-foreground'
+                  ? 'bg-slate-600 text-white'
                   : 'text-slate-400 hover:bg-slate-700/50'
               }`}
-              title="Dark Canvas (Blue/Black)"
+              title="Dark Canvas"
             >
-              <Moon className="h-4 w-4" />
-              <span>Dark</span>
+              <Moon size={14} />
             </button>
             <button
               onClick={() => setCanvasBackground('white')}
-              className={`flex items-center justify-center gap-2 rounded-lg p-2 text-xs font-medium transition-all ${
+              className={`p-2 rounded-lg transition-all ${
                 canvasBackground === 'white'
-                  ? 'bg-primary text-primary-foreground'
+                  ? 'bg-slate-600 text-white'
                   : 'text-slate-400 hover:bg-slate-700/50'
               }`}
-              title="White Canvas"
+              title="Light Canvas"
             >
-              <Sun className="h-4 w-4" />
-              <span>Light</span>
+              <Sun size={14} />
             </button>
           </div>
-        </div>
 
-        {/* Zoom Controls */}
-        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg flex flex-col gap-1">
-          <button
-            onClick={handleZoomIn}
-            className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
-            title="Zoom In"
-          >
-            <ZoomIn size={18} />
-          </button>
-          <button
-            onClick={handleResetZoom}
-            className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
-            title="Reset Zoom"
-          >
-            <RotateCcw size={16} />
-          </button>
-          <button
-            onClick={handleZoomOut}
-            className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
-            title="Zoom Out"
-          >
-            <ZoomOut size={18} />
-          </button>
-        </div>
+          {/* Zoom Controls */}
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={handleZoomIn}
+              className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
+              title="Zoom In"
+            >
+              <ZoomIn size={14} />
+            </button>
+            <button
+              onClick={handleResetZoom}
+              className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
+              title="Reset Zoom"
+            >
+              <RotateCcw size={12} />
+            </button>
+            <button
+              onClick={handleZoomOut}
+              className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
+              title="Zoom Out"
+            >
+              <ZoomOut size={14} />
+            </button>
+          </div>
 
-        {/* Clear Canvas Button */}
-        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
+          {/* Clear Canvas */}
           <button
             onClick={clearCanvas}
-            className="p-2 text-red-400 hover:bg-red-500/20 hover:text-red-300 rounded-lg transition-all"
+            className="w-full p-2 text-red-400 hover:bg-red-500/20 hover:text-red-300 rounded-lg transition-all"
             title="Clear Canvas"
           >
-            <Trash2 size={18} />
+            <Trash2 size={14} />
           </button>
+
         </div>
 
-            {/* Chemistry Conversion Button */}
-            <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
-              <button
-                onClick={convertToChemistry}
-                disabled={isConverting}
-                className={`p-3 rounded-lg transition-all flex items-center gap-2 ${
-                  isConverting
-                    ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
-                    : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                }`}
-                title={isConverting ? "Converting..." : "Convert to Chemistry Structure"}
-              >
-                {isConverting ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <Beaker size={18} />
-                )}
-                <span className="text-sm font-medium">
-                  {isConverting ? 'Converting...' : 'Convert'}
-                </span>
-              </button>
-            </div>
+        {/* Chemistry Controls */}
+        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg space-y-2">
 
-            {/* Correction Button */}
-            <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
-              <button
-                onClick={showCorrections ? clearCorrections : analyzeCanvas}
-                disabled={isAnalyzing}
-                className={`p-3 rounded-lg transition-all flex items-center gap-2 ${
-                  isAnalyzing
-                    ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
-                    : showCorrections
-                    ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-                    : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                }`}
-                title={isAnalyzing ? "Analyzing..." : showCorrections ? "Clear Corrections" : "Check My Work"}
-              >
-                {isAnalyzing ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : showCorrections ? (
-                  <CheckCircle size={18} />
-                ) : (
-                  <AlertCircle size={18} />
-                )}
-                <span className="text-sm font-medium">
-                  {isAnalyzing ? 'Analyzing...' : showCorrections ? 'Clear' : 'Check'}
-                </span>
-              </button>
-            </div>
+          {/* Chemistry Conversion Button */}
+          <button
+            onClick={convertToChemistry}
+            disabled={isConverting}
+            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center gap-2 ${
+              isConverting
+                ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90'
+            }`}
+            title={isConverting ? "Converting..." : "Convert to Chemistry Structure"}
+          >
+            {isConverting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Beaker size={14} />
+            )}
+          </button>
+
+          {/* Correction Button */}
+          <button
+            onClick={showCorrections ? clearCorrections : analyzeCanvas}
+            disabled={isAnalyzing}
+            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center gap-2 ${
+              isAnalyzing
+                ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
+                : showCorrections
+                ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90'
+            }`}
+            title={isAnalyzing ? "Analyzing..." : showCorrections ? "Clear Corrections" : "Check My Work"}
+          >
+            {isAnalyzing ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : showCorrections ? (
+              <CheckCircle size={14} />
+            ) : (
+              <AlertCircle size={14} />
+            )}
+          </button>
+
+        </div>
+
       </div>
 
       {/* Zoom Indicator */}
