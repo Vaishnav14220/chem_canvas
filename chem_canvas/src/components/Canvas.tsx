@@ -397,6 +397,44 @@ export default function Canvas({
     }
   }, [showGrid, canvasBackground, shapes, forceRedraw, areaEraseSelection, lassoSelection]);
 
+  // Delete selected shape
+  const deleteSelectedShape = () => {
+    if (!selectedShape) return;
+
+    const updatedShapes = canvasHistoryRef.current.filter(shape => shape.id !== selectedShape.id);
+    setShapes(updatedShapes);
+    canvasHistoryRef.current = updatedShapes;
+    setSelectedShapeId(null);
+    setSelectedShape(null);
+
+    // Clean up molecule projection cache if it was a molecule
+    if (selectedShape.type === 'molecule') {
+      moleculeProjectionRef.current.delete(selectedShape.id);
+    }
+
+    console.log('🗑️ Shape deleted:', selectedShape.id);
+  };
+
+  // Handle keyboard events for deletion
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle delete/backspace if a shape is selected and we're not typing in an input
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedShape) {
+        // Check if we're not in an input field or textarea
+        const target = event.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
+          event.preventDefault();
+          deleteSelectedShape();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedShape]);
+
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     // Adjust grid color based on canvas background
     ctx.strokeStyle = canvasBackground === 'dark' ? '#1e293b' : '#e5e7eb';
