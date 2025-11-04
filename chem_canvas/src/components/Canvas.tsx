@@ -1,18 +1,32 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, FlaskConical, Gem, Scan, ExternalLink, Database } from 'lucide-react';
-import { analyzeCanvasWithLLM, getStoredAPIKey, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
+import { analyzeCanvasWithLLM, getStoredAPIKey, analyzeTextContent, extractDrawnText, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
 import MineralSearch from './MineralSearch';
 import ReagentSearch from './ReagentSearch';
+import ReactionSearch from './ReactionSearch';
 import ProteinSearch from './ProteinSearch';
-import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID } from '../services/pubchemService';
+import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID, getMoleculeBySmiles, getMoleculeByName } from '../services/pubchemService';
 import { type PDBProteinData, fetchPDBStructure } from '../services/pdbService';
+import type { ReactionComponentDetails } from '../services/reactionResolver';
 import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
 import InlineMoleculeSearch from './InlineMoleculeSearch';
+import InlineBicyclicSearch from './InlineBicyclicSearch';
+import InlineReactionSearch from './InlineReactionSearch';
 import PDBViewerEmbed from './PDBViewerEmbed';
+import MolstarProteinViewer from './MolstarProteinViewer';
 import ChemistryWidgetPanel from './ChemistryWidgetPanel';
+import { Diff, Hunk, parseDiff } from 'react-diff-view';
+import { createTwoFilesPatch } from 'diff';
+import 'react-diff-view/style/index.css';
+import { PluginCommands } from 'molstar/lib/mol-plugin/commands';
+import { Color } from 'molstar/lib/mol-util/color';
+import type { Viewer } from 'molstar/build/viewer/molstar';
+import 'molstar/build/viewer/molstar.css';
+import { rdkitService } from '../services/rdkitService';
 
 const MIN_TOOLBAR_WIDTH = 280;
 const MAX_TOOLBAR_WIDTH = 480;
@@ -30,6 +44,18 @@ const ATOM_COLORS: Record<string, string> = {
   I: '#a78bfa'
 };
 
+type QuickActionButton = {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  title: string;
+  onClick: () => void;
+  badgeClass: string;
+  active?: boolean;
+  activeClass?: string;
+  disabled?: boolean;
+};
+
 const DEFAULT_ANNOTATION_LABELS = [
   'Active center',
   'Leaving group',
@@ -45,6 +71,14 @@ interface MoleculeAnnotation {
   atomIndex: number;
   label: string;
   color: string;
+}
+
+interface ReactionMetadata {
+  originalQuery?: string;
+  usedGemini?: boolean;
+  components?: ReactionComponentDetails[];
+  confidence?: number;
+  notes?: string;
 }
 
 interface CanvasProps {
@@ -93,6 +127,8 @@ export default function Canvas({
   const [canvasBackground, setCanvasBackground] = useState<'dark' | 'white'>('dark');
   const [showMineralSearch, setShowMineralSearch] = useState(false);
   const [showReagentSearch, setShowReagentSearch] = useState(false);
+  const [showReactionSearch, setShowReactionSearch] = useState(false);
+  const [showInlineReactionSearch, setShowInlineReactionSearch] = useState(false);
   const [showProteinSearch, setShowProteinSearch] = useState(false);
   const [forceRedraw, setForceRedraw] = useState(0); // New state for forcing redraw
   const [showChemistryWidgetPanel, setShowChemistryWidgetPanel] = useState(false);
@@ -108,6 +144,15 @@ export default function Canvas({
     color: string;
   } | null>(null);
   const [annotationHint, setAnnotationHint] = useState<string | null>(null);
+  const [isTextInputVisible, setIsTextInputVisible] = useState(false);
+  const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
+  const [currentTextInput, setCurrentTextInput] = useState('');
+  const [editingTextShapeId, setEditingTextShapeId] = useState<string | null>(null);
+  const [reactionSdfLoadingId, setReactionSdfLoadingId] = useState<string | null>(null);
+  const [reactionSdfError, setReactionSdfError] = useState<{ id: string; message: string } | null>(null);
+
+  // RDKit initialization state
+  const [isRdkitReady, setIsRdkitReady] = useState(false);
 
   const addCustomAnnotationLabel = () => {
     const trimmed = customAnnotationLabel.trim();
@@ -138,6 +183,15 @@ export default function Canvas({
   // Cache for rendered molecule images
   const moleculeImageCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
 
+  type ReactionImageCacheEntry = {
+    baseSvg?: string | null;
+    baseImage?: HTMLImageElement;
+    highlightSvg?: string | null;
+    highlightImage?: HTMLImageElement;
+  };
+
+  const reactionImageCacheRef = useRef<Map<string, ReactionImageCacheEntry>>(new Map());
+
   // Cache for parsed SDF structures
   const sdfCacheRef = useRef<Map<string, ParsedSDF>>(new Map());
 
@@ -147,7 +201,7 @@ export default function Canvas({
   // Shape tracking for repositioning
   interface Shape {
     id: string;
-    type: 'arrow' | 'circle' | 'square' | 'triangle' | 'hexagon' | 'plus' | 'minus' | 'molecule' | 'protein';
+  type: 'arrow' | 'circle' | 'square' | 'triangle' | 'hexagon' | 'plus' | 'minus' | 'molecule' | 'protein' | 'text' | 'reaction' | 'path';
     startX: number;
     startY: number;
     endX: number;
@@ -162,12 +216,27 @@ export default function Canvas({
     aspectRatio?: number;
     originalWidth?: number;
     originalHeight?: number;
+    // Text-specific properties
+    text?: string;
     // Molecule-specific properties
     moleculeData?: MoleculeData & {
       displayName?: string;
     };
     // PDB Protein-specific properties
     proteinData?: PDBProteinData;
+    // Reaction-specific properties
+    reactionData?: {
+      svg: string | null;
+      highlightSvg?: string | null;
+      previewSvg?: string | null;
+      name?: string;
+      description?: string;
+      smiles: string;
+      timestamp: number;
+      includeSDF?: boolean;
+      sdfShapeIds?: string[];
+      metadata?: ReactionMetadata;
+    };
     use3D?: boolean;
     rotation3D?: {
       x: number;
@@ -343,6 +412,12 @@ export default function Canvas({
   }, [selectedShapeId]);
 
   useEffect(() => {
+    if (reactionSdfError && reactionSdfError.id !== (selectedShapeId ?? '')) {
+      setReactionSdfError(null);
+    }
+  }, [reactionSdfError, selectedShapeId]);
+
+  useEffect(() => {
     if (!isResizingToolbar) {
       return;
     }
@@ -373,6 +448,99 @@ export default function Canvas({
     }
   }, [showChemistryToolbar]);
 
+  const handleTextSubmit = () => {
+    if (currentTextInput.trim()) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = textInputPosition.x;
+      const y = textInputPosition.y;
+
+      if (editingTextShapeId) {
+        // Update existing text shape
+        const updatedShapes = canvasHistoryRef.current.map(shape => {
+          if (shape.id === editingTextShapeId && shape.type === 'text') {
+            return {
+              ...shape,
+              text: currentTextInput
+            };
+          }
+          return shape;
+        });
+        setShapes(updatedShapes);
+        canvasHistoryRef.current = updatedShapes;
+      } else {
+        // Create new text shape
+        const textShape: Shape = {
+          id: `text-${Date.now()}`,
+          type: 'text',
+          startX: x,
+          startY: y,
+          endX: x,
+          endY: y,
+          color: chemistryColor,
+          strokeColor: chemistryStrokeColor,
+          size: 24, // Larger default size for text readability on canvas
+          fillEnabled: chemistryFillEnabled,
+          fillColor: chemistryFillColor,
+          text: currentTextInput,
+          rotation: 0
+        };
+
+        const newShapes = [...shapes, textShape];
+        setShapes(newShapes);
+        canvasHistoryRef.current = newShapes;
+      }
+    }
+    setIsTextInputVisible(false);
+    setCurrentTextInput('');
+    setEditingTextShapeId(null);
+  };
+
+  const handleTextCancel = () => {
+    setIsTextInputVisible(false);
+    setCurrentTextInput('');
+    setEditingTextShapeId(null);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const clickX = (e.clientX - rect.left) / zoom;
+    const clickY = (e.clientY - rect.top) / zoom;
+
+    // Find text shape at click position
+    const clickedShape = canvasHistoryRef.current.find(shape => {
+      if (shape.type !== 'text') return false;
+
+      // Simple bounding box check for text (this could be improved with actual text measurement)
+      const textWidth = (shape.text?.length || 0) * shape.size * 0.6; // Rough estimate
+      const textHeight = shape.size * 1.2;
+
+      return (
+        clickX >= shape.startX &&
+        clickX <= shape.startX + textWidth &&
+        clickY >= shape.startY &&
+        clickY <= shape.startY + textHeight
+      );
+    });
+
+    if (clickedShape && clickedShape.type === 'text') {
+      // Start editing this text shape
+      setCurrentTextInput(clickedShape.text || '');
+      // Position the overlay near the text shape (convert back to screen coordinates)
+      setTextInputPosition({
+        x: clickedShape.startX * zoom,
+        y: clickedShape.startY * zoom
+      });
+      setEditingTextShapeId(clickedShape.id);
+      setIsTextInputVisible(true);
+    }
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -380,30 +548,34 @@ export default function Canvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+    const redraw = async () => {
+      // Set canvas size
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
 
-    // Fill canvas with background color
-    ctx.fillStyle = canvasBackground === 'dark' ? '#0f172a' : '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Fill canvas with background color
+      ctx.fillStyle = canvasBackground === 'dark' ? '#0f172a' : '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw grid if enabled
-    if (showGrid) {
-      drawGrid(ctx, canvas.width, canvas.height);
-    }
+      // Draw grid if enabled
+      if (showGrid) {
+        drawGrid(ctx, canvas.width, canvas.height);
+      }
 
-    // Redraw all saved shapes
-    redrawAllShapes(ctx);
+      // Redraw all saved shapes
+      await redrawAllShapes(ctx);
 
-    if (areaEraseSelection?.isActive) {
-      drawAreaEraseOverlay(ctx, areaEraseSelection);
-    }
+      if (areaEraseSelection?.isActive) {
+        drawAreaEraseOverlay(ctx, areaEraseSelection);
+      }
 
-    // Draw lasso selection if active
-    if (lassoSelection.isActive && lassoSelection.points.length > 0) {
-      drawLassoOverlay(ctx, lassoSelection.points);
-    }
+      // Draw lasso selection if active
+      if (lassoSelection.isActive && lassoSelection.points.length > 0) {
+        drawLassoOverlay(ctx, lassoSelection.points);
+      }
+    };
+
+    redraw();
   }, [showGrid, canvasBackground, shapes, forceRedraw, areaEraseSelection, lassoSelection]);
 
   // Delete selected shape
@@ -442,6 +614,18 @@ export default function Canvas({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [selectedShape]);
+
+  // Initialize RDKit for enhanced molecule features
+  useEffect(() => {
+    if (!isRdkitReady) {
+      rdkitService.initialize().then(() => {
+        setIsRdkitReady(true);
+        console.log('RDKit initialized in Canvas component');
+      }).catch(error => {
+        console.warn('Failed to initialize RDKit in Canvas:', error);
+      });
+    }
+  }, [isRdkitReady]);
 
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     // Adjust grid color based on canvas background
@@ -848,6 +1032,290 @@ export default function Canvas({
     console.log('🧬 PDB Protein added to canvas:', newProtein);
   };
 
+  const buildFallbackReactionComponents = useCallback((smiles: string): ReactionComponentDetails[] => {
+    if (!smiles || typeof smiles !== 'string') {
+      return [];
+    }
+
+    const parts = smiles.split('>');
+    const reactantSection = parts[0] ?? '';
+    const agentSection = parts.length === 3 ? parts[1] ?? '' : '';
+    const productSection = parts.length === 3 ? parts[2] ?? '' : parts[1] ?? '';
+
+    const tokenize = (section: string, role: ReactionComponentDetails['role']): ReactionComponentDetails[] =>
+      section
+        .split('.')
+        .map(token => token.trim())
+        .filter(token => token.length > 0)
+        .map(token => ({ role, original: token, smiles: token }));
+
+    return [
+      ...tokenize(reactantSection, 'reactant'),
+      ...tokenize(agentSection, 'agent'),
+      ...tokenize(productSection, 'product')
+    ];
+  }, []);
+
+  interface ResolvedReactionComponent {
+    component: ReactionComponentDetails;
+    molecule: MoleculeData;
+    sdfData: string | null;
+  }
+
+  const resolveReactionComponentsForSdf = useCallback(async (reactionData: any): Promise<ResolvedReactionComponent[]> => {
+    const candidates: ReactionComponentDetails[] = Array.isArray(reactionData?.metadata?.components) && reactionData.metadata.components.length
+      ? reactionData.metadata.components
+      : buildFallbackReactionComponents(typeof reactionData?.smiles === 'string' ? reactionData.smiles : '');
+
+    if (!candidates.length) {
+      return [];
+    }
+
+    const resolved = await Promise.all(
+      candidates.map(async (component) => {
+        const identifiers = Array.from(
+          new Set(
+            [
+              component.canonicalSmiles,
+              component.smiles,
+              component.label,
+              component.original
+            ].filter((value): value is string => Boolean(value))
+          )
+        );
+
+        for (const candidate of identifiers) {
+          try {
+            const molecule = (await getMoleculeBySmiles(candidate)) ?? (await getMoleculeByName(candidate));
+            if (!molecule) {
+              continue;
+            }
+
+            const sdfPayload = molecule.sdf3DData ?? molecule.sdfData ?? null;
+            if (sdfPayload) {
+              component.smiles = molecule.smiles ?? component.smiles ?? candidate;
+              component.canonicalSmiles = molecule.smiles ?? component.canonicalSmiles ?? null;
+              return { component, molecule, sdfData: sdfPayload } as ResolvedReactionComponent;
+            }
+
+            component.smiles = molecule.smiles ?? component.smiles ?? candidate;
+            component.canonicalSmiles = molecule.smiles ?? component.canonicalSmiles ?? null;
+            return { component, molecule, sdfData: null } as ResolvedReactionComponent;
+          } catch (candidateError) {
+            console.warn('Failed to resolve reaction component:', candidate, candidateError);
+          }
+        }
+
+        return null;
+      })
+    );
+
+    return resolved.filter((entry): entry is ResolvedReactionComponent => Boolean(entry));
+  }, [buildFallbackReactionComponents]);
+
+  const createSdfShapesForReaction = useCallback((reactionShape: Shape & { type: 'reaction' }, resolvedComponents: ResolvedReactionComponent[]) => {
+    if (!resolvedComponents.length) {
+      return { shapes: [] as Shape[], shapeIds: [] as string[] };
+    }
+
+    const roleStyles: Record<ReactionComponentDetails['role'], { fill: string; stroke: string }> = {
+      reactant: { fill: '#3b82f6', stroke: '#3b82f6' },
+      product: { fill: '#10b981', stroke: '#10b981' },
+      agent: { fill: '#a855f7', stroke: '#a855f7' }
+    };
+
+    const startX = Math.min(reactionShape.startX, reactionShape.endX);
+    const endX = Math.max(reactionShape.startX, reactionShape.endX);
+    const startY = Math.min(reactionShape.startY, reactionShape.endY);
+    const endY = Math.max(reactionShape.startY, reactionShape.endY);
+    const centerX = (startX + endX) / 2;
+    const reactionHeight = endY - startY;
+    const reactionWidth = endX - startX;
+
+    const total = resolvedComponents.length;
+    const moleculesPerRow = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(total))));
+    const rows = Math.ceil(total / moleculesPerRow);
+    const baseSize = Math.min(120, Math.max(72, reactionWidth / (moleculesPerRow + 1)));
+    const horizontalSpacing = baseSize + 40;
+    const verticalSpacing = baseSize + 40;
+    const initialOffsetY = reactionHeight >= 0 ? endY + 60 : startY + 60;
+
+    const shapes: Shape[] = [];
+    const shapeIds: string[] = [];
+
+    resolvedComponents.forEach((entry, index) => {
+      if (!entry.sdfData) {
+        return;
+      }
+
+      const row = Math.floor(index / moleculesPerRow);
+      const col = index % moleculesPerRow;
+      const offsetX = (col - (moleculesPerRow - 1) / 2) * horizontalSpacing;
+      const centerY = initialOffsetY + row * verticalSpacing;
+      const halfSize = baseSize / 2;
+
+      const moleculeId = `reaction-molecule-${reactionShape.id}-${Date.now()}-${index}`;
+      const palette = roleStyles[entry.component.role] ?? roleStyles.reactant;
+      const displayLabel = entry.component.label || entry.component.original || `${entry.component.role} ${index + 1}`;
+
+      const moleculeShape: Shape = {
+        id: moleculeId,
+        type: 'molecule',
+        startX: centerX + offsetX - halfSize,
+        startY: centerY - halfSize,
+        endX: centerX + offsetX + halfSize,
+        endY: centerY + halfSize,
+        color: palette.fill,
+        strokeColor: palette.stroke,
+        size: baseSize,
+        rotation: 0,
+        maintainAspect: true,
+        aspectRatio: 1,
+        originalWidth: baseSize,
+        originalHeight: baseSize,
+        use3D: true,
+        rotation3D: { ...DEFAULT_MOLECULE_3D_ROTATION },
+        moleculeData: {
+          ...entry.molecule,
+          sdfData: entry.molecule.sdf3DData ?? entry.molecule.sdfData ?? entry.sdfData,
+          sdf3DData: entry.molecule.sdf3DData ?? entry.molecule.sdfData ?? entry.sdfData,
+          displayName: displayLabel,
+          smiles: entry.component.canonicalSmiles ?? entry.component.smiles ?? entry.molecule.smiles ?? ''
+        }
+      };
+
+      shapes.push(moleculeShape);
+      shapeIds.push(moleculeId);
+    });
+
+    return { shapes, shapeIds };
+  }, []);
+
+  const insertReactionToCanvas = async (reactionData: any) => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // For reactions, use a wider aspect ratio to accommodate reaction schemes
+    const aspectRatio = 2.5; // Wider aspect ratio for reactions
+    const baseHeight = 150;
+    const baseWidth = baseHeight * aspectRatio;
+    const startX = centerX - baseWidth / 2;
+    const startY = centerY - baseHeight / 2;
+    const endX = centerX + baseWidth / 2;
+    const endY = centerY + baseHeight / 2;
+
+    const reactionId = `reaction-${Date.now()}`;
+    const baseReactionData = {
+      ...reactionData,
+      includeSDF: Boolean(reactionData.includeSDF),
+      sdfShapeIds: Array.isArray(reactionData.sdfShapeIds) ? [...reactionData.sdfShapeIds] : []
+    };
+
+    let sdfMoleculeShapes: Shape[] = [];
+
+    const newReaction: Shape = {
+      id: reactionId,
+      type: 'reaction',
+      startX,
+      startY,
+      endX,
+      endY,
+      color: '#ea580c',
+      strokeColor: '#ea580c',
+      size: Math.max(baseWidth, baseHeight),
+      rotation: 0,
+      maintainAspect: true,
+      aspectRatio,
+      originalWidth: baseWidth,
+      originalHeight: baseHeight,
+      use3D: false,
+      reactionData: baseReactionData,
+    };
+
+    if (baseReactionData.includeSDF) {
+      try {
+        const resolvedComponents = await resolveReactionComponentsForSdf(baseReactionData);
+        const { shapes: generatedShapes, shapeIds } = createSdfShapesForReaction(newReaction as Shape & { type: 'reaction' }, resolvedComponents);
+        sdfMoleculeShapes = generatedShapes;
+        baseReactionData.sdfShapeIds = shapeIds;
+      } catch (error) {
+        console.warn('Failed to fetch SDF models for reaction:', error);
+      }
+    }
+
+    const finalizedReaction: Shape = {
+      ...newReaction,
+      reactionData: {
+        ...baseReactionData,
+      }
+    };
+
+    const updatedShapes = [...canvasHistoryRef.current.filter(shape => shape.id !== reactionId), finalizedReaction, ...sdfMoleculeShapes];
+    setShapes(updatedShapes);
+    canvasHistoryRef.current = updatedShapes;
+    setSelectedShapeId(finalizedReaction.id);
+    setChemistryTool('move');
+
+    console.log('⚗️ Reaction added to canvas:', finalizedReaction);
+  };
+
+  const handleAddSdfModelsToReaction = useCallback(async (reactionShapeId: string) => {
+    setReactionSdfError(null);
+    setReactionSdfLoadingId(reactionShapeId);
+
+    try {
+      const reactionShape = canvasHistoryRef.current.find(shape => shape.id === reactionShapeId && shape.type === 'reaction');
+      if (!reactionShape || !reactionShape.reactionData) {
+        throw new Error('Could not locate the selected reaction on the canvas.');
+      }
+
+      const existingSdfIds = Array.isArray(reactionShape.reactionData.sdfShapeIds)
+        ? reactionShape.reactionData.sdfShapeIds
+        : [];
+
+      let workingShapes = canvasHistoryRef.current.filter(shape => !existingSdfIds.includes(shape.id));
+
+      const resolvedComponents = await resolveReactionComponentsForSdf(reactionShape.reactionData);
+      if (!resolvedComponents.length) {
+        throw new Error('Unable to resolve molecular components for this reaction.');
+      }
+
+      const { shapes: newSdfShapes, shapeIds } = createSdfShapesForReaction(reactionShape as Shape & { type: 'reaction' }, resolvedComponents);
+      if (!newSdfShapes.length) {
+        throw new Error('No 3D models were returned for this reaction.');
+      }
+
+      const updatedReaction: Shape = {
+        ...reactionShape,
+        reactionData: {
+          ...reactionShape.reactionData,
+          includeSDF: true,
+          sdfShapeIds: shapeIds
+        }
+      };
+
+      workingShapes = workingShapes.map(shape => (shape.id === reactionShapeId ? updatedReaction : shape));
+
+      const updatedShapes = [...workingShapes, ...newSdfShapes];
+      canvasHistoryRef.current = updatedShapes;
+      setShapes(updatedShapes);
+      setSelectedShapeId(reactionShapeId);
+    } catch (error) {
+      console.error('Failed to add SDF models for reaction:', error);
+      setReactionSdfError({
+        id: reactionShapeId,
+        message: error instanceof Error ? error.message : 'Failed to add 3D models for this reaction.'
+      });
+    } finally {
+      setReactionSdfLoadingId(null);
+    }
+  }, [createSdfShapesForReaction, resolveReactionComponentsForSdf]);
+
   const drawAreaEraseOverlay = (
     ctx: CanvasRenderingContext2D,
     selection: { startX: number; startY: number; currentX: number; currentY: number }
@@ -1033,6 +1501,17 @@ export default function Canvas({
       return;
     }
 
+    // Handle textbox tool - show text input overlay
+    if (activeTool === 'textbox') {
+      setTextInputPosition({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+      setIsTextInputVisible(true);
+      setIsDrawing(false);
+      return;
+    }
+
     // Handle Rotate tool - supports 3D orbit (left drag) and 2D rotation (right drag)
     if (activeTool === 'rotate') {
       for (let i = canvasHistoryRef.current.length - 1; i >= 0; i--) {
@@ -1112,6 +1591,15 @@ export default function Canvas({
       }
 
       setSelectedShapeId(null);
+      return;
+    }
+
+    // Special handling for textbox tool
+    if (activeTool === 'textbox') {
+      setTextInputPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      setCurrentTextInput('');
+      setIsTextInputVisible(true);
+      setIsDrawing(false);
       return;
     }
 
@@ -1656,7 +2144,7 @@ export default function Canvas({
     ctx.stroke();
   };
 
-  const drawMolecule = (ctx: CanvasRenderingContext2D, shape: Shape) => {
+  const drawMolecule = async (ctx: CanvasRenderingContext2D, shape: Shape) => {
     const data = shape.moleculeData;
     if (!data) {
       console.warn('Molecule data not available for shape:', shape);
@@ -2090,6 +2578,46 @@ export default function Canvas({
     const cid = data.cid;
     const cache = moleculeImageCacheRef.current;
 
+    // Try RDKit SVG generation if no PubChem SVG and we have SMILES
+    if (!data.svgData && data.smiles && isRdkitReady) {
+      try {
+        const rdkitMolecule = await rdkitService.parseMolecule(data.smiles);
+        const rdkitSvg = rdkitMolecule ? await rdkitService.getSVG(rdkitMolecule.mol, width, height) : null;
+        if (rdkitSvg) {
+          const blob = new Blob([rdkitSvg], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(blob);
+
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            cache.set(cid, img);
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(rotation);
+            ctx.drawImage(img, -width / 2, -height / 2, width, height);
+            ctx.restore();
+            setForceRedraw(prev => prev + 1);
+          };
+          img.onerror = () => {
+            console.warn('Failed to load RDKit SVG for molecule:', data.displayName ?? data.name ?? 'Unknown');
+            // Fallback: render molecule name as text
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(rotation);
+            ctx.fillStyle = '#666';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(data.displayName ?? data.name ?? 'Molecule', 0, 0);
+            ctx.restore();
+          };
+          img.src = url;
+          return;
+        }
+      } catch (rdkitError) {
+        console.warn('RDKit SVG generation failed:', rdkitError);
+      }
+    }
+
     if (cache.has(cid)) {
       const img = cache.get(cid);
       if (img && img.complete) {
@@ -2225,6 +2753,192 @@ export default function Canvas({
     ctx.globalAlpha = 1;
     ctx.fillText(data.title || 'Protein Structure', centerX, centerY);
     ctx.restore();
+  };
+
+  const drawReaction = (ctx: CanvasRenderingContext2D, shape: Shape) => {
+    const data = shape.reactionData;
+    if (!data) {
+      console.warn('Reaction data not available for shape:', shape);
+      return;
+    }
+
+    const width = Math.abs(shape.endX - shape.startX);
+    const height = Math.abs(shape.endY - shape.startY);
+    const centerX = shape.startX + width / 2;
+    const centerY = shape.startY + height / 2;
+
+    const labelText =
+      (typeof data.name === 'string' && data.name.trim()) ||
+      (data.metadata?.originalQuery && data.metadata.originalQuery.trim()) ||
+      'Chemical Reaction';
+
+    const renderLabel = () => {
+      ctx.save();
+      ctx.fillStyle = '#ea580c';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(labelText, centerX, shape.startY - 12);
+      ctx.restore();
+    };
+
+    let baseSvg = data.svg;
+    let overlaySvg = data.highlightSvg ?? null;
+
+    if (!baseSvg && overlaySvg) {
+      baseSvg = overlaySvg;
+      overlaySvg = null;
+    }
+
+    const cacheKey = `${shape.id}|${data.timestamp}|${baseSvg ? baseSvg.length : 0}|${overlaySvg ? overlaySvg.length : 0}`;
+    reactionImageCacheRef.current.forEach((_, existingKey) => {
+      if (existingKey !== cacheKey && existingKey.startsWith(`${shape.id}|`)) {
+        reactionImageCacheRef.current.delete(existingKey);
+      }
+    });
+    let cacheEntry = reactionImageCacheRef.current.get(cacheKey);
+    if (!cacheEntry) {
+      cacheEntry = {};
+      reactionImageCacheRef.current.set(cacheKey, cacheEntry);
+    }
+
+    const drawFromImages = (baseImage: HTMLImageElement, highlightImage?: HTMLImageElement | null) => {
+      ctx.save();
+
+      const maxWidth = width * 0.92;
+      const gap = highlightImage ? 20 : 0;
+
+      const baseScaleByWidth = Math.min(1, maxWidth / baseImage.width);
+      let baseDrawWidth = baseImage.width * baseScaleByWidth;
+      let baseDrawHeight = baseImage.height * baseScaleByWidth;
+
+      let highlightDrawWidth = 0;
+      let highlightDrawHeight = 0;
+
+      if (!highlightImage) {
+        const maxBaseHeight = height * 0.9;
+        if (baseDrawHeight > maxBaseHeight) {
+          const scaleFactor = maxBaseHeight / baseDrawHeight;
+          baseDrawWidth *= scaleFactor;
+          baseDrawHeight *= scaleFactor;
+        }
+
+        const baseStartY = centerY - baseDrawHeight / 2;
+        const baseX = centerX - baseDrawWidth / 2;
+        ctx.drawImage(baseImage, baseX, baseStartY, baseDrawWidth, baseDrawHeight);
+        ctx.restore();
+        renderLabel();
+        return;
+      }
+
+      const highlightScaleByWidth = Math.min(1, maxWidth / highlightImage.width);
+      highlightDrawWidth = highlightImage.width * highlightScaleByWidth;
+      highlightDrawHeight = highlightImage.height * highlightScaleByWidth;
+
+      const maxTotalHeight = height * 0.92;
+      const currentTotalHeight = baseDrawHeight + gap + highlightDrawHeight;
+
+      if (currentTotalHeight > maxTotalHeight) {
+        const scaleFactor = maxTotalHeight / currentTotalHeight;
+        baseDrawWidth *= scaleFactor;
+        baseDrawHeight *= scaleFactor;
+        highlightDrawWidth *= scaleFactor;
+        highlightDrawHeight *= scaleFactor;
+      }
+
+      const totalDrawHeight = baseDrawHeight + gap + highlightDrawHeight;
+      const startY = centerY - totalDrawHeight / 2;
+
+      const baseX = centerX - baseDrawWidth / 2;
+      ctx.drawImage(baseImage, baseX, startY, baseDrawWidth, baseDrawHeight);
+
+      const highlightX = centerX - highlightDrawWidth / 2;
+      const highlightY = startY + baseDrawHeight + gap;
+      ctx.drawImage(highlightImage, highlightX, highlightY, highlightDrawWidth, highlightDrawHeight);
+
+      ctx.restore();
+      renderLabel();
+    };
+
+    const baseImage = cacheEntry.baseImage;
+    const baseReady = baseImage?.complete;
+    const highlightImage = overlaySvg ? cacheEntry.highlightImage : null;
+    const highlightReady = overlaySvg ? Boolean(highlightImage && highlightImage.complete) : false;
+
+    if (baseReady) {
+      drawFromImages(baseImage!, overlaySvg ? (highlightReady ? highlightImage : null) : null);
+      if (overlaySvg && !highlightReady) {
+        // Highlight image still loading; redraw once it completes
+        // No-op here, the onload handler triggers a redraw
+      }
+      return;
+    }
+
+    const createImageFromSvg = (svgContent: string, onLoad: (img: HTMLImageElement) => void, onError: () => void) => {
+      const url = URL.createObjectURL(new Blob([svgContent], { type: 'image/svg+xml' }));
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        onLoad(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        onError();
+      };
+      img.src = url;
+      return img;
+    };
+
+    if (baseSvg) {
+      if (!cacheEntry.baseImage || cacheEntry.baseSvg !== baseSvg) {
+        cacheEntry.baseSvg = baseSvg;
+        cacheEntry.baseImage = createImageFromSvg(
+          baseSvg,
+          img => {
+            cacheEntry.baseImage = img;
+            setForceRedraw(prev => prev + 1);
+          },
+          () => {
+            cacheEntry.baseImage = undefined;
+            cacheEntry.baseSvg = undefined;
+            console.warn('Failed to render reaction SVG image');
+          }
+        );
+      }
+    }
+
+    if (overlaySvg) {
+      if (!cacheEntry.highlightImage || cacheEntry.highlightSvg !== overlaySvg) {
+        cacheEntry.highlightSvg = overlaySvg;
+        cacheEntry.highlightImage = createImageFromSvg(
+          overlaySvg,
+          img => {
+            cacheEntry.highlightImage = img;
+            setForceRedraw(prev => prev + 1);
+          },
+          () => {
+            cacheEntry.highlightImage = undefined;
+            cacheEntry.highlightSvg = undefined;
+            console.warn('Failed to render reaction highlight SVG image');
+          }
+        );
+      }
+    } else {
+      cacheEntry.highlightImage = undefined;
+      cacheEntry.highlightSvg = undefined;
+    }
+
+    ctx.save();
+    ctx.fillStyle = '#ea580c';
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(shape.startX, shape.startY, width, height);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = 1;
+    ctx.fillText(labelText, centerX, centerY);
+    ctx.restore();
+    renderLabel();
   };
 
   // PDB parsing and rendering utilities
@@ -2582,8 +3296,186 @@ export default function Canvas({
     setIsDrawing(false);
   };
 
+  const drawText = (ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string, size: number) => {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.font = `${size}px "Inter", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    // Handle multi-line text
+    const lines = text.split('\n');
+    const lineHeight = size * 1.2; // Line height with some spacing
+
+    lines.forEach((line, index) => {
+      const lineY = y + (index * lineHeight);
+      ctx.fillText(line, x, lineY);
+    });
+
+    ctx.restore();
+  };
+
+  const drawTextWithHighlights = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    text: string,
+    baseColor: string,
+    size: number,
+    corrections: Correction[]
+  ) => {
+    ctx.save();
+    ctx.font = `${size}px "Inter", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    // Handle multi-line text
+    const lines = text.split('\n');
+    const lineHeight = size * 1.2;
+
+    lines.forEach((line, lineIndex) => {
+      const lineY = y + (lineIndex * lineHeight);
+      let currentX = x;
+
+      // If no corrections for this text, render normally
+      if (!corrections || corrections.length === 0) {
+        ctx.fillStyle = baseColor;
+        ctx.fillText(line, currentX, lineY);
+        return;
+      }
+
+      // Sort corrections by startChar for this line
+      const lineStartChar = lines.slice(0, lineIndex).reduce((sum, l) => sum + l.length + 1, 0); // +1 for newline
+      const lineEndChar = lineStartChar + line.length;
+
+      const lineCorrections = corrections.filter(correction =>
+        correction.startChar !== undefined &&
+        correction.endChar !== undefined &&
+        correction.startChar < lineEndChar &&
+        correction.endChar > lineStartChar
+      );
+
+      if (lineCorrections.length === 0) {
+        // No corrections for this line, render normally
+        ctx.fillStyle = baseColor;
+        ctx.fillText(line, currentX, lineY);
+        return;
+      }
+
+      // Render line with highlights
+      let charIndex = 0;
+      while (charIndex < line.length) {
+        const char = line[charIndex];
+        const globalCharIndex = lineStartChar + charIndex;
+
+        // Find correction that applies to this character
+        const applicableCorrection = lineCorrections.find(correction =>
+          globalCharIndex >= correction.startChar! &&
+          globalCharIndex < correction.endChar!
+        );
+
+        if (applicableCorrection && applicableCorrection.highlightColor) {
+          // Render with highlight background first
+          const charWidth = ctx.measureText(char).width;
+          ctx.fillStyle = applicableCorrection.highlightColor + '40'; // Add transparency
+          ctx.fillRect(currentX, lineY, charWidth, size);
+
+          // Render character with highlight color
+          ctx.fillStyle = applicableCorrection.highlightColor;
+          ctx.fillText(char, currentX, lineY);
+          currentX += charWidth;
+        } else {
+          // Render normally
+          ctx.fillStyle = baseColor;
+          ctx.fillText(char, currentX, lineY);
+          currentX += ctx.measureText(char).width;
+        }
+
+        charIndex++;
+      }
+    });
+
+    ctx.restore();
+  };
+
+  const textCorrectionOverlays = useMemo(() => {
+    if (!showCorrections) {
+      return [] as Array<{
+        id: string;
+        left: number;
+        top: number;
+        originalText: string;
+        corrections: Correction[];
+        isDrawn: boolean;
+      }>;
+    }
+
+    const overlays: Array<{
+      id: string;
+      left: number;
+      top: number;
+      originalText: string;
+      corrections: Correction[];
+      isDrawn: boolean;
+    }> = [];
+
+    const groupedByTextShape = new Map<string, Correction[]>();
+    corrections.forEach((correction) => {
+      if (!correction.textShapeId) return;
+      const existing = groupedByTextShape.get(correction.textShapeId) || [];
+      existing.push(correction);
+      groupedByTextShape.set(correction.textShapeId, existing);
+    });
+
+    const textShapes = shapes.filter((shape) => shape.type === 'text');
+    const textShapeMap = new Map(textShapes.map((shape) => [shape.id, shape]));
+
+    groupedByTextShape.forEach((groupCorrections, textShapeId) => {
+      if (groupCorrections.length === 0) return;
+
+      const baseCorrection = groupCorrections[0];
+
+      if (baseCorrection.isDrawnText) {
+        const correctionX = baseCorrection.x ?? 0;
+        const correctionY = baseCorrection.y ?? 0;
+        const originalText = baseCorrection.originalText || '';
+        if (!originalText.trim()) {
+          return;
+        }
+
+        overlays.push({
+          id: textShapeId,
+          left: correctionX * zoom,
+          top: (correctionY + 60) * zoom,
+          originalText,
+          corrections: groupCorrections,
+          isDrawn: true
+        });
+      } else {
+        const shape = textShapeMap.get(textShapeId);
+        if (!shape) return;
+        const originalText = shape.text || '';
+        if (!originalText.trim()) {
+          return;
+        }
+
+        const textHeight = (shape.size || 16) * 1.2;
+        overlays.push({
+          id: textShapeId,
+          left: shape.startX * zoom,
+          top: (shape.startY + textHeight + 16) * zoom,
+          originalText,
+          corrections: groupCorrections,
+          isDrawn: false
+        });
+      }
+    });
+
+    return overlays;
+  }, [showCorrections, corrections, shapes, zoom]);
+
   // Function to redraw all saved shapes
-  const redrawAllShapes = (ctx: CanvasRenderingContext2D) => {
+  const redrawAllShapes = async (ctx: CanvasRenderingContext2D) => {
     for (const shape of canvasHistoryRef.current) {
       const dx = shape.endX - shape.startX;
       const dy = shape.endY - shape.startY;
@@ -2622,9 +3514,19 @@ export default function Canvas({
       } else if (shape.type === 'minus') {
         drawMinus(ctx, centerX, centerY, distance / 2, shape.size, strokeColor);
       } else if (shape.type === 'molecule') {
-        drawMolecule(ctx, shape);
+        await drawMolecule(ctx, shape);
       } else if (shape.type === 'protein') {
         drawProtein(ctx, shape);
+      } else if (shape.type === 'reaction') {
+        drawReaction(ctx, shape);
+      } else if (shape.type === 'text') {
+        // Check if there are corrections for this text shape
+        const textCorrections = corrections.filter(c => c.textShapeId === shape.id);
+        if (textCorrections.length > 0) {
+          drawTextWithHighlights(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, textCorrections);
+        } else {
+          drawText(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size);
+        }
       }
 
       // Restore context if rotation was applied
@@ -2838,16 +3740,112 @@ export default function Canvas({
     }
 
     setIsAnalyzing(true);
-    
+
     try {
       // Convert canvas to base64 image
       const canvasData = canvas.toDataURL('image/png', 0.8);
-      
-      // Analyze with LLM
+
+      // Debug: Check if canvas has content
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const hasContent = imageData.data.some(pixel => pixel !== 0);
+        console.log('Canvas analysis debug:', {
+          canvasSize: { width: canvas.width, height: canvas.height },
+          hasVisibleContent: hasContent,
+          shapesCount: canvasHistoryRef.current.length,
+          textShapesCount: canvasHistoryRef.current.filter(s => s.type === 'text').length,
+          pathShapesCount: canvasHistoryRef.current.filter(s => s.type === 'path').length,
+          zoom: zoom,
+          background: canvasBackground
+        });
+
+        // If no content detected, try to force a redraw to ensure content is visible
+        if (!hasContent && canvasHistoryRef.current.length > 0) {
+          console.log('Forcing redraw to ensure content is visible...');
+          setForceRedraw(prev => prev + 1);
+          // Wait a bit for redraw
+          await new Promise(resolve => setTimeout(resolve, 100));
+          const newCanvasData = canvas.toDataURL('image/png', 0.8);
+          const newImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const newHasContent = newImageData.data.some(pixel => pixel !== 0);
+          console.log('After redraw:', { hasContent: newHasContent });
+          if (newHasContent) {
+            return analyzeCanvas(); // Retry analysis
+          }
+        }
+      }
+
+      // Analyze with LLM for general canvas content
       const result = await analyzeCanvasWithLLM(canvasData, apiKey, 'chemistry');
-      
+      console.log('Canvas analysis result:', result);
+
+      // Additionally analyze text shapes specifically for inline corrections
+      const textShapes = canvasHistoryRef.current.filter(shape => shape.type === 'text');
+      const textCorrections: Correction[] = [];
+
+      for (const textShape of textShapes) {
+        if (textShape.text && textShape.text.trim()) {
+          console.log('Analyzing text shape:', textShape.text);
+          const shapeCorrections = await analyzeTextContent(
+            textShape.text,
+            textShape.id,
+            apiKey,
+            'chemistry'
+          );
+          textCorrections.push(...shapeCorrections);
+        }
+      }
+
+      // Extract and analyze drawn text from path shapes
+      const pathShapes = canvasHistoryRef.current.filter(shape => shape.type === 'path');
+      if (pathShapes.length > 0) {
+        console.log('Found path shapes, attempting to extract drawn text...');
+        try {
+          const drawnTextResult = await extractDrawnText(canvasData, apiKey);
+          if (drawnTextResult.extractedTexts && drawnTextResult.extractedTexts.length > 0) {
+            console.log('Extracted drawn text:', drawnTextResult.extractedTexts);
+
+            // Create virtual text shapes for drawn text analysis
+            for (let i = 0; i < drawnTextResult.extractedTexts.length; i++) {
+              const drawnText = drawnTextResult.extractedTexts[i];
+              if (drawnText.text && drawnText.text.trim()) {
+                // Create a virtual text shape ID for drawn text
+                const virtualTextShapeId = `drawn-text-${i}-${Date.now()}`;
+
+                // Analyze the drawn text
+                const drawnTextCorrections = await analyzeTextContent(
+                  drawnText.text,
+                  virtualTextShapeId,
+                  apiKey,
+                  'chemistry'
+                );
+
+                // Add position information if available
+                const correctionsWithPosition = drawnTextCorrections.map(correction => ({
+                  ...correction,
+                  x: drawnText.x || 100,
+                  y: drawnText.y || 100,
+                  textShapeId: virtualTextShapeId,
+                  originalText: drawnText.text,
+                  // Mark as drawn text for different display
+                  isDrawnText: true
+                }));
+
+                textCorrections.push(...correctionsWithPosition);
+              }
+            }
+          }
+        } catch (drawnTextError) {
+          console.warn('Failed to extract drawn text:', drawnTextError);
+        }
+      }
+
+      // Combine general corrections with text-specific corrections
+      const allCorrections = [...result.corrections, ...textCorrections];
+
       setAnalysisResult(result);
-      setCorrections(result.corrections);
+      setCorrections(allCorrections);
       setShowCorrections(true);
     } catch (error) {
       console.error('Analysis failed:', error);
@@ -2855,9 +3853,7 @@ export default function Canvas({
     } finally {
       setIsAnalyzing(false);
     }
-  };
-
-  const clearCorrections = () => {
+  };  const clearCorrections = () => {
     setCorrections([]);
     setShowCorrections(false);
     setAnalysisResult(null);
@@ -2865,7 +3861,9 @@ export default function Canvas({
 
   const convertToChemistry = async () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
 
     const apiKey = getStoredAPIKey();
     if (!apiKey) {
@@ -2904,6 +3902,279 @@ export default function Canvas({
     };
     setIsResizingToolbar(true);
   };
+
+  // Text Correction Diff Component - GitHub-style inline highlighting
+  const TextCorrectionDiff = ({
+    originalText,
+    corrections,
+    isDrawn,
+  }: {
+    originalText: string;
+    corrections: Correction[];
+    isDrawn?: boolean;
+  }) => {
+    const sortedCorrections = useMemo(
+      () => [...corrections].sort((a, b) => (a.startChar ?? 0) - (b.startChar ?? 0)),
+      [corrections]
+    );
+
+    if (sortedCorrections.length === 0) {
+      return (
+        <div className="pointer-events-auto overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900/95 shadow-2xl backdrop-blur-md">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-700/60 bg-slate-800/70 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="h-3 w-3 rounded-full bg-red-500" />
+                <span className="h-3 w-3 rounded-full bg-yellow-500" />
+                <span className="h-3 w-3 rounded-full bg-green-500" />
+              </div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+                {isDrawn ? 'Drawn Text Correction' : 'Text Correction'}
+              </div>
+            </div>
+            <span className="text-[11px] font-mono uppercase tracking-wide text-slate-400">0 issues</span>
+          </div>
+          <div className="px-4 py-3">
+            <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-200">
+              {originalText || 'No corrections needed.'}
+            </pre>
+          </div>
+        </div>
+      );
+    }
+
+    const clampIndex = (value: number | undefined) => {
+      if (!Number.isFinite(value)) return 0;
+      return Math.max(0, Math.min(originalText.length, value ?? 0));
+    };
+
+    const correctedText = useMemo(() => {
+      if (!originalText) return '';
+
+      let result = '';
+      let cursor = 0;
+
+      sortedCorrections.forEach((correction) => {
+        const start = clampIndex(correction.startChar);
+        const end = Math.max(start, clampIndex(correction.endChar));
+
+        result += originalText.slice(cursor, start);
+
+        if (typeof correction.replacementText === 'string') {
+          result += correction.replacementText;
+        } else {
+          result += originalText.slice(start, end);
+        }
+
+        cursor = end;
+      });
+
+      result += originalText.slice(cursor);
+      return result;
+    }, [originalText, sortedCorrections]);
+
+    const hasMeaningfulReplacement = useMemo(() => {
+      return sortedCorrections.some((correction) => {
+        if (typeof correction.replacementText !== 'string') return false;
+        const start = clampIndex(correction.startChar);
+        const end = Math.max(start, clampIndex(correction.endChar));
+        const originalSegment = originalText.slice(start, end);
+        return correction.replacementText.trim() !== originalSegment.trim();
+      });
+    }, [sortedCorrections, originalText]);
+
+    const diffHunks = useMemo(() => {
+      if (!hasMeaningfulReplacement) {
+        return [];
+      }
+
+      const originalNormalized = originalText.endsWith('\n') ? originalText : `${originalText}\n`;
+      const correctedNormalized = correctedText.endsWith('\n') ? correctedText : `${correctedText}\n`;
+
+      try {
+        const patch = createTwoFilesPatch(
+          'Student Work',
+          'Suggested Fix',
+          originalNormalized,
+          correctedNormalized,
+          '',
+          ''
+        );
+        const files = parseDiff(patch);
+        if (files.length > 0) {
+          return files[0].hunks;
+        }
+      } catch (error) {
+        console.warn('Failed to generate diff for text correction overlay:', error);
+      }
+
+      return [];
+    }, [originalText, correctedText, hasMeaningfulReplacement]);
+
+    const renderHighlightedText = () => {
+      if (!originalText) return null;
+
+      const segments: JSX.Element[] = [];
+      let cursor = 0;
+
+      sortedCorrections.forEach((correction, index) => {
+        const start = clampIndex(correction.startChar);
+        const end = Math.max(start, clampIndex(correction.endChar));
+
+        if (start > cursor) {
+          segments.push(
+            <span key={`normal-${index}`} className="text-slate-200">
+              {originalText.slice(cursor, start)}
+            </span>
+          );
+        }
+
+        const highlightClass = correction.type === 'error'
+          ? 'bg-red-500/20 text-red-200 border-b border-red-500/60'
+          : correction.type === 'warning'
+          ? 'bg-yellow-500/20 text-yellow-200 border-b border-yellow-500/60'
+          : 'bg-blue-500/20 text-blue-200 border-b border-blue-500/60';
+
+        const highlightedText = originalText.slice(start, end) || correction.replacementText || '';
+
+        segments.push(
+          <span
+            key={`highlight-${index}`}
+            className={`${highlightClass} relative rounded-sm px-1 py-0.5 text-sm leading-relaxed`}
+          >
+            {highlightedText}
+          </span>
+        );
+
+        cursor = end;
+      });
+
+      if (cursor < originalText.length) {
+        segments.push(
+          <span key="remainder" className="text-slate-200">
+            {originalText.slice(cursor)}
+          </span>
+        );
+      }
+
+      return segments;
+    };
+
+    const typeBadgeClass = (type: Correction['type']) => {
+      if (type === 'error') return 'bg-red-500/20 text-red-200 border border-red-500/40';
+      if (type === 'warning') return 'bg-yellow-500/20 text-yellow-200 border border-yellow-500/40';
+      return 'bg-blue-500/20 text-blue-200 border border-blue-500/40';
+    };
+
+    return (
+      <div className="pointer-events-auto overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900/95 shadow-2xl backdrop-blur-md">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-700/60 bg-slate-800/70 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              <span className="h-3 w-3 rounded-full bg-red-500" />
+              <span className="h-3 w-3 rounded-full bg-yellow-500" />
+              <span className="h-3 w-3 rounded-full bg-green-500" />
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+              {isDrawn ? 'Drawn Text Correction' : 'Text Correction'}
+            </div>
+          </div>
+          <span className="text-[11px] font-mono uppercase tracking-wide text-slate-400">
+            {sortedCorrections.length} issue{sortedCorrections.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <div className="diff max-h-60 overflow-auto border-b border-slate-700/60 px-4 py-3">
+          {diffHunks.length > 0 ? (
+            <Diff viewType="split" diffType="modify" hunks={diffHunks}>
+              {(hunks) => hunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)}
+            </Diff>
+          ) : (
+            <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-200">
+              {renderHighlightedText()}
+            </pre>
+          )}
+        </div>
+
+        <div className="space-y-3 px-4 py-3">
+          {sortedCorrections.map((correction) => (
+            <div
+              key={correction.id}
+              className="rounded-lg border border-slate-700/70 bg-slate-800/60 px-3 py-2 shadow-inner"
+            >
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide">
+                <span className={`rounded-full px-2 py-0.5 ${typeBadgeClass(correction.type)}`}>
+                  {correction.type}
+                </span>
+                <span className="rounded-full border border-slate-600/50 px-2 py-0.5 text-slate-200/80">
+                  {correction.severity}
+                </span>
+                <span className="rounded-full border border-slate-600/50 px-2 py-0.5 text-slate-200/70">
+                  {correction.category}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-slate-100">
+                {correction.message}
+              </p>
+              {typeof correction.replacementText === 'string' && (
+                <div className="mt-2 rounded border border-slate-700/60 bg-slate-900/70 px-2 py-1 text-[11px] font-mono text-slate-300">
+                  Suggestion: <span className="text-slate-100">{correction.replacementText || '⌀ (remove text)'}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const quickActionButtons: QuickActionButton[] = [
+    {
+      id: 'minerals',
+      label: 'Minerals',
+      icon: Gem,
+      title: 'Search Minerals (COD 3D)',
+      onClick: () => setShowMineralSearch(true),
+      badgeClass: 'bg-emerald-500/15 text-emerald-300'
+    },
+    {
+      id: 'reactions',
+      label: 'Reactions',
+      icon: FlaskConical,
+      title: 'Search Reactions',
+      onClick: () => setShowInlineReactionSearch((prev) => !prev),
+      badgeClass: 'bg-orange-500/15 text-orange-300',
+      active: showInlineReactionSearch,
+      activeClass: 'ring-1 ring-orange-500/40 border-orange-500/60'
+    },
+    {
+      id: 'reagents',
+      label: 'Reagents',
+      icon: Beaker,
+      title: 'Search Lab Reagents',
+      onClick: () => setShowReagentSearch(true),
+      badgeClass: 'bg-cyan-500/15 text-cyan-300'
+    },
+    {
+      id: 'proteins',
+      label: 'Proteins',
+      icon: Atom,
+      title: 'Browse PDB Proteins',
+      onClick: () => setShowProteinSearch(true),
+      badgeClass: 'bg-rose-500/15 text-rose-300'
+    },
+    {
+      id: 'ar',
+      label: 'AR',
+      icon: Scan,
+      title: selectedMoleculeCid
+        ? 'View selected molecule in AR'
+        : 'Select a molecule on the canvas to enable AR viewer',
+      onClick: openArViewer,
+      badgeClass: 'bg-purple-500/15 text-purple-300',
+      disabled: !selectedMoleculeCid
+    }
+  ];
 
   return (
     <div className="relative w-full h-full bg-slate-900">
@@ -2952,51 +4223,51 @@ export default function Canvas({
         </div>
       )}
 
-      {/* Canvas Controls - Clean Header Layout */}
-      <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-row items-center gap-4 transform">
+      {/* Canvas Controls - Compact Header Layout */}
+      <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-3 transform lg:flex-row">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-900/85 px-3 py-2 shadow-lg backdrop-blur-sm">
+          {quickActionButtons.map((button) => {
+            const IconComponent = button.icon;
+            const baseClasses = 'group flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-lg transition-all';
+            const activeClasses = button.active
+              ? `bg-slate-800/95 text-white border-slate-500/80 shadow-lg ${button.activeClass ?? ''}`
+              : 'bg-slate-900/40 text-slate-300 border-slate-700/60 hover:border-slate-500/60 hover:bg-slate-800/60 hover:text-white';
+            const disabledClasses = button.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '';
 
-        {/* Search Controls Group */}
-        <div className="flex items-center gap-2 bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg">
-          <button
-            onClick={() => setShowMineralSearch(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-emerald-300 hover:bg-slate-700/50 rounded-lg transition-all"
-            title="Search Minerals"
-          >
-            <Gem size={14} className="text-emerald-400" />
-            <span>Minerals</span>
-          </button>
+            return (
+              <button
+                key={button.id}
+                onClick={button.onClick}
+                title={button.title}
+                className={`${baseClasses} ${activeClasses} ${disabledClasses}`}
+              >
+                <span className={`flex h-6 w-6 items-center justify-center rounded-md text-[13px] ${button.badgeClass}`}>
+                  <IconComponent size={14} />
+                </span>
+                <span>{button.label}</span>
+              </button>
+            );
+          })}
 
-          <button
-            onClick={() => setShowReagentSearch(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-cyan-300 hover:bg-slate-700/50 rounded-lg transition-all"
-            title="Search Reagents"
-          >
-            <FlaskConical size={14} className="text-cyan-400" />
-            <span>Reagents</span>
-          </button>
+          <div className="hidden h-8 w-px bg-slate-700/60 md:block" />
 
-          <button
-            onClick={() => setShowProteinSearch(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-rose-300 hover:bg-slate-700/50 rounded-lg transition-all"
-            title="Search Proteins"
-          >
-            <Atom size={14} className="text-rose-400" />
-            <span>Proteins</span>
-          </button>
-
-          <button
-            onClick={openArViewer}
-            disabled={!selectedMoleculeCid}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-purple-300 hover:bg-slate-700/50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            title={selectedMoleculeCid ? 'View selected molecule in AR' : 'Select a molecule on the canvas to enable AR viewer'}
-          >
-            <Scan size={14} className="text-purple-400" />
-            <span>AR</span>
-          </button>
+          <div className="hidden md:block">
+            <InlineBicyclicSearch
+              className="w-[15.5rem]"
+              onSelectMolecule={(moleculeData) => {
+                void (async () => {
+                  try {
+                    await insertMoleculeToCanvas(moleculeData);
+                  } catch (error) {
+                    console.error('Failed to insert bicyclic compound:', error);
+                  }
+                })();
+              }}
+            />
+          </div>
         </div>
 
-        {/* Molecule Search */}
-        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-lg">
+        <div className="w-full max-w-md rounded-2xl border border-slate-700/60 bg-slate-800/90 shadow-lg backdrop-blur-sm">
           <InlineMoleculeSearch
             onSelectMolecule={(moleculeData) => {
               void (async () => {
@@ -3009,8 +4280,27 @@ export default function Canvas({
             }}
           />
         </div>
-
       </div>
+
+      {/* Reaction Search - Below Header */}
+      {showInlineReactionSearch && (
+        <div className="absolute top-20 left-1/2 z-10 transform -translate-x-1/2">
+          <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-lg p-4">
+            <InlineReactionSearch
+              onSelectReaction={(reactionData) => {
+                void (async () => {
+                  try {
+                    await insertReactionToCanvas(reactionData);
+                    setShowInlineReactionSearch(false); // Hide search after insertion
+                  } catch (error) {
+                    console.error('Failed to insert reaction from search:', error);
+                  }
+                })();
+              }}
+            />
+          </div>
+        </div>
+      )}
 
         {/* Right-side Controls - Consolidated */}
         <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
@@ -3158,10 +4448,64 @@ export default function Canvas({
         onMouseMove={draw}
         onMouseUp={stopDrawing}
         onMouseLeave={stopDrawing}
+        onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       />
+
+      {/* Text Input Overlay */}
+      {isTextInputVisible && (
+        <div
+          className="absolute z-30"
+          style={{
+            left: textInputPosition.x,
+            top: textInputPosition.y,
+          }}
+        >
+          <div className="bg-slate-800 border border-slate-600 rounded-lg p-4 shadow-xl min-w-96 max-w-lg">
+            <div className="mb-3">
+              <h3 className="text-sm font-medium text-slate-200 mb-2">
+                {editingTextShapeId ? 'Edit Text Note' : 'Add Text Note'}
+              </h3>
+              <textarea
+                value={currentTextInput}
+                onChange={(e) => setCurrentTextInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.ctrlKey) {
+                    handleTextSubmit();
+                  } else if (e.key === 'Escape') {
+                    handleTextCancel();
+                  }
+                }}
+                placeholder={editingTextShapeId ? "Edit your text here..." : "Write your notes, answers, or text here...&#10;&#10;Press Ctrl+Enter to submit&#10;Press Escape to cancel"}
+                className="w-full bg-slate-700 text-white px-3 py-3 rounded text-sm border border-slate-600 focus:border-blue-500 focus:outline-none resize-both min-h-32 max-h-96"
+                autoFocus
+                rows={8}
+              />
+            </div>
+            <div className="flex justify-between items-center">
+              <div className="text-xs text-slate-400">
+                Ctrl+Enter to submit • Escape to cancel
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleTextCancel}
+                  className="px-3 py-1.5 bg-slate-600 text-white text-sm rounded hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleTextSubmit}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                >
+                  {editingTextShapeId ? 'Update Text' : 'Add Text'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedShape?.type === 'molecule' && selectedShape.moleculeData && (
         <div className="absolute top-8 right-8 z-20 flex flex-col gap-3 max-w-xs">
@@ -3177,6 +4521,19 @@ export default function Canvas({
                 </p>
                 {selectedShape.moleculeData.molecularFormula && (
                   <p className="text-xs text-slate-400">{selectedShape.moleculeData.molecularFormula}</p>
+                )}
+                {selectedShape.moleculeData.rdkitProperties && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">RDKit Properties</p>
+                    <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-400">
+                      <span>MW: {selectedShape.moleculeData.rdkitProperties.molecularWeight.toFixed(2)}</span>
+                      <span>LogP: {selectedShape.moleculeData.rdkitProperties.logP.toFixed(2)}</span>
+                      <span>HBD: {selectedShape.moleculeData.rdkitProperties.hbd}</span>
+                      <span>HBA: {selectedShape.moleculeData.rdkitProperties.hba}</span>
+                      <span>TPSA: {selectedShape.moleculeData.rdkitProperties.tpsa.toFixed(1)}</span>
+                      <span>Rotatable: {selectedShape.moleculeData.rdkitProperties.rotatableBonds}</span>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -3415,10 +4772,10 @@ export default function Canvas({
                   setShowPDBViewer(true);
                 }}
                 className="w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 bg-rose-600/90 text-white hover:bg-rose-500"
-                title="Open interactive 3D PDB viewer"
+                title="Open interactive 3D Mol* viewer"
               >
                 <Database size={16} />
-                View 3D Structure
+                View 3D Structure (Mol*)
               </button>
 
               <button
@@ -3437,8 +4794,102 @@ export default function Canvas({
         </div>
       )}
 
-      {/* Correction Markers - Simplified */}
-      {showCorrections && corrections.map((correction) => (
+      {/* Selected Reaction Display */}
+      {selectedShape?.type === 'reaction' && selectedShape.reactionData && (
+        <div className="absolute top-8 right-8 z-20 flex flex-col gap-3 max-w-xs">
+          <div className="rounded-xl border border-slate-700/70 bg-slate-900/90 backdrop-blur-sm p-4 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Selected Reaction</p>
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-500/20 border border-orange-400/40">
+                <FlaskConical className="text-orange-300" size={18} />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium text-slate-200 leading-tight">
+                  Chemical Reaction
+                </p>
+                <p className="text-xs text-slate-400">SMILES: {selectedShape.reactionData.smiles}</p>
+                <p className="text-xs text-slate-500">
+                  Added: {new Date(selectedShape.reactionData.timestamp).toLocaleString()}
+                </p>
+                {selectedShape.reactionData.metadata?.originalQuery && (
+                  <p className="text-[11px] text-slate-500">
+                    Query: {selectedShape.reactionData.metadata.originalQuery}
+                  </p>
+                )}
+                {typeof selectedShape.reactionData.metadata?.confidence === 'number' && (
+                  <p className="text-[11px] text-slate-500">
+                    Confidence: {(selectedShape.reactionData.metadata.confidence * 100).toFixed(0)}%
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  // Copy SMILES to clipboard
+                  navigator.clipboard.writeText(selectedShape.reactionData!.smiles);
+                }}
+                className="w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 bg-slate-800/80 text-slate-200 border border-slate-700/60 hover:bg-slate-800"
+                title="Copy reaction SMILES"
+              >
+                Copy SMILES
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleAddSdfModelsToReaction(selectedShape.id)}
+                disabled={reactionSdfLoadingId === selectedShape.id}
+                className={`w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 border ${
+                  selectedShape.reactionData?.sdfShapeIds?.length
+                    ? 'border-blue-500/70 bg-blue-600 text-white hover:bg-blue-500'
+                    : 'border-emerald-500/70 bg-emerald-600 text-white hover:bg-emerald-500'
+                } ${reactionSdfLoadingId === selectedShape.id ? 'opacity-80 cursor-wait' : ''}`}
+                title={selectedShape.reactionData?.sdfShapeIds?.length
+                  ? 'Rebuild 3D SDF tiles beneath the reaction'
+                  : 'Generate 3D SDF tiles for this reaction'}
+              >
+                {reactionSdfLoadingId === selectedShape.id ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Database size={16} />
+                )}
+                {selectedShape.reactionData?.sdfShapeIds?.length ? 'Rebuild 3D Models' : 'Add 3D Models'}
+              </button>
+
+              {reactionSdfError?.id === selectedShape.id && (
+                <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-200">
+                  {reactionSdfError.message}
+                </div>
+              )}
+
+              {selectedShape.reactionData.metadata?.components && selectedShape.reactionData.metadata.components.length > 0 && (
+                <div className="space-y-1 rounded-lg border border-slate-700/60 bg-slate-900/80 p-3">
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wide">Components</p>
+                  <ul className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                    {selectedShape.reactionData.metadata.components.map((component, index) => {
+                      const name = component.label || component.original || component.smiles || `Component ${index + 1}`;
+                      return (
+                        <li key={`${component.role}-${index}`} className="text-[11px] text-slate-300">
+                          <span className="uppercase text-slate-500">{component.role}</span>{' '}
+                          {name}
+                          {component.smiles && <span className="text-emerald-300"> · {component.smiles}</span>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Correction Markers - Simplified (only for non-text corrections) */}
+      {showCorrections && corrections
+        .filter(correction => !correction.textShapeId)
+        .map((correction) => (
         <div
           key={correction.id}
           className="absolute z-20 pointer-events-none"
@@ -3453,6 +4904,24 @@ export default function Canvas({
             correction.type === 'warning' ? 'bg-yellow-500 border-yellow-600' :
             'bg-blue-500 border-blue-600'
           } shadow-lg animate-pulse`} />
+        </div>
+      ))}
+
+      {/* Text Correction Suggestions */}
+      {showCorrections && textCorrectionOverlays.map((overlay) => (
+        <div
+          key={`text-correction-overlay-${overlay.id}`}
+          className="absolute z-30 max-w-sm pointer-events-auto"
+          style={{
+            left: overlay.left,
+            top: overlay.top
+          }}
+        >
+          <TextCorrectionDiff
+            originalText={overlay.originalText}
+            corrections={overlay.corrections}
+            isDrawn={overlay.isDrawn}
+          />
         </div>
       ))}
 
@@ -3513,52 +4982,89 @@ export default function Canvas({
                   <AlertCircle size={18} className="text-red-400" />
                   Errors & Corrections ({corrections.length})
                 </h5>
-                {corrections.length > 0 ? (
-                  <div className="space-y-5">
-                    {corrections.map((correction) => (
-                      <div key={correction.id} className="correction-item p-5 bg-slate-700/30 rounded-lg border border-slate-600/30 hover:bg-slate-700/40 transition-colors">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                            correction.type === 'error' ? 'bg-red-500' :
-                            correction.type === 'warning' ? 'bg-yellow-500' :
-                            'bg-blue-500'
-                          }`}>
-                            <span className="text-white text-sm font-bold">
-                              {correction.type === 'error' ? '!' : correction.type === 'warning' ? '⚠' : 'i'}
+
+                {/* Text Corrections with Diff View */}
+                {(() => {
+                  // Group corrections by text shape
+                  const textCorrections = corrections.filter(c => c.textShapeId);
+                  const nonTextCorrections = corrections.filter(c => !c.textShapeId);
+
+                  // Get unique text shapes that have corrections
+                  const correctedTextShapes = Array.from(new Set(textCorrections.map(c => c.textShapeId)))
+                    .map(shapeId => {
+                      const shape = canvasHistoryRef.current.find(s => s.id === shapeId);
+                      const shapeCorrections = textCorrections.filter(c => c.textShapeId === shapeId);
+                      return { shape, corrections: shapeCorrections };
+                    })
+                    .filter(item => item.shape);
+
+                  return (
+                    <>
+                      {/* Text Diff Views */}
+                      {correctedTextShapes.map(({ shape, corrections: shapeCorrections }) => (
+                        <div key={shape!.id} className="mb-6">
+                          <div className="mb-3">
+                            <span className="text-sm font-medium text-slate-400 uppercase tracking-wider">
+                              Text Corrections
                             </span>
                           </div>
-                          <span className={`text-base font-medium px-4 py-2 rounded ${
-                            correction.type === 'error' ? 'bg-red-600 text-red-100' :
-                            correction.type === 'warning' ? 'bg-yellow-600 text-yellow-100' :
-                            'bg-blue-600 text-blue-100'
-                          }`}>
-                            {correction.type.toUpperCase()}
-                          </span>
-                          <span className={`text-base px-4 py-2 rounded ${
-                            correction.severity === 'high' ? 'bg-red-500/20 text-red-300' :
-                            correction.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
-                            'bg-blue-500/20 text-blue-300'
-                          }`}>
-                            {correction.severity.toUpperCase()}
-                          </span>
+                          <TextCorrectionDiff
+                            originalText={shape!.text || ''}
+                            corrections={shapeCorrections}
+                          />
                         </div>
-                        <p className="text-base text-slate-300 leading-relaxed whitespace-pre-wrap">
-                          {correction.message}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-5 bg-green-900/20 rounded-lg border border-green-600/30">
-                    <div className="flex items-center gap-3 mb-2">
-                      <CheckCircle size={18} className="text-green-400" />
-                      <span className="text-base font-medium text-green-300">No Errors Found!</span>
-                    </div>
-                    <p className="text-base text-green-200">
-                      Great job! Your chemical formulas and equations appear to be correct.
-                    </p>
-                  </div>
-                )}
+                      ))}
+
+                      {/* Individual Correction Details */}
+                      {(textCorrections.length > 0 || nonTextCorrections.length > 0) ? (
+                        <div className="space-y-3">
+                          {[...textCorrections, ...nonTextCorrections].map((correction) => (
+                            <div key={correction.id} className="correction-item p-4 bg-slate-700/30 rounded-lg border border-slate-600/30 hover:bg-slate-700/40 transition-colors">
+                              <div className="flex items-center gap-3 mb-3">
+                                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+                                  correction.type === 'error' ? 'bg-red-500' :
+                                  correction.type === 'warning' ? 'bg-yellow-500' :
+                                  'bg-blue-500'
+                                }`}>
+                                  <span className="text-white text-xs font-bold">
+                                    {correction.type === 'error' ? '!' : correction.type === 'warning' ? '⚠' : 'i'}
+                                  </span>
+                                </div>
+                                <span className={`text-sm font-medium px-3 py-1 rounded ${
+                                  correction.type === 'error' ? 'bg-red-600 text-red-100' :
+                                  correction.type === 'warning' ? 'bg-yellow-600 text-yellow-100' :
+                                  'bg-blue-600 text-blue-100'
+                                }`}>
+                                  {correction.type.toUpperCase()}
+                                </span>
+                                <span className={`text-sm px-3 py-1 rounded ${
+                                  correction.severity === 'high' ? 'bg-red-500/20 text-red-300' :
+                                  correction.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
+                                  'bg-blue-500/20 text-blue-300'
+                                }`}>
+                                  {correction.severity.toUpperCase()}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-300 leading-relaxed">
+                                {correction.message}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-5 bg-green-900/20 rounded-lg border border-green-600/30">
+                          <div className="flex items-center gap-3 mb-2">
+                            <CheckCircle size={18} className="text-green-400" />
+                            <span className="text-base font-medium text-green-300">No Errors Found!</span>
+                          </div>
+                          <p className="text-base text-green-200">
+                            Great job! Your chemical formulas and equations appear to be correct.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -3661,6 +5167,24 @@ export default function Canvas({
         />
       )}
 
+      {/* Reaction Search Modal */}
+      {showReactionSearch && (
+        <ReactionSearch
+          onClose={() => setShowReactionSearch(false)}
+          onReactionInsert={(reactionData) => {
+            void (async () => {
+              try {
+                await insertReactionToCanvas(reactionData);
+              } catch (error) {
+                console.error('Failed to insert reaction:', error);
+              } finally {
+                setShowReactionSearch(false);
+              }
+            })();
+          }}
+        />
+      )}
+
       {/* Protein Search Modal */}
       {showProteinSearch && (
         <ProteinSearch
@@ -3679,6 +5203,56 @@ export default function Canvas({
         />
       )}
 
+      {/* Text Input Overlay */}
+      {isTextInputVisible && (
+        <div
+          className="fixed z-50"
+          style={{
+            left: textInputPosition.x,
+            top: textInputPosition.y,
+          }}
+        >
+          <div className="bg-slate-800/95 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 shadow-2xl min-w-64">
+            <input
+              type="text"
+              value={currentTextInput}
+              onChange={(e) => setCurrentTextInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleTextSubmit();
+                } else if (e.key === 'Escape') {
+                  setIsTextInputVisible(false);
+                  setCurrentTextInput('');
+                  setEditingTextShapeId(null);
+                }
+              }}
+              placeholder="Enter your text..."
+              className="w-full bg-slate-900/80 border border-slate-600 rounded px-3 py-2 text-slate-200 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+              autoFocus
+            />
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleTextSubmit}
+                disabled={!currentTextInput.trim()}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-sm transition-colors"
+              >
+                Add Text
+              </button>
+              <button
+                onClick={() => {
+                  setIsTextInputVisible(false);
+                  setCurrentTextInput('');
+                  setEditingTextShapeId(null);
+                }}
+                className="bg-slate-600 hover:bg-slate-700 text-slate-300 px-3 py-1 rounded text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Chemistry Widget Panel Modal */}
       {showChemistryWidgetPanel && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -3690,7 +5264,7 @@ export default function Canvas({
 
       {/* PDB 3D Viewer Modal */}
       {showPDBViewer && pdbViewerData && (
-        <PDBViewerEmbed
+        <MolstarProteinViewer
           pdbId={pdbViewerData.pdbId}
           title={pdbViewerData.title}
           isOpen={showPDBViewer}

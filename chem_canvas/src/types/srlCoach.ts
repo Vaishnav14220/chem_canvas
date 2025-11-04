@@ -67,6 +67,11 @@ export interface MonitoringCheckin {
   confidence?: number;
   note?: string;
   aiNudge?: string;
+  durationMinutes?: number;
+  tasksCompleted?: number;
+  engagementScore?: number;
+  goalAlignment?: number;
+  toolsUsed?: string[];
 }
 
 export interface ReflectionEntry {

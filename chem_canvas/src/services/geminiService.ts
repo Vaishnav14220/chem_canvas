@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { fetchCanonicalSmiles } from './pubchemService';
 
 // Initialize Gemini API
 let genAI: GoogleGenerativeAI | null = null;
@@ -19,7 +20,7 @@ const getAvailableModel = async (genAI: GoogleGenerativeAI) => {
     return cachedModelName;
   }
 
-  const models = ['gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+  const models = ['gemini-2.5-flash'];
   
   for (const modelName of models) {
     try {
@@ -92,6 +93,163 @@ export const streamTextContent = async (
     console.error('Error streaming content:', error);
     throw error;
   }
+};
+
+const extractJsonBlock = (rawText: string): string => {
+  const trimmed = rawText.trim();
+  const fenceMatch = trimmed.match(/```(?:json)?([\s\S]*?)```/i);
+  if (fenceMatch) {
+    return fenceMatch[1].trim();
+  }
+
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return jsonMatch[0];
+  }
+
+  return trimmed;
+};
+
+export interface MoleculeResolutionResult {
+  query: string;
+  smiles: string | null;
+  canonicalSmiles: string | null;
+  confidence?: number;
+  name?: string;
+  synonyms: string[];
+  notes?: string;
+  source: 'gemini' | 'pubchem';
+}
+
+export const resolveMoleculeDescription = async (
+  description: string
+): Promise<MoleculeResolutionResult> => {
+  const query = description.trim();
+  if (!query) {
+    throw new Error('Provide a molecule description or name to resolve.');
+  }
+
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  const prompt = [
+    'You are a cheminformatics expert. Convert the user description of a molecule into canonical SMILES.',
+    'Return ONLY valid JSON with this structure:',
+    '{',
+    '  "name": "best common or IUPAC name if available",',
+    '  "smiles": "primary SMILES string or null if unknown",',
+    '  "synonyms": ["list", "of", "alternate", "names or SMILES"],',
+    '  "confidence": 0.0-1.0,',
+    '  "notes": "optional guidance or assumptions"',
+    '}',
+    'Rules:',
+    '- Prefer canonical SMILES when known.',
+    '- If unsure, set smiles to null and explain in notes.',
+    '- Include helpful synonyms such as trade names or alternative SMILES when possible.',
+    '- Do not include any text outside of the JSON object.'
+  ].join('\n');
+
+  const aiResponse = await generateTextContent(`${prompt}\n\nMolecule description: ${query}`);
+  const jsonPayload = extractJsonBlock(aiResponse);
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error('Failed to parse Gemini molecule response:', error, jsonPayload);
+    throw new Error('Gemini could not provide a structured molecule response. Refine the description and try again.');
+  }
+
+  const name = typeof parsed?.name === 'string' ? parsed.name.trim() : undefined;
+  const rawSmiles = typeof parsed?.smiles === 'string' ? parsed.smiles.trim() : '';
+  const synonyms = Array.isArray(parsed?.synonyms)
+    ? parsed.synonyms
+        .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value: string) => value.length > 0)
+    : [];
+  const confidence = typeof parsed?.confidence === 'number' ? parsed.confidence : undefined;
+  const notes = typeof parsed?.notes === 'string' ? parsed.notes.trim() : undefined;
+
+  const candidates = [rawSmiles, ...synonyms].filter((token): token is string => token.length > 0);
+
+  let canonicalSmiles: string | null = null;
+  for (const candidate of candidates) {
+    canonicalSmiles = await fetchCanonicalSmiles(candidate);
+    if (canonicalSmiles) {
+      break;
+    }
+  }
+
+  const primarySmiles = canonicalSmiles ?? (rawSmiles || null);
+
+  if (!primarySmiles) {
+    try {
+      const fallbackResponse = await generateTextContent([
+        'Provide the canonical SMILES string for the following molecule description.',
+        'Return ONLY valid JSON with this shape:',
+        '{',
+        '  "smiles": "canonical SMILES string or null",',
+        '  "synonyms": ["optional synonyms"]',
+        '}',
+        `Molecule description: ${query}`
+      ].join('\n'));
+
+      const fallbackJson = extractJsonBlock(fallbackResponse);
+      const fallbackParsed = JSON.parse(fallbackJson);
+
+      const fallbackSmiles =
+        typeof fallbackParsed?.smiles === 'string' ? fallbackParsed.smiles.trim() : '';
+      const fallbackSynonyms = Array.isArray(fallbackParsed?.synonyms)
+        ? fallbackParsed.synonyms
+            .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value: string) => value.length > 0)
+        : [];
+
+      const fallbackCandidates = [fallbackSmiles, ...fallbackSynonyms].filter(
+        (candidate): candidate is string => candidate.length > 0
+      );
+
+      for (const candidate of fallbackCandidates) {
+        canonicalSmiles = await fetchCanonicalSmiles(candidate);
+        if (canonicalSmiles) {
+          break;
+        }
+      }
+
+      if (canonicalSmiles) {
+        return {
+          query,
+          smiles: canonicalSmiles,
+          canonicalSmiles,
+          confidence,
+          name,
+          synonyms: [...synonyms, ...fallbackSynonyms],
+          notes: notes
+            ? `${notes} | SMILES inferred via fallback lookup.`
+            : 'SMILES inferred via fallback lookup.',
+          source: 'pubchem'
+        };
+      }
+    } catch (fallbackError) {
+      console.warn('Fallback SMILES resolution failed:', fallbackError);
+    }
+
+    throw new Error(
+      'Unable to determine a SMILES string for that description. Try adding more detail or specifying a recognised synonym.'
+    );
+  }
+
+  return {
+    query,
+    smiles: primarySmiles,
+    canonicalSmiles,
+    confidence,
+    name,
+    synonyms,
+    notes,
+    source: canonicalSmiles ? 'pubchem' : 'gemini'
+  };
 };
 
 export const generateImageDescription = async (imageUrl: string): Promise<string> => {
@@ -315,19 +473,6 @@ export const generateFlashcardDeck = async ({
   }
 };
 
-const extractJsonBlock = (rawText: string) => {
-  const trimmed = rawText.trim();
-  const fenceMatch = trimmed.match(/```(?:json)?([\s\S]*?)```/i);
-  if (fenceMatch) {
-    return fenceMatch[1].trim();
-  }
-  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    return jsonMatch[0];
-  }
-  return trimmed;
-};
-
 export const generateAdaptiveQuizQuestions = async ({
   topic,
   count = 5,
@@ -495,6 +640,7 @@ if (savedApiKey) {
   initializeGemini(savedApiKey);
   console.log('✅ Gemini API initialized successfully!');
 } else {
+  initializeWithProvidedKey();
   console.log(
     '%c🤖 Gemini 2.0 AI Features Available!',
     'color: #8b5cf6; font-size: 16px; font-weight: bold;'

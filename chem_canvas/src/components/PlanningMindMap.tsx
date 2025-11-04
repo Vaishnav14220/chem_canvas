@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import ReactFlow, { Background, Controls, MiniMap } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Wand2, PlusCircle, Rocket } from 'lucide-react';
+import { Wand2, PlusCircle, Rocket, Maximize2, Minimize2 } from 'lucide-react';
 import type { PlanEdge, PlanNode, PlanScenario } from '../types/srlCoach';
 
 interface PlanningMindMapProps {
@@ -11,6 +11,7 @@ interface PlanningMindMapProps {
   onAddStep: () => void;
   onUpdateStatus: (nodeId: string, status: PlanNode['status']) => void;
   onRunSimulation: () => void;
+  onNewPlan?: () => void;
   isBusy?: boolean;
 }
 
@@ -27,8 +28,10 @@ const PlanningMindMap = ({
   onAddStep,
   onUpdateStatus,
   onRunSimulation,
+  onNewPlan,
   isBusy
 }: PlanningMindMapProps) => {
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const flowNodes = useMemo(() => {
     if (nodes.length === 0) {
       return [
@@ -115,13 +118,24 @@ const PlanningMindMap = ({
   }, [edges, flowNodes.length]);
 
   return (
-    <div className="rounded-2xl border border-blue-500/40 bg-slate-900/70 p-4">
+    <div className={`rounded-2xl border border-blue-500/40 bg-slate-900/70 p-4 ${isFullscreen ? 'fixed inset-0 z-50 bg-slate-950 p-6' : ''}`}>
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">Adaptive Plan</p>
           <h3 className="text-sm font-semibold text-blue-100">Visual roadmap for your study sprint</h3>
         </div>
         <div className="flex gap-2">
+          {onNewPlan && (
+            <button
+              type="button"
+              onClick={onNewPlan}
+              disabled={isBusy}
+              className="inline-flex items-center gap-1 rounded-lg border border-red-400/60 bg-red-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:bg-red-500/20 disabled:opacity-50"
+            >
+              <Wand2 size={14} />
+              New Plan
+            </button>
+          )}
           <button
             type="button"
             onClick={onAddStep}
@@ -139,10 +153,18 @@ const PlanningMindMap = ({
             <Rocket size={14} />
             What-if Simulation
           </button>
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="inline-flex items-center gap-1 rounded-lg border border-purple-400/60 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-purple-100 transition hover:bg-purple-500/20"
+          >
+            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 h-72 rounded-xl border border-blue-500/30 bg-slate-950/70">
+      <div className={`mt-4 rounded-xl border border-blue-500/30 bg-slate-950/70 ${isFullscreen ? 'h-[calc(100vh-120px)]' : 'h-72'}`}>
         <ReactFlow nodes={flowNodes} edges={flowEdges} fitView>
           <MiniMap pannable zoomable />
           <Controls showInteractive={false} />

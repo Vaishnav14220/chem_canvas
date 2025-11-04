@@ -62,6 +62,9 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
   const [history, setHistory] = useState<MolecularObject[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isTextInputVisible, setIsTextInputVisible] = useState(false);
+  const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
+  const [currentTextInput, setCurrentTextInput] = useState('');
 
   // Initialize canvas
   useEffect(() => {
@@ -105,6 +108,14 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
       }
     }
   }, [molecularObjects, showGrid, selectedObject, zoom]);
+
+  const clearCanvas = useCallback(() => {
+    setMolecularObjects([]);
+    setSelectedObject(null);
+    setHistory([]);
+    setHistoryIndex(-1);
+    redrawCanvas();
+  }, []);
 
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     ctx.strokeStyle = '#374151';
@@ -372,11 +383,36 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
     }
   };
 
-  const clearCanvas = () => {
-    if (window.confirm('Are you sure you want to clear the canvas?')) {
-      setMolecularObjects([]);
-      addToHistory([]);
+  const handleTextSubmit = () => {
+    if (currentTextInput.trim()) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = (textInputPosition.x) / zoom;
+      const y = (textInputPosition.y) / zoom;
+
+      const newText: MolecularObject = {
+        id: `text-${Date.now()}`,
+        type: 'text',
+        x,
+        y,
+        text: currentTextInput,
+        color: strokeColor,
+        size: 24 // Larger fixed size for text readability on canvas
+      };
+
+      const newObjects = [...molecularObjects, newText];
+      setMolecularObjects(newObjects);
+      addToHistory(newObjects);
     }
+    setIsTextInputVisible(false);
+    setCurrentTextInput('');
+  };
+
+  const handleTextCancel = () => {
+    setIsTextInputVisible(false);
+    setCurrentTextInput('');
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -405,6 +441,13 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
       const newObjects = [...molecularObjects, newAtom];
       setMolecularObjects(newObjects);
       addToHistory(newObjects);
+    } else if (currentTool === 'textbox') {
+      // Show text input at clicked position
+      setTextInputPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      setCurrentTextInput('');
+      setIsTextInputVisible(true);
+      setIsDrawing(false); // Don't continue drawing for text input
+      return;
     }
   };
 
@@ -587,6 +630,49 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
         onMouseUp={stopDrawing}
         onMouseLeave={stopDrawing}
       />
+
+      {/* Text Input Overlay */}
+      {isTextInputVisible && (
+        <div
+          className="absolute z-20"
+          style={{
+            left: textInputPosition.x,
+            top: textInputPosition.y + 60, // Account for top toolbar
+          }}
+        >
+          <div className="bg-slate-800 border border-slate-600 rounded-lg p-2 shadow-lg">
+            <input
+              type="text"
+              value={currentTextInput}
+              onChange={(e) => setCurrentTextInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleTextSubmit();
+                } else if (e.key === 'Escape') {
+                  handleTextCancel();
+                }
+              }}
+              placeholder="Enter text..."
+              className="bg-slate-700 text-white px-3 py-1 rounded text-sm border border-slate-600 focus:border-blue-500 focus:outline-none min-w-32"
+              autoFocus
+            />
+            <div className="flex gap-1 mt-2">
+              <button
+                onClick={handleTextSubmit}
+                className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+              >
+                OK
+              </button>
+              <button
+                onClick={handleTextCancel}
+                className="px-2 py-1 bg-slate-600 text-white text-xs rounded hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Status Bar */}
       <div className="absolute bottom-0 left-0 right-0 z-10 bg-slate-800/95 backdrop-blur-sm border-t border-slate-700/50 p-2">

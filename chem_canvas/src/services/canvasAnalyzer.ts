@@ -7,6 +7,15 @@ export interface Correction {
   type: 'error' | 'warning' | 'suggestion';
   severity: 'low' | 'medium' | 'high';
   category: 'formula' | 'equation' | 'notation' | 'structure' | 'general';
+  // Text-specific fields for inline highlighting
+  textShapeId?: string; // ID of the text shape this correction applies to
+  startChar?: number; // Starting character index in the text
+  endChar?: number; // Ending character index in the text
+  highlightColor?: string; // Color for highlighting (e.g., '#ef4444' for red errors, '#22c55e' for green correct)
+  replacementText?: string; // Suggested replacement text for the highlighted span
+  originalText?: string; // Original source text for context/diff generation
+  // Drawn text fields
+  isDrawnText?: boolean; // Whether this correction is for drawn/handwritten text
 }
 
 export interface CanvasAnalysisResult {
@@ -28,7 +37,7 @@ export const detectCanvasContent = async (
 ): Promise<{contentType: string, description: string, confidence: number}> => {
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: {
@@ -262,7 +271,7 @@ SPECIAL CASES:
 Analyze the specific content you can see and provide targeted feedback.`;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: {
@@ -381,7 +390,210 @@ Analyze the specific content you can see and provide targeted feedback.`;
   }
 };
 
-// Get stored API key from localStorage
+// Analyze individual text content for corrections
+export const analyzeTextContent = async (
+  text: string,
+  textShapeId: string,
+  apiKey: string,
+  subject: string = 'chemistry'
+): Promise<Correction[]> => {
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `You are a ${subject} expert analyzing student-written text for corrections. Analyze this text: "${text}"
+
+Return a JSON array of corrections with this exact format:
+[
+  {
+    "id": "unique-id",
+    "message": "Brief explanation of the error",
+    "type": "error|warning|suggestion",
+    "severity": "low|medium|high",
+    "category": "formula|equation|notation|structure|general",
+    "startChar": 0,
+    "endChar": 5,
+    "highlightColor": "#ef4444",
+    "replacementText": "Corrected text to replace the original span"
+  }
+]
+
+Rules:
+- startChar and endChar should specify the exact character positions of the error in the text
+- Use red (#ef4444) for errors, orange (#f97316) for warnings, green (#22c55e) for suggestions
+- Only include corrections that are actually needed
+- Be precise with character positions and provide replacementText for each correction (even if it's an empty string when removal is recommended)
+- Return empty array [] if text is correct
+
+Text to analyze: "${text}"`
+                }
+              ]
+            }
+          ]
+        })
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Text analysis API error:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Clean and parse the response
+    let cleanedText = responseText.trim();
+    if (cleanedText.startsWith('```json')) {
+      cleanedText = cleanedText.replace(/```json\s*/, '').replace(/```\s*$/, '');
+    }
+
+    try {
+      const corrections = JSON.parse(cleanedText);
+
+      // Validate and enhance corrections
+      const validCorrections = corrections
+        .filter((c: any) => c && typeof c === 'object' && c.message)
+        .map((correction: any, index: number) => ({
+          id: correction.id || `${textShapeId}-correction-${index}`,
+          x: 0, // Will be set by caller
+          y: 0, // Will be set by caller
+          message: correction.message,
+          type: correction.type || 'error',
+          severity: correction.severity || 'medium',
+          category: correction.category || 'general',
+          textShapeId,
+          startChar: correction.startChar || 0,
+          endChar: correction.endChar || text.length,
+          highlightColor: correction.highlightColor || '#ef4444',
+          replacementText: typeof correction.replacementText === 'string' ? correction.replacementText : undefined,
+          originalText: text
+        }));
+
+      return validCorrections;
+    } catch (parseError) {
+      console.warn('Could not parse text analysis response:', parseError);
+      return [];
+    }
+  } catch (error) {
+    console.error('Text content analysis failed:', error);
+    return [];
+  }
+};
+
+export const extractDrawnText = async (
+  canvasData: string,
+  apiKey: string
+): Promise<{extractedTexts: Array<{text: string, x?: number, y?: number, confidence?: number}>}> => {
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `You are an expert at recognizing handwritten and drawn text from images. Look at this canvas image and extract any handwritten or drawn text you can see.
+
+IMPORTANT: Focus on text that appears to be written or drawn by hand using a drawing tool, NOT text that might be part of typed text boxes or labels.
+
+TASK: Extract all handwritten/drawn text from the image and return it in a structured format.
+
+RESPONSE FORMAT:
+Return ONLY a valid JSON array of extracted text objects:
+
+[{"text": "The actual handwritten text you can read", "x": 100, "y": 200, "confidence": 0.95}]
+
+GUIDELINES:
+- Only extract text that appears to be handwritten or drawn with a pen/drawing tool
+- Ignore any typed text, labels, or UI elements
+- If you see chemical formulas, equations, or scientific notation written by hand, extract them
+- Provide approximate x,y coordinates if possible (estimate position on canvas)
+- Confidence should be between 0.0 and 1.0 based on how clearly you can read the text
+- If no handwritten text is visible, return an empty array []
+- Be very specific about what you can actually read - don't guess or assume
+
+EXAMPLES:
+- If you see "H2O" written in handwriting: {"text": "H2O", "x": 150, "y": 100, "confidence": 0.9}
+- If you see "2H2 + O2 → 2H2O" drawn by hand: {"text": "2H2 + O2 → 2H2O", "x": 200, "y": 150, "confidence": 0.85}
+- If you see "Water is important" written: {"text": "Water is important", "x": 100, "y": 50, "confidence": 0.95}
+
+Extract all handwritten/drawn text you can clearly identify.`
+                },
+                {
+                  inline_data: {
+                    mime_type: "image/png",
+                    data: canvasData.split(',')[1]
+                  }
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            topK: 20,
+            topP: 0.8,
+            maxOutputTokens: 1000,
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Drawn text extraction failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.candidates[0].content.parts[0].text;
+
+    try {
+      let cleanedText = responseText.trim();
+      if (cleanedText.startsWith('```json')) {
+        cleanedText = cleanedText.substring(7);
+      }
+      if (cleanedText.endsWith('```')) {
+        cleanedText = cleanedText.substring(0, cleanedText.length - 3);
+      }
+      cleanedText = cleanedText.trim();
+
+      const extractedTexts = JSON.parse(cleanedText);
+
+      // Validate the response
+      if (!Array.isArray(extractedTexts)) {
+        console.warn('Invalid drawn text extraction response format');
+        return { extractedTexts: [] };
+      }
+
+      // Filter and validate extracted texts
+      const validTexts = extractedTexts.filter((item: any) =>
+        item && typeof item === 'object' && item.text && typeof item.text === 'string' && item.text.trim()
+      );
+
+      return { extractedTexts: validTexts };
+    } catch (parseError) {
+      console.warn('Could not parse drawn text extraction response:', parseError);
+      return { extractedTexts: [] };
+    }
+  } catch (error) {
+    console.error('Drawn text extraction failed:', error);
+    return { extractedTexts: [] };
+  }
+};
+
 export const getStoredAPIKey = (): string => {
   return localStorage.getItem('gemini-api-key') || '';
 };

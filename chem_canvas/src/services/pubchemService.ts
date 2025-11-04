@@ -1,18 +1,84 @@
 // PubChem API Service for fetching molecule structures
 // Documentation: https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest
 
-export interface MoleculeAnalysisResult {
-  properties?: Record<string, any>;
-  descriptors?: Record<string, any>;
-  toxicity?: any;
-  bioactivity?: any;
+import { rdkitService } from './rdkitService';
+import ordReactionsDataset from '../data/ordReactions.json';
+import type { ReactionMetadata, ReactionSource } from '../types/reactions';
+
+export interface PubChemReaction {
+  rid: number;
+  name?: string;
+  smiles: string;
+  reactants: string[];
+  products: string[];
+  description?: string;
+  equation?: string;
+  source?: ReactionSource;
+  referenceId?: string;
+  metadata?: ReactionMetadata;
+  defaultQuery?: string;
+  tags?: string[];
+  categoryHint?: string;
+  difficultyHint?: 'basic' | 'intermediate' | 'advanced';
+}
+
+export interface PubChemReactionSearchResult {
+  reactions: PubChemReaction[];
+  totalCount: number;
+  searchTerm: string;
 }
 
 const PUBCHEM_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov';
 const PUBCHEM_PUG_URL = `${PUBCHEM_BASE_URL}/rest/pug`;
 const EUTILS_BASE_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
+const ORD_BASE_URL = 'https://open-reaction-database.org/api';
 
 export const DEFAULT_REAGENT_QUERY = 'reagent[Chemical Role]';
+export const DEFAULT_BICYCLIC_QUERY =
+  '(bicyclo[All Fields] OR bicyclic[All Fields]) AND (chair[Title] OR chair[Description] OR conformer[Title])';
+
+const FALLBACK_BICYCLIC_COMPOUNDS: MoleculeData[] = [
+  {
+    cid: 7044,
+    name: 'Trans-Decalin',
+    displayName: 'Trans-Decalin',
+    molecularFormula: 'C10H18',
+    molecularWeight: 138.25,
+    svgUrl: '',
+    smiles: 'C1CCC2CCCC[C@@H]2C1',
+    sourceQuery: 'fallback:trans-decalin',
+  },
+  {
+    cid: 12736,
+    name: 'Cis-Decalin',
+    displayName: 'Cis-Decalin',
+    molecularFormula: 'C10H18',
+    molecularWeight: 138.25,
+    svgUrl: '',
+    smiles: 'C1CCC2CCCC[C@H]2C1',
+    sourceQuery: 'fallback:cis-decalin',
+  },
+  {
+    cid: 111013,
+    name: 'Bicyclo[3.3.1]nonane',
+    displayName: 'Bicyclo[3.3.1]nonane',
+    molecularFormula: 'C9H16',
+    molecularWeight: 124.22,
+    svgUrl: '',
+    smiles: 'C1CC2CCC(C1)C2',
+    sourceQuery: 'fallback:bicyclo[3.3.1]nonane',
+  },
+  {
+    cid: 12390,
+    name: 'Bicyclo[4.4.0]decane',
+    displayName: 'Bicyclo[4.4.0]decane',
+    molecularFormula: 'C10H18',
+    molecularWeight: 138.25,
+    svgUrl: '',
+    smiles: 'C1CCC2CCCC2C1',
+    sourceQuery: 'fallback:bicyclo[4.4.0]decane',
+  },
+];
 
 export interface MoleculeData {
   name: string;
@@ -31,7 +97,8 @@ export interface MoleculeData {
   codId?: string;
   cifData?: string;
   isCrystal?: boolean;
-  analysis?: MoleculeAnalysisResult;
+  analysis?: any; // Molecule analysis from Gemini API
+  rdkitProperties?: import('./rdkitService').MoleculeProperties;
 }
 
 export const fetchCanonicalSmiles = async (input: string): Promise<string | null> => {
@@ -492,18 +559,67 @@ export const getMoleculeByName = async (moleculeName: string): Promise<MoleculeD
   }
 };
 
+export const getMoleculeBySmiles = async (smilesInput: string): Promise<MoleculeData | null> => {
+  const rawSmiles = smilesInput.trim();
+  if (!rawSmiles) {
+    return null;
+  }
+
+  try {
+    const canonicalSmiles = await fetchCanonicalSmiles(rawSmiles);
+    const searchSmiles = canonicalSmiles ?? rawSmiles;
+
+    const cidUrl = `${PUBCHEM_PUG_URL}/compound/smiles/${encodeURIComponent(searchSmiles)}/cids/JSON`;
+    const cidResponse = await fetchWithRetry(cidUrl);
+
+    if (!cidResponse || !cidResponse.ok) {
+      console.warn('⚠️ Failed to fetch CID for SMILES:', searchSmiles);
+      return null;
+    }
+
+    try {
+      const data = await cidResponse.json();
+      const cid = data?.IdentifierList?.CID?.[0];
+      if (typeof cid === 'number') {
+        return await getMoleculeByCID(cid);
+      }
+    } catch (error) {
+      console.warn('⚠️ Unable to parse SMILES CID response', error);
+    }
+
+    console.warn('⚠️ No CID found for SMILES input:', searchSmiles);
+    return null;
+  } catch (error) {
+    console.error('❌ Error fetching molecule by SMILES:', error);
+    return null;
+  }
+};
+
 // Alternative: Fetch molecule by CID directly
 export const getMoleculeByCID = async (cid: number): Promise<MoleculeData | null> => {
   try {
     console.log(`\n🧪 === Fetching molecule with CID: ${cid} ===`);
-    
+
     const moleculeData = await fetchMoleculeStructure(cid);
-    
+
     if (!moleculeData) {
       console.error(`❌ Failed to fetch molecule data for CID ${cid}`);
       return null;
     }
-    
+
+    // Enhance with RDKit properties if SMILES is available
+    if (moleculeData.smiles) {
+      try {
+        const rdkitMolecule = await rdkitService.parseMolecule(moleculeData.smiles);
+        if (rdkitMolecule?.properties) {
+          moleculeData.rdkitProperties = rdkitMolecule.properties;
+          console.log(`🔬 Enhanced molecule ${cid} with RDKit properties`);
+        }
+      } catch (rdkitError) {
+        console.warn(`⚠️ Failed to enhance molecule ${cid} with RDKit:`, rdkitError);
+      }
+    }
+
     console.log(`✅ Successfully retrieved molecule: ${moleculeData.name}`);
     return moleculeData;
   } catch (error) {
@@ -597,6 +713,76 @@ export const searchReagentMolecules = async (
   } catch (error) {
     console.error(`? Error searching reagent molecules with term "${rawTerm}":`, error);
     return [];
+  }
+};
+
+export const searchBicyclicCompounds = async (
+  query: string,
+  maxResults = 12
+): Promise<MoleculeData[]> => {
+  const rawTerm = query.trim();
+  const cappedMax = Math.min(Math.max(maxResults, 1), 24);
+
+  const baseFilter = `${DEFAULT_BICYCLIC_QUERY} AND has_3d_structure[Filter]`;
+  const finalQuery = rawTerm.length > 0 ? `(${rawTerm}) AND ${baseFilter}` : baseFilter;
+
+  try {
+    const searchUrl = `${EUTILS_BASE_URL}/esearch.fcgi?db=pccompound&term=${encodeURIComponent(
+      finalQuery
+    )}&retmax=${cappedMax}&retmode=json`;
+
+    const response = await fetchWithRetry(searchUrl);
+    if (!response || !response.ok) {
+      console.warn('⚠️ Bicyclic compound search failed with status', response?.status);
+      return [];
+    }
+
+    const data = await response.json().catch((err) => {
+      console.warn('⚠️ Failed to parse bicyclic compound search response', err);
+      return null;
+    });
+
+    if (!data) {
+      return [];
+    }
+
+    const idList: string[] = Array.isArray(data?.esearchresult?.idlist)
+      ? data.esearchresult.idlist.slice(0, cappedMax)
+      : [];
+
+    let hydrated: MoleculeData[] = [];
+
+    if (idList.length > 0) {
+      const molecules = await Promise.all(
+        idList.map(async (id) => {
+          const cid = Number(id);
+          if (!Number.isFinite(cid)) {
+            return null;
+          }
+          return getMoleculeByCID(cid);
+        })
+      );
+
+      hydrated = molecules
+        .filter((molecule): molecule is MoleculeData => Boolean(molecule))
+        .map((molecule) => ({
+          ...molecule,
+          sourceQuery: finalQuery,
+        }));
+    }
+
+    if (hydrated.length === 0) {
+      hydrated = [...FALLBACK_BICYCLIC_COMPOUNDS];
+    } else {
+      // Always include fallback compounds to ensure user has options
+      hydrated = [...hydrated, ...FALLBACK_BICYCLIC_COMPOUNDS];
+    }
+
+    return hydrated;
+  } catch (error) {
+    console.error('❌ Error searching bicyclic compounds:', error);
+    // Return fallback compounds even on error to ensure user always gets results
+    return [...FALLBACK_BICYCLIC_COMPOUNDS];
   }
 };
 
@@ -1008,4 +1194,1042 @@ export const drawSDF2DStructure = (
       ctx.fillText(atom.element, x, y);
     }
   });
+};
+
+// =============================================================================
+// KEGG REACTION DATABASE INTEGRATION
+// =============================================================================
+
+export interface KeggReaction {
+  entryId: string;
+  name: string;
+  equation: string;
+  definition: string;
+  enzyme?: string;
+  pathway?: string;
+  smiles?: string;
+}
+
+/**
+ * Search KEGG reactions using their REST API
+ */
+export const searchKeggReactions = async (
+  query: string,
+  limit: number = 10
+): Promise<PubChemReactionSearchResult> => {
+  try {
+    // KEGG API for finding reactions
+    const findUrl = `https://rest.kegg.jp/find/reaction/${encodeURIComponent(query)}`;
+    const response = await fetch(findUrl);
+
+    if (!response.ok) {
+      throw new Error(`KEGG API error: ${response.status}`);
+    }
+
+    const text = await response.text();
+    const lines = text.trim().split('\n');
+
+    const keggReactions: KeggReaction[] = lines.map(line => {
+      const [entryId, description] = line.split('\t');
+      return {
+        entryId,
+        name: description,
+        equation: description,
+        definition: description
+      };
+    });
+
+    const parseEquationParticipants = (equation?: string): { reactants: string[]; products: string[] } => {
+      if (!equation) {
+        return { reactants: [], products: [] };
+      }
+      const arrow = equation.includes('<=>') ? '<=>' : equation.includes('=>') ? '=>' : '<=>';
+      const [rawReactants, rawProducts] = equation.split(arrow);
+      const tokenize = (segment?: string) =>
+        segment?.split('+').map(token => token.trim()).filter(Boolean) ?? [];
+      return {
+        reactants: tokenize(rawReactants),
+        products: tokenize(rawProducts)
+      };
+    };
+
+    // Convert to PubChemReaction format with metadata
+    const pubchemReactions: PubChemReaction[] = keggReactions.slice(0, limit).map((reaction, index) => {
+      const numericId = Number.parseInt(reaction.entryId.replace('rn:', ''), 10);
+      const participants = parseEquationParticipants(reaction.equation);
+      const defaultQuery = reaction.definition
+        ? `${reaction.name}: ${reaction.definition}`
+        : reaction.equation || reaction.name;
+      const smilesValue = reaction.smiles && reaction.smiles.trim().length > 0
+        ? reaction.smiles
+        : defaultQuery ?? reaction.name ?? '';
+
+      return {
+        rid: Number.isFinite(numericId) ? numericId : 800000 + index,
+        name: reaction.name,
+        smiles: smilesValue,
+        reactants: participants.reactants,
+        products: participants.products,
+        description: reaction.definition || reaction.equation || reaction.name,
+        source: 'kegg',
+        referenceId: reaction.entryId,
+        metadata: {
+          enzyme: reaction.enzyme,
+          equation: reaction.equation,
+          dataset: 'KEGG Reaction Database'
+        },
+        defaultQuery,
+        categoryHint: 'Biochemical',
+        difficultyHint: 'advanced'
+      } satisfies PubChemReaction;
+    });
+
+    return {
+      reactions: pubchemReactions,
+      totalCount: lines.length,
+      searchTerm: query
+    };
+
+  } catch (error) {
+    console.error('Error searching KEGG reactions:', error);
+    return { reactions: [], totalCount: 0, searchTerm: query };
+  }
+};
+
+/**
+ * Get detailed KEGG reaction information
+ */
+export const getKeggReactionDetails = async (entryId: string): Promise<KeggReaction | null> => {
+  try {
+    const url = `https://rest.kegg.jp/get/${entryId}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const text = await response.text();
+    const lines = text.split('\n');
+
+    let reaction: Partial<KeggReaction> = {
+      entryId,
+      name: '',
+      equation: '',
+      definition: ''
+    };
+
+    for (const line of lines) {
+      if (line.startsWith('NAME')) {
+        reaction.name = line.substring(5).trim();
+      } else if (line.startsWith('EQUATION')) {
+        reaction.equation = line.substring(9).trim();
+      } else if (line.startsWith('DEFINITION')) {
+        reaction.definition = line.substring(11).trim();
+      } else if (line.startsWith('ENZYME')) {
+        reaction.enzyme = line.substring(7).trim();
+      }
+    }
+
+    return reaction as KeggReaction;
+
+  } catch (error) {
+    console.error('Error getting KEGG reaction details:', error);
+    return null;
+  }
+};
+
+export interface OrdReaction {
+  rid?: number;
+  reactionId: string;
+  name?: string;
+  smiles: string;
+  reactants: string[];
+  products: string[];
+  description?: string;
+  conditions?: string[];
+  yield?: number;
+  reactionType?: string;
+  category?: string;
+  difficulty?: 'basic' | 'intermediate' | 'advanced';
+  tags?: string[];
+  defaultQuery?: string;
+  dataset?: string;
+  metadata?: ReactionMetadata;
+}
+
+/**
+ * ORD API interfaces and functions
+ * Note: The Open Reaction Database currently doesn't have a public API.
+ * This implementation provides a framework for ORD integration when available.
+ * Currently falls back to static curated ORD reactions.
+ *
+ * For full ORD integration:
+ * 1. Clone https://github.com/open-reaction-database/ord-data
+ * 2. Install ord-schema: pip install ord-schema
+ * 3. Load .pb.gz files and convert to JSON using ord_schema.message_helpers
+ */
+interface OrdQueryParams {
+  reaction_smarts?: string;
+  component?: string;
+  dataset_id?: string;
+  reaction_id?: string;
+  min_yield?: number;
+  max_yield?: number;
+  min_conversion?: number;
+  max_conversion?: number;
+  doi?: string;
+  use_stereochemistry?: boolean;
+  similarity?: number;
+  limit?: number;
+}
+
+interface OrdQueryResponse {
+  task_id: string;
+  status: string;
+}
+
+interface OrdResultResponse {
+  status: string;
+  result?: {
+    reactions: any[]; // ORD reaction objects
+    total_count: number;
+  };
+  error?: string;
+}
+
+/**
+ * Convert ORD reaction data to PubChemReaction format
+ * (Placeholder for when ORD API becomes available)
+ */
+const convertOrdReactionToPubChem = (ordReaction: any, index: number): PubChemReaction => {
+  // Extract basic information from ORD reaction
+  const reactionId = ordReaction.reaction_id || ordReaction.id || `ord_${index}`;
+  const name = ordReaction.name || `ORD Reaction ${reactionId}`;
+
+  // Extract SMILES from reaction components
+  let smiles = '';
+  const reactants: string[] = [];
+  const products: string[] = [];
+
+  if (ordReaction.inputs) {
+    Object.values(ordReaction.inputs).forEach((input: any) => {
+      if (input.components) {
+        input.components.forEach((component: any) => {
+          if (component.smiles) {
+            reactants.push(component.smiles);
+          }
+        });
+      }
+    });
+  }
+
+  if (ordReaction.outcomes) {
+    ordReaction.outcomes.forEach((outcome: any) => {
+      if (outcome.products) {
+        outcome.products.forEach((product: any) => {
+          if (product.smiles) {
+            products.push(product.smiles);
+          }
+        });
+      }
+    });
+  }
+
+  // Create SMILES string (reactants >> products)
+  if (reactants.length > 0 && products.length > 0) {
+    smiles = `${reactants.join('.')}>${products.join('.')}`;
+  }
+
+  // Extract metadata
+  const metadata: ReactionMetadata = {
+    dataset: ordReaction.dataset_id || 'Open Reaction Database',
+    conditions: ordReaction.conditions ? [JSON.stringify(ordReaction.conditions)] : undefined,
+    yield: ordReaction.outcomes?.[0]?.conversion?.value,
+    reactionType: ordReaction.reaction_type,
+  };
+
+  return {
+    rid: parseInt(reactionId.replace(/[^0-9]/g, ''), 10) || 900000 + index,
+    name,
+    smiles,
+    reactants: reactants.map((smiles, i) => `Reactant ${i + 1}`), // Placeholder names
+    products: products.map((smiles, i) => `Product ${i + 1}`), // Placeholder names
+    description: ordReaction.description || name,
+    source: 'ord',
+    referenceId: reactionId,
+    metadata,
+    defaultQuery: name,
+    tags: ordReaction.tags || ['ord'],
+    categoryHint: ordReaction.reaction_type,
+    difficultyHint: 'intermediate'
+  };
+};
+
+/**
+ * Fetch reactions from Open Reaction Database (ORD)
+ * ORD provides comprehensive organic reaction data
+ */
+const ORD_REACTIONS: OrdReaction[] = (ordReactionsDataset as OrdReaction[]).map((reaction) => ({
+  ...reaction,
+  dataset: reaction.dataset ?? 'Open Reaction Database'
+}));
+
+export const searchOrdReactions = async (
+  query: string,
+  limit: number = 10
+): Promise<PubChemReactionSearchResult> => {
+  try {
+    // TODO: When ORD provides a public API, replace this with actual API calls
+    // The ORD interface (https://github.com/open-reaction-database/ord-interface)
+    // provides FastAPI endpoints, but currently requires local deployment
+    //
+    // For now, we use curated static data that represents ORD-style reactions
+    // To integrate with full ORD data:
+    // 1. Use ord-data repository protobuf files
+    // 2. Convert using ord_schema.message_helpers.load_message()
+    // 3. Parse reaction data and convert to PubChemReaction format
+
+    console.log(`ORD Search: "${query}" (using static curated data - full ORD API not yet publicly available)`);
+
+    return await searchOrdReactionsStatic(query, limit);
+  } catch (error) {
+    console.error('Error searching ORD reactions:', error);
+    return await searchOrdReactionsStatic(query, limit);
+  }
+};
+const searchOrdReactionsStatic = async (
+  query: string,
+  limit: number = 10
+): Promise<PubChemReactionSearchResult> => {
+  try {
+    const normalized = query.trim().toLowerCase();
+
+    const filteredReactions = normalized.length === 0
+      ? ORD_REACTIONS
+      : ORD_REACTIONS.filter((reaction) => {
+          const haystacks: Array<string | undefined> = [
+            reaction.name,
+            reaction.description,
+            reaction.reactionType,
+            reaction.category,
+            reaction.defaultQuery,
+            ...(reaction.tags ?? []),
+            ...reaction.reactants,
+            ...reaction.products,
+            ...(reaction.conditions ?? [])
+          ];
+
+          return haystacks.some((value) =>
+            typeof value === 'string' && value.toLowerCase().includes(normalized)
+          );
+        });
+
+    const limited = filteredReactions.slice(0, limit);
+
+    const pubchemReactions: PubChemReaction[] = limited.map((reaction, index) => {
+      const numericId = reaction.rid
+        ?? parseInt(reaction.reactionId.replace(/[^0-9]/g, ''), 10)
+        ?? 900000 + index;
+
+      return {
+        rid: numericId,
+        name: reaction.name,
+        smiles: reaction.smiles,
+        reactants: reaction.reactants,
+        products: reaction.products,
+        description: reaction.description,
+        source: 'ord',
+        referenceId: reaction.reactionId,
+        metadata: {
+          ...(reaction.metadata ?? {}),
+          conditions: reaction.conditions,
+          yield: reaction.yield,
+          reactionType: reaction.reactionType,
+          dataset: reaction.dataset ?? 'Open Reaction Database'
+        },
+        defaultQuery: reaction.defaultQuery ?? reaction.description ?? reaction.name,
+        tags: reaction.tags,
+        categoryHint: reaction.category,
+        difficultyHint: reaction.difficulty
+      } satisfies PubChemReaction;
+    });
+
+    return {
+      reactions: pubchemReactions,
+      totalCount: filteredReactions.length,
+      searchTerm: query
+    };
+
+  } catch (error) {
+    console.error('Error searching static ORD reactions:', error);
+    return { reactions: [], totalCount: 0, searchTerm: query };
+  }
+};
+
+/**
+ * Get detailed ORD reaction information
+ */
+export const getOrdReactionDetails = async (reactionId: string): Promise<OrdReaction | null> => {
+  // In a real implementation, this would fetch from ORD dataset
+  // For now, return mock data
+  const mockReactions: Record<string, OrdReaction> = {
+    'ord_001': {
+      reactionId: 'ord_001',
+      name: 'Suzuki Coupling',
+      smiles: 'B(c1ccccc1)(O)O.CC(=O)c1ccccc1>>CC(=O)c1ccccc1',
+      reactants: ['phenylboronic acid', 'acetophenone'],
+      products: ['biphenyl ketone'],
+      description: 'Palladium-catalyzed cross-coupling reaction',
+      conditions: ['Pd catalyst', 'base'],
+      reactionType: 'cross-coupling'
+    }
+  };
+
+  return mockReactions[reactionId] || null;
+};
+
+/**
+ * Search for reactions in PubChem database
+ * Note: PubChem has limited reaction data, so we use compound relationships
+ */
+export const searchPubChemReactions = async (
+  query: string,
+  limit: number = 10
+): Promise<PubChemReactionSearchResult> => {
+  if (!query.trim()) {
+    return { reactions: [], totalCount: 0, searchTerm: query };
+  }
+
+  try {
+    const aggregated: PubChemReaction[] = [];
+    const lowerQuery = query.toLowerCase();
+
+    const ensureStringArray = (value: unknown): string[] => {
+      if (Array.isArray(value)) {
+        return value
+          .map(item => typeof item === 'string' ? item.trim() : typeof item === 'number' ? String(item) : '')
+          .filter(Boolean);
+      }
+      if (typeof value === 'string') {
+        return value.split(',').map(item => item.trim()).filter(Boolean);
+      }
+      return [];
+    };
+
+    const buildReactionFromSynopsis = (info: any, index: number): PubChemReaction | null => {
+      if (!info || typeof info !== 'object') {
+        return null;
+      }
+
+      const ridCandidate = info.RID ?? info.ReactionID ?? info.RxnID ?? (Array.isArray(info.ID) ? info.ID[0] : info.ID);
+      const ridNumber = Number(ridCandidate);
+
+      const name = typeof info.Name === 'string'
+        ? info.Name
+        : Array.isArray(info.Synonym) && typeof info.Synonym[0] === 'string'
+          ? info.Synonym[0]
+          : undefined;
+
+      const equation = info.Equation ?? info.ReactionEquation ?? info?.Reaction?.Equation;
+      const smilesCandidate = info.RXNSMILES
+        ?? info.ReactionSmiles
+        ?? info['Reaction SMILES']
+        ?? info?.Reaction?.ReactionSmiles
+        ?? '';
+
+      const reactants = ensureStringArray(info.Reactants ?? info.Reactant);
+      const products = ensureStringArray(info.Products ?? info.Product);
+
+      const metadata: ReactionMetadata = { dataset: 'PubChem Reactions' };
+      if (info.Comment) metadata.notes = String(info.Comment);
+      if (info.Reference) metadata.reference = info.Reference;
+      if (info.DOI) metadata.doi = info.DOI;
+      if (info.Source) metadata.source = info.Source;
+
+      const defaultQuery = typeof info.Title === 'string'
+        ? info.Title
+        : equation ?? name;
+
+      const smiles = typeof smilesCandidate === 'string' && smilesCandidate.trim().length > 0
+        ? smilesCandidate
+        : (equation ?? name ?? '');
+
+      const referenceId = typeof ridCandidate === 'string' ? ridCandidate : undefined;
+
+      return {
+        rid: Number.isFinite(ridNumber) ? ridNumber : 600000 + index,
+        name: name ?? defaultQuery ?? `PubChem Reaction ${600000 + index}`,
+        smiles,
+        reactants,
+        products,
+        description: info.Description ?? info.Comment ?? equation ?? name,
+        equation,
+        source: 'pubchem',
+        referenceId,
+        metadata,
+        defaultQuery,
+        tags: ensureStringArray(info.Keywords),
+        categoryHint: typeof info.Category === 'string' ? info.Category : undefined
+      };
+    };
+
+    // Attempt direct PubChem reaction lookup for high-quality matches
+    try {
+      const synopsisUrl = `${PUBCHEM_PUG_URL}/reaction/name/${encodeURIComponent(query)}/synopsis/JSON`;
+      const response = await fetchWithRetry(synopsisUrl);
+      if (response && response.ok) {
+        const data = await response.json();
+        const infoList = data?.InformationList?.Information;
+        if (Array.isArray(infoList)) {
+          infoList.forEach((info, index) => {
+            const reaction = buildReactionFromSynopsis(info, index);
+            if (reaction) {
+              aggregated.push(reaction);
+            }
+          });
+        }
+      }
+    } catch (apiError) {
+      console.warn('PubChem synopsis lookup failed, falling back to heuristics:', apiError);
+    }
+
+    const createSynthetic = (configuration: {
+      rid: number;
+      name: string;
+      smiles: string;
+      reactants: string[];
+      products: string[];
+      description: string;
+      category: string;
+      difficulty: 'basic' | 'intermediate' | 'advanced';
+      tags: string[];
+    }): PubChemReaction => ({
+      ...configuration,
+      source: 'pubchem',
+      metadata: { dataset: 'PubChem Reaction Templates' },
+      defaultQuery: configuration.name,
+      categoryHint: configuration.category,
+      difficultyHint: configuration.difficulty
+    });
+
+    const reactionPatterns: Array<{
+      keywords: string[];
+      generateReactions: (query: string) => PubChemReaction[];
+    }> = [
+      {
+        keywords: ['combustion', 'burning', 'oxidation'],
+        generateReactions: () => [
+          createSynthetic({
+            rid: 1001,
+            name: 'Methane Combustion',
+            smiles: 'C.O=O>>O=C.O',
+            reactants: ['CH4', 'O2'],
+            products: ['CO2', 'H2O'],
+            description: 'Complete combustion of methane',
+            category: 'Combustion',
+            difficulty: 'basic',
+            tags: ['oxidation', 'energy']
+          }),
+          createSynthetic({
+            rid: 1002,
+            name: 'Hydrocarbon Combustion',
+            smiles: 'CC.O=O>>O=C.O',
+            reactants: ['C2H6', 'O2'],
+            products: ['CO2', 'H2O'],
+            description: 'General hydrocarbon combustion',
+            category: 'Combustion',
+            difficulty: 'basic',
+            tags: ['hydrocarbon', 'oxidation']
+          })
+        ]
+      },
+      {
+        keywords: ['acid', 'base', 'neutralization'],
+        generateReactions: () => [
+          createSynthetic({
+            rid: 2001,
+            name: 'Acid-Base Neutralization',
+            smiles: 'Cl.[Na+].[OH-]>>[Na+].[Cl-].O',
+            reactants: ['HCl', 'NaOH'],
+            products: ['NaCl', 'H2O'],
+            description: 'Neutralization of hydrochloric acid with sodium hydroxide',
+            category: 'Acid-Base',
+            difficulty: 'basic',
+            tags: ['neutralization', 'salt']
+          })
+        ]
+      },
+      {
+        keywords: ['ester', 'esterification'],
+        generateReactions: () => [
+          createSynthetic({
+            rid: 3001,
+            name: 'Fischer Esterification',
+            smiles: 'CC(=O)O.CCO>>CC(=O)OCC.O',
+            reactants: ['CH3COOH', 'C2H5OH'],
+            products: ['CH3COOC2H5', 'H2O'],
+            description: 'Acid-catalyzed formation of ethyl acetate',
+            category: 'Organic Synthesis',
+            difficulty: 'intermediate',
+            tags: ['ester', 'acid catalysis']
+          })
+        ]
+      },
+      {
+        keywords: ['saponification', 'soap'],
+        generateReactions: () => [
+          createSynthetic({
+            rid: 3002,
+            name: 'Saponification',
+            smiles: 'CCCCCCCC(=O)OCC.O>>CCCCCCCC(=O)O.CCO',
+            reactants: ['Triglyceride', 'NaOH'],
+            products: ['Soap', 'Glycerol'],
+            description: 'Hydrolysis of fat to form soap and glycerol',
+            category: 'Organic Synthesis',
+            difficulty: 'intermediate',
+            tags: ['hydrolysis', 'base']
+          })
+        ]
+      },
+      {
+        keywords: ['substitution', 'sn2', 'nucleophilic'],
+        generateReactions: () => [
+          createSynthetic({
+            rid: 4001,
+            name: 'SN2 Substitution',
+            smiles: 'CCCl.CC[O-]>>CCO.CCCl',
+            reactants: ['CH3CH2Cl', 'OH-'],
+            products: ['CH3CH2OH', 'Cl-'],
+            description: 'Bimolecular nucleophilic substitution on a primary halide',
+            category: 'Organic Mechanisms',
+            difficulty: 'intermediate',
+            tags: ['nucleophile', 'halide']
+          })
+        ]
+      },
+      {
+        keywords: ['aromatic', 'electrophilic', 'nitration'],
+        generateReactions: () => [
+          createSynthetic({
+            rid: 5001,
+            name: 'Benzene Nitration',
+            smiles: 'c1ccccc1.O=[N+](=O)[O-]>>c1ccccc1[N+](=O)[O-]',
+            reactants: ['C6H6', 'HNO3'],
+            products: ['C6H5NO2', 'H2O'],
+            description: 'Electrophilic aromatic substitution with nitric acid',
+            category: 'Aromatic Chemistry',
+            difficulty: 'advanced',
+            tags: ['nitration', 'aromatic']
+          })
+        ]
+      },
+      {
+        keywords: ['reduction', 'ketone', 'alcohol'],
+        generateReactions: () => [
+          createSynthetic({
+            rid: 6001,
+            name: 'Ketone Reduction',
+            smiles: 'CC(=O)C.[H][H]>>CC(O)C',
+            reactants: ['Acetone', 'H2'],
+            products: ['Isopropanol'],
+            description: 'Hydrogenation of ketone to secondary alcohol',
+            category: 'Reduction',
+            difficulty: 'intermediate',
+            tags: ['hydrogenation', 'carbonyl']
+          })
+        ]
+      },
+      {
+        keywords: ['oxidation', 'alcohol', 'aldehyde'],
+        generateReactions: () => [
+          createSynthetic({
+            rid: 6002,
+            name: 'Primary Alcohol Oxidation',
+            smiles: 'CCO.O=O>>CC=O.O',
+            reactants: ['Ethanol', 'O2'],
+            products: ['Acetaldehyde', 'H2O'],
+            description: 'Conversion of ethanol to acetaldehyde',
+            category: 'Oxidation',
+            difficulty: 'intermediate',
+            tags: ['oxidation', 'alcohol']
+          })
+        ]
+      }
+    ];
+
+    const matchingPatterns = reactionPatterns.filter(pattern =>
+      pattern.keywords.some(keyword => lowerQuery.includes(keyword))
+    );
+
+    if (matchingPatterns.length > 0) {
+      matchingPatterns.forEach(pattern => {
+        const synthetic = pattern.generateReactions(query);
+        aggregated.push(...synthetic);
+      });
+    }
+
+    if (aggregated.length === 0) {
+      const compoundResults = await searchReactionsByCompound(query, limit);
+      aggregated.push(...compoundResults.reactions);
+    } else if (aggregated.length < limit) {
+      const compoundResults = await searchReactionsByCompound(query, limit - aggregated.length);
+      aggregated.push(...compoundResults.reactions);
+    }
+
+    const dedupeMap = new Map<string, PubChemReaction>();
+    aggregated.forEach(reaction => {
+      const key = reaction.smiles && reaction.smiles.trim().length > 0
+        ? `${reaction.source ?? 'pubchem'}:${reaction.smiles.toLowerCase()}`
+        : `${reaction.source ?? 'pubchem'}:${(reaction.name ?? '').toLowerCase()}`;
+      const normalizedKey = key.trim();
+      if (!normalizedKey) {
+        return;
+      }
+      if (!dedupeMap.has(normalizedKey)) {
+        dedupeMap.set(normalizedKey, reaction);
+      }
+    });
+
+    const uniqueReactions = Array.from(dedupeMap.values());
+
+    return {
+      reactions: uniqueReactions.slice(0, limit),
+      totalCount: uniqueReactions.length,
+      searchTerm: query
+    };
+
+  } catch (error) {
+    console.error('Error searching PubChem reactions:', error);
+    return { reactions: [], totalCount: 0, searchTerm: query };
+  }
+};
+
+/**
+ * Get detailed information about a specific PubChem reaction
+ * Since PubChem has limited reaction data, this creates synthetic reactions
+ */
+export const getPubChemReactionDetails = async (rid: number): Promise<PubChemReaction | null> => {
+  // For synthetic reactions, return predefined data based on RID
+  const syntheticReactions: Record<number, PubChemReaction> = {
+    1001: {
+      rid: 1001,
+      name: 'Methane Combustion',
+      smiles: 'C.O=O>>O=C.O',
+      reactants: ['CH4', 'O2'],
+      products: ['CO2', 'H2O'],
+      description: 'Complete combustion of methane: CH4 + 2O2 → CO2 + 2H2O'
+    },
+    1002: {
+      rid: 1002,
+      name: 'Ethane Combustion',
+      smiles: 'CC.O=O>>O=C.O',
+      reactants: ['C2H6', 'O2'],
+      products: ['CO2', 'H2O'],
+      description: 'Combustion of ethane: 2C2H6 + 7O2 → 4CO2 + 6H2O'
+    },
+    2001: {
+      rid: 2001,
+      name: 'Acid-Base Neutralization',
+      smiles: 'Cl.[Na+].[OH-]>>[Na+].[Cl-].O',
+      reactants: ['HCl', 'NaOH'],
+      products: ['NaCl', 'H2O'],
+      description: 'Neutralization: HCl + NaOH → NaCl + H2O'
+    },
+    3001: {
+      rid: 3001,
+      name: 'Esterification',
+      smiles: 'CC(=O)O.CCO>>CC(=O)OCC.O',
+      reactants: ['CH3COOH', 'C2H5OH'],
+      products: ['CH3COOC2H5', 'H2O'],
+      description: 'Ester formation: CH3COOH + C2H5OH → CH3COOC2H5 + H2O'
+    },
+    3002: {
+      rid: 3002,
+      name: 'Saponification',
+      smiles: 'CCCCCCCC(=O)OCC.O>>CCCCCCCC(=O)O.CCO',
+      reactants: ['Triglyceride', 'NaOH'],
+      products: ['Soap', 'Glycerol'],
+      description: 'Soap formation from fats and base'
+    },
+    4001: {
+      rid: 4001,
+      name: 'SN2 Reaction',
+      smiles: 'CCCl.CC[O-]>>CCO.CCCl',
+      reactants: ['CH3CH2Cl', 'OH-'],
+      products: ['CH3CH2OH', 'Cl-'],
+      description: 'Nucleophilic substitution: CH3CH2Cl + OH- → CH3CH2OH + Cl-'
+    },
+    5001: {
+      rid: 5001,
+      name: 'Electrophilic Aromatic Substitution',
+      smiles: 'c1ccccc1.O=[N+](=O)[O-]>>c1ccccc1[N+](=O)[O-]',
+      reactants: ['C6H6', 'HNO3'],
+      products: ['C6H5NO2', 'H2O'],
+      description: 'Nitration of benzene: C6H6 + HNO3 → C6H5NO2 + H2O'
+    },
+    6001: {
+      rid: 6001,
+      name: 'Ketone Reduction',
+      smiles: 'CC(=O)C.[H][H]>>CC(O)C',
+      reactants: ['CH3COCH3', 'H2'],
+      products: ['(CH3)2CHOH'],
+      description: 'Reduction of acetone to isopropanol'
+    },
+    6002: {
+      rid: 6002,
+      name: 'Alcohol Oxidation',
+      smiles: 'CCO.O=O>>CC=O.O',
+      reactants: ['C2H5OH', 'O2'],
+      products: ['CH3CHO', 'H2O'],
+      description: 'Oxidation of ethanol to acetaldehyde'
+    }
+  };
+
+  return syntheticReactions[rid] || null;
+};
+
+/**
+ * Search for reactions by compound name
+ * Creates synthetic reactions involving the searched compound
+ */
+export const searchReactionsByCompound = async (
+  compoundQuery: string,
+  limit: number = 10
+): Promise<PubChemReactionSearchResult> => {
+  try {
+    // First try to find the compound in PubChem
+    const compoundSearch = await searchMolecule(compoundQuery);
+    if (!compoundSearch) {
+      return { reactions: [], totalCount: 0, searchTerm: compoundQuery };
+    }
+
+    // Get compound details
+    const compoundDetails = await fetchMoleculeStructure(compoundSearch);
+    if (!compoundDetails) {
+      return { reactions: [], totalCount: 0, searchTerm: compoundQuery };
+    }
+
+    const compoundName = compoundDetails.name.toLowerCase();
+    const compoundSmiles = compoundDetails.smiles;
+
+    // Create reactions based on compound type
+    const reactions: PubChemReaction[] = [];
+
+    // Alcohol reactions
+    if (compoundName.includes('ol') || compoundName.includes('alcohol')) {
+      reactions.push({
+        rid: 7001,
+        name: `${compoundDetails.name} Oxidation`,
+        smiles: compoundSmiles ? `${compoundSmiles}.O=O>>` : 'CCO.O=O>>CC=O.O',
+        reactants: [compoundDetails.name, 'O2'],
+        products: ['Oxidation Product'],
+        description: `Oxidation of ${compoundDetails.name}`,
+        source: 'compound',
+        metadata: {
+          dataset: 'PubChem Compound Relationships',
+          matchedCompound: compoundDetails.name
+        },
+        defaultQuery: `Oxidation of ${compoundDetails.name}`,
+        tags: ['oxidation', 'compound'],
+        categoryHint: 'Compound-Derived',
+        difficultyHint: 'intermediate'
+      });
+    }
+
+    // Acid reactions
+    if (compoundName.includes('acid') || compoundName.includes('oic acid')) {
+      reactions.push({
+        rid: 7002,
+        name: `${compoundDetails.name} Esterification`,
+        smiles: compoundSmiles ? `${compoundSmiles}.CCO>>` : 'CC(=O)O.CCO>>CC(=O)OCC.O',
+        reactants: [compoundDetails.name, 'Alcohol'],
+        products: ['Ester', 'H2O'],
+        description: `Esterification of ${compoundDetails.name}`,
+        source: 'compound',
+        metadata: {
+          dataset: 'PubChem Compound Relationships',
+          matchedCompound: compoundDetails.name
+        },
+        defaultQuery: `Esterification of ${compoundDetails.name}`,
+        tags: ['esterification', 'compound'],
+        categoryHint: 'Compound-Derived',
+        difficultyHint: 'intermediate'
+      });
+    }
+
+    // Ketone reactions
+    if (compoundName.includes('one') || compoundName.includes('ketone')) {
+      reactions.push({
+        rid: 7003,
+        name: `${compoundDetails.name} Reduction`,
+        smiles: compoundSmiles ? `${compoundSmiles}.[H][H]>>` : 'CC(=O)C.[H][H]>>CC(O)C',
+        reactants: [compoundDetails.name, 'H2'],
+        products: ['Alcohol'],
+        description: `Reduction of ${compoundDetails.name}`,
+        source: 'compound',
+        metadata: {
+          dataset: 'PubChem Compound Relationships',
+          matchedCompound: compoundDetails.name
+        },
+        defaultQuery: `Reduction of ${compoundDetails.name}`,
+        tags: ['reduction', 'compound'],
+        categoryHint: 'Compound-Derived',
+        difficultyHint: 'intermediate'
+      });
+    }
+
+    // Alkene reactions
+    if (compoundName.includes('ene') || compoundSmiles?.includes('=') || compoundSmiles?.includes('C=C')) {
+      reactions.push({
+        rid: 7004,
+        name: `${compoundDetails.name} Addition`,
+        smiles: compoundSmiles ? `${compoundSmiles}.ClCl>>` : 'C=C.ClCl>>',
+        reactants: [compoundDetails.name, 'Cl2'],
+        products: ['Addition Product'],
+        description: `Electrophilic addition to ${compoundDetails.name}`,
+        source: 'compound',
+        metadata: {
+          dataset: 'PubChem Compound Relationships',
+          matchedCompound: compoundDetails.name
+        },
+        defaultQuery: `Addition to ${compoundDetails.name}`,
+        tags: ['addition', 'alkene'],
+        categoryHint: 'Compound-Derived',
+        difficultyHint: 'basic'
+      });
+    }
+
+    // Aromatic reactions
+    if (compoundName.includes('benzene') || compoundName.includes('phenyl') || compoundSmiles?.includes('c1ccccc1')) {
+      reactions.push({
+        rid: 7005,
+        name: `${compoundDetails.name} Substitution`,
+        smiles: compoundSmiles ? `${compoundSmiles}.O=[N+](=O)[O-]>>` : 'c1ccccc1.O=[N+](=O)[O-]>>c1ccccc1[N+](=O)[O-]',
+        reactants: [compoundDetails.name, 'HNO3'],
+        products: ['Substitution Product'],
+        description: `Electrophilic aromatic substitution of ${compoundDetails.name}`,
+        source: 'compound',
+        metadata: {
+          dataset: 'PubChem Compound Relationships',
+          matchedCompound: compoundDetails.name
+        },
+        defaultQuery: `Substitution of ${compoundDetails.name}`,
+        tags: ['aromatic', 'substitution'],
+        categoryHint: 'Compound-Derived',
+        difficultyHint: 'advanced'
+      });
+    }
+
+    // Generic reaction if no specific type matched
+    if (reactions.length === 0) {
+      reactions.push({
+        rid: 7006,
+        name: `${compoundDetails.name} Reaction`,
+        smiles: compoundSmiles ? `${compoundSmiles}>>` : 'CC>>',
+        reactants: [compoundDetails.name],
+        products: ['Product'],
+        description: `General reaction involving ${compoundDetails.name}`,
+        source: 'compound',
+        metadata: {
+          dataset: 'PubChem Compound Relationships',
+          matchedCompound: compoundDetails.name
+        },
+        defaultQuery: `Reaction involving ${compoundDetails.name}`,
+        tags: ['compound', 'generic'],
+        categoryHint: 'Compound-Derived',
+        difficultyHint: 'intermediate'
+      });
+    }
+
+    return {
+      reactions: reactions.slice(0, limit),
+      totalCount: reactions.length,
+      searchTerm: compoundQuery
+    };
+
+  } catch (error) {
+    console.error('Error searching reactions by compound:', error);
+    return { reactions: [], totalCount: 0, searchTerm: compoundQuery };
+  }
+};
+
+/**
+ * Get popular/common reactions from PubChem
+ */
+export const getPopularReactions = async (limit: number = 10): Promise<PubChemReaction[]> => {
+  try {
+    // Return a curated list of common reactions
+    const popularReactions: PubChemReaction[] = [
+      {
+        rid: 1001,
+        name: 'Methane Combustion',
+        smiles: 'C.O=O>>O=C.O',
+        reactants: ['CH4', 'O2'],
+        products: ['CO2', 'H2O'],
+        description: 'Complete combustion of methane'
+      },
+      {
+        rid: 2001,
+        name: 'Acid-Base Neutralization',
+        smiles: 'Cl.[Na+].[OH-]>>[Na+].[Cl-].O',
+        reactants: ['HCl', 'NaOH'],
+        products: ['NaCl', 'H2O'],
+        description: 'Neutralization reaction'
+      },
+      {
+        rid: 3001,
+        name: 'Esterification',
+        smiles: 'CC(=O)O.CCO>>CC(=O)OCC.O',
+        reactants: ['CH3COOH', 'C2H5OH'],
+        products: ['CH3COOC2H5', 'H2O'],
+        description: 'Formation of ester from carboxylic acid and alcohol'
+      },
+      {
+        rid: 4001,
+        name: 'SN2 Reaction',
+        smiles: 'CCCl.CC[O-]>>CCO.CCCl',
+        reactants: ['CH3CH2Cl', 'OH-'],
+        products: ['CH3CH2OH', 'Cl-'],
+        description: 'Nucleophilic substitution with alkyl halide'
+      },
+      {
+        rid: 5001,
+        name: 'Electrophilic Aromatic Substitution',
+        smiles: 'c1ccccc1.O=[N+](=O)[O-]>>c1ccccc1[N+](=O)[O-]',
+        reactants: ['C6H6', 'HNO3'],
+        products: ['C6H5NO2', 'H2O'],
+        description: 'Nitration of benzene'
+      },
+      {
+        rid: 6001,
+        name: 'Ketone Reduction',
+        smiles: 'CC(=O)C.[H][H]>>CC(O)C',
+        reactants: ['Acetone', 'H2'],
+        products: ['Isopropanol'],
+        description: 'Reduction of ketone to secondary alcohol'
+      },
+      {
+        rid: 6002,
+        name: 'Alcohol Oxidation',
+        smiles: 'CCO.O=O>>CC=O.O',
+        reactants: ['Ethanol', 'O2'],
+        products: ['Acetaldehyde', 'H2O'],
+        description: 'Oxidation of primary alcohol to aldehyde'
+      },
+      {
+        rid: 3002,
+        name: 'Saponification',
+        smiles: 'CCCCCCCC(=O)OCC.O>>CCCCCCCC(=O)O.CCO',
+        reactants: ['Triglyceride', 'NaOH'],
+        products: ['Soap', 'Glycerol'],
+        description: 'Hydrolysis of ester to form soap'
+      }
+    ];
+
+    return popularReactions.slice(0, limit);
+
+  } catch (error) {
+    console.error('Error fetching popular reactions:', error);
+    return [];
+  }
 };

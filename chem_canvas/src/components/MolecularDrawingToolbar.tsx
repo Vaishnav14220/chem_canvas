@@ -31,7 +31,8 @@ import {
   Calculator,
   FileText,
   Save,
-  FolderOpen
+  FolderOpen,
+  Pen
 } from 'lucide-react';
 
 interface MolecularDrawingToolbarProps {
@@ -64,7 +65,7 @@ const MolecularDrawingToolbar: React.FC<MolecularDrawingToolbarProps> = ({
 
   const drawingTools = [
     { id: 'select', name: 'Select', icon: Move, description: 'Select and move objects' },
-    { id: 'atom', name: 'Atom', icon: Atom, description: 'Add atoms' },
+    { id: 'textbox', name: 'Text Box', icon: Type, description: 'Insert text box' },
     { id: 'bond', name: 'Bond', icon: Minus, description: 'Draw bonds' },
     { id: 'arrow', name: 'Arrow', icon: ArrowRight, description: 'Reaction arrows' },
     { id: 'ring', name: 'Ring', icon: Hexagon, description: 'Aromatic rings' },
@@ -105,13 +106,12 @@ const MolecularDrawingToolbar: React.FC<MolecularDrawingToolbarProps> = ({
           <Atom size={20} />
           Molecular Drawing Studio
         </h2>
-        <p className="text-sm text-blue-100">Professional Chemistry Tools</p>
       </div>
 
       {/* Navigation Tabs */}
       <div className="flex border-b border-slate-700/50">
         {[
-          { id: 'draw', label: 'Draw', icon: Paintbrush },
+          { id: 'draw', label: 'Draw', icon: Pen },
           { id: 'templates', label: 'Templates', icon: BookOpen },
           { id: 'properties', label: 'Properties', icon: Calculator },
           { id: 'tools', label: 'Tools', icon: Settings }

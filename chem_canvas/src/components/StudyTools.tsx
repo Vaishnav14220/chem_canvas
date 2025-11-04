@@ -1,6 +1,9 @@
-import { useState } from 'react';
-import { Volume2, Play, Brain, FileBarChart, Star, HelpCircle, X, Download, Copy, Share2, FileText, Upload, Edit3, Save, Trash2, Plus, Type, Bold, Italic, List, Link, Palette, MessageSquare, BookOpen } from 'lucide-react';
-import { sendMessageToGemini } from '../services/gemini';
+import { useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Volume2, Play, Brain, FileBarChart, Star, HelpCircle, X, Download, Copy, FileText, Upload, Edit3, Save, Trash2, Plus, Palette, MessageSquare, BookOpen, ChevronLeft, ChevronRight, RotateCcw, CheckCircle2, Circle, AlertCircle } from 'lucide-react';
+import * as geminiService from '../services/geminiService';
+import type { GeneratedFlashcard, GeneratedQuizQuestion } from '../services/geminiService';
 import DocumentDesigner from './DocumentDesigner';
 import ChatAssistant from './ChatAssistant';
 import TestSection from './TestSection';
@@ -13,12 +16,230 @@ interface StudyToolsProps {
   toolType: 'audio' | 'video' | 'mindmap' | 'reports' | 'flashcards' | 'quiz' | 'notes' | 'documents' | 'designer' | 'chat' | 'tests';
 }
 
-interface StudyContent {
+interface MindMapNode {
   title: string;
-  content: string;
-  type: string;
-  generated: boolean;
+  description?: string;
+  children?: MindMapNode[];
 }
+
+type StudyContent =
+  | { type: 'flashcards'; cards: GeneratedFlashcard[]; rawText?: string }
+  | { type: 'quiz'; questions: GeneratedQuizQuestion[]; rawText?: string }
+  | { type: 'mindmap'; centralTopic: string; nodes: MindMapNode[]; rawText?: string }
+  | { type: 'audio' | 'video' | 'reports'; text: string; rawText?: string };
+
+const MAX_CONTEXT_CHARS = 4000;
+
+const extractJsonBlock = (rawText: string): string => {
+  const trimmed = rawText.trim();
+  const fencedMatch = trimmed.match(/```(?:json)?([\s\S]*?)```/i);
+  if (fencedMatch) {
+    return fencedMatch[1].trim();
+  }
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return jsonMatch[0];
+  }
+  return trimmed;
+};
+
+const splitIntoSnippets = (text: string, limit: number, maxLength: number) => {
+  return text
+    .replace(/\r/g, ' ')
+    .split(/[\n\.]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.slice(0, maxLength))
+    .filter(Boolean)
+    .slice(0, limit);
+};
+
+const extractFocusAreas = (text: string, limit = 4) => {
+  if (!text) return [];
+  const snippets = splitIntoSnippets(text, limit * 2, 80);
+  const unique: string[] = [];
+  for (const snippet of snippets) {
+    const normalized = snippet.replace(/[^\w\s-]/g, '').trim();
+    if (!normalized) continue;
+    if (!unique.some((item) => item.toLowerCase() === normalized.toLowerCase())) {
+      unique.push(normalized);
+    }
+    if (unique.length >= limit) break;
+  }
+  return unique;
+};
+
+const buildContextNotes = (text: string, limit = 5) => {
+  if (!text) return [];
+  return splitIntoSnippets(text, limit, 160);
+};
+
+const normalizeMindMapNode = (input: any): MindMapNode | null => {
+  if (!input || typeof input !== 'object') return null;
+  const candidate = input.title ?? input.name ?? input.topic ?? '';
+  const title = typeof candidate === 'string' ? candidate.trim() : '';
+  if (!title) return null;
+
+  const descriptionCandidate = input.description ?? input.detail ?? input.summary ?? input.notes ?? '';
+  const description = typeof descriptionCandidate === 'string' ? descriptionCandidate.trim() : '';
+
+  const node: MindMapNode = { title };
+  if (description) {
+    node.description = description;
+  }
+
+  const childrenSource = input.children ?? input.nodes ?? input.branches ?? [];
+  if (Array.isArray(childrenSource)) {
+    const children = childrenSource
+      .map(normalizeMindMapNode)
+      .filter((child): child is MindMapNode => child !== null);
+    if (children.length) {
+      node.children = children;
+    }
+  }
+
+  return node;
+};
+
+const parseMindMapResponse = (raw: string) => {
+  const payload = extractJsonBlock(raw);
+  const parsed = JSON.parse(payload);
+
+  const centralTopic = typeof parsed.centralTopic === 'string' && parsed.centralTopic.trim()
+    ? parsed.centralTopic.trim()
+    : typeof parsed.topic === 'string' && parsed.topic.trim()
+      ? parsed.topic.trim()
+      : 'Mind Map';
+
+  const nodeCandidates = Array.isArray(parsed.nodes)
+    ? parsed.nodes
+    : Array.isArray(parsed.branches)
+      ? parsed.branches
+      : parsed.structure && Array.isArray(parsed.structure.nodes)
+        ? parsed.structure.nodes
+        : [];
+
+  const nodes = nodeCandidates
+    .map(normalizeMindMapNode)
+    .filter((node: MindMapNode | null): node is MindMapNode => node !== null);
+
+  if (!nodes.length) {
+    throw new Error('Mind map response did not include any branches.');
+  }
+
+  return { centralTopic, nodes };
+};
+
+const buildMindMapPrompt = (topic: string, source: string) => {
+  const lines = [
+    'You are an expert chemistry study coach generating a hierarchical mind map.',
+    `Central topic: ${topic}.`,
+    'Return only valid JSON using this schema:',
+    '{',
+    '  "centralTopic": "string",',
+    '  "nodes": [',
+    '    {',
+    '      "title": "string",',
+    '      "description": "string (<= 120 characters)",',
+    '      "children": [ ... recursive same structure ... ]',
+    '    }',
+    '  ]',
+    '}',
+    'Rules:',
+    '- Provide at least 3 main branches.',
+    '- Include up to 3 levels of depth when useful.',
+    '- Keep descriptions concise and student-friendly.',
+    '- Output JSON only, with no commentary.'
+  ];
+
+  if (source) {
+    lines.push(`Study material to prioritise (trimmed):\n${source.slice(0, MAX_CONTEXT_CHARS)}`);
+  } else {
+    lines.push('No source material provided; rely on core chemistry knowledge.');
+  }
+
+  return lines.join('\n');
+};
+
+const buildNarrativePrompt = (type: 'audio' | 'video' | 'reports', topic: string, source: string) => {
+  const baseIntro =
+    type === 'audio'
+      ? 'Create an engaging audio lesson script for a chemistry student.'
+      : type === 'video'
+        ? 'Create a concise chemistry video outline with narration and visual direction.'
+        : 'Write a synthesized chemistry study report with actionable insights.';
+
+  const lines = [baseIntro, `Focus topic: ${topic}.`];
+
+  if (source) {
+    lines.push('Primary study material (trimmed to 4000 characters):');
+    lines.push(source.slice(0, MAX_CONTEXT_CHARS));
+  } else {
+    lines.push('No study material provided; draw from subject matter expertise.');
+  }
+
+  if (type === 'audio') {
+    lines.push('Structure the script with headings and include approximate duration per section in parentheses. Use markdown with bullet lists for key points.');
+    lines.push('Sections: Opening hook, 3-5 teaching segments (with analogies), recap, action items.');
+  } else if (type === 'video') {
+    lines.push('Produce 5-7 scenes. For each scene include: Title, Narration (2-4 sentences), Visuals (animations/diagrams/demos).');
+    lines.push('Format output with markdown headings (###) and bullet lists. Conclude with a summary call-to-action.');
+  } else {
+    lines.push('Organise the report into markdown headings with these sections: Executive Summary, Key Concepts, Detailed Insights, Applications, Quick Revision Checklist.');
+    lines.push('Use bullet lists where helpful and keep explanations concise (2-3 sentences per point).');
+  }
+
+  return lines.join('\n');
+};
+
+const formatMindMapForExport = (centralTopic: string, nodes: MindMapNode[]) => {
+  const lines = [`# ${centralTopic} Mind Map`, ''];
+
+  const walk = (branches: MindMapNode[], depth = 0) => {
+    branches.forEach((branch) => {
+      const indent = '  '.repeat(depth);
+      const description = branch.description ? `: ${branch.description}` : '';
+      lines.push(`${indent}- ${branch.title}${description}`);
+      if (branch.children && branch.children.length) {
+        walk(branch.children, depth + 1);
+      }
+    });
+  };
+
+  walk(nodes);
+  return lines.join('\n');
+};
+
+const formatFlashcardsForExport = (cards: GeneratedFlashcard[]) => {
+  return cards
+    .map((card, index) => {
+      const lines = [`Card ${index + 1}`, `Front: ${card.front}`, `Back: ${card.back}`];
+      if (card.mnemonic) lines.push(`Mnemonic: ${card.mnemonic}`);
+      if (card.confidenceTag) lines.push(`Confidence: ${card.confidenceTag}`);
+      if (card.difficulty) lines.push(`Difficulty: ${card.difficulty}`);
+      if (card.tags?.length) lines.push(`Tags: ${card.tags.join(', ')}`);
+      return lines.join('\n');
+    })
+    .join('\n\n');
+};
+
+const formatQuizForExport = (questions: GeneratedQuizQuestion[]) => {
+  const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+  return questions
+    .map((question, index) => {
+      const lines = [`Question ${index + 1}: ${question.prompt}`];
+      question.options.forEach((option, optionIndex) => {
+        lines.push(`  ${optionLabels[optionIndex] || String(optionIndex + 1)}. ${option}`);
+      });
+      const correctLabel = optionLabels[question.correctOptionIndex] || String(question.correctOptionIndex + 1);
+      lines.push(`Answer: ${correctLabel}`);
+      if (question.explanation) {
+        lines.push(`Explanation: ${question.explanation}`);
+      }
+      return lines.join('\n');
+    })
+    .join('\n\n');
+};
 
 interface Note {
   id: string;
@@ -42,6 +263,11 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
   const [isGenerating, setIsGenerating] = useState(false);
   const [studyContent, setStudyContent] = useState<StudyContent | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [topicInput, setTopicInput] = useState('');
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [showFlashcardBack, setShowFlashcardBack] = useState(false);
+  const [quizResponses, setQuizResponses] = useState<Record<number, number | null>>({});
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
   
   // Document upload state
   const [uploadedDocuments, setUploadedDocuments] = useState<UploadedDocument[]>([]);
@@ -57,9 +283,42 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
   const [showChatAssistant, setShowChatAssistant] = useState(false);
   const [showTestSection, setShowTestSection] = useState(false);
 
+  const sanitizedTopic = topicInput.trim();
+  const sanitizedSource = useMemo(() => sourceContent.trim(), [sourceContent]);
+  const effectivePrompt = useMemo(() => {
+    if (sanitizedTopic && sanitizedSource) {
+      return `${sanitizedTopic}\n\n${sanitizedSource}`;
+    }
+    return sanitizedTopic || sanitizedSource;
+  }, [sanitizedTopic, sanitizedSource]);
+  const hasSourceContent = sanitizedSource.length > 0;
+  const displaySourceName = hasSourceContent ? sourceName : 'No sources';
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setActiveTab('study');
+    setIsGenerating(false);
+    setStudyContent(null);
+    setError(null);
+    setShowDocumentDesigner(false);
+    setShowChatAssistant(false);
+    setShowTestSection(false);
+    const normalizedSourceName = sourceName && sourceName.toLowerCase() === 'no sources' ? '' : sourceName;
+    setTopicInput(normalizedSourceName && sanitizedSource ? normalizedSourceName : '');
+    setActiveCardIndex(0);
+    setShowFlashcardBack(false);
+    setQuizResponses({});
+    setQuizSubmitted(false);
+  }, [toolType, isOpen, sourceName, sanitizedSource]);
+
   const generateStudyContent = async () => {
-    if (!sourceContent.trim()) {
-      setError('No source content available to generate study materials.');
+    if (!geminiService.isGeminiInitialized()) {
+      setError('Please configure your Gemini API key in Settings before generating study materials.');
+      return;
+    }
+
+    if (!effectivePrompt) {
+      setError('Add a topic or upload reference material to generate study resources.');
       return;
     }
 
@@ -67,76 +326,351 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
     setError(null);
 
     try {
-      let prompt = '';
-      const basePrompt = `Based on the following source content from "${sourceName}", generate study materials. Source content:\n\n${sourceContent.substring(0, 4000)}\n\n`;
+      const topicLabel =
+        sanitizedTopic || (sourceName && sourceName.toLowerCase() !== 'no sources' ? sourceName : 'Chemistry Study Session');
+
+      const focusAreas = extractFocusAreas(sanitizedSource);
+      const contextNotes = buildContextNotes(sanitizedSource);
 
       switch (toolType) {
+        case 'flashcards': {
+          const cards = await geminiService.generateFlashcardDeck({
+            topic: topicLabel,
+            count: 8,
+            learnerLevel: 'intermediate',
+            emphasis: focusAreas.length ? focusAreas : undefined
+          });
+          setStudyContent({ type: 'flashcards', cards });
+          setActiveCardIndex(0);
+          setShowFlashcardBack(false);
+          break;
+        }
+        case 'quiz': {
+          const questions = await geminiService.generateAdaptiveQuizQuestions({
+            topic: topicLabel,
+            count: 6,
+            difficulty: 'intermediate',
+            focusAreas,
+            contextNotes
+          });
+          setStudyContent({ type: 'quiz', questions });
+          setQuizResponses({});
+          setQuizSubmitted(false);
+          break;
+        }
+        case 'mindmap': {
+          const prompt = buildMindMapPrompt(topicLabel, sanitizedSource);
+          const response = await geminiService.generateTextContent(prompt);
+          const { centralTopic, nodes } = parseMindMapResponse(response);
+          setStudyContent({ type: 'mindmap', centralTopic, nodes, rawText: response });
+          break;
+        }
         case 'audio':
-          prompt = basePrompt + `Create a comprehensive audio script summary that covers:
-- Key concepts and main topics
-- Important definitions and formulas
-- Practical applications and examples
-- Key takeaways for study
-Format as a conversational audio script that would be engaging to listen to.`;
-          break;
         case 'video':
-          prompt = basePrompt + `Create a video script outline that covers:
-- Introduction and overview
-- Main concepts with visual descriptions
-- Step-by-step explanations
-- Examples and demonstrations
-- Summary and key points
-Format as a video script with timing cues and visual descriptions.`;
+        case 'reports': {
+          const prompt = buildNarrativePrompt(toolType, topicLabel, sanitizedSource);
+          const text = await geminiService.generateTextContent(prompt);
+          setStudyContent({ type: toolType, text, rawText: text });
           break;
-        case 'mindmap':
-          prompt = basePrompt + `Create a mind map structure that shows:
-- Central topic and main branches
-- Sub-topics and concepts
-- Relationships between ideas
-- Key terms and definitions
-Format as a hierarchical structure that can be visualized as a mind map.`;
-          break;
-        case 'reports':
-          prompt = basePrompt + `Generate a detailed analytical report including:
-- Executive summary
-- Key findings and insights
-- Detailed analysis of concepts
-- Supporting evidence and examples
-- Conclusions and recommendations
-Format as a professional academic report.`;
-          break;
-        case 'flashcards':
-          prompt = basePrompt + `Create study flashcards covering:
-- Key terms and definitions
-- Important concepts and explanations
-- Formulas and equations
-- Examples and applications
-- Quick facts and trivia
-Format each as Question: [question] Answer: [answer]`;
-          break;
-        case 'quiz':
-          prompt = basePrompt + `Generate a comprehensive quiz with:
-- Multiple choice questions (5-10)
-- True/False questions (3-5)
-- Short answer questions (2-3)
-- Application-based questions (2-3)
-Include correct answers and explanations for each question.`;
-          break;
+        }
+        default:
+          setError('This study tool is not yet supported.');
       }
-
-      const response = await sendMessageToGemini(prompt);
-      
-      setStudyContent({
-        title: `${getToolDisplayName(toolType)} - ${sourceName}`,
-        content: response,
-        type: toolType,
-        generated: true
-      });
     } catch (err: any) {
-      setError(err.message || 'Failed to generate study content');
+      console.error('Study tool generation failed:', err);
+      setError(err.message || 'Failed to generate study content.');
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const quizScore = useMemo(() => {
+    if (!studyContent || studyContent.type !== 'quiz' || !quizSubmitted) {
+      return 0;
+    }
+    return studyContent.questions.reduce((score, question, index) => {
+      return score + (quizResponses[index] === question.correctOptionIndex ? 1 : 0);
+    }, 0);
+  }, [quizSubmitted, quizResponses, studyContent]);
+
+  const renderMindMapNodes = (nodes: MindMapNode[], depth = 0) => {
+    return (
+      <div className={`space-y-3 ${depth > 0 ? 'pl-4 border-l border-border/60' : ''}`}>
+        {nodes.map((node, idx) => (
+          <div key={`${node.title}-${idx}`} className="space-y-2">
+            <div className="flex items-start gap-3">
+              <div className="mt-1 h-2.5 w-2.5 rounded-full bg-primary/80" />
+              <div>
+                <h4 className="font-semibold">{node.title}</h4>
+                {node.description && (
+                  <p className="text-sm text-muted-foreground">{node.description}</p>
+                )}
+              </div>
+            </div>
+            {node.children && node.children.length > 0 && (
+              <div className="mt-2">
+                {renderMindMapNodes(node.children, depth + 1)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderMindMapContent = (centralTopic: string, nodes: MindMapNode[]) => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-xl font-semibold">{centralTopic}</h2>
+        <p className="text-sm text-muted-foreground">Visualise how the key concepts connect.</p>
+      </div>
+      {renderMindMapNodes(nodes)}
+    </div>
+  );
+
+  const renderFlashcards = (cards: GeneratedFlashcard[]) => {
+    if (!cards.length) {
+      return <p className="text-muted-foreground">No flashcards generated yet.</p>;
+    }
+
+    const currentCard = cards[activeCardIndex];
+    const meta: string[] = [];
+    if (currentCard.confidenceTag) meta.push(`Confidence: ${currentCard.confidenceTag}`);
+    if (currentCard.difficulty) meta.push(`Difficulty: ${currentCard.difficulty}`);
+    if (currentCard.tags?.length) meta.push(`Tags: ${currentCard.tags.join(', ')}`);
+
+    return (
+      <div className="flex flex-col items-center gap-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>
+            Card {activeCardIndex + 1} of {cards.length}
+          </span>
+          <button
+            onClick={() => {
+              setShowFlashcardBack(false);
+              setActiveCardIndex(0);
+            }}
+            className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Reset
+          </button>
+        </div>
+
+        <button
+          onClick={() => setShowFlashcardBack((prev) => !prev)}
+          className="w-full max-w-lg min-h-[220px] bg-gradient-to-br from-primary/10 via-background to-primary/5 border border-border/60 rounded-2xl p-6 shadow-sm transition-transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-primary/50"
+        >
+          <div className="text-sm uppercase tracking-wide text-muted-foreground mb-3">
+            {showFlashcardBack ? 'Answer' : 'Prompt'}
+          </div>
+          <div className="text-lg font-semibold leading-relaxed text-left">
+            {showFlashcardBack ? currentCard.back : currentCard.front}
+          </div>
+          {showFlashcardBack && currentCard.mnemonic && (
+            <div className="mt-4 text-sm text-primary/80">
+              Mnemonic: {currentCard.mnemonic}
+            </div>
+          )}
+        </button>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              setShowFlashcardBack(false);
+              setActiveCardIndex((prev) => Math.max(prev - 1, 0));
+            }}
+            disabled={activeCardIndex === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted/70 transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </button>
+          <button
+            onClick={() => setShowFlashcardBack((prev) => !prev)}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Flip Card
+          </button>
+          <button
+            onClick={() => {
+              setShowFlashcardBack(false);
+              setActiveCardIndex((prev) => Math.min(prev + 1, cards.length - 1));
+            }}
+            disabled={activeCardIndex === cards.length - 1}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted/70 transition-colors"
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        {meta.length > 0 && (
+          <div className="text-xs text-muted-foreground flex flex-wrap justify-center gap-3">
+            {meta.map((item, idx) => (
+              <span key={idx} className="px-2 py-1 rounded-full bg-muted/70">
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderQuiz = (questions: GeneratedQuizQuestion[]) => {
+    if (!questions.length) {
+      return <p className="text-muted-foreground">No quiz questions generated yet.</p>;
+    }
+
+    const allAnswered = questions.every((_, index) => typeof quizResponses[index] === 'number');
+
+    return (
+      <div className="space-y-6">
+        {questions.map((question, index) => {
+          const selected = quizResponses[index] ?? null;
+          const isCorrect = quizSubmitted && selected === question.correctOptionIndex;
+          return (
+            <div key={index} className="border border-border rounded-xl p-5 bg-muted/30">
+              <div className="flex items-start gap-3">
+                <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  {index + 1}
+                </span>
+                <div className="flex-1 space-y-3">
+                  <p className="font-medium text-sm md:text-base">{question.prompt}</p>
+                  <div className="space-y-2">
+                    {question.options.map((option, optionIndex) => {
+                      const isSelected = selected === optionIndex;
+                      const isAnswer = question.correctOptionIndex === optionIndex;
+                      return (
+                        <button
+                          key={optionIndex}
+                          type="button"
+                          onClick={() => {
+                            if (quizSubmitted) return;
+                            setQuizResponses((prev) => ({ ...prev, [index]: optionIndex }));
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
+                            quizSubmitted
+                              ? isAnswer
+                                ? 'border-green-500 bg-green-500/10 text-green-500'
+                                : isSelected
+                                  ? 'border-red-500 bg-red-500/10 text-red-500'
+                                  : 'border-border bg-background/60 text-foreground'
+                              : isSelected
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-border hover:border-primary/60 hover:bg-muted/60'
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <Circle className={`h-3 w-3 ${isSelected ? 'fill-current' : ''}`} />
+                            {option}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {quizSubmitted && (
+                    <div className={`flex items-center gap-2 text-sm ${isCorrect ? 'text-green-500' : 'text-red-500'}`}>
+                      {isCorrect ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                      <span>{question.explanation}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          {quizSubmitted ? (
+            <div className="text-sm font-medium text-muted-foreground">
+              Score: {quizScore} / {questions.length}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              Select an answer for each question, then check your results.
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setQuizResponses({});
+                setQuizSubmitted(false);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted/70 transition-colors"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reset
+            </button>
+            <button
+              onClick={() => setQuizSubmitted(true)}
+              disabled={!allAnswered || quizSubmitted}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+            >
+              Check Answers
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderNarrative = (text: string) => (
+    <div className="prose prose-invert max-w-none">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+    </div>
+  );
+
+  const renderStudyContent = () => {
+    if (!studyContent) return null;
+    switch (studyContent.type) {
+      case 'flashcards':
+        return renderFlashcards(studyContent.cards);
+      case 'quiz':
+        return renderQuiz(studyContent.questions);
+      case 'mindmap':
+        return renderMindMapContent(studyContent.centralTopic, studyContent.nodes);
+      case 'audio':
+      case 'video':
+      case 'reports':
+        return renderNarrative(studyContent.text);
+      default:
+        return null;
+    }
+  };
+
+  const getExportText = (content: StudyContent): string => {
+    switch (content.type) {
+      case 'flashcards':
+        return formatFlashcardsForExport(content.cards);
+      case 'quiz':
+        return formatQuizForExport(content.questions);
+      case 'mindmap':
+        return formatMindMapForExport(content.centralTopic, content.nodes);
+      case 'audio':
+      case 'video':
+      case 'reports':
+        return content.text;
+    }
+  };
+
+  const copyStudyContentToClipboard = () => {
+    if (!studyContent) return;
+    const exportText = getExportText(studyContent);
+    navigator.clipboard.writeText(exportText);
+  };
+
+  const downloadStudyContent = () => {
+    if (!studyContent) return;
+    const exportText = getExportText(studyContent);
+    const blob = new Blob([exportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const label = getToolDisplayName(studyContent.type).replace(/\s+/g, '-');
+    a.download = `${label}-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -240,24 +774,6 @@ Include correct answers and explanations for each question.`;
     return icons[type as keyof typeof icons] || HelpCircle;
   };
 
-  const copyToClipboard = () => {
-    if (studyContent) {
-      navigator.clipboard.writeText(studyContent.content);
-    }
-  };
-
-  const downloadContent = () => {
-    if (studyContent) {
-      const blob = new Blob([studyContent.content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${studyContent.title}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-  };
-
   if (!isOpen) return null;
 
   const Icon = getToolIcon(toolType);
@@ -273,7 +789,7 @@ Include correct answers and explanations for each question.`;
             </div>
             <div>
               <h2 className="text-lg font-semibold">{getToolDisplayName(toolType)}</h2>
-              <p className="text-sm text-muted-foreground">Source: {sourceName}</p>
+              <p className="text-sm text-muted-foreground">Source: {displaySourceName}</p>
             </div>
           </div>
           <button
@@ -341,40 +857,70 @@ Include correct answers and explanations for each question.`;
             <div className="flex-1 overflow-hidden flex flex-col">
               {!studyContent ? (
                 <div className="flex-1 flex items-center justify-center p-8">
-                  <div className="text-center max-w-md">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20 mx-auto mb-4">
-                      <Icon className="h-10 w-10 text-primary" />
+                  <div className="w-full max-w-xl space-y-6">
+                    <div className="flex flex-col items-center text-center space-y-3">
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
+                        <Icon className="h-10 w-10 text-primary" />
+                      </div>
+                      <h3 className="text-xl font-semibold">
+                        Generate {getToolDisplayName(toolType)}
+                      </h3>
+                      <p className="text-sm text-muted-foreground max-w-md">
+                        {hasSourceContent
+                          ? `We will combine your ${displaySourceName.toLowerCase()} materials with Gemini to build personalized ${getToolDisplayName(toolType).toLowerCase()}.`
+                          : 'Add a topic or keywords so Gemini can craft focused study materials for you.'}
+                      </p>
                     </div>
-                    <h3 className="text-xl font-semibold mb-2">
-                      Generate {getToolDisplayName(toolType)}
-                    </h3>
-                    <p className="text-muted-foreground mb-6">
-                      Create {getToolDisplayName(toolType).toLowerCase()} based on your source content to enhance your study experience.
-                    </p>
-                    
+
+                    <div className="bg-muted/40 border border-border/60 rounded-lg p-4 text-left space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Study focus</label>
+                        <span className="text-xs text-muted-foreground">Optional prompt</span>
+                      </div>
+                      <textarea
+                        value={topicInput}
+                        onChange={(event) => setTopicInput(event.target.value)}
+                        rows={3}
+                        placeholder="e.g. Acid-base titration steps, VSEPR shapes, enthalpy trends..."
+                        className="w-full resize-none rounded-lg border border-border bg-background/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {hasSourceContent
+                          ? 'Tip: refine the topic to steer generation. Your uploaded sources remain the primary reference.'
+                          : 'Paste brief notes or a topic title to guide Gemini if you have no sources yet.'}
+                      </p>
+                    </div>
+
                     {error && (
-                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 mb-4">
+                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-left">
                         <p className="text-destructive text-sm">{error}</p>
                       </div>
                     )}
 
-                    <button
-                      onClick={generateStudyContent}
-                      disabled={isGenerating || !sourceContent.trim()}
-                      className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-8 gap-2"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin"></div>
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Icon className="h-4 w-4" />
-                          Generate {getToolDisplayName(toolType)}
-                        </>
-                      )}
-                    </button>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-xs text-muted-foreground">
+                        {hasSourceContent
+                          ? `Context: ${displaySourceName}`
+                          : 'Need inspiration? Start with a concise topic description.'}
+                      </div>
+                      <button
+                        onClick={generateStudyContent}
+                        disabled={isGenerating || !effectivePrompt}
+                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-8 gap-2"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin"></div>
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Icon className="h-4 w-4" />
+                            Generate {getToolDisplayName(toolType)}
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -389,14 +935,14 @@ Include correct answers and explanations for each question.`;
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={copyToClipboard}
+                        onClick={copyStudyContentToClipboard}
                         className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 gap-2"
                       >
                         <Copy className="h-4 w-4" />
                         Copy
                       </button>
                       <button
-                        onClick={downloadContent}
+                        onClick={downloadStudyContent}
                         className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 gap-2"
                       >
                         <Download className="h-4 w-4" />
@@ -407,11 +953,18 @@ Include correct answers and explanations for each question.`;
 
                   {/* Generated Content */}
                   <div className="flex-1 overflow-y-auto p-6">
-                    <div className="prose prose-invert max-w-none">
-                      <h1 className="text-2xl font-bold mb-4">{studyContent.title}</h1>
-                      <div className="text-foreground whitespace-pre-wrap leading-relaxed">
-                        {studyContent.content}
+                    <div className="space-y-5">
+                      <div>
+                        <h1 className="text-2xl font-bold">{getToolDisplayName(studyContent.type)}</h1>
+                        <p className="text-sm text-muted-foreground">
+                          {sanitizedTopic
+                            ? `Focus: ${sanitizedTopic}`
+                            : hasSourceContent
+                              ? `Generated from ${displaySourceName}`
+                              : 'Generated using Gemini insights'}
+                        </p>
                       </div>
+                      {renderStudyContent()}
                     </div>
                   </div>
                 </div>

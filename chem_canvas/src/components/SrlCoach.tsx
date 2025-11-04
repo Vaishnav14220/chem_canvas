@@ -23,6 +23,7 @@ import type { AIInteraction, InteractionMode } from '../types';
 import { LLMMessage, VerifiedSmilesBlock } from './LLMResponseBlocks';
 import PriorKnowledgePanel from './PriorKnowledgePanel';
 import PlanningMindMap from './PlanningMindMap';
+import AdaptivePlan from './AdaptivePlan';
 import MonitoringDashboard from './MonitoringDashboard';
 import ReflectionTimeline from './ReflectionTimeline';
 import HelpHub from './HelpHub';
@@ -1050,6 +1051,197 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
     outputEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [coachInteractions, isLoading]);
 
+  const monitoringAnalytics = useMemo(() => {
+    const completedNodes = planNodesState.filter((node) => node.status === 'completed').length;
+    const completionRate = planNodesState.length
+      ? Math.round((completedNodes / planNodesState.length) * 100)
+      : 0;
+
+    let totalMinutes = 0;
+    let averageRating = 0;
+    let averageEngagement = Math.round(coachEnergy);
+    let tasksTotal = 0;
+    let avgMinutes = 0;
+    let lastMinutes = 0;
+    let avgTasks = 0;
+    let lastTasks = 0;
+    let avgTools = 0;
+    let lastToolCount = 0;
+    let lastGoalAlignment = completionRate;
+    const toolSet = new Set<string>();
+
+    if (monitoringCheckins.length) {
+      totalMinutes = monitoringCheckins.reduce(
+        (sum, entry) => sum + (entry.durationMinutes ?? 0),
+        0
+      );
+      averageRating =
+        Math.round(
+          (monitoringCheckins.reduce((sum, entry) => sum + entry.rating, 0) /
+            monitoringCheckins.length) *
+            10
+        ) / 10;
+      averageEngagement = Math.round(
+        monitoringCheckins.reduce((sum, entry) => sum + (entry.engagementScore ?? coachEnergy), 0) /
+          monitoringCheckins.length
+      );
+      tasksTotal = monitoringCheckins.reduce(
+        (sum, entry) => sum + (entry.tasksCompleted ?? 0),
+        0
+      );
+      monitoringCheckins.forEach((entry) => entry.toolsUsed?.forEach((tool) => toolSet.add(tool)));
+
+      avgMinutes = totalMinutes / monitoringCheckins.length;
+      avgTasks = tasksTotal / monitoringCheckins.length;
+      avgTools = toolSet.size / monitoringCheckins.length;
+
+      const latestEntry = monitoringCheckins[0];
+      lastMinutes = latestEntry.durationMinutes ?? avgMinutes;
+      lastTasks = latestEntry.tasksCompleted ?? avgTasks;
+      lastToolCount = latestEntry.toolsUsed?.length ?? avgTools;
+      lastGoalAlignment = latestEntry.goalAlignment ?? completionRate;
+    }
+
+    const trend = (() => {
+      const recent = [...monitoringCheckins].slice(0, 10).reverse();
+      if (!recent.length) {
+        return [35, 42, 38, 45, 48, 50, 53];
+      }
+      return recent.map((entry) => {
+        const base = (entry.rating / 5) * 55;
+        const confidenceBoost = ((entry.confidence ?? entry.rating) / 5) * 20;
+        const engagementBoost = ((entry.engagementScore ?? averageEngagement) / 100) * 25;
+        return Math.min(95, Math.max(8, Math.round(base + confidenceBoost + engagementBoost)));
+      });
+    })();
+
+    const breakdown = [
+      {
+        label: 'Focus Minutes',
+        value: `${Math.round(totalMinutes)}m`,
+        delta: Math.round(lastMinutes - avgMinutes)
+      },
+      {
+        label: 'Task Velocity',
+        value: `${Math.max(0, Math.round(tasksTotal))}`,
+        delta: Math.round(lastTasks - avgTasks)
+      },
+      {
+        label: 'Tool Variety',
+        value: `${toolSet.size}`,
+        delta: Math.round(lastToolCount - avgTools)
+      }
+    ];
+
+    const calendarDays = (() => {
+      const daysToShow = 42;
+      const today = new Date();
+      const buckets = new Map<string, MonitoringCheckin[]>();
+      monitoringCheckins.forEach((entry) => {
+        const dayKey = entry.createdAt.slice(0, 10);
+        const key = dayKey || entry.id;
+        if (!buckets.has(key)) {
+          buckets.set(key, []);
+        }
+        buckets.get(key)?.push(entry);
+      });
+      return Array.from({ length: daysToShow }, (_, index) => {
+        const date = new Date(today);
+        date.setDate(today.getDate() - (daysToShow - 1 - index));
+        const iso = date.toISOString().slice(0, 10);
+        const entries = buckets.get(iso) ?? [];
+        const count = entries.length;
+        const score = entries.reduce((sum, entry) => sum + (entry.rating ?? 0), 0);
+        const intensity = count === 0 ? 0 : Math.min(4, Math.round((score / Math.max(1, count))));
+        return {
+          date: iso,
+          count,
+          intensity
+        };
+      });
+    })();
+
+    const tasks = planNodesState.length
+      ? planNodesState.slice(0, 4).map((node) => ({
+          id: node.id,
+          title: node.title,
+          status: node.status,
+          eta: node.durationMinutes ? `${node.durationMinutes}m` : '20m block',
+          tool: node.toolId ?? 'ChemCanvas'
+        }))
+      : [];
+
+    const alerts: Array<{
+      id: string;
+      title: string;
+      description: string;
+      severity: 'info' | 'warning' | 'critical';
+      action?: string;
+    }> = [];
+
+    if (goalTopic && completionRate < 40) {
+      alerts.push({
+        id: 'goal-alignment',
+        title: 'Goal alignment lagging',
+        description: `Only ${completionRate}% of checkpoints tied to "${goalTopic}" are complete.`,
+        severity: 'warning',
+        action: 'Schedule a catch-up block'
+      });
+    }
+
+    if (averageRating <= 3 && monitoringCheckins.length >= 2) {
+      alerts.push({
+        id: 'confidence-dip',
+        title: 'Confidence trending low',
+        description: `Average rating is ${averageRating}/5. Queue a refresher or quick win.`,
+        severity: 'critical',
+        action: 'Trigger quick review'
+      });
+    }
+
+    if (lastGoalAlignment >= 75 && monitoringCheckins.length) {
+      alerts.push({
+        id: 'goal-on-track',
+        title: 'On-track streak',
+        description: `Latest alignment pulse hit ${lastGoalAlignment}%. Keep riding the momentum.`,
+        severity: 'info'
+      });
+    }
+
+    if (!alerts.length && goalTopic && !monitoringCheckins.length) {
+      alerts.push({
+        id: 'start-monitoring',
+        title: 'Kick off tracking',
+        description: `Log your first check-in to monitor "${goalTopic}" with AI nudges.`,
+        severity: 'info'
+      });
+    }
+
+    const feedback = monitoringCheckins.slice(0, 3).map((entry) =>
+      entry.aiNudge
+        ? entry.aiNudge
+        : `Confidence ${entry.rating}/5 on ${entry.focus}. Reflect and adjust plan resources.`
+    );
+    if (!feedback.length && planNodesState.length) {
+      feedback.push('Complete your first milestone to unlock live feedback loops.');
+    }
+
+    return {
+      trend,
+      summary: {
+        totalMinutes: Math.round(totalMinutes),
+        averageRating,
+        completionRate,
+        engagementScore: Math.min(100, averageEngagement)
+      },
+      breakdown,
+      tasks,
+      alerts,
+      feedback,
+      calendarDays
+    };
+  }, [coachEnergy, goalTopic, monitoringCheckins, planNodesState]);
+
   const togglePreferredTool = (toolId: string) => {
     setPreferredTools(prev =>
       prev.includes(toolId) ? prev.filter(id => id !== toolId) : [...prev, toolId]
@@ -1397,6 +1589,14 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
     void sendCoachPrompt('plan', prompt, `Adaptive pathway generated for ${focus}`, 24);
   };
 
+  const handleNewPlan = () => {
+    setPlanNodesState([]);
+    setPlanEdgesState([]);
+    setPlanScenariosState([]);
+    setPlanFocus('');
+    setInsightBulletin('New plan started - add your first milestone to begin building an adaptive pathway.');
+  };
+
   const handleMonitoringFeedback = () => {
     const trimmedFocus = monitorFocus.trim();
     if (!trimmedFocus || monitorRating === null || isLoading) {
@@ -1606,6 +1806,23 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
     const focus = monitorFocus.trim() || goalTopic.trim() || 'General progress';
     const rating = monitorRating ?? Math.max(1, Math.min(5, Math.round(coachEnergy / 20)));
     const confidence = Math.max(1, Math.min(5, Math.round(rating + (coachEnergy - 50) / 25)));
+    const completedNodes = planNodesState.filter((node) => node.status === 'completed').length;
+    const completionRate = planNodesState.length
+      ? Math.round((completedNodes / planNodesState.length) * 100)
+      : 40;
+    const durationMinutes = Math.max(
+      12,
+      Math.round((momentumScore + coachEnergy) / 3 + (monitorNotes ? 6 : 0))
+    );
+    const tasksCompleted = Math.max(
+      1,
+      Math.round(
+        rating + (planNodesState.length ? completedNodes : Math.max(1, rating - 1))
+      )
+    );
+    const engagementScore = Math.min(100, Math.round(coachEnergy * 0.6 + momentumScore * 0.4));
+    const goalAlignment = Math.min(100, Math.round((confidence / 5) * 50 + completionRate / 2));
+    const toolsUsed = preferredTools.length ? preferredTools.slice(0, 3) : ['custom-tool'];
     const checkin: MonitoringCheckin = {
       id: `checkin-${Date.now()}`,
       createdAt: new Date().toISOString(),
@@ -1616,7 +1833,12 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
       aiNudge:
         rating >= 4
           ? `Momentum is high on ${focus}. Add a stretch question or simulate a trickier scenario.`
-          : `Take a breath and revisit the foundation of ${focus} with MolView or a quick quiz before retrying.`
+          : `Take a breath and revisit the foundation of ${focus} with MolView or a quick quiz before retrying.`,
+      durationMinutes,
+      tasksCompleted,
+      engagementScore,
+      goalAlignment,
+      toolsUsed
     };
     setMonitoringCheckins((prev) => [checkin, ...prev].slice(0, 8));
     logCoachAction('monitor', `Check-in logged for ${focus} (${rating}/5)`);
@@ -2152,15 +2374,37 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           <Route size={16} />
                           Generate Adaptive Pathway
                         </button>
-                        <PlanningMindMap
-                          nodes={planNodesState}
-                          edges={planEdgesState}
-                          scenarios={planScenariosState}
-                          onAddStep={handleAddPlanNode}
-                          onUpdateStatus={handleUpdatePlanNodeStatus}
-                          onRunSimulation={handleRunPlanSimulation}
-                          isBusy={isLoading}
-                        />
+
+                        {/* AI-Generated Adaptive Plan */}
+                        <div className="mt-6">
+                          <AdaptivePlan
+                            onPlanGenerated={(nodes, edges) => {
+                              setPlanNodesState(nodes);
+                              setPlanEdgesState(edges);
+                              setPlanFocus(planFocus || goalTopic || 'AI-Generated Plan');
+                            }}
+                            initialTopic={planFocus || goalTopic}
+                          />
+                        </div>
+
+                        {/* Manual Planning Mind Map */}
+                        <div className="mt-6">
+                          <div className="flex items-center gap-2 mb-4">
+                            <div className="h-px bg-gray-700 flex-1"></div>
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">Or Build Manually</span>
+                            <div className="h-px bg-gray-700 flex-1"></div>
+                          </div>
+                          <PlanningMindMap
+                            nodes={planNodesState}
+                            edges={planEdgesState}
+                            scenarios={planScenariosState}
+                            onAddStep={handleAddPlanNode}
+                            onUpdateStatus={handleUpdatePlanNodeStatus}
+                            onRunSimulation={handleRunPlanSimulation}
+                            onNewPlan={handleNewPlan}
+                            isBusy={isLoading}
+                          />
+                        </div>
                       </div>
                     );
                   case 'monitor':
@@ -2222,6 +2466,13 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           experiencePoints={experiencePoints}
                           streakBonus={streakBonus}
                           checkins={monitoringCheckins}
+                          progressTrend={monitoringAnalytics.trend}
+                          progressSummary={monitoringAnalytics.summary}
+                          engagementBreakdown={monitoringAnalytics.breakdown}
+                          activeTasks={monitoringAnalytics.tasks}
+                          feedbackHighlights={monitoringAnalytics.feedback}
+                          goalAlerts={monitoringAnalytics.alerts}
+                          activityCalendar={monitoringAnalytics.calendarDays}
                           onRequestCheckin={handleRequestCheckin}
                           onOpenInsights={handleOpenMonitoringInsights}
                           isBusy={isLoading}

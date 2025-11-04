@@ -20,7 +20,9 @@ import {
   GripVertical,
   FlaskConical,
   Gem,
-  Scan
+  Scan,
+  Eraser,
+  Pen
 } from 'lucide-react';
 import ResizeToolbar from './ResizeToolbar';
 
@@ -105,8 +107,8 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
   );
 
   const chemistryTools = [
-    { id: 'draw', name: 'Draw', icon: Type, description: 'Free drawing tool' },
-    { id: 'atom', name: 'Atom', icon: Atom, description: 'Draw atoms and molecules' },
+    { id: 'draw', name: 'Draw', icon: Pen, description: 'Free drawing tool' },
+    { id: 'textbox', name: 'Text Box', icon: Type, description: 'Insert text box' },
     { id: 'bond', name: 'Bond', icon: Minus, description: 'Draw chemical bonds' },
     { id: 'arrow', name: 'Arrow', icon: ArrowRight, description: 'Reaction arrows' },
     { id: 'plus', name: 'Plus', icon: Plus, description: 'Plus sign for ions' },
@@ -151,33 +153,35 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
 
   return (
     <div
-      className={`relative bg-gradient-to-br from-slate-900/95 via-slate-800/90 to-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-3xl shadow-2xl shadow-slate-900/50 transition-all duration-300 ${
+      className={`relative bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border border-border rounded-xl shadow-lg transition-all duration-300 ${
         isCollapsed ? 'p-3' : 'p-4'
       }`}
       style={containerStyle}
     >
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4 text-slate-200">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-blue-400/40 bg-gradient-to-br from-blue-500/20 to-blue-600/10 shadow-lg shadow-blue-500/10">
-            <Beaker size={20} className="text-blue-300 drop-shadow-sm" />
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg">
+            <Beaker size={16} className="text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-base font-bold uppercase tracking-wider bg-gradient-to-r from-blue-300 to-cyan-300 bg-clip-text text-transparent">Chemistry Tools</span>
-            <span className="text-xs text-slate-400 font-medium">Precision drawing suite</span>
+            <span className="text-sm font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Chemistry Tools
+            </span>
+            <span className="text-xs text-muted-foreground">Drawing Suite</span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {widthLabel && !isCollapsed && (
-            <span className="hidden text-xs text-slate-400 font-medium sm:inline bg-slate-800/50 px-2 py-1 rounded-lg">{widthLabel}</span>
+            <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">{widthLabel}</span>
           )}
           {onToggleCollapse && (
             <button
               type="button"
               onClick={onToggleCollapse}
-              className="rounded-xl border border-slate-600/50 bg-slate-800/80 p-2.5 text-slate-300 transition-all duration-200 hover:bg-slate-700/80 hover:border-slate-500/50 hover:shadow-lg hover:shadow-slate-900/20"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 w-8"
               title={isCollapsed ? 'Expand toolbar' : 'Collapse toolbar'}
             >
-              {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              {isCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </button>
           )}
         </div>
@@ -185,20 +189,20 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
 
       <div
         className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0 pointer-events-none' : 'mt-3 max-h-[4000px] opacity-100'
+          isCollapsed ? 'max-h-0 opacity-0 pointer-events-none' : 'mt-4 max-h-[4000px] opacity-100'
         }`}
         aria-hidden={isCollapsed}
       >
         <div className="space-y-4">
           {/* Chemistry Tools */}
-          <section className="space-y-2">
-            <div className="flex items-center gap-2 text-slate-200">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-blue-400/40 bg-gradient-to-br from-blue-500/15 to-blue-600/5 shadow-lg shadow-blue-500/5">
-                <Grid3X3 size={18} className="text-blue-300" />
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
+                <Grid3X3 size={14} className="text-muted-foreground" />
               </div>
-              <h3 className="text-base font-bold text-slate-200">Tool Palette</h3>
+              <h3 className="text-sm font-semibold">Tool Palette</h3>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {chemistryTools.map((tool) => (
                 <button
                   key={tool.id}
@@ -222,53 +226,48 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
                     }
                   }}
                   disabled={tool.id === 'ar' && !selectedMoleculeCid}
-                  className={`group relative flex h-8 flex-col items-center justify-center gap-0.5 border px-1 text-xs font-semibold transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-1 focus:ring-offset-slate-900 overflow-hidden ${
+                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-3 gap-2 ${
                     tool.isSpecial
-                      ? 'border-blue-400/60 bg-gradient-to-br from-blue-500/95 via-blue-600/90 to-blue-700/85 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-400/50 hover:shadow-xl hover:scale-105 hover:border-blue-300/70 active:scale-95 before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent before:translate-x-[-100%] hover:before:translate-x-[100%] before:transition-transform before:duration-700'
+                      ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'
                       : currentTool === tool.id
-                        ? 'border-blue-400/70 bg-gradient-to-br from-blue-500/90 via-blue-600/85 to-blue-700/80 text-white shadow-lg shadow-blue-500/25 ring-1 ring-blue-400/30'
-                        : 'border-slate-600/60 bg-gradient-to-br from-slate-800/90 via-slate-700/80 to-slate-600/70 text-slate-200 hover:border-slate-400/70 hover:bg-gradient-to-br hover:from-slate-700/90 hover:via-slate-600/80 hover:to-slate-500/70 hover:shadow-lg hover:shadow-slate-900/30 hover:scale-102 active:scale-98'
+                        ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                        : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md'
                   }`}
                   title={tool.description}
                 >
-                  <tool.icon size={8} className={`transition-all duration-300 group-hover:scale-125 group-hover:rotate-3 drop-shadow-sm ${
-                    tool.isSpecial || currentTool === tool.id ? 'filter brightness-110' : ''
-                  }`} />
-                  <span className={`text-[10px] font-medium text-center leading-tight transition-all duration-300 ${
-                    tool.isSpecial || currentTool === tool.id ? 'text-white font-semibold' : 'text-slate-200 group-hover:text-white'
-                  }`}>
-                    {tool.name}
-                  </span>
+                  <tool.icon size={16} />
+                  <span className="text-xs">{tool.name}</span>
                 </button>
               ))}
             </div>
           </section>
 
           {/* Shapes Toggle */}
-          <section className="space-y-2">
+          <section className="space-y-3">
             <button
               onClick={() => setShowShapes(!showShapes)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-600/50 bg-gradient-to-r from-slate-800/80 to-slate-700/60 px-3 py-2 text-xs font-semibold text-slate-200 transition-all duration-200 hover:border-slate-500/60 hover:bg-gradient-to-r hover:from-slate-700/80 hover:to-slate-600/60 hover:shadow-lg hover:shadow-slate-900/20"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-10 px-3 w-full gap-2"
             >
-              <Square size={18} className="text-blue-300" />
+                              <Eraser size={14} />
               <span>{showShapes ? 'Hide' : 'Show'} Shapes</span>
-              <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${showShapes ? 'rotate-180' : ''}`} />
+              <ChevronDown size={14} className={`transition-transform duration-200 ${showShapes ? 'rotate-180' : ''}`} />
             </button>
-            
+
             {showShapes && (
-              <div className="grid grid-cols-4 gap-1">
+              <div className="grid grid-cols-2 gap-2">
                 {shapes.map((shape) => (
                   <button
                     key={shape.id}
                     onClick={() => onToolSelect(shape.id)}
-                    className={`group relative flex h-4 items-center justify-center rounded-md border transition-all duration-300 overflow-hidden focus:outline-none focus:ring-1 focus:ring-blue-500/50 ${
+                    className={`inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-3 gap-2 ${
                       currentTool === shape.id
-                        ? 'border-blue-400/70 bg-gradient-to-br from-blue-500/85 to-blue-600/75 text-white shadow-lg shadow-blue-500/25 ring-1 ring-blue-400/30'
-                        : 'border-slate-600/60 bg-gradient-to-br from-slate-800/90 to-slate-700/70 text-slate-200 hover:border-slate-400/70 hover:bg-gradient-to-br hover:from-slate-700/90 hover:to-slate-600/70 hover:shadow-lg hover:shadow-slate-900/30 hover:scale-110 active:scale-95'
+                        ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                        : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md'
                     }`}
                     title={shape.description}
                   >
-                    <shape.icon size={7} className="drop-shadow-sm" />
+                    <shape.icon size={16} />
+                    <span className="text-xs">{shape.name}</span>
                   </button>
                 ))}
               </div>
@@ -276,21 +275,23 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
           </section>
 
           {/* Stroke & Fill */}
-          <section className="space-y-2">
-            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-1">
-              <div className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-blue-400 to-cyan-400"></div>
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-500"></div>
               Stroke & Fill
             </h3>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Stroke</p>
-                <div className="grid grid-cols-6 gap-1">
-                  {colors.map((color) => (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium uppercase tracking-wide">Stroke</p>
+                </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {colors.slice(0, 10).map((color) => (
                     <button
                       key={`stroke-${color}`}
                       onClick={() => onStrokeColorChange(color)}
-                      className={`h-8 w-8 rounded-xl border-2 transition-all duration-200 shadow-sm hover:scale-110 ${
-                        strokeColor === color ? 'border-white shadow-lg shadow-white/20' : 'border-slate-600 hover:border-slate-400'
+                      className={`h-8 w-8 rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
+                        strokeColor === color ? 'border-primary shadow-md' : 'border-border hover:border-accent'
                       }`}
                       style={{ backgroundColor: color }}
                       title={`Stroke: ${color}`}
@@ -298,26 +299,26 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
                   ))}
                 </div>
               </div>
-              <div className="space-y-1">
-                <p className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-300">
-                  <span>Fill</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium uppercase tracking-wide">Fill</p>
                   <button
                     type="button"
                     onClick={() => onFillToggle(!fillEnabled)}
-                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition-all duration-200 ${
-                      fillEnabled ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-6 px-2 ${
+                      fillEnabled ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground'
                     }`}
                   >
                     {fillEnabled ? 'On' : 'Off'}
                   </button>
-                </p>
-                <div className="grid grid-cols-6 gap-1">
-                  {colors.map((color) => (
+                </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {colors.slice(0, 10).map((color) => (
                     <button
                       key={`fill-${color}`}
                       onClick={() => onFillColorChange(color)}
-                      className={`h-8 w-8 rounded-xl border-2 transition-all duration-200 shadow-sm hover:scale-110 ${
-                        fillColor === color ? 'border-white shadow-lg shadow-white/20' : 'border-slate-600 hover:border-slate-400'
+                      className={`h-8 w-8 rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
+                        fillColor === color ? 'border-primary shadow-md' : 'border-border hover:border-accent'
                       } ${fillEnabled ? '' : 'opacity-50'}`}
                       style={{ backgroundColor: color }}
                       title={`Fill: ${color}`}
@@ -330,35 +331,35 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
           </section>
 
           {/* Brush Size */}
-          <section className="space-y-2">
-            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-1">
-              <div className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-green-400 to-emerald-400"></div>
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-gradient-to-r from-green-500 to-emerald-500"></div>
               Brush Size
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <input
                 type="range"
                 min="1"
                 max="20"
                 value={currentSize}
                 onChange={(e) => onSizeChange(Number(e.target.value))}
-                className="slider-thumb h-3 w-full cursor-pointer appearance-none rounded-lg bg-gradient-to-r from-slate-700 to-slate-600 shadow-inner"
+                className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer slider"
               />
               <div className="flex items-center justify-center">
-                <span className="text-sm font-bold text-slate-300 bg-slate-800/50 px-3 py-1 rounded-lg border border-slate-600/50">
+                <span className="text-sm font-medium bg-muted px-3 py-1 rounded-md">
                   {currentSize}px
                 </span>
               </div>
             </div>
           </section>
 
-          {/* Resize Toolbar */}
-          <section className="space-y-2">
-            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-1">
-              <div className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-purple-400 to-pink-400"></div>
+          {/* Resize & Rotate */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500"></div>
               Resize & Rotate
             </h3>
-            <div className="rounded-xl border border-slate-600/50 bg-gradient-to-br from-slate-800/60 to-slate-700/40 p-2 shadow-inner">
+            <div className="rounded-lg border border-border bg-muted/50 p-3">
               <ResizeToolbar
                 selectedShape={selectedShape ?? null}
                 onResize={(width, height) => {
@@ -376,37 +377,33 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
           </section>
 
           {/* Quick Actions */}
-          <section className="space-y-2 border-t border-slate-600/50 pt-3">
-            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-1">
-              <div className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-orange-400 to-red-400"></div>
+          <section className="space-y-3 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-gradient-to-r from-orange-500 to-red-500"></div>
               Quick Actions
             </h3>
-            <div className="grid grid-cols-2 gap-1">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => onToolSelect('text')}
-                className={`group relative flex h-5 flex-col items-center justify-center gap-0.5 rounded-lg border px-1 text-xs font-semibold transition-all duration-300 overflow-hidden focus:outline-none focus:ring-1 focus:ring-blue-500/50 ${
+                className={`inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-9 px-3 gap-2 ${
                   currentTool === 'text'
-                    ? 'border-orange-400/70 bg-gradient-to-br from-orange-500/85 to-orange-600/75 text-white shadow-lg shadow-orange-500/25 ring-1 ring-orange-400/30'
-                    : 'border-slate-600/60 bg-gradient-to-br from-slate-800/90 to-slate-700/70 text-slate-200 hover:border-slate-400/70 hover:bg-gradient-to-br hover:from-slate-700/90 hover:to-slate-600/70 hover:shadow-lg hover:shadow-slate-900/30 hover:scale-105 active:scale-95'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md'
                 }`}
               >
-                <Type size={6} className={`transition-all duration-300 group-hover:scale-125 drop-shadow-sm ${
-                  currentTool === 'text' ? 'filter brightness-110' : ''
-                }`} />
-                Text
+                <Type size={14} />
+                <span className="text-xs">Text</span>
               </button>
               <button
                 onClick={() => onToolSelect('eraser')}
-                className={`group relative flex h-5 flex-col items-center justify-center gap-0.5 rounded-lg border px-1 text-xs font-semibold transition-all duration-300 overflow-hidden focus:outline-none focus:ring-1 focus:ring-blue-500/50 ${
+                className={`inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-9 px-3 gap-2 ${
                   currentTool === 'eraser'
-                    ? 'border-red-400/70 bg-gradient-to-br from-red-500/85 to-red-600/75 text-white shadow-lg shadow-red-500/25 ring-1 ring-red-400/30'
-                    : 'border-slate-600/60 bg-gradient-to-br from-slate-800/90 to-slate-700/70 text-slate-200 hover:border-slate-400/70 hover:bg-gradient-to-br hover:from-slate-700/90 hover:to-slate-600/70 hover:shadow-lg hover:shadow-slate-900/30 hover:scale-105 active:scale-95'
+                    ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                    : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md'
                 }`}
               >
-                <Square size={6} className={`transition-all duration-300 group-hover:scale-125 drop-shadow-sm ${
-                  currentTool === 'eraser' ? 'filter brightness-110' : ''
-                }`} />
-                Eraser
+                <Eraser size={14} />
+                <span className="text-xs">Eraser</span>
               </button>
             </div>
           </section>

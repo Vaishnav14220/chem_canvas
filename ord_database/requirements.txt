@@ -1,0 +1,6 @@
+ord-schema
+protobuf
+gspread
+oauth2client
+pandas
+rdkit

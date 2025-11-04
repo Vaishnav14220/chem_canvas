@@ -1,5 +1,9 @@
 {
   "dependencies": {
-    "@llm-ui/code": "^0.13.3"
+    "@llm-ui/code": "^0.13.3",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }

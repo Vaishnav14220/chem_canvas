@@ -61,7 +61,7 @@ export default function StudyToolsPanel({ documentName, onStudyToolClick }: Stud
             return (
               <button
                 key={tool.id}
-                onClick={() => onStudyToolClick(tool.name)}
+                onClick={() => onStudyToolClick(tool.id)}
                 className="group relative p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all duration-200 text-left"
               >
                 <div className="flex flex-col items-center text-center">

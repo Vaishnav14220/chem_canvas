@@ -1,0 +1,120 @@
+      {
+        label: 'H-Bond Acceptors',
+        value: properties.hba?.toString() ?? '—',
+        icon: Beaker
+      },
+      {
+        label: 'Rotatable Bonds',
+        value: properties.rotatableBonds?.toString() ?? '—',
+        icon: RefreshCw
+      }
+    ];
+  }, [properties]);
+
+  return (
+    <div className="flex h-full w-full overflow-hidden bg-slate-950">
+      <aside className="w-full max-w-md border-r border-slate-800 bg-slate-900 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-white">SMILES Workspace</h2>
+            <p className="text-xs text-slate-400">
+              Paste a SMILES string, pick a template, or describe a molecule to generate descriptors.
+            </p>
+          </div>
+          {!rdkitReady ? (
+            <span className="inline-flex items-center gap-2 rounded-md border border-slate-700 px-3 py-1 text-xs text-slate-300">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading RDKit
+            </span>
+          ) : moleculeData ? (
+            <button
+              className="inline-flex items-center gap-2 rounded-md border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:border-slate-500 hover:text-white"
+              onClick={() => {
+                clearCurrentMolecule();
+                setSubstructureHistory([]);
+                setInputValue('');
+              }}
+            >
+              <Eraser className="h-3.5 w-3.5" />
+              Reset
+            </button>
+          ) : null}
+        </div>
+
+        <div className="mt-6 space-y-4">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            SMILES input
+          </label>
+          <textarea
+            value={inputValue}
+            onChange={(event) => setInputValue(event.target.value)}
+            rows={4}
+            spellCheck={false}
+            className="w-full rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            placeholder="e.g. CC(=O)OC1=CC=CC=C1C(=O)O"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleParse(inputValue)}
+              disabled={!rdkitReady || busy}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-900"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+              Analyse
+            </button>
+            <button
+              onClick={() => copyToClipboard(inputValue)}
+              className="inline-flex items-center justify-center rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300 hover:border-slate-600 hover:text-white"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-3">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Describe a molecule
+          </label>
+          <textarea
+            value={descriptionInput}
+            onChange={(event) => setDescriptionInput(event.target.value)}
+            rows={3}
+            className="w-full rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            placeholder="e.g. Name a medicine, biomolecule, or reaction participant..."
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleGeminiResolve}
+              disabled={busy || !descriptionInput.trim() || !geminiReady}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-900"
+              title={geminiReady ? undefined : 'Add your Gemini API key in Settings to enable this feature.'}
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              Interpret with Gemini
+            </button>
+            <button
+              onClick={() => {
+                setDescriptionInput('');
+                setGeminiResolution(null);
+              }}
+              className="inline-flex items-center justify-center rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300 hover:border-slate-600 hover:text-white"
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {!geminiReady && (
+            <p className="text-[11px] text-amber-300">
+              Configure your Gemini API key in Settings to convert plain language into SMILES automatically.
+            </p>
+          )}
+          {geminiResolution && (
+            <div className="rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-emerald-200">
+                  {geminiResolution.name || 'Resolved molecule'}
+                </span>
+                {typeof geminiResolution.confidence === 'number' && (
+                  <span className="text-[11px] text-emerald-300">
+                    {Math.round(geminiResolution.confidence * 100)}% certainty
+                  </span>
+                )}

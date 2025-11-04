@@ -330,7 +330,14 @@ export async function validateAudioContent(audioBlob: Blob, trackedDuration?: nu
       try {
         const arrayBuffer = await audioBlob.arrayBuffer();
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // Add timeout to prevent hanging during decode
+        const decodePromise = audioContext.decodeAudioData(arrayBuffer);
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Audio decode timeout')), 5000)
+        );
+        
+        const audioBuffer = await Promise.race([decodePromise, timeoutPromise]);
         const channelData = audioBuffer.getChannelData(0);
         
         // Check if there's any non-zero audio data

@@ -52,7 +52,7 @@ The Live Chat feature provides real-time voice and text communication with Googl
 
 ### API Configuration
 - **Primary Model**: `models/gemini-2.5-flash-native-audio-preview-09-2025` (Live API)
-- **Fallback Model**: `gemini-2.0-flash-exp` (Text-only)
+- **Fallback Model**: `gemini-2.5-flash` (Text-only)
 - **Voice**: Zephyr
 - **Media Resolution**: Medium
 - **Response Modalities**: Audio + Text
