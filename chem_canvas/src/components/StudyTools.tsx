@@ -14,6 +14,7 @@ interface StudyToolsProps {
   sourceContent: string;
   sourceName: string;
   toolType: 'audio' | 'video' | 'mindmap' | 'reports' | 'flashcards' | 'quiz' | 'notes' | 'documents' | 'designer' | 'chat' | 'tests';
+  embedded?: boolean;
 }
 
 interface MindMapNode {
@@ -258,7 +259,7 @@ interface UploadedDocument {
   uploadedAt: Date;
 }
 
-export default function StudyTools({ isOpen, onClose, sourceContent, sourceName, toolType }: StudyToolsProps) {
+export default function StudyTools({ isOpen, onClose, sourceContent, sourceName, toolType, embedded = false }: StudyToolsProps) {
   const [activeTab, setActiveTab] = useState<'study' | 'documents' | 'notes' | 'designer'>('study');
   const [isGenerating, setIsGenerating] = useState(false);
   const [studyContent, setStudyContent] = useState<StudyContent | null>(null);
@@ -778,9 +779,9 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
 
   const Icon = getToolIcon(toolType);
 
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-      <div className="bg-card border border-border rounded-lg shadow-lg w-[900px] max-w-[90vw] max-h-[90vh] flex flex-col animate-slide-up">
+  const content = (
+    <div className={`${embedded ? 'flex-1 flex flex-col' : 'bg-card border border-border rounded-lg shadow-lg w-[900px] max-w-[90vw] max-h-[90vh] flex flex-col animate-slide-up'}`}>
+
         {/* Header */}
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1248,10 +1249,20 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
       />
       
       {/* Test Section Modal */}
-      <TestSection 
-        isOpen={showTestSection} 
-        onClose={() => setShowTestSection(false)} 
+      <TestSection
+        isOpen={showTestSection}
+        onClose={() => setShowTestSection(false)}
       />
+    </div>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+      {content}
     </div>
   );
 }

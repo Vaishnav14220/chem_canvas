@@ -21,6 +21,7 @@ import ChemistryWidgetPanel from './components/ChemistryWidgetPanel';
 import DarkButtonWithIcon from './components/DarkButtonWithIcon';
 import ArMobileView from './components/ArMobileView';
 import SrlCoachWorkspace from './components/SrlCoachWorkspace';
+import StudyToolsWorkspace from './components/StudyToolsWorkspace';
 import AdaptivePlan from './components/AdaptivePlan';
 import FlippingInfo from './components/FlippingInfo';
 import RdkitWorkspace from './components/RdkitWorkspace';
@@ -95,6 +96,7 @@ const App: React.FC = () => {
   const [activeSourceType, setActiveSourceType] = useState<'document' | 'youtube' | 'weblink' | 'image' | 'paste'>('document');
   const [showStudyTools, setShowStudyTools] = useState(false);
   const [selectedStudyTool, setSelectedStudyTool] = useState<StudyToolType>('mindmap');
+  const [selectedWorkspaceTool, setSelectedWorkspaceTool] = useState<StudyToolType>('mindmap');
   const [interactions, setInteractions] = useState<AIInteraction[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [coachLoading, setCoachLoading] = useState(false);
@@ -111,12 +113,12 @@ const App: React.FC = () => {
   const CHAT_MIN_WIDTH = 280;
   const CHAT_MAX_WIDTH = 520;
   const [studyToolsWidth, setStudyToolsWidth] = useState(360);
-  const [showStudyToolsPanel, setShowStudyToolsPanel] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
   const [chemistryPanelInitialView] = useState<'overview' | 'nmr'>('overview');
   const [showNmrFullscreen, setShowNmrFullscreen] = useState(false);
   const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
+  const [showStudyToolsWorkspace, setShowStudyToolsWorkspace] = useState(false);
   const [showAdaptivePlan, setShowAdaptivePlan] = useState(false);
   
   // Resize states
@@ -587,7 +589,18 @@ Here is the learner's question: ${message}`;
                 </button>
 
                 <button
-                  onClick={() => setShowStudyToolsPanel(!showStudyToolsPanel)}
+                  onClick={() => {
+                    setShowStudyToolsWorkspace(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowChatPanel(false);
+                    setShowNmrFullscreen(false);
+                    setShowRdkitWorkspace(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                  }}
                   className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-purple-600 text-white hover:bg-purple-700 hover:shadow-md h-9 px-3"
                 >
                   <Sparkles className="mr-2 h-4 w-4" />
@@ -620,6 +633,7 @@ Here is the learner's question: ${message}`;
                 <button
                   onClick={() => {
                     setShowSrlCoachWorkspace(true);
+                    setShowStudyToolsWorkspace(false);
                     setShowChatPanel(false);
                     setShowNmrFullscreen(false);
                     setShowRdkitWorkspace(false);
@@ -637,8 +651,28 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
+                    setShowStudyToolsWorkspace(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowChatPanel(false);
+                    setShowNmrFullscreen(false);
+                    setShowRdkitWorkspace(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                  }}
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
+                >
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  Study Tools
+                </button>
+
+                <button
+                  onClick={() => {
                     setShowRdkitWorkspace(true);
                     setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
                     setShowNmrFullscreen(false);
                     setShowChemistryPanel(false);
                     setShowChatPanel(false);
@@ -657,6 +691,8 @@ Here is the learner's question: ${message}`;
                   onClick={() => {
                     setShowNmrFullscreen(true);
                     setShowRdkitWorkspace(false);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
                     setIsRdkitAssistantActive(false);
                     setShowRdkitAssistant(false);
                     setIsNmrAssistantActive(false);
@@ -752,7 +788,18 @@ Here is the learner's question: ${message}`;
                 </button>
 
                 <button
-                  onClick={() => setShowStudyToolsPanel(!showStudyToolsPanel)}
+                  onClick={() => {
+                    setShowStudyToolsWorkspace(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowChatPanel(false);
+                    setShowNmrFullscreen(false);
+                    setShowRdkitWorkspace(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                  }}
                   className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
                 >
                   <Sparkles className="h-4 w-4" />
@@ -770,6 +817,7 @@ Here is the learner's question: ${message}`;
                 <button
                   onClick={() => {
                     setShowSrlCoachWorkspace(true);
+                    setShowStudyToolsWorkspace(false);
                     setShowChatPanel(false);
                     setShowNmrFullscreen(false);
                     setShowRdkitWorkspace(false);
@@ -787,8 +835,28 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
+                    setShowStudyToolsWorkspace(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowChatPanel(false);
+                    setShowNmrFullscreen(false);
+                    setShowRdkitWorkspace(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                  }}
+                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  <span className="text-sm">Study Tools</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setShowRdkitWorkspace(true);
                     setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
                     setShowNmrFullscreen(false);
                     setShowChemistryPanel(false);
                     setShowChatPanel(false);
@@ -807,6 +875,8 @@ Here is the learner's question: ${message}`;
                   onClick={() => {
                     setShowNmrFullscreen(true);
                     setShowRdkitWorkspace(false);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
                     setIsRdkitAssistantActive(false);
                     setShowRdkitAssistant(false);
                     setIsNmrAssistantActive(false);
@@ -852,6 +922,26 @@ Here is the learner's question: ${message}`;
           user={user}
         onClose={() => {
           setShowSrlCoachWorkspace(false);
+          setShowChatPanel(false);
+          setIsNmrAssistantActive(false);
+          setShowNmrAssistant(false);
+          setIsRdkitAssistantActive(false);
+          setShowRdkitAssistant(false);
+        }}
+      />
+      ) : showStudyToolsWorkspace ? (
+        <StudyToolsWorkspace
+          interactions={interactions}
+          onSendMessage={handleSendMessage}
+          isLoading={coachLoading}
+          documentName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
+          onOpenDocument={() => setDocumentViewerOpen(true)}
+          user={user}
+          sourceContent={sources.filter(s => s.content).map(s => s.content).join('\n\n')}
+          sourceName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
+          selectedTool={selectedWorkspaceTool}
+        onClose={() => {
+          setShowStudyToolsWorkspace(false);
           setShowChatPanel(false);
           setIsNmrAssistantActive(false);
           setShowNmrAssistant(false);
