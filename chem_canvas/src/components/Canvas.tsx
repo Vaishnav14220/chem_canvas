@@ -1,14 +1,17 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, FlaskConical, Gem, Scan, ExternalLink, Database } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, FlaskConical, Gem, Scan, ExternalLink, Database, X, Smartphone } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, analyzeTextContent, extractDrawnText, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
 import MineralSearch from './MineralSearch';
+import MineralCrystalPreview from './MineralCrystalPreview';
 import ReagentSearch from './ReagentSearch';
 import ReactionSearch from './ReactionSearch';
 import ProteinSearch from './ProteinSearch';
-import { type MoleculeData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID, getMoleculeBySmiles, getMoleculeByName } from '../services/pubchemService';
+import { type MoleculeData, type CrystalVisualData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID, getMoleculeBySmiles, getMoleculeByName } from '../services/pubchemService';
+import { buildCrystalVisualFromCif } from '../services/mineralService';
 import { type PDBProteinData, fetchPDBStructure } from '../services/pdbService';
 import type { ReactionComponentDetails } from '../services/reactionResolver';
 import ChemistryToolbar from './ChemistryToolbar';
@@ -112,6 +115,9 @@ export default function Canvas({
   const [analysisResult, setAnalysisResult] = useState<CanvasAnalysisResult | null>(null);
   const [showChemistryToolbar, setShowChemistryToolbar] = useState(true);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
+  const [arQrCid, setArQrCid] = useState<string | null>(null);
+  const [arQrLabel, setArQrLabel] = useState('');
+  const [activeMineralPreview, setActiveMineralPreview] = useState<{ codId: string; name?: string } | null>(null);
   const [toolbarWidth, setToolbarWidth] = useState(360);
   const [isResizingToolbar, setIsResizingToolbar] = useState(false);
   const toolbarResizeStateRef = useRef<{ startX: number; startWidth: number }>({ startX: 0, startWidth: 360 });
@@ -182,6 +188,7 @@ export default function Canvas({
 
   // Cache for rendered molecule images
   const moleculeImageCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
+  const crystalVisualCacheRef = useRef<Map<string, CrystalVisualData>>(new Map());
 
   type ReactionImageCacheEntry = {
     baseSvg?: string | null;
@@ -266,6 +273,15 @@ export default function Canvas({
     const normalized = typeof cid === 'number' ? cid.toString() : `${cid}`.trim();
     return normalized.length ? normalized : null;
   })();
+  const arQrUrl = useMemo(() => {
+    if (!arQrCid) {
+      return null;
+    }
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return `${window.location.origin}/ar/${encodeURIComponent(arQrCid)}`;
+  }, [arQrCid]);
   const [isDraggingShape, setIsDraggingShape] = useState(false);
   const [isRotatingShape, setIsRotatingShape] = useState(false);
   const [isRotating3DShape, setIsRotating3DShape] = useState(false);
@@ -277,6 +293,30 @@ export default function Canvas({
     baseX: number;
     baseY: number;
   } | null>(null);
+
+  useEffect(() => {
+    if (!arQrCid) {
+      return;
+    }
+    if (!selectedMoleculeCid) {
+      setArQrCid(null);
+      setArQrLabel('');
+      return;
+    }
+
+    const nextLabel =
+      selectedShape?.type === 'molecule'
+        ? selectedShape.moleculeData?.displayName ?? selectedShape.moleculeData?.name ?? ''
+        : '';
+
+    if (selectedMoleculeCid !== arQrCid) {
+      setArQrCid(selectedMoleculeCid);
+    }
+
+    if (nextLabel !== arQrLabel) {
+      setArQrLabel(nextLabel);
+    }
+  }, [selectedMoleculeCid, selectedShape, arQrCid, arQrLabel]);
 
   // Resizing state - Canva-like
   const [isResizing, setIsResizing] = useState(false);
@@ -348,12 +388,22 @@ export default function Canvas({
   };
 
   const openArViewer = () => {
-    if (typeof window === 'undefined' || !selectedMoleculeCid) {
+    if (!selectedMoleculeCid) {
       return;
     }
 
-    const targetUrl = `${window.location.origin}/ar/${encodeURIComponent(selectedMoleculeCid)}`;
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    const label =
+      selectedShape?.type === 'molecule'
+        ? selectedShape.moleculeData?.displayName ?? selectedShape.moleculeData?.name ?? ''
+        : '';
+
+    setArQrLabel(label);
+    setArQrCid(selectedMoleculeCid);
+  };
+
+  const closeArQrOverlay = () => {
+    setArQrCid(null);
+    setArQrLabel('');
   };
 
   const toggleSelectedMolecule3D = (enabled: boolean) => {
@@ -965,6 +1015,15 @@ export default function Canvas({
     canvasHistoryRef.current = updatedShapes;
     setSelectedShapeId(newMolecule.id);
     setChemistryTool('move');
+
+    if (moleculeData.role === 'mineral' || moleculeData.isCrystal) {
+      if (moleculeData.codId) {
+        setActiveMineralPreview({
+          codId: moleculeData.codId,
+          name: moleculeData.displayName ?? moleculeData.name,
+        });
+      }
+    }
 
     if (onMoleculeInserted) {
       onMoleculeInserted(moleculeData);
@@ -2522,6 +2581,305 @@ export default function Canvas({
       storeProjection(projectionPayload);
       renderAnnotationsOverlay();
     };
+
+    // Render crystal structure as primary (for minerals)
+    const renderCrystalPrimary = (crystal: CrystalVisualData) => {
+      if (!crystal || !crystal.atoms || crystal.atoms.length === 0) return;
+
+      // Use full shape bounds
+      const width = Math.abs(shape.endX - shape.startX);
+      const height = Math.abs(shape.endY - shape.startY);
+      const cx = shape.startX + width / 2;
+      const cy = shape.startY + height / 2;
+
+      ctx.save();
+      // Background panel subtle
+      ctx.fillStyle = 'rgba(2,6,23,0.65)';
+      ctx.strokeStyle = 'rgba(56,189,248,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(shape.startX, shape.startY, width, height, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // Rotation based on shape.rotation3D
+      const rot = shape.rotation3D || { x: 25, y: 35, z: 0 } as any;
+      const rx = (rot.x * Math.PI) / 180;
+      const ry = (rot.y * Math.PI) / 180;
+      const rz = (rot.z ? rot.z : 0) * Math.PI / 180;
+
+      const cosx = Math.cos(rx), sinx = Math.sin(rx);
+      const cosy = Math.cos(ry), siny = Math.sin(ry);
+      const cosz = Math.cos(rz), sinz = Math.sin(rz);
+
+      const rotate3D = (x: number, y: number, z: number) => {
+        // Y rotation
+        let nx = x * cosy + z * siny;
+        let nz = -x * siny + z * cosy;
+        let ny = y;
+        // X rotation
+        const ny2 = ny * cosx - nz * sinx;
+        const nz2 = ny * sinx + nz * cosx;
+        nx = nx;
+        // Z rotation
+        const x3 = nx * cosz - ny2 * sinz;
+        const y3 = nx * sinz + ny2 * cosz;
+        return { x: x3, y: y3, z: nz2 };
+      };
+
+      // Normalize positions to [-0.5, 0.5]
+      const xs = crystal.atoms.map(a => a.x);
+      const ys = crystal.atoms.map(a => a.y);
+      const zs = crystal.atoms.map(a => a.z);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+      const sx = maxX - minX || 1;
+      const sy = maxY - minY || 1;
+      const sz = maxZ - minZ || 1;
+
+      const projected = crystal.atoms.map((a, idx) => {
+        const px = (a.x - minX) / sx - 0.5;
+        const py = (a.y - minY) / sy - 0.5;
+        const pz = (a.z - minZ) / sz - 0.5;
+        const r = rotate3D(px, py, pz);
+        return { index: idx, element: a.element, x: r.x, y: r.y, z: r.z };
+      });
+
+      // Scale to fit bounding box with margin
+      const scale = Math.min(width, height) * 0.85;
+
+      // Depth sort for painter's algorithm
+      projected.sort((a, b) => a.z - b.z);
+
+      // Draw bonds first
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = 'rgba(203,213,225,0.85)';
+      crystal.bonds?.forEach(b => {
+        const a1 = projected[b.from];
+        const a2 = projected[b.to];
+        if (!a1 || !a2) return;
+        ctx.beginPath();
+        ctx.moveTo(cx + a1.x * scale, cy + a1.y * scale);
+        ctx.lineTo(cx + a2.x * scale, cy + a2.y * scale);
+        ctx.stroke();
+      });
+
+      // Element colors (subset)
+      const E: Record<string, string> = {
+        C: '#94a3b8', H: '#cbd5e1', N: '#38bdf8', O: '#f87171',
+        S: '#facc15', P: '#a855f7', Cl: '#34d399', Fe: '#ef4444',
+        Ca: '#67e8f9', Na: '#60a5fa', K: '#22c55e', Mg: '#22d3ee',
+        Si: '#f59e0b', Al: '#f472b6', Cu: '#8b5cf6', Zn: '#10b981'
+      };
+
+      // Draw atoms
+      projected.forEach(a => {
+        const r = Math.max(3, Math.min(width, height) * 0.028);
+        ctx.beginPath();
+        ctx.fillStyle = E[a.element] || '#e2e8f0';
+        ctx.arc(cx + a.x * scale, cy + a.y * scale, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(15,23,42,0.9)';
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+      });
+
+      // Unit cell
+      if (crystal.cellEdges && crystal.cellVertices && crystal.cellEdges.length && crystal.cellVertices.length) {
+        const verts = crystal.cellVertices.map(v => rotate3D(
+          (v.x - minX) / sx - 0.5,
+          (v.y - minY) / sy - 0.5,
+          (v.z - minZ) / sz - 0.5,
+        ));
+        ctx.strokeStyle = 'rgba(56,189,248,0.9)';
+        ctx.lineWidth = 1.2;
+        crystal.cellEdges.forEach(edge => {
+          const v1 = verts[edge[0]];
+          const v2 = verts[edge[1]];
+          if (!v1 || !v2) return;
+          ctx.beginPath();
+          ctx.moveTo(cx + v1.x * scale, cy + v1.y * scale);
+          ctx.lineTo(cx + v2.x * scale, cy + v2.y * scale);
+          ctx.stroke();
+        });
+      }
+      ctx.restore();
+    };
+
+    // Render crystal structure inset (for minerals)
+    const renderCrystalInset = (crystal: CrystalVisualData) => {
+      if (!crystal || !crystal.atoms || crystal.atoms.length === 0) return;
+
+      const insetMargin = 8;
+      const insetSize = Math.min(width, height) * 0.6;
+      const insetX = shape.startX + width - insetSize - insetMargin;
+      const insetY = shape.startY + insetMargin;
+
+      // Panel background
+      ctx.save();
+      ctx.fillStyle = 'rgba(2,6,23,0.85)';
+      ctx.strokeStyle = 'rgba(56,189,248,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(insetX - 2, insetY - 2, insetSize + 4, insetSize + 4, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      // Simple orthographic projection using rotation3D
+      const rot = shape.rotation3D || { x: 25, y: 35, z: 0 };
+      const rx = (rot.x * Math.PI) / 180;
+      const ry = (rot.y * Math.PI) / 180;
+      const rz = (rot.z * Math.PI) / 180;
+
+      const cosx = Math.cos(rx), sinx = Math.sin(rx);
+      const cosy = Math.cos(ry), siny = Math.sin(ry);
+      const cosz = Math.cos(rz), sinz = Math.sin(rz);
+
+      const rotate3D = (x: number, y: number, z: number) => {
+        // Y rotation
+        let nx = x * cosy + z * siny;
+        let nz = -x * siny + z * cosy;
+        let ny = y;
+        // X rotation
+        const ny2 = ny * cosx - nz * sinx;
+        const nz2 = ny * sinx + nz * cosx;
+        nx = nx;
+        // Z rotation
+        const x3 = nx * cosz - ny2 * sinz;
+        const y3 = nx * sinz + ny2 * cosz;
+        return { x: x3, y: y3, z: nz2 };
+      };
+
+      // Normalize positions
+      const xs = crystal.atoms.map(a => a.x);
+      const ys = crystal.atoms.map(a => a.y);
+      const zs = crystal.atoms.map(a => a.z);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+      const sx = maxX - minX || 1;
+      const sy = maxY - minY || 1;
+      const sz = maxZ - minZ || 1;
+
+      const projected = crystal.atoms.map((a, idx) => {
+        const px = (a.x - minX) / sx - 0.5;
+        const py = (a.y - minY) / sy - 0.5;
+        const pz = (a.z - minZ) / sz - 0.5;
+        const r = rotate3D(px, py, pz);
+        return { index: idx, element: a.element, x: r.x, y: r.y, z: r.z };
+      });
+
+      // Scale to inset
+      const scale = insetSize * 0.9;
+      const cx = insetX + insetSize / 2;
+      const cy = insetY + insetSize / 2;
+
+      // Depth sort
+      projected.sort((a, b) => a.z - b.z);
+
+      // Draw bonds first
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = 'rgba(203,213,225,0.7)';
+      crystal.bonds?.forEach(b => {
+        const a1 = projected[b.from];
+        const a2 = projected[b.to];
+        if (!a1 || !a2) return;
+        ctx.beginPath();
+        ctx.moveTo(cx + a1.x * scale, cy + a1.y * scale);
+        ctx.lineTo(cx + a2.x * scale, cy + a2.y * scale);
+        ctx.stroke();
+      });
+
+      // Element colors (subset)
+      const E: Record<string, string> = {
+        H: '#cbd5e1', C: '#94a3b8', N: '#60a5fa', O: '#f87171',
+        S: '#facc15', P: '#f59e0b', Cl: '#34d399', Fe: '#fb923c', Si: '#a78bfa'
+      };
+
+      // Draw atoms
+      projected.forEach(a => {
+        const r = 4 + (a.z + 0.5) * 2; // depth cue
+        ctx.beginPath();
+        ctx.fillStyle = E[a.element] || '#e2e8f0';
+        ctx.arc(cx + a.x * scale, cy + a.y * scale, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(15,23,42,0.9)';
+        ctx.lineWidth = 0.75;
+        ctx.stroke();
+      });
+
+      // Unit cell if available
+      if (crystal.cellEdges && crystal.cellVertices && crystal.cellEdges.length && crystal.cellVertices.length) {
+        const verts = crystal.cellVertices.map(v => rotate3D(
+          (v.x - minX) / sx - 0.5,
+          (v.y - minY) / sy - 0.5,
+          (v.z - minZ) / sz - 0.5,
+        ));
+        ctx.strokeStyle = 'rgba(56,189,248,0.7)';
+        ctx.lineWidth = 1;
+        crystal.cellEdges.forEach(edge => {
+          const v1 = verts[edge[0]];
+          const v2 = verts[edge[1]];
+          if (!v1 || !v2) return;
+          ctx.beginPath();
+          ctx.moveTo(cx + v1.x * scale, cy + v1.y * scale);
+          ctx.lineTo(cx + v2.x * scale, cy + v2.y * scale);
+          ctx.stroke();
+        });
+      }
+      ctx.restore();
+    };
+
+    // If this is a crystal from COD and we have crystalData, render it as the primary view
+    if (data.isCrystal && data.crystalData) {
+      renderCrystalPrimary(data.crystalData);
+      // Also store a simplistic projection map to enable annotations roughly at atom centers
+      const width = Math.abs(shape.endX - shape.startX);
+      const height = Math.abs(shape.endY - shape.startY);
+      const cx = shape.startX + width / 2;
+      const cy = shape.startY + height / 2;
+      const atoms = data.crystalData.atoms;
+      if (atoms && atoms.length) {
+        // Project to 2D similar to render logic to support annotations
+        const xs = atoms.map(a => a.x);
+        const ys = atoms.map(a => a.y);
+        const zs = atoms.map(a => a.z);
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+        const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+        const sx = maxX - minX || 1;
+        const sy = maxY - minY || 1;
+        const sz = maxZ - minZ || 1;
+        const rot = shape.rotation3D || { x: 25, y: 35, z: 0 } as any;
+        const rx = (rot.x * Math.PI) / 180;
+        const ry = (rot.y * Math.PI) / 180;
+        const rz = (rot.z ? rot.z : 0) * Math.PI / 180;
+        const cosx = Math.cos(rx), sinx = Math.sin(rx);
+        const cosy = Math.cos(ry), siny = Math.sin(ry);
+        const cosz = Math.cos(rz), sinz = Math.sin(rz);
+        const rotate3D = (x: number, y: number, z: number) => {
+          let nx = x * cosy + z * siny;
+          let nz = -x * siny + z * cosy;
+          let ny = y;
+          const ny2 = ny * cosx - nz * sinx;
+          const nz2 = ny * sinx + nz * cosx;
+          const x3 = nx * cosz - ny2 * sinz;
+          const y3 = nx * sinz + ny2 * cosz;
+          return { x: x3, y: y3, z: nz2 };
+        };
+        const projected = atoms.map((a, idx) => {
+          const px = (a.x - minX) / sx - 0.5;
+          const py = (a.y - minY) / sy - 0.5;
+          const pz = (a.z - minZ) / sz - 0.5;
+          const r = rotate3D(px, py, pz);
+          return { atomIndex: idx, x: cx + r.x * Math.min(width, height) * 0.85, y: cy + r.y * Math.min(width, height) * 0.85 };
+        });
+        moleculeProjectionRef.current.set(shape.id, projected);
+      }
+      renderAnnotationsOverlay();
+      return; // Skip SDF/SVG path for crystals
+    }
 
     const sdfSource = (is3DMode ? data.sdf3DData : data.sdfData)?.trim();
     if (sdfSource) {
@@ -4190,6 +4548,62 @@ export default function Canvas({
           <Atom size={18} />
         </button>
       </div>
+
+      {arQrCid && arQrUrl ? (
+        <div className="absolute top-24 left-1/2 z-40 w-[min(320px,90vw)] -translate-x-1/2 sm:left-auto sm:right-8 sm:translate-x-0">
+          <div className="rounded-2xl border border-purple-500/40 bg-slate-950/95 p-4 shadow-2xl backdrop-blur">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-purple-300/80">AR Ready</p>
+                <p className="text-sm font-semibold text-slate-50">
+                  {arQrLabel || `PubChem CID ${arQrCid}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeArQrOverlay}
+                className="rounded-full p-1 text-purple-100 transition hover:bg-purple-500/20"
+                aria-label="Close AR QR overlay"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-col items-center gap-3">
+              <div className="rounded-xl border border-purple-400/30 bg-slate-900/80 p-3">
+                <QRCodeSVG value={arQrUrl} size={184} includeMargin />
+              </div>
+              <p className="text-center text-[11px] leading-relaxed text-purple-100/80">
+                Scan with your phone's camera or a QR app to launch the ChemCanvas AR viewer and place this molecule in your space.
+              </p>
+              <div className="w-full rounded-lg border border-purple-400/20 bg-slate-900/70 p-2 text-center">
+                <p className="select-all text-[10px] font-mono text-purple-200/80 break-all">{arQrUrl}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!arQrUrl || typeof window === 'undefined') {
+                    return;
+                  }
+                  window.open(arQrUrl, '_blank', 'noopener,noreferrer');
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border border-purple-400/40 bg-purple-600/30 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-50 transition hover:bg-purple-600/40"
+              >
+                <Smartphone size={14} />
+                Open Link
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {activeMineralPreview ? (
+        <MineralCrystalPreview
+          codId={activeMineralPreview.codId}
+          name={activeMineralPreview.name}
+          onClose={() => setActiveMineralPreview(null)}
+        />
+      ) : null}
 
       {/* Chemistry Toolbar */}
       {showChemistryToolbar && (

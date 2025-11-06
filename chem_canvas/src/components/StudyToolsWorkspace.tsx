@@ -17,13 +17,7 @@ interface StudyToolsWorkspaceProps {
 }
 
 const StudyToolsWorkspace: React.FC<StudyToolsWorkspaceProps> = ({
-  interactions: _interactions,
-  onSendMessage: _onSendMessage,
-  isLoading: _isLoading,
   onClose,
-  documentName: _documentName,
-  onOpenDocument: _onOpenDocument,
-  user: _user,
   sourceContent,
   sourceName,
   selectedTool = 'mindmap'
@@ -51,7 +45,7 @@ const StudyToolsWorkspace: React.FC<StudyToolsWorkspaceProps> = ({
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4 py-4 md:px-6 md:py-6">
+      <div className="flex-1 overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
         <StudyTools
           isOpen={true}
           onClose={onClose}

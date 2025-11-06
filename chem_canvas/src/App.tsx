@@ -112,7 +112,6 @@ const App: React.FC = () => {
   const [chatWidth, setChatWidth] = useState(320);
   const CHAT_MIN_WIDTH = 280;
   const CHAT_MAX_WIDTH = 520;
-  const [studyToolsWidth, setStudyToolsWidth] = useState(360);
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
   const [chemistryPanelInitialView] = useState<'overview' | 'nmr'>('overview');
@@ -122,7 +121,7 @@ const App: React.FC = () => {
   const [showAdaptivePlan, setShowAdaptivePlan] = useState(false);
   
   // Resize states
-  const [isResizing, setIsResizing] = useState<'sources' | 'chat' | 'studyTools' | null>(null);
+  const [isResizing, setIsResizing] = useState<'sources' | 'chat' | null>(null);
   const [resizeStartX, setResizeStartX] = useState(0);
   const [resizeStartWidth, setResizeStartWidth] = useState(0);
   const [apiKey, setApiKey] = useState('');
@@ -294,7 +293,7 @@ const App: React.FC = () => {
   };
 
   // Resize handlers
-  const handleMouseDown = (panel: 'sources' | 'chat' | 'studyTools', e: React.MouseEvent) => {
+  const handleMouseDown = (panel: 'sources' | 'chat', e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     console.log('Mouse down on', panel, 'panel'); // Debug log
@@ -302,8 +301,7 @@ const App: React.FC = () => {
     setResizeStartX(e.clientX);
     setResizeStartWidth(
       panel === 'sources' ? sourcesWidth :
-      panel === 'chat' ? chatWidth :
-      studyToolsWidth
+      chatWidth
     );
   };
 
@@ -325,9 +323,6 @@ const App: React.FC = () => {
       console.log('Chat resize - Start:', resizeStartWidth, 'Delta:', deltaX, 'New:', newWidth);
       const boundedWidth = Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, newWidth));
       setChatWidth(boundedWidth);
-    } else if (isResizing === 'studyTools') {
-      newWidth = Math.max(250, Math.min(600, resizeStartWidth + deltaX));
-      setStudyToolsWidth(newWidth);
     }
   };
 
@@ -1518,176 +1513,7 @@ Here is the learner's question: ${message}`;
 
 
             {/* Study Tools Panel */}
-            {showStudyToolsPanel && (
-              <>
-                <div 
-                  className="border-l-2 border-border bg-card flex flex-col shadow-lg"
-                  style={{ width: studyToolsWidth }}
-                >
-                  {/* Study Tools Header */}
-                  <div className="px-6 py-4 border-b border-border bg-muted/50">
-                    <div className="flex items-center space-x-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                        <Sparkles className="h-4 w-4 text-primary-foreground" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold">Study Tools</h3>
-                        <p className="text-xs text-muted-foreground">Generate content</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Study Tools Grid */}
-                  <div className="flex-1 p-6">
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { name: 'Audio Overview', icon: '🎵', toolType: 'audio' },
-                        { name: 'Video Overview', icon: '▶️', toolType: 'video' },
-                        { name: 'Mind Map', icon: '🧠', toolType: 'mindmap' },
-                        { name: 'Reports', icon: '📊', toolType: 'reports' },
-                        { name: 'Flashcards', icon: '📚', toolType: 'flashcards' },
-                        { name: 'Quiz', icon: '❓', toolType: 'quiz' },
-                        { name: 'Adaptive Learning Plan', icon: '🎯', toolType: 'adaptive' },
-                      ].map((tool) => (
-                        <DarkButtonWithIcon
-                          key={tool.name}
-                          onClick={() => {
-                            if (tool.toolType === 'adaptive') {
-                              setShowAdaptivePlan(true);
-                            } else {
-                              setSelectedStudyTool(tool.toolType as StudyToolType);
-                              setShowStudyTools(true);
-                            }
-                          }}
-                          className="flex flex-col items-center space-y-2 p-4 h-auto"
-                        >
-                          <div className={`flex h-10 w-10 items-center justify-center bg-primary/10 text-primary`}>
-                            <span className="text-lg">{tool.icon}</span>
-                          </div>
-                          <p className="text-xs font-medium text-center text-foreground">{tool.name}</p>
-                        </DarkButtonWithIcon>
-                      ))}
-                    </div>
-                    
-                    {/* Quick Access Tools */}
-                    <div className="mt-6 pt-4 border-t border-border">
-                      <h4 className="text-sm font-medium text-muted-foreground mb-3">Quick Access</h4>
-                      
-                      {/* Primary Tools */}
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        <DarkButtonWithIcon
-                          onClick={() => {
-                            setIsNmrAssistantActive(false);
-                            setIsRdkitAssistantActive(false);
-                            setShowRdkitAssistant(false);
-                            setShowChatPanel(true);
-                          }}
-                          className="flex flex-col items-center space-y-2 p-4 h-auto"
-                        >
-                          <div className="flex h-10 w-10 items-center justify-center bg-primary/10 text-primary">
-                            <MessageSquare className="h-5 w-5" />
-                          </div>
-                          <p className="text-xs font-medium text-center">Chat</p>
-                        </DarkButtonWithIcon>
-
-                        <DarkButtonWithIcon
-                          onClick={() => {
-                            setIsNmrAssistantActive(false);
-                            setIsRdkitAssistantActive(false);
-                            setShowRdkitAssistant(false);
-                            setShowChatPanel(true);
-                          }}
-                          className="flex flex-col items-center space-y-2 p-4 h-auto"
-                        >
-                          <div className="flex h-10 w-10 items-center justify-center bg-purple-500/10 text-purple-400">
-                            <Headphones className="h-5 w-5" />
-                          </div>
-                          <p className="text-xs font-medium text-center">Canvas Chat</p>
-                        </DarkButtonWithIcon>
-                        
-                        <DarkButtonWithIcon
-                          onClick={() => {
-                            setSelectedStudyTool('tests');
-                            setShowStudyTools(true);
-                            setTimeout(() => {
-                              const testButton = document.querySelector('[data-tool="tests"]');
-                              if (testButton) (testButton as HTMLElement).click();
-                            }, 100);
-                          }}
-                          className="flex flex-col items-center space-y-2 p-4 h-auto"
-                        >
-                          <div className="flex h-10 w-10 items-center justify-center bg-primary/10 text-primary">
-                            <BookOpen className="h-5 w-5" />
-                          </div>
-                          <p className="text-xs font-medium text-center">AI Tests</p>
-                        </DarkButtonWithIcon>
-                      </div>
-                      
-                      {/* Secondary Tools */}
-                      <h4 className="text-sm font-medium text-muted-foreground mb-3">Tools</h4>
-                      <div className="grid grid-cols-2 gap-3">
-                        <DarkButtonWithIcon
-                          onClick={() => {
-                            setSelectedStudyTool('documents');
-                            setShowStudyTools(true);
-                            setTimeout(() => {
-                              const docButton = document.querySelector('[data-tool="documents"]');
-                              if (docButton) (docButton as HTMLElement).click();
-                            }, 100);
-                          }}
-                          className="flex flex-col items-center space-y-2 p-3 h-auto"
-                        >
-                          <div className="flex h-8 w-8 items-center justify-center bg-primary/10 text-primary">
-                            <FileText className="h-4 w-4" />
-                          </div>
-                          <p className="text-xs font-medium text-center">Docs</p>
-                        </DarkButtonWithIcon>
-                        
-                        <DarkButtonWithIcon
-                          onClick={() => {
-                            setSelectedStudyTool('notes');
-                            setShowStudyTools(true);
-                            setTimeout(() => {
-                              const notesButton = document.querySelector('[data-tool="notes"]');
-                              if (notesButton) (notesButton as HTMLElement).click();
-                            }, 100);
-                          }}
-                          className="flex flex-col items-center space-y-2 p-3 h-auto"
-                        >
-                          <div className="flex h-8 w-8 items-center justify-center bg-primary/10 text-primary">
-                            <Edit3 className="h-4 w-4" />
-                          </div>
-                          <p className="text-xs font-medium text-center">Notes</p>
-                        </DarkButtonWithIcon>
-                        
-                        <DarkButtonWithIcon
-                          onClick={() => {
-                            setSelectedStudyTool('designer');
-                            setShowStudyTools(true);
-                            setTimeout(() => {
-                              const designerButton = document.querySelector('[data-tool="designer"]');
-                              if (designerButton) (designerButton as HTMLElement).click();
-                            }, 100);
-                          }}
-                          className="flex flex-col items-center space-y-2 p-3 h-auto"
-                        >
-                          <div className="flex h-8 w-8 items-center justify-center bg-primary/10 text-primary">
-                            <Palette className="h-4 w-4" />
-                          </div>
-                          <p className="text-xs font-medium text-center">Design</p>
-                        </DarkButtonWithIcon>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Resize Handle */}
-                <div
-                  className="w-2 bg-muted hover:bg-primary/50 cursor-col-resize transition-colors border-l border-border"
-                  onMouseDown={(e) => handleMouseDown('studyTools', e)}
-                />
-              </>
-            )}
+            {/* Study Tools Panel handled via full-screen workspace */}
 
             {/* Chat Start Button - Floating */}
             {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showRdkitWorkspace && (

@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Volume2, Play, Brain, FileBarChart, Star, HelpCircle, X, Download, Copy, FileText, Upload, Edit3, Save, Trash2, Plus, Palette, MessageSquare, BookOpen, ChevronLeft, ChevronRight, RotateCcw, CheckCircle2, Circle, AlertCircle } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Volume2, Play, Brain, FileBarChart, Star, HelpCircle, X, Download, Copy, FileText, Upload, Edit3, Save, Trash2, Plus, Palette, MessageSquare, BookOpen, ChevronLeft, ChevronRight, RotateCcw, CheckCircle2, Circle, AlertCircle, Settings } from 'lucide-react';
+import '@blocknote/react/style.css';
 import * as geminiService from '../services/geminiService';
 import type { GeneratedFlashcard, GeneratedQuizQuestion } from '../services/geminiService';
 import DocumentDesigner from './DocumentDesigner';
 import ChatAssistant from './ChatAssistant';
 import TestSection from './TestSection';
+import MoleculeSearch from './MoleculeSearch';
 
 interface StudyToolsProps {
   isOpen: boolean;
@@ -28,6 +31,19 @@ type StudyContent =
   | { type: 'quiz'; questions: GeneratedQuizQuestion[]; rawText?: string }
   | { type: 'mindmap'; centralTopic: string; nodes: MindMapNode[]; rawText?: string }
   | { type: 'audio' | 'video' | 'reports'; text: string; rawText?: string };
+
+type ActiveTab = 'study' | 'documents' | 'notes' | 'designer' | 'chat' | 'tests';
+
+const PRIMARY_TABS: ReadonlyArray<{
+  id: Extract<ActiveTab, 'study' | 'documents' | 'notes' | 'designer'>;
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { id: 'study', label: 'Study Tools', icon: Brain },
+  { id: 'documents', label: 'Documents', icon: FileText },
+  { id: 'notes', label: 'Notes', icon: Edit3 },
+  { id: 'designer', label: 'Designer', icon: Palette }
+];
 
 const MAX_CONTEXT_CHARS = 4000;
 
@@ -242,10 +258,129 @@ const formatQuizForExport = (questions: GeneratedQuizQuestion[]) => {
     .join('\n\n');
 };
 
+const DEFAULT_NOTE_MARKDOWN = `## Quick Capture\nUse this space like a Notion page. Try adding headings (\`/heading\`), to-do lists (\`/todo\`), callouts, or equations.\n\n### Ideas\n- [ ] Outline key reactions\n- [ ] Summarise today's lecture\n- [ ] Draft lab report introduction`;
+
+const NOTE_TEMPLATES = [
+  {
+    id: 'experiment-log',
+    label: 'Experiment Log',
+    description: 'Observations, reagents, results, and analysis',
+    markdown: `## Experiment Overview\n**Objective:** Describe the purpose of this experiment.\n\n### Reagents & Conditions\n- Reagent A: \\n- Reagent B: \\n- Conditions: Temp, pressure, catalysts\n\n### Procedure\n1. Step 1\n2. Step 2\n\n### Observations\n- Notable colour changes\n- Precipitate formation\n\n### Analysis\n- Key insights\n- Potential sources of error`,
+  },
+  {
+    id: 'study-plan',
+    label: 'Study Plan',
+    description: 'Break down topics, resources, and checkpoints',
+    markdown: `## Focus Topic\nDescribe the main concept you're mastering.\n\n### Key Subtopics\n- Topic 1\n- Topic 2\n- Topic 3\n\n### Resources\n- [ ] Textbook pages\n- [ ] Practice problems\n- [ ] Videos/articles\n\n### Reflection\nWhat felt clear? What needs revisiting?`,
+  },
+  {
+    id: 'meeting-notes',
+    label: 'Meeting Notes',
+    description: 'Agendas, action items, and open questions',
+    markdown: `## Agenda\n- Item 1\n- Item 2\n\n### Key Points\n- Speaker & summary\n- Decisions\n\n### Action Items\n- [ ] Owner - Task - Due date\n- [ ] Owner - Task - Due date\n\n### Questions\n- Open question 1\n- Open question 2`,
+  },
+];
+
+const createPreviewFromMarkdown = (markdown: string) => {
+  const firstLine = markdown.split('\n').find((line) => line.trim().length > 0);
+  return firstLine ? firstLine.trim().slice(0, 140) : 'Empty note';
+};
+
+interface MarkdownTable {
+  id: string;
+  start: number;
+  end: number;
+  headers: string[];
+  rows: string[][];
+}
+
+const TABLE_BLOCK_REGEX = /^(\|.+\|\r?\n\|[-:\s|]+\|\r?\n(?:\|.*\|\r?\n?)*)/gm;
+
+const normaliseTableMatrix = (rows: string[][], columns: number) => {
+  if (columns <= 0) {
+    return [];
+  }
+
+  const createEmptyRow = () => Array.from({ length: columns }, () => '');
+
+  if (!rows.length) {
+    return [createEmptyRow()];
+  }
+
+  return rows.map((row) =>
+    Array.from({ length: columns }, (_, index) => (row[index] ?? '').trim())
+  );
+};
+
+const buildMarkdownTableString = (headers: string[], rows: string[][]) => {
+  const rowColumnCounts = rows.map((row) => row.length);
+  const maxRowColumns = rowColumnCounts.length ? Math.max(...rowColumnCounts) : 0;
+  const totalColumns = Math.max(headers.length, maxRowColumns, 1);
+  const effectiveHeaders = Array.from({ length: totalColumns }, (_, index) => {
+    const value = headers[index] ?? `Column ${index + 1}`;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : `Column ${index + 1}`;
+  });
+
+  const normalisedRows = normaliseTableMatrix(rows, effectiveHeaders.length);
+
+  const separator = effectiveHeaders.map(() => '---').join(' | ');
+  const headerRow = `| ${effectiveHeaders.join(' | ')} |`;
+  const separatorRow = `| ${separator} |`;
+  const dataRows = normalisedRows.map((row) => `| ${row.map((cell) => (cell || '').trim()).join(' | ')} |`);
+
+  return `${headerRow}\n${separatorRow}\n${dataRows.join('\n')}\n\n`;
+};
+
+const extractMarkdownTables = (markdown: string): MarkdownTable[] => {
+  if (!markdown) return [];
+
+  const tables: MarkdownTable[] = [];
+  const regex = new RegExp(TABLE_BLOCK_REGEX);
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(markdown)) !== null) {
+    const rawBlock = match[0];
+    const start = match.index;
+    const end = start + rawBlock.length;
+    const trimmedBlock = rawBlock.trimEnd();
+    const lines = trimmedBlock.split(/\r?\n/);
+    if (lines.length < 2) continue;
+
+    const headerCellsRaw = lines[0].split('|').slice(1, -1).map((cell) => cell.trim());
+    const rowLines = lines.slice(2).filter((line) => line.trim().startsWith('|'));
+    const rowCellCollections = rowLines.map((line) => line.split('|').slice(1, -1).map((cell) => cell.trim()));
+
+    const maxRowColumns = rowCellCollections.length
+      ? Math.max(...rowCellCollections.map((cells) => cells.length))
+      : 0;
+    const columnCount = Math.max(headerCellsRaw.length, maxRowColumns, 1);
+
+    const headers = Array.from({ length: columnCount }, (_, index) => {
+      const value = headerCellsRaw[index] ?? `Column ${index + 1}`;
+      return value.trim();
+    });
+    const rows = rowCellCollections.map((cells) =>
+      Array.from({ length: columnCount }, (_, index) => (cells[index] ?? '').trim())
+    );
+
+    tables.push({
+      id: `table-${tables.length}`,
+      start,
+      end,
+      headers,
+      rows,
+    });
+  }
+
+  return tables;
+};
+
 interface Note {
   id: string;
   title: string;
   content: string;
+  preview?: string;
+  tags?: string[];
   createdAt: Date;
   modifiedAt: Date;
 }
@@ -259,8 +394,122 @@ interface UploadedDocument {
   uploadedAt: Date;
 }
 
+interface TableMarkdownRendererProps {
+  content: string;
+  editableTables?: boolean;
+  tables?: MarkdownTable[];
+  onEditTable?: (table: MarkdownTable) => void;
+}
+
+// Custom component to render markdown with table styling and editing affordances
+const TableMarkdownRenderer: React.FC<TableMarkdownRendererProps> = ({
+  content,
+  editableTables = false,
+  tables = [],
+  onEditTable,
+}) => {
+  const tableIndexRef = useRef(0);
+  tableIndexRef.current = 0;
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ ...props }) => <h1 className="text-3xl font-bold mt-4 mb-2" {...props} />,
+        h2: ({ ...props }) => <h2 className="text-2xl font-bold mt-3 mb-2" {...props} />,
+        h3: ({ ...props }) => <h3 className="text-xl font-bold mt-2 mb-1" {...props} />,
+        p: ({ ...props }) => <p className="text-sm leading-relaxed mb-2" {...props} />,
+        ul: ({ ...props }) => <ul className="list-disc list-inside space-y-1 mb-2" {...props} />,
+        ol: ({ ...props }) => <ol className="list-decimal list-inside space-y-1 mb-2" {...props} />,
+        li: ({ ...props }) => <li className="text-sm" {...props} />,
+        code: ({ ...props }) => <code className="bg-muted px-2 py-1 rounded text-xs font-mono" {...props} />,
+        pre: ({ children, ...props }) => {
+          const child = React.Children.toArray(children)[0] as any;
+          const codeContent = child?.props?.children || '';
+          const language = child?.props?.className?.replace('language-', '') || '';
+
+          if (language === 'sdf:molecule') {
+            return (
+              <div className="bg-muted p-3 rounded-lg mb-2 border">
+                <div className="text-xs text-muted-foreground mb-2 font-mono">
+                  SDF Molecule Structure
+                </div>
+                <div className="bg-white p-2 rounded text-xs font-mono overflow-x-auto max-h-32">
+                  {codeContent.split('\n').slice(0, 5).join('\n')}...
+                </div>
+                <div className="text-xs text-muted-foreground mt-2">
+                  💡 This SDF data can be inserted into the canvas for 3D visualization
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <pre className="bg-muted p-3 rounded-lg overflow-x-auto mb-2" {...props}>
+              {children}
+            </pre>
+          );
+        },
+        blockquote: ({ ...props }) => (
+          <blockquote className="border-l-4 border-primary pl-4 italic text-muted-foreground mb-2" {...props} />
+        ),
+        a: ({ ...props }) => <a className="text-primary hover:underline" {...props} />,
+        table: ({ children, className, ...props }) => {
+          const index = tableIndexRef.current++;
+          const tableMeta = tables[index];
+          const mergedClassName = [
+            'w-full border-collapse text-sm',
+            '[&_th]:bg-muted/60',
+            '[&_th]:text-xs',
+            '[&_th]:font-semibold',
+            '[&_th]:uppercase',
+            '[&_th]:tracking-wide',
+            '[&_th]:text-muted-foreground',
+            '[&_td]:text-sm',
+            '[&_td]:align-top',
+            '[&_td]:text-foreground',
+            '[&_td]:border',
+            '[&_th]:border',
+            '[&_td]:border-border',
+            '[&_th]:border-border',
+            '[&_td]:px-3',
+            '[&_td]:py-2',
+            '[&_th]:px-3',
+            '[&_th]:py-2',
+            '[&_tr:nth-child(even)_td]:bg-muted/40',
+            className ?? '',
+          ]
+            .join(' ')
+            .trim();
+
+          return (
+            <div className="group relative mb-4 overflow-hidden rounded-lg border border-border bg-muted/30 shadow-sm">
+              <div className="overflow-x-auto">
+                <table className={mergedClassName} {...props}>
+                  {children}
+                </table>
+              </div>
+              {editableTables && tableMeta && (
+                <button
+                  type="button"
+                  onClick={() => onEditTable?.(tableMeta)}
+                  className="absolute right-3 top-3 inline-flex items-center rounded-md border border-border bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur transition hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                >
+                  Edit Table
+                </button>
+              )}
+            </div>
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+};
+
 export default function StudyTools({ isOpen, onClose, sourceContent, sourceName, toolType, embedded = false }: StudyToolsProps) {
-  const [activeTab, setActiveTab] = useState<'study' | 'documents' | 'notes' | 'designer'>('study');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('study');
   const [isGenerating, setIsGenerating] = useState(false);
   const [studyContent, setStudyContent] = useState<StudyContent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -278,11 +527,467 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [noteContent, setNoteContent] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
-  const [showDocumentDesigner, setShowDocumentDesigner] = useState(false);
-  const [showChatAssistant, setShowChatAssistant] = useState(false);
-  const [showTestSection, setShowTestSection] = useState(false);
+  const [noteTags, setNoteTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState('');
+  const [noteContent, setNoteContent] = useState(DEFAULT_NOTE_MARKDOWN);
+
+  // Autocomplete state
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+
+  // Molecule search state
+  const [showMoleculeSearch, setShowMoleculeSearch] = useState(false);
+
+  // Table configuration state
+  const [showTableModal, setShowTableModal] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableColumns, setTableColumns] = useState(3);
+  const [tableData, setTableData] = useState<string[][]>([]);
+  const [tableHeaders, setTableHeaders] = useState<string[]>([]);
+  const [tableModalMode, setTableModalMode] = useState<'insert' | 'edit'>('insert');
+  const [tableModalSelection, setTableModalSelection] = useState<{ start: number; end: number } | null>(null);
+
+  // Slash command mappings
+  const slashCommands: Record<string, string> = {
+    '/heading': '# ',
+    '/h1': '# ',
+    '/h2': '## ',
+    '/h3': '### ',
+    '/h4': '#### ',
+    '/bullet': '- ',
+    '/list': '- ',
+    '/todo': '- [ ] ',
+    '/check': '- [x] ',
+    '/code': '```\nCode here\n```',
+    '/quote': '> ',
+    '/hr': '---',
+    '/divider': '---',
+    '/table': '', // Special command - opens table configuration modal
+    '/molecule': '', // Special command - opens molecule search
+  };
+
+  const handleMoleculeSelect = useCallback((moleculeData: any) => {
+    setShowMoleculeSearch(false);
+
+    // Insert molecule PNG image into notes
+    const pngUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/CID/${moleculeData.cid}/PNG?image_size=300x300`;
+    const moleculeBlock = `![${moleculeData.name}](${pngUrl})\n\n**${moleculeData.name}** (CID: ${moleculeData.cid})\n- Formula: ${moleculeData.molecularFormula}\n- Molecular Weight: ${moleculeData.molecularWeight}\n- SMILES: \`${moleculeData.smiles}\`\n\n`;
+
+    setNoteContent(prev => prev + moleculeBlock);
+  }, []);
+
+  // Initialize table data when dimensions change
+  useEffect(() => {
+    setTableHeaders((prev) =>
+      Array.from({ length: tableColumns }, (_, index) => prev[index] ?? `Column ${index + 1}`)
+    );
+    setTableData((prev) =>
+      Array.from({ length: tableRows }, (_, rowIndex) =>
+        Array.from({ length: tableColumns }, (_, colIndex) => prev[rowIndex]?.[colIndex] ?? '')
+      )
+    );
+  }, [tableRows, tableColumns]);
+
+  const updateTableCell = (rowIndex: number, colIndex: number, value: string) => {
+    const newData = [...tableData];
+    if (!newData[rowIndex]) newData[rowIndex] = [];
+    newData[rowIndex][colIndex] = value;
+    setTableData(newData);
+  };
+
+  const updateTableHeader = (colIndex: number, value: string) => {
+    const newHeaders = [...tableHeaders];
+    newHeaders[colIndex] = value;
+    setTableHeaders(newHeaders);
+  };
+
+  const handleTableCreate = useCallback(() => {
+    const effectiveColumns = Math.max(tableHeaders.length, tableColumns, 1);
+    const normalisedHeaders = Array.from({ length: effectiveColumns }, (_, index) => tableHeaders[index] ?? `Column ${index + 1}`);
+    const normalisedData = normaliseTableMatrix(tableData, effectiveColumns);
+    const tableMarkdown = buildMarkdownTableString(normalisedHeaders, normalisedData);
+
+    setShowTableModal(false);
+
+    const applyReplacement = (before: string, after: string) => {
+      const updatedContent = before + tableMarkdown + after;
+      setNoteContent(updatedContent);
+
+      setTimeout(() => {
+        const textarea = document.querySelector('textarea') as HTMLTextAreaElement | null;
+        if (textarea) {
+          const newCursorPos = before.length + tableMarkdown.length;
+          textarea.selectionStart = newCursorPos;
+          textarea.selectionEnd = newCursorPos;
+          textarea.focus();
+          textarea.scrollTop = textarea.scrollHeight;
+        }
+      }, 100);
+    };
+
+    if (tableModalMode === 'edit' && tableModalSelection) {
+      const { start, end } = tableModalSelection;
+      const before = noteContent.slice(0, start);
+      const after = noteContent.slice(end);
+      applyReplacement(before, after);
+    } else {
+      const textarea = document.querySelector('textarea') as HTMLTextAreaElement | null;
+      if (textarea) {
+        const cursorPos = textarea.selectionStart;
+        const before = noteContent.substring(0, cursorPos);
+        const after = noteContent.substring(cursorPos);
+        applyReplacement(before, after);
+      } else {
+        // Fallback: append to the end if editor is not focused
+        setNoteContent((current) => current + tableMarkdown);
+      }
+    }
+
+    setTableModalMode('insert');
+    setTableModalSelection(null);
+    setTableRows(3);
+    setTableColumns(3);
+    setTableData([]);
+    setTableHeaders([]);
+  }, [noteContent, tableColumns, tableData, tableHeaders, tableModalMode, tableModalSelection]);
+
+  const downloadAsDoc = useCallback(() => {
+    // Convert markdown to simple HTML
+    let htmlContent = noteContent
+      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+      .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
+      .replace(/\*(.*)\*/gim, '<em>$1</em>')
+      .replace(/!\[([^\]]*)\]\(([^)]*)\)/gim, '<img src="$2" alt="$1" style="max-width: 100%;">')
+      .replace(/\[([^\]]*)\]\(([^)]*)\)/gim, '<a href="$2">$1</a>')
+      .replace(/`([^`]*)`/gim, '<code>$1</code>')
+      .replace(/\n\n/gim, '</p><p>')
+      .replace(/\n/gim, '<br>');
+
+    // Convert markdown tables to HTML tables
+    const tableRegex = /(\|.*\|\n\|.*\|\n)((?:\|.*\|\n)*)/g;
+    htmlContent = htmlContent.replace(tableRegex, (match) => {
+      const lines = match.trim().split('\n');
+      if (lines.length < 2) return match;
+
+      let html = '<table border="1" style="border-collapse: collapse; width: 100%;">';
+      lines.forEach((line, index) => {
+        if (index === 1) return; // Skip separator line
+        const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+        const tag = index === 0 ? 'th' : 'td';
+        html += '<tr>';
+        cells.forEach(cell => {
+          html += `<${tag} style="padding: 8px; text-align: left;">${cell}</${tag}>`;
+        });
+        html += '</tr>';
+      });
+      html += '</table>';
+      return html;
+    });
+
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Notes Export</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 40px; }
+          h1, h2, h3 { color: #333; margin-top: 20px; }
+          p { line-height: 1.6; }
+          table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f2f2f2; }
+          code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 3px; }
+          img { max-width: 100%; height: auto; }
+        </style>
+      </head>
+      <body>
+        <p>${htmlContent}</p>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([fullHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'notes.doc';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [noteContent]);
+
+  const downloadAsPdf = useCallback(() => {
+    // For PDF, we'll create a simple text-based PDF using a data URL
+    const textContent = noteContent
+      .replace(/!\[([^\]]*)\]\(([^)]*)\)/gim, '[Image: $1]')
+      .replace(/\[([^\]]*)\]\(([^)]*)\)/gim, '$1')
+      .replace(/`([^`]*)`/gim, '$1');
+
+    // Simple PDF creation using a minimal PDF structure
+    const pdfContent = `%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+/Resources <<
+/Font <<
+/F1 5 0 R
+>>
+>>
+>>
+endobj
+4 0 obj
+<<
+/Length ${textContent.length + 100}
+>>
+stream
+BT
+/F1 12 Tf
+72 720 Td
+${textContent.split('\n').map(line => `(${line}) Tj\n0 -14 Td`).join('')}
+ET
+endstream
+endobj
+5 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+xref
+0 6
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000274 00000 n
+0000001000 00000 n
+trailer
+<<
+/Size 6
+/Root 1 0 R
+>>
+startxref
+1100
+%%EOF`;
+
+    const blob = new Blob([pdfContent], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'notes.pdf';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [noteContent]);
+
+  const selectAutocompleteCommand = (commandKey: string, textarea: HTMLTextAreaElement) => {
+    setShowAutocomplete(false);
+
+    // Handle special commands
+    if (commandKey === '/molecule') {
+      setShowMoleculeSearch(true);
+      return;
+    }
+
+    if (commandKey === '/table') {
+      setTableModalMode('insert');
+      setTableModalSelection(null);
+      setTableRows(3);
+      setTableColumns(3);
+      setTableHeaders([]);
+      setTableData([]);
+      setShowTableModal(true);
+      return;
+    }
+
+    const text = textarea.value;
+    const cursorPos = textarea.selectionStart;
+
+    // Get text before cursor
+    const textBeforeCursor = text.substring(0, cursorPos);
+    const lines = textBeforeCursor.split('\n');
+    const currentLineIndex = lines.length - 1;
+    const currentLine = lines[currentLineIndex];
+
+    // Replace the "/" with the selected command
+    if (currentLine === '/') {
+      const replacement = slashCommands[commandKey];
+      const newLines = [...lines];
+      newLines[currentLineIndex] = replacement;
+      const newContent = newLines.join('\n') + text.substring(cursorPos);
+
+      setNoteContent(newContent);
+
+      // Set cursor position after replacement
+      setTimeout(() => {
+        // Calculate new cursor position: account for replacement length
+        // The replacement replaces the "/" character, so we add the full replacement length
+        const newCursorPos = textBeforeCursor.length - 1 + replacement.length;
+        textarea.selectionStart = newCursorPos;
+        textarea.selectionEnd = newCursorPos;
+        textarea.focus();
+      }, 0);
+    }
+  };
+
+  const handleNoteKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle autocomplete navigation
+    if (showAutocomplete) {
+      const commandKeys = Object.keys(slashCommands);
+
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          setSelectedCommandIndex((prev) =>
+            prev < commandKeys.length - 1 ? prev + 1 : prev
+          );
+          return;
+        case 'ArrowUp':
+          e.preventDefault();
+          setSelectedCommandIndex((prev) => prev > 0 ? prev - 1 : prev);
+          return;
+        case 'Enter':
+          e.preventDefault();
+          const commandKeysArray = Object.keys(slashCommands);
+          const selectedCommand = commandKeysArray[selectedCommandIndex];
+          selectAutocompleteCommand(selectedCommand, e.currentTarget);
+          return;
+        case 'Escape':
+          e.preventDefault();
+          setShowAutocomplete(false);
+          return;
+        case 'Tab':
+          e.preventDefault();
+          const tabCommandKeys = Object.keys(slashCommands);
+          const tabSelectedCommand = tabCommandKeys[selectedCommandIndex];
+          selectAutocompleteCommand(tabSelectedCommand, e.currentTarget);
+          return;
+      }
+    }
+
+    // Handle slash commands on space or enter (legacy support)
+    if (e.key === ' ' || e.key === 'Enter') {
+      const textarea = e.currentTarget;
+      const text = textarea.value;
+      const cursorPos = textarea.selectionStart;
+
+      // Get the current line
+      const textBeforeCursor = text.substring(0, cursorPos);
+      const lines = textBeforeCursor.split('\n');
+      const currentLine = lines[lines.length - 1];
+
+      // Check if current line starts with a slash command
+      const slashMatch = currentLine.match(/^\/(\w+)$/);
+
+      if (slashMatch) {
+        const commandKey = `/${slashMatch[1]}`;
+
+        if (slashCommands[commandKey]) {
+          e.preventDefault();
+
+          // Remove the slash command from the text
+          const beforeCommand = textBeforeCursor.substring(0, textBeforeCursor.length - commandKey.length);
+          const afterCursor = text.substring(cursorPos);
+
+          // Add the replacement
+          const replacement = slashCommands[commandKey];
+          const newContent = beforeCommand + replacement + (e.key === 'Enter' ? '\n' : ' ') + afterCursor;
+
+          setNoteContent(newContent);
+
+          // Set cursor position after replacement
+          setTimeout(() => {
+            textarea.selectionStart = beforeCommand.length + replacement.length + (e.key === 'Enter' ? 1 : 1);
+            textarea.selectionEnd = textarea.selectionStart;
+            textarea.focus();
+          }, 0);
+        }
+      }
+    }
+  };
+
+  const handleNoteContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    const textarea = e.target;
+
+    // Check for autocomplete trigger (just "/")
+    const lines = newValue.split('\n');
+    const lastLine = lines[lines.length - 1];
+
+    if (lastLine === '/' && !showAutocomplete) {
+      // Show autocomplete dropdown
+      const rect = textarea.getBoundingClientRect();
+      const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight);
+      const linesBefore = newValue.substring(0, textarea.selectionStart).split('\n').length - 1;
+
+      setAutocompletePosition({
+        top: rect.top + (linesBefore * lineHeight) + lineHeight,
+        left: rect.left + 16 // padding
+      });
+      setShowAutocomplete(true);
+      setSelectedCommandIndex(0);
+      setNoteContent(newValue);
+      return;
+    } else if (lastLine !== '/' && showAutocomplete) {
+      // Hide autocomplete if user types something else
+      setShowAutocomplete(false);
+    }
+
+    // Check for slash commands in the last line
+    const slashCommandPattern = /^\/(\w+)\s/;
+    const slashMatch = lastLine.match(slashCommandPattern);
+
+    if (slashMatch) {
+      const commandKey = `/${slashMatch[1]}`;
+
+      if (slashCommands[commandKey]) {
+        // Hide autocomplete and replace the slash command
+        setShowAutocomplete(false);
+
+        // Replace the slash command
+        const replacement = slashCommands[commandKey];
+        const newLastLine = lastLine.replace(/^\/(\w+)\s/, replacement);
+
+        // Reconstruct the full content
+        lines[lines.length - 1] = newLastLine;
+        const finalContent = lines.join('\n');
+
+        setNoteContent(finalContent);
+
+        // Set cursor position after replacement
+        setTimeout(() => {
+          const newCursorPos = finalContent.length - (newValue.length - textarea.selectionStart) + (replacement.length - commandKey.length - 1);
+          textarea.selectionStart = newCursorPos;
+          textarea.selectionEnd = newCursorPos;
+          textarea.focus();
+        }, 0);
+
+        return;
+      }
+    }
+
+    setNoteContent(newValue);
+  };
 
   const sanitizedTopic = topicInput.trim();
   const sanitizedSource = useMemo(() => sourceContent.trim(), [sourceContent]);
@@ -294,6 +999,7 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
   }, [sanitizedTopic, sanitizedSource]);
   const hasSourceContent = sanitizedSource.length > 0;
   const displaySourceName = hasSourceContent ? sourceName : 'No sources';
+  const tablesInNote = useMemo(() => extractMarkdownTables(noteContent), [noteContent]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -301,16 +1007,75 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
     setIsGenerating(false);
     setStudyContent(null);
     setError(null);
-    setShowDocumentDesigner(false);
-    setShowChatAssistant(false);
-    setShowTestSection(false);
-    const normalizedSourceName = sourceName && sourceName.toLowerCase() === 'no sources' ? '' : sourceName;
-    setTopicInput(normalizedSourceName && sanitizedSource ? normalizedSourceName : '');
-    setActiveCardIndex(0);
-    setShowFlashcardBack(false);
-    setQuizResponses({});
-    setQuizSubmitted(false);
+    setNoteContent(DEFAULT_NOTE_MARKDOWN);
+    setSelectedNote(null);
+    setIsEditing(false);
+    setNoteTitle('');
+    setNoteTags([]);
+    setNewTag('');
   }, [toolType, isOpen, sourceName, sanitizedSource]);
+
+  useEffect(() => {
+    if (selectedNote) {
+      setNoteTitle(selectedNote.title);
+      setNoteTags(selectedNote.tags ?? []);
+      setNoteContent(selectedNote.content || DEFAULT_NOTE_MARKDOWN);
+    } else {
+      setNoteTitle('');
+      setNoteTags([]);
+      setNoteContent(DEFAULT_NOTE_MARKDOWN);
+    }
+  }, [selectedNote]);
+
+  // Close autocomplete on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showAutocomplete) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('.autocomplete-dropdown') && !target.closest('textarea')) {
+          setShowAutocomplete(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAutocomplete]);
+
+  const handleAddTag = useCallback(() => {
+    const trimmed = newTag.trim();
+    if (!trimmed) return;
+    setNoteTags((current) => (current.includes(trimmed) ? current : [...current, trimmed]));
+    setNewTag('');
+  }, [newTag]);
+
+  const handleRemoveTag = useCallback((tag: string) => {
+    setNoteTags((current) => current.filter((item) => item !== tag));
+  }, []);
+
+  const openTableEditorFromPreview = useCallback(
+    (table: MarkdownTable) => {
+      const columns = Math.max(table.headers.length, 1);
+      const normalisedRows = normaliseTableMatrix(table.rows, columns);
+
+      setTableModalMode('edit');
+      setTableModalSelection({ start: table.start, end: table.end });
+      setTableHeaders(Array.from({ length: columns }, (_, index) => table.headers[index] ?? `Column ${index + 1}`));
+      setTableData(normalisedRows);
+      setTableColumns(columns);
+      setTableRows(normalisedRows.length);
+      setShowTableModal(true);
+    },
+    [setShowTableModal, setTableColumns, setTableData, setTableHeaders, setTableModalMode, setTableModalSelection, setTableRows]
+  );
+
+  const applyTemplate = useCallback(
+    (markdown: string) => {
+      setNoteContent(markdown);
+      setIsEditing(true);
+    },
+    []
+  );
 
   const generateStudyContent = async () => {
     if (!geminiService.isGeminiInitialized()) {
@@ -618,7 +1383,7 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
 
   const renderNarrative = (text: string) => (
     <div className="prose prose-invert max-w-none">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      <TableMarkdownRenderer content={text} />
     </div>
   );
 
@@ -699,49 +1464,64 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
     }
   };
 
+  const handleRemoveUploadedDocument = (documentId: string) => {
+    setUploadedDocuments(prev => prev.filter(doc => doc.id !== documentId));
+  };
+
   const createNewNote = () => {
     const newNote: Note = {
       id: Date.now().toString(),
-      title: 'New Note',
-      content: '',
+      title: 'Notion-Style Note',
+      content: DEFAULT_NOTE_MARKDOWN,
+      preview: createPreviewFromMarkdown(DEFAULT_NOTE_MARKDOWN),
+      tags: [],
       createdAt: new Date(),
       modifiedAt: new Date()
     };
     
     setNotes(prev => [...prev, newNote]);
     setSelectedNote(newNote);
-    setNoteTitle('New Note');
-    setNoteContent('');
+    setNoteTitle('Notion-Style Note');
+    setNoteTags([]);
+    setNewTag('');
     setIsEditing(true);
   };
 
   const saveNote = () => {
     if (!selectedNote) return;
-    
+
+    const sanitizedTitle = noteTitle.trim() || 'Untitled note';
+    const markdown = noteContent;
+
     const updatedNote: Note = {
       ...selectedNote,
-      title: noteTitle,
-      content: noteContent,
+      title: sanitizedTitle,
+      content: markdown,
+      preview: createPreviewFromMarkdown(markdown),
+      tags: noteTags,
       modifiedAt: new Date()
     };
-    
-    setNotes(prev => prev.map(note => 
-      note.id === selectedNote.id ? updatedNote : note
-    ));
-    
+
+    setNotes(prev => prev.map(note => note.id === selectedNote.id ? updatedNote : note));
     setSelectedNote(updatedNote);
     setIsEditing(false);
   };
 
   const deleteNote = (noteId: string) => {
-    setNotes(prev => prev.filter(note => note.id !== noteId));
+    const updatedNotes = notes.filter(note => note.id !== noteId);
+    setNotes(updatedNotes);
+
     if (selectedNote?.id === noteId) {
-      setSelectedNote(null);
+      const nextNote = updatedNotes[0] ?? null;
+      setSelectedNote(nextNote);
       setIsEditing(false);
+      setNoteTags(nextNote?.tags ?? []);
+      setNoteTitle(nextNote?.title ?? '');
+      setNewTag('');
     }
   };
 
-  const getToolDisplayName = (type: string) => {
+  function getToolDisplayName(type: string) {
     const names = {
       audio: 'Audio Overview',
       video: 'Video Overview',
@@ -756,9 +1536,9 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
       tests: 'AI Test Center'
     };
     return names[type as keyof typeof names] || type;
-  };
+  }
 
-  const getToolIcon = (type: string) => {
+  function getToolIcon(type: string) {
     const icons = {
       audio: Volume2,
       video: Play,
@@ -773,49 +1553,123 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
       tests: BookOpen
     };
     return icons[type as keyof typeof icons] || HelpCircle;
-  };
+  }
+
+  const headerConfig = useMemo(() => {
+    const baseIconClass = 'flex h-10 w-10 items-center justify-center rounded-lg';
+    if (activeTab === 'documents') {
+      const totalDocuments = uploadedDocuments.length;
+      return {
+        icon: FileText,
+        iconClass: `${baseIconClass} bg-blue-500/10 text-blue-400`,
+        title: 'Document Library',
+        subtitle: totalDocuments ? 'Upload and organize study materials' : 'Add your first document to unlock analysis',
+        badge: totalDocuments ? `${totalDocuments} ${totalDocuments === 1 ? 'file' : 'files'}` : 'No uploads'
+      };
+    }
+    if (activeTab === 'notes') {
+      return {
+        icon: Edit3,
+        iconClass: `${baseIconClass} bg-amber-500/10 text-amber-500`,
+        title: 'Notes Workspace',
+        subtitle: selectedNote ? `Editing: ${selectedNote.title}` : 'Create, tag, and organize your study notes',
+        badge: notes.length ? `${notes.length} ${notes.length === 1 ? 'note' : 'notes'}` : 'Fresh page'
+      };
+    }
+    if (activeTab === 'designer') {
+      return {
+        icon: Palette,
+        iconClass: `${baseIconClass} bg-purple-500/10 text-purple-400`,
+        title: 'Document Designer',
+        subtitle: 'Craft polished study guides with drag-and-drop blocks',
+        badge: 'Layout mode'
+      };
+    }
+    if (activeTab === 'chat') {
+      return {
+        icon: MessageSquare,
+        iconClass: `${baseIconClass} bg-green-500/10 text-green-500`,
+        title: 'Chat Assistant',
+        subtitle: 'Ask follow-ups powered by your study materials',
+        badge: 'Live help'
+      };
+    }
+    if (activeTab === 'tests') {
+      return {
+        icon: BookOpen,
+        iconClass: `${baseIconClass} bg-pink-500/10 text-pink-500`,
+        title: 'AI Test Center',
+        subtitle: 'Generate quizzes, exams, and quick checks',
+        badge: 'Assessments'
+      };
+    }
+
+    const detailParts: string[] = [];
+    if (sanitizedTopic) {
+      detailParts.push(`Focus: ${sanitizedTopic}`);
+    }
+    if (hasSourceContent) {
+      detailParts.push(`Source: ${displaySourceName}`);
+    }
+    const subtitle = detailParts.join(' • ') || 'Build personalized study aids with Gemini';
+
+    return {
+      icon: getToolIcon(toolType),
+      iconClass: `${baseIconClass} bg-primary/10 text-primary`,
+      title: getToolDisplayName(toolType),
+      subtitle,
+      badge: 'Study suite'
+    };
+  }, [activeTab, displaySourceName, hasSourceContent, notes.length, sanitizedTopic, selectedNote, toolType, uploadedDocuments.length]);
+
+  const ToolIcon = getToolIcon(toolType);
 
   if (!isOpen) return null;
 
-  const Icon = getToolIcon(toolType);
+  const HeaderIcon = headerConfig.icon;
 
   const content = (
-    <div className={`${embedded ? 'flex-1 flex flex-col' : 'bg-card border border-border rounded-lg shadow-lg w-[900px] max-w-[90vw] max-h-[90vh] flex flex-col animate-slide-up'}`}>
+    <div>
+      <div className={`${embedded ? 'w-full h-full flex flex-col' : 'bg-card border border-border rounded-lg shadow-lg w-[900px] max-w-[90vw] max-h-[90vh] flex flex-col animate-slide-up'}`}>
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <Icon className="h-5 w-5 text-primary-foreground" />
+            <div className={headerConfig.iconClass}>
+              <HeaderIcon className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">{getToolDisplayName(toolType)}</h2>
-              <p className="text-sm text-muted-foreground">Source: {displaySourceName}</p>
+              <h2 className="text-lg font-semibold">{headerConfig.title}</h2>
+              {headerConfig.subtitle && (
+                <p className="text-sm text-muted-foreground">{headerConfig.subtitle}</p>
+              )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-3">
+            {headerConfig.badge && (
+              <span className="hidden sm:inline-flex items-center rounded-full border border-border bg-muted/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {headerConfig.badge}
+              </span>
+            )}
+            <button
+              onClick={onClose}
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
         <div className="border-b border-border">
           <nav className="flex space-x-8 px-6">
-            {[
-              { id: 'study', label: 'Study Tools', icon: Brain },
-              { id: 'documents', label: 'Documents', icon: FileText },
-              { id: 'notes', label: 'Notes', icon: Edit3 },
-              { id: 'designer', label: 'Designer', icon: Palette }
-            ].map((tab) => {
+            {PRIMARY_TABS.map((tab) => {
               const TabIcon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   data-tool={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`inline-flex items-center gap-2 whitespace-nowrap py-4 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border-b-2 ${
                     activeTab === tab.id
                       ? 'border-primary text-primary'
@@ -832,7 +1686,7 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
             <div className="ml-auto flex items-center gap-2">
               <button
                 data-tool="chat"
-                onClick={() => setShowChatAssistant(true)}
+                onClick={() => setActiveTab('chat')}
                 className="inline-flex items-center gap-2 whitespace-nowrap py-2 px-3 text-sm font-medium bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
               >
                 <MessageSquare className="h-4 w-4" />
@@ -841,7 +1695,7 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
               
               <button
                 data-tool="tests"
-                onClick={() => setShowTestSection(true)}
+                onClick={() => setActiveTab('tests')}
                 className="inline-flex items-center gap-2 whitespace-nowrap py-2 px-3 text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
               >
                 <BookOpen className="h-4 w-4" />
@@ -861,7 +1715,7 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
                   <div className="w-full max-w-xl space-y-6">
                     <div className="flex flex-col items-center text-center space-y-3">
                       <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
-                        <Icon className="h-10 w-10 text-primary" />
+                        <ToolIcon className="h-10 w-10 text-primary" />
                       </div>
                       <h3 className="text-xl font-semibold">
                         Generate {getToolDisplayName(toolType)}
@@ -916,7 +1770,7 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
                           </>
                         ) : (
                           <>
-                            <Icon className="h-4 w-4" />
+                            <ToolIcon className="h-4 w-4" />
                             Generate {getToolDisplayName(toolType)}
                           </>
                         )}
@@ -976,99 +1830,151 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
           {/* Documents Tab */}
           {activeTab === 'documents' && (
             <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="p-6">
-                {/* Quick Start Banner */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-6">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white">
-                      <span className="text-sm font-bold">1</span>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-blue-900 mb-1">Quick Start Guide</h4>
-                      <p className="text-sm text-blue-700 mb-3">
-                        Upload your documents first, then use the tools below to analyze and create content from them.
+              <div className="p-6 space-y-6">
+                <div className="rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),transparent_60%),linear-gradient(135deg,rgba(8,24,68,0.95),rgba(15,23,42,0.95))] p-6 text-white shadow-[0_30px_60px_-40px_rgba(15,23,42,0.8)]">
+                  <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="space-y-2">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-wide text-blue-100/80">
+                        Document Library
+                      </div>
+                      <h4 className="text-2xl font-semibold drop-shadow-sm">Upload, explore, and ask smarter questions</h4>
+                      <p className="text-sm text-blue-100/80 max-w-2xl">
+                        Bring in study materials, then dive straight into the AI chat workspace to summarise chapters, generate outlines, and capture citations without leaving this desk.
                       </p>
-                      <div className="flex items-center gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white">
-                            <span className="text-xs font-bold">2</span>
-                          </div>
-                          <span className="text-green-700 font-medium">Chat with documents</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500 text-white">
-                            <span className="text-xs font-bold">3</span>
-                          </div>
-                          <span className="text-purple-700 font-medium">Generate tests</span>
-                        </div>
+                    </div>
+                    <div className="flex flex-col-reverse gap-3 sm:flex-row">
+                      <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-blue-100 shadow-sm transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 cursor-pointer">
+                        <Upload className="h-4 w-4" />
+                        {isUploading ? 'Uploading…' : 'Upload Document'}
+                        <input
+                          type="file"
+                          accept=".pdf,.txt,.md,.doc,.docx"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          disabled={isUploading}
+                        />
+                      </label>
+                      <button
+                        onClick={() => setActiveTab('chat')}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-400 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_18px_30px_-20px_rgba(16,185,129,0.6)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Open Chat Assistant
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-6 grid gap-4 text-blue-100/75 sm:grid-cols-2">
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-100/60">Step 1</p>
+                      <p className="mt-2 text-sm font-medium text-white">Upload one or more study files</p>
+                      <p className="text-xs text-blue-100/70">PDF, DOCX, TXT, and Markdown up to 10MB each are supported.</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-100/60">Step 2</p>
+                      <p className="mt-2 text-sm font-medium text-white">Launch the AI workspace</p>
+                      <p className="text-xs text-blue-100/70">Ask follow-up questions, customise output sections, and export organised notes.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+                  <section className="rounded-2xl border border-white/12 bg-white/5 p-6 shadow-[0_25px_50px_-35px_rgba(15,23,42,0.65)] backdrop-blur">
+                    <div className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">Library</h3>
+                        <p className="text-xs text-blue-100/70">{uploadedDocuments.length} document(s) stored</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setActiveTab('chat')}
+                          className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-blue-100 transition hover:bg-white/15"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          Ask Assistant
+                        </button>
+                        <label className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-blue-100 transition hover:bg-white/15 cursor-pointer">
+                          <Upload className="h-3.5 w-3.5" />
+                          Add Files
+                          <input
+                            type="file"
+                            accept=".pdf,.txt,.md,.doc,.docx"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                            disabled={isUploading}
+                            multiple
+                          />
+                        </label>
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold">Document Manager</h3>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowChatAssistant(true)}
-                      className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-green-600 text-white hover:bg-green-700 h-9 px-4 gap-2"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      Chat Assistant
-                    </button>
-                    <button
-                      onClick={() => setShowTestSection(true)}
-                      className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-purple-600 text-white hover:bg-purple-700 h-9 px-4 gap-2"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      AI Test Center
-                    </button>
-                    <label className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 gap-2 cursor-pointer">
-                      <Upload className="h-4 w-4" />
-                      {isUploading ? 'Uploading...' : 'Upload Document'}
-                      <input
-                        type="file"
-                        accept=".pdf,.txt,.md,.doc,.docx"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        disabled={isUploading}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {uploadedDocuments.length === 0 ? (
-                    <div className="text-center py-12">
-                      <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <h4 className="text-lg font-medium mb-2">No documents uploaded</h4>
-                      <p className="text-muted-foreground">Upload your study materials to get started</p>
-                    </div>
-                  ) : (
-                    uploadedDocuments.map((doc) => (
-                      <div key={doc.id} className="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <FileText className="h-5 w-5 text-primary" />
-                            <div>
-                              <h4 className="font-medium">{doc.name}</h4>
-                              <p className="text-sm text-muted-foreground">
-                                {doc.type} • {(doc.size / 1024).toFixed(1)} KB • {doc.uploadedAt.toLocaleDateString()}
-                              </p>
+                    <div className="mt-4 space-y-3">
+                      {uploadedDocuments.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/5 px-6 py-12 text-center text-sm text-blue-100/70">
+                          <FileText className="mb-4 h-12 w-12 text-blue-300/70" />
+                          <p>No documents uploaded yet. Bring in notes, slides, or textbooks to begin.</p>
+                        </div>
+                      ) : (
+                        uploadedDocuments.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="flex items-center justify-between rounded-xl border border-white/8 bg-white/8 px-4 py-3 text-sm text-white shadow-sm backdrop-blur transition hover:bg-white/12"
+                          >
+                            <div className="flex items-center gap-3">
+                              <FileText className="h-4 w-4 text-blue-200" />
+                              <div>
+                                <p className="font-medium">{doc.name}</p>
+                                <p className="text-xs text-blue-100/70">
+                                  {(doc.size / 1024).toFixed(1)} KB • {doc.uploadedAt.toLocaleDateString()}
+                                </p>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8">
-                              <Download className="h-4 w-4" />
-                            </button>
-                            <button className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
+                        ))
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="space-y-4 rounded-2xl border border-white/12 bg-white/5 p-6 text-white shadow-[0_25px_50px_-35px_rgba(15,23,42,0.65)] backdrop-blur">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-500 text-white shadow-[0_18px_30px_-20px_rgba(129,140,248,0.7)]">
+                        <Settings className="h-5 w-5" />
                       </div>
-                    ))
-                  )}
+                      <div>
+                        <h4 className="text-lg font-semibold">Assistant Workspace</h4>
+                        <p className="text-xs text-blue-100/70">Customise how responses are structured before you chat.</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3 rounded-xl border border-white/12 bg-white/8 px-4 py-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-100/60">Output Sections</p>
+                      <ul className="space-y-2 text-sm text-blue-100/80">
+                        <li className="flex items-start gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-300"></span>
+                          Answer — concise summary with key insight.
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-blue-300"></span>
+                          Step-by-Step — numbered walkthroughs and derivations.
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-300"></span>
+                          Extra Info — related facts, comparisons, or mnemonics.
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-300"></span>
+                          Citation — references back to your uploaded material.
+                        </li>
+                      </ul>
+                      <p className="text-xs text-blue-100/60">
+                        You can tweak these sections inside the assistant for every conversation.
+                      </p>
+                      <button
+                        onClick={() => setActiveTab('chat')}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Launch Chat Workspace
+                      </button>
+                    </div>
+                  </section>
                 </div>
               </div>
             </div>
@@ -1078,7 +1984,7 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
           {activeTab === 'notes' && (
             <div className="flex-1 overflow-hidden flex">
               {/* Notes Sidebar */}
-              <div className="w-64 border-r border-border bg-muted/20">
+              <div className="w-64 border-r border-border bg-muted/20 flex flex-col">
                 <div className="p-4 border-b border-border">
                   <button
                     onClick={createNewNote}
@@ -1088,8 +1994,8 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
                     New Note
                   </button>
                 </div>
-                
-                <div className="p-2">
+
+                <div className="flex-1 overflow-y-auto p-2">
                   {notes.length === 0 ? (
                     <div className="text-center py-8">
                       <Edit3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
@@ -1102,8 +2008,6 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
                           key={note.id}
                           onClick={() => {
                             setSelectedNote(note);
-                            setNoteTitle(note.title);
-                            setNoteContent(note.content);
                             setIsEditing(false);
                           }}
                           className={`w-full text-left p-3 rounded-lg transition-colors ${
@@ -1113,7 +2017,19 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
                           }`}
                         >
                           <h4 className="font-medium text-sm truncate">{note.title}</h4>
-                          <p className="text-xs opacity-70 truncate">{note.content.substring(0, 50)}...</p>
+                          <p className="text-xs opacity-70 truncate">{note.preview || 'No preview available.'}</p>
+                          {note.tags && note.tags.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {note.tags.map((tag) => (
+                                <span
+                                  key={`${note.id}-${tag}`}
+                                  className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary-foreground/80"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -1121,73 +2037,245 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
                 </div>
               </div>
 
-              {/* Note Editor */}
+              {/* Note Editor - Full Screen Split Pane */}
               <div className="flex-1 flex flex-col">
                 {selectedNote ? (
                   <>
-                    <div className="p-4 border-b border-border">
-                      <div className="flex items-center justify-between">
+                    {/* Header */}
+                    <div className="flex flex-col gap-4 border-b border-border px-6 py-4 md:flex-row md:items-center md:justify-between bg-muted/30">
+                      <div className="flex-1 space-y-3">
                         {isEditing ? (
                           <input
                             type="text"
                             value={noteTitle}
                             onChange={(e) => setNoteTitle(e.target.value)}
-                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                            placeholder="Give your note a descriptive title"
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         ) : (
-                          <h3 className="text-lg font-semibold">{selectedNote.title}</h3>
+                          <div className="space-y-1">
+                            <h3 className="text-lg font-semibold text-foreground">{selectedNote.title}</h3>
+                            <p className="text-xs text-muted-foreground">
+                              Last updated {selectedNote.modifiedAt.toLocaleString()}
+                            </p>
+                          </div>
                         )}
-                        
-                        <div className="flex items-center gap-2">
-                          {isEditing ? (
-                            <>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {noteTags.map((tag) => (
+                            <span
+                              key={`${selectedNote.id}-${tag}`}
+                              className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-primary"
+                            >
+                              #{tag}
+                              {isEditing && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveTag(tag)}
+                                  className="rounded-full bg-transparent p-0.5 text-primary transition hover:bg-primary/20"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
+                            </span>
+                          ))}
+                          {isEditing && (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={newTag}
+                                onChange={(event) => setNewTag(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    handleAddTag();
+                                  }
+                                }}
+                                placeholder="Add tag"
+                                className="h-8 rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                              />
                               <button
-                                onClick={saveNote}
-                                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-8 w-8"
+                                type="button"
+                                onClick={handleAddTag}
+                                className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/20"
                               >
-                                <Save className="h-4 w-4" />
+                                Add
                               </button>
-                              <button
-                                onClick={() => setIsEditing(false)}
-                                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => setIsEditing(true)}
-                                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
-                              >
-                                <Edit3 className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => deleteNote(selectedNote.id)}
-                                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </>
+                            </div>
                           )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-start md:self-auto">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void saveNote();
+                              }}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground transition hover:bg-primary/90"
+                              title="Save note"
+                            >
+                              <Save className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditing(false)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-foreground transition hover:bg-muted"
+                              title="Cancel"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditing(true)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-foreground transition hover:bg-muted"
+                              title="Edit note"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteNote(selectedNote.id)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-destructive text-destructive transition hover:bg-destructive/10"
+                              title="Delete note"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {isEditing && (
+                      <div className="border-b border-border bg-muted/40 px-6 py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {NOTE_TEMPLATES.map((template) => (
+                            <button
+                              key={template.id}
+                              type="button"
+                              onClick={() => void applyTemplate(template.markdown)}
+                              className="group flex flex-col rounded-md border border-border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/60 hover:bg-primary/5"
+                            >
+                              <span className="font-medium text-foreground">{template.label}</span>
+                              <span className="text-[11px] text-muted-foreground group-hover:text-primary/80">
+                                {template.description}
+                              </span>
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => void applyTemplate(DEFAULT_NOTE_MARKDOWN)}
+                            className="inline-flex items-center rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary/60 hover:text-primary"
+                          >
+                            Reset Layout
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Split Pane: Editor + Preview */}
+                    <div className="flex-1 min-h-0 flex overflow-hidden">
+                      {/* Left: Editor */}
+                      <div className="flex-1 flex flex-col border-r border-border px-6 py-4">
+                        <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                          Markdown Editor
+                        </div>
+                        <textarea
+                          className="flex-1 w-full p-4 text-sm bg-background border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                          value={noteContent}
+                          onChange={handleNoteContentChange}
+                          onKeyDown={handleNoteKeyDown}
+                          placeholder="Write your markdown note here...&#10;&#10;# Heading&#10;**Bold** *Italic* `code`&#10;- List item&#10;> Quote"
+                          spellCheck="true"
+                        />
+
+                        {/* Autocomplete Dropdown */}
+                        {showAutocomplete && (
+                          <div
+                            className="autocomplete-dropdown absolute z-50 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto"
+                            style={{
+                              top: autocompletePosition.top,
+                              left: autocompletePosition.left,
+                              width: '250px'
+                            }}
+                          >
+                            {Object.entries(slashCommands).map(([command, replacement], index) => (
+                              <button
+                                key={command}
+                                onClick={() => {
+                                  const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
+                                  if (textarea) {
+                                    selectAutocompleteCommand(command, textarea);
+                                  }
+                                }}
+                                className={`w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between ${
+                                  index === selectedCommandIndex ? 'bg-primary/10 text-primary' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-primary">{command}</span>
+                                  <span className="text-muted-foreground truncate">
+                                    {replacement.replace(/\n/g, ' ')}
+                                  </span>
+                                </div>
+                                {index === selectedCommandIndex && (
+                                  <div className="w-2 h-2 bg-primary rounded-full" />
+                                )}
+                              </button>
+                            ))}
+                            <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border bg-muted/50">
+                              Use ↑↓ to navigate, Enter/Tab to select, Esc to cancel
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: Preview */}
+                      <div className="flex-1 flex flex-col px-6 py-4 overflow-y-auto">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Preview
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={downloadAsDoc}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                              title="Download as Word Document"
+                            >
+                              <FileText className="h-3 w-3" />
+                              .doc
+                            </button>
+                            <button
+                              onClick={downloadAsPdf}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                              title="Download as PDF"
+                            >
+                              <Download className="h-3 w-3" />
+                              .pdf
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex-1 prose prose-invert max-w-none overflow-y-auto">
+                          <TableMarkdownRenderer
+                            content={noteContent || '_Start typing to see preview..._'}
+                            editableTables={isEditing}
+                            tables={tablesInNote}
+                            onEditTable={openTableEditorFromPreview}
+                          />
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex-1 p-4">
-                      {isEditing ? (
-                        <textarea
-                          value={noteContent}
-                          onChange={(e) => setNoteContent(e.target.value)}
-                          placeholder="Start writing your notes..."
-                          className="w-full h-full resize-none border-none outline-none bg-transparent text-sm leading-relaxed"
-                        />
-                      ) : (
-                        <div className="w-full h-full text-sm leading-relaxed whitespace-pre-wrap">
-                          {selectedNote.content || 'No content yet. Click edit to start writing.'}
-                        </div>
-                      )}
-                    </div>
+                    {!isEditing && (
+                      <div className="px-6 py-3 border-t border-border bg-muted/30 text-xs text-muted-foreground">
+                        💡 Tip: Click Edit to write your note. Use Markdown formatting for rich text styling.
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="flex-1 flex items-center justify-center">
@@ -1213,6 +2301,146 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
               </div>
             </div>
           )}
+
+          {/* Chat Assistant Modal */}
+          <div>
+            <ChatAssistant 
+              isOpen={activeTab === 'chat'} 
+              onClose={() => setActiveTab('study')} 
+            />
+            
+            {/* Test Section Modal */}
+            <TestSection
+              isOpen={activeTab === 'tests'}
+              onClose={() => setActiveTab('study')}
+            />
+
+            {/* Molecule Search Modal */}
+            <MoleculeSearch
+              isOpen={showMoleculeSearch}
+              onClose={() => setShowMoleculeSearch(false)}
+              onSelectMolecule={handleMoleculeSelect}
+            />
+          </div>
+
+          {/* Table Configuration Modal */}
+          {showTableModal && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+                <div className="px-6 py-4 border-b border-border">
+                  <h3 className="text-lg font-semibold">{tableModalMode === 'edit' ? 'Edit Table' : 'Create Table'}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {tableModalMode === 'edit'
+                      ? 'Adjust the size and contents, then we will update your existing table.'
+                      : 'Specify the dimensions, fill in the cells, and we will insert it into your note.'}
+                  </p>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Columns</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={tableColumns}
+                        onChange={(e) => setTableColumns(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                        className="w-full px-3 py-2 border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Rows</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={tableRows}
+                        onChange={(e) => setTableRows(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                        className="w-full px-3 py-2 border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-sm text-muted-foreground mb-4">
+                    {tableModalMode === 'edit'
+                      ? `Updating to ${tableColumns} ${tableColumns === 1 ? 'column' : 'columns'} and ${tableRows} ${tableRows === 1 ? 'row' : 'rows'}.`
+                      : `This will create a table with ${tableColumns} ${tableColumns === 1 ? 'column' : 'columns'} and ${tableRows} ${tableRows === 1 ? 'row' : 'rows'}.`}
+                  </div>
+
+
+                  {/* Editable Table */}
+                  <div className="border border-border rounded-lg p-4 bg-muted/30 max-h-96 overflow-y-auto">
+                    <div className="text-xs font-medium text-muted-foreground mb-3">Fill in your table data:</div>
+                    <div className="overflow-x-auto">
+                      <table className="border-collapse border-2 border-gray-400 w-full bg-white shadow-sm">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            {Array.from({ length: tableColumns }, (_, i) => (
+                              <th key={i} className="border border-gray-300 px-2 py-2 text-left font-bold text-xs bg-gray-50">
+                                <input
+                                  type="text"
+                                  value={tableHeaders[i] || ''}
+                                  onChange={(e) => updateTableHeader(i, e.target.value)}
+                                  placeholder={`Column ${i + 1}`}
+                                  className="w-full px-2 py-1 text-xs border border-gray-200 bg-white hover:bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded transition-colors"
+                                />
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: tableRows }, (_, rowIndex) => (
+                            <tr key={rowIndex}>
+                              {Array.from({ length: tableColumns }, (_, colIndex) => (
+                                <td key={colIndex} className="border border-gray-300 px-2 py-1">
+                                  <input
+                                    type="text"
+                                    value={tableData[rowIndex]?.[colIndex] || ''}
+                                    onChange={(e) => updateTableCell(rowIndex, colIndex, e.target.value)}
+                                    placeholder={`Cell ${rowIndex + 1},${colIndex + 1}`}
+                                    className="w-full px-2 py-1 text-xs border border-gray-200 bg-white hover:bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded transition-colors"
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-3 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      Click any cell to edit • Data will be saved in your table
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-4 border-t border-border flex justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setShowTableModal(false);
+                      setTableRows(3);
+                      setTableColumns(3);
+                      setTableData([]);
+                      setTableHeaders([]);
+                      setTableModalMode('insert');
+                      setTableModalSelection(null);
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleTableCreate}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
+                  >
+                    {tableModalMode === 'edit' ? 'Update Table' : 'Create Table'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Footer */}
@@ -1241,18 +2469,6 @@ export default function StudyTools({ isOpen, onClose, sourceContent, sourceName,
           </div>
         </div>
       </div>
-      
-      {/* Chat Assistant Modal */}
-      <ChatAssistant 
-        isOpen={showChatAssistant} 
-        onClose={() => setShowChatAssistant(false)} 
-      />
-      
-      {/* Test Section Modal */}
-      <TestSection
-        isOpen={showTestSection}
-        onClose={() => setShowTestSection(false)}
-      />
     </div>
   );
 

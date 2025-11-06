@@ -1,4 +1,4 @@
-import type { MoleculeData } from './pubchemService';
+import type { MoleculeData, CrystalVisualData } from './pubchemService';
 
 const COD_SEARCH_ENDPOINT = 'https://www.crystallography.net/cod/result';
 const COD_DOWNLOAD_BASE = 'https://www.crystallography.net/cod';
@@ -399,7 +399,13 @@ const parseCIF = (cifText: string): CIFStructure | null => {
   };
 };
 
-const fractionalToCartesian = (atom: CIFAtom, cell: CIFCellParameters) => {
+type CellBasisVectors = {
+  a: [number, number, number];
+  b: [number, number, number];
+  c: [number, number, number];
+};
+
+const computeCellBasisVectors = (cell: CIFCellParameters): CellBasisVectors => {
   const alpha = (cell.alpha * Math.PI) / 180;
   const beta = (cell.beta * Math.PI) / 180;
   const gamma = (cell.gamma * Math.PI) / 180;
@@ -409,23 +415,32 @@ const fractionalToCartesian = (atom: CIFAtom, cell: CIFCellParameters) => {
   const cosGamma = Math.cos(gamma);
   const sinGamma = Math.sin(gamma) || 1e-6;
 
-  const vA = [cell.a, 0, 0];
-  const vB = [cell.b * cosGamma, cell.b * sinGamma, 0];
+  const vectorA: [number, number, number] = [cell.a, 0, 0];
+  const vectorB: [number, number, number] = [cell.b * cosGamma, cell.b * sinGamma, 0];
   const cX = cell.c * cosBeta;
   const cY = cell.c * (cosAlpha - cosBeta * cosGamma) / sinGamma;
   const cZ = Math.sqrt(Math.max(cell.c * cell.c - cX * cX - cY * cY, 0));
-  const vC = [cX, cY, cZ];
+  const vectorC: [number, number, number] = [cX, cY, cZ];
 
   return {
-    x: atom.fractX * vA[0] + atom.fractY * vB[0] + atom.fractZ * vC[0],
-    y: atom.fractX * vA[1] + atom.fractY * vB[1] + atom.fractZ * vC[1],
-    z: atom.fractX * vA[2] + atom.fractY * vB[2] + atom.fractZ * vC[2],
+    a: vectorA,
+    b: vectorB,
+    c: vectorC,
   };
 };
 
+const fractionalToCartesian = (atom: CIFAtom, basis: CellBasisVectors) => ({
+  x: atom.fractX * basis.a[0] + atom.fractY * basis.b[0] + atom.fractZ * basis.c[0],
+  y: atom.fractX * basis.a[1] + atom.fractY * basis.b[1] + atom.fractZ * basis.c[1],
+  z: atom.fractX * basis.a[2] + atom.fractY * basis.b[2] + atom.fractZ * basis.c[2],
+});
+
 const centerCoordinates = (coords: Array<{ x: number; y: number; z: number }>) => {
   if (coords.length === 0) {
-    return coords;
+    return {
+      coords,
+      centroid: { x: 0, y: 0, z: 0 },
+    };
   }
 
   const centroid = coords.reduce(
@@ -441,11 +456,16 @@ const centerCoordinates = (coords: Array<{ x: number; y: number; z: number }>) =
   centroid.y /= coords.length;
   centroid.z /= coords.length;
 
-  return coords.map((value) => ({
+  const centered = coords.map((value) => ({
     x: value.x - centroid.x,
     y: value.y - centroid.y,
     z: value.z - centroid.z,
   }));
+
+  return {
+    coords: centered,
+    centroid,
+  };
 };
 
 const distance3D = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => {
@@ -544,6 +564,106 @@ const computeMolecularWeight = (atoms: CIFAtom[]) =>
     const weight = ATOMIC_WEIGHTS[atom.element] ?? 0;
     return total + weight * (atom.occupancy ?? 1);
   }, 0);
+
+const buildCrystalVisualData = (
+  structure: CIFStructure,
+  centeredCoords: Array<{ x: number; y: number; z: number }>,
+  bonds: Array<{ from: number; to: number }>,
+  centroid: { x: number; y: number; z: number },
+  basis: CellBasisVectors
+): CrystalVisualData => {
+  const atoms = centeredCoords.map((coord, index) => ({
+    element: structure.atoms[index]?.element ?? 'X',
+    x: coord.x,
+    y: coord.y,
+    z: coord.z,
+  }));
+
+  const rawVertices = [
+    { x: 0, y: 0, z: 0 },
+    { x: basis.a[0], y: basis.a[1], z: basis.a[2] },
+    { x: basis.b[0], y: basis.b[1], z: basis.b[2] },
+    { x: basis.c[0], y: basis.c[1], z: basis.c[2] },
+    {
+      x: basis.a[0] + basis.b[0],
+      y: basis.a[1] + basis.b[1],
+      z: basis.a[2] + basis.b[2],
+    },
+    {
+      x: basis.a[0] + basis.c[0],
+      y: basis.a[1] + basis.c[1],
+      z: basis.a[2] + basis.c[2],
+    },
+    {
+      x: basis.b[0] + basis.c[0],
+      y: basis.b[1] + basis.c[1],
+      z: basis.b[2] + basis.c[2],
+    },
+    {
+      x: basis.a[0] + basis.b[0] + basis.c[0],
+      y: basis.a[1] + basis.b[1] + basis.c[1],
+      z: basis.a[2] + basis.b[2] + basis.c[2],
+    },
+  ];
+
+  const centeredVertices = rawVertices.map((vertex) => ({
+    x: vertex.x - centroid.x,
+    y: vertex.y - centroid.y,
+    z: vertex.z - centroid.z,
+  }));
+
+  const cellEdges: Array<[number, number]> = [
+    [0, 1],
+    [0, 2],
+    [0, 3],
+    [1, 4],
+    [1, 5],
+    [2, 4],
+    [2, 6],
+    [3, 5],
+    [3, 6],
+    [4, 7],
+    [5, 7],
+    [6, 7],
+  ];
+
+  return {
+    atoms,
+    bonds,
+    cellVertices: centeredVertices,
+    cellEdges,
+  };
+};
+
+const createCrystalModel = (
+  structure: CIFStructure,
+  fallbackTitle: string
+): {
+  sdf: string;
+  molecularWeight: number;
+  crystalData: CrystalVisualData;
+} | null => {
+  const basis = computeCellBasisVectors(structure.cell);
+  const cartesianRaw = structure.atoms.map((atom) => fractionalToCartesian(atom, basis));
+  const { coords: centeredCoords, centroid } = centerCoordinates(cartesianRaw);
+
+  const labelToIndex = new Map<string, number>();
+  structure.atoms.forEach((atom, idx) => {
+    labelToIndex.set(atom.label, idx);
+  });
+
+  const bonds = generateBonds(centeredCoords, structure.atoms, labelToIndex, structure.bonds);
+  const title = structure.name || fallbackTitle;
+  const sdf = buildSDF(structure.atoms, centeredCoords, bonds, title);
+  const molecularWeight = computeMolecularWeight(structure.atoms);
+  const crystalData = buildCrystalVisualData(structure, centeredCoords, bonds, centroid, basis);
+
+  return {
+    sdf,
+    molecularWeight,
+    crystalData,
+  };
+};
 
 export const searchMinerals = async (
   query: string,
@@ -681,17 +801,12 @@ export const getMineralByCodId = async (codId: string): Promise<MoleculeData | n
     return null;
   }
 
-  const cartesianRaw = structure.atoms.map((atom) => fractionalToCartesian(atom, structure.cell));
-  const cartesianCoords = centerCoordinates(cartesianRaw);
+  const crystalModel = createCrystalModel(structure, `COD ${trimmed}`);
+  if (!crystalModel) {
+    return null;
+  }
 
-  const labelToIndex = new Map<string, number>();
-  structure.atoms.forEach((atom, idx) => {
-    labelToIndex.set(atom.label, idx);
-  });
-
-  const bonds = generateBonds(cartesianCoords, structure.atoms, labelToIndex, structure.bonds);
-  const sdf = buildSDF(structure.atoms, cartesianCoords, bonds, structure.name || `COD ${trimmed}`);
-  const molecularWeight = computeMolecularWeight(structure.atoms);
+  const { sdf, molecularWeight, crystalData } = crystalModel;
 
   const numericId = Number.parseInt(trimmed.replace(/[^0-9]/g, ''), 10);
 
@@ -712,7 +827,18 @@ export const getMineralByCodId = async (codId: string): Promise<MoleculeData | n
     codId: trimmed,
     cifData: cifText,
     isCrystal: true,
+    crystalData,
   };
 
   return mineralData;
+};
+
+export const buildCrystalVisualFromCif = (cifText: string): CrystalVisualData | null => {
+  const structure = parseCIF(cifText);
+  if (!structure) {
+    return null;
+  }
+
+  const model = createCrystalModel(structure, structure.name || 'Crystal Structure');
+  return model?.crystalData ?? null;
 };

@@ -596,6 +596,46 @@ export const compileDocumentOutput = async (blocks: any[]): Promise<string> => {
         case 'formulaNode':
           documentStructure += `Formula: ${block.data.formula || ''}\n\n`;
           break;
+        case 'moleculeNode':
+          documentStructure += `Molecule: ${block.data.moleculeData?.displayName || block.data.moleculeName || 'Unknown molecule'}\n`;
+          if (block.data.moleculeData?.molecularFormula) {
+            documentStructure += `Formula: ${block.data.moleculeData.molecularFormula}\n`;
+          }
+          if (block.data.moleculeData?.smiles) {
+            documentStructure += `SMILES: ${block.data.moleculeData.smiles}\n`;
+          }
+          documentStructure += '\n';
+          break;
+        case 'chemicalEquationNode':
+          documentStructure += `Chemical Equation: ${block.data.equation || ''}\n`;
+          if (block.data.description) {
+            documentStructure += `Description: ${block.data.description}\n`;
+          }
+          documentStructure += '\n';
+          break;
+        case 'labProcedureNode':
+          documentStructure += `Lab Procedure: ${block.data.title || ''}\n`;
+          if (block.data.materials && block.data.materials.length > 0) {
+            documentStructure += `Materials:\n${block.data.materials.map((item: string) => `- ${item}`).join('\n')}\n`;
+          }
+          if (block.data.steps && block.data.steps.length > 0) {
+            documentStructure += `Steps:\n${block.data.steps.map((step: string, i: number) => `${i + 1}. ${step}`).join('\n')}\n`;
+          }
+          documentStructure += '\n';
+          break;
+        case 'reactionSchemeNode':
+          documentStructure += `Reaction Scheme: ${block.data.title || ''}\n`;
+          if (block.data.reactants && block.data.reactants.length > 0) {
+            documentStructure += `Reactants: ${block.data.reactants.join(' + ')}\n`;
+          }
+          if (block.data.products && block.data.products.length > 0) {
+            documentStructure += `Products: ${block.data.products.join(' + ')}\n`;
+          }
+          if (block.data.conditions) {
+            documentStructure += `Conditions: ${block.data.conditions}\n`;
+          }
+          documentStructure += '\n';
+          break;
       }
     });
 

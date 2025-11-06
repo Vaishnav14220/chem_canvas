@@ -80,6 +80,22 @@ const FALLBACK_BICYCLIC_COMPOUNDS: MoleculeData[] = [
   },
 ];
 
+export interface CrystalVisualData {
+  atoms: Array<{
+    element: string;
+    x: number;
+    y: number;
+    z: number;
+  }>;
+  bonds: Array<{ from: number; to: number }>;
+  cellVertices: Array<{
+    x: number;
+    y: number;
+    z: number;
+  }>;
+  cellEdges: Array<[number, number]>;
+}
+
 export interface MoleculeData {
   name: string;
   cid: number;
@@ -97,6 +113,7 @@ export interface MoleculeData {
   codId?: string;
   cifData?: string;
   isCrystal?: boolean;
+  crystalData?: CrystalVisualData;
   analysis?: any; // Molecule analysis from Gemini API
   rdkitProperties?: import('./rdkitService').MoleculeProperties;
 }

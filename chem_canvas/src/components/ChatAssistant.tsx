@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Send, 
   Upload, 
-  Settings, 
   MessageSquare, 
   FileText, 
   Plus, 
@@ -50,7 +49,6 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showOutputFormatModal, setShowOutputFormatModal] = useState(false);
   const [outputSections, setOutputSections] = useState<OutputSection[]>([
     { id: 'answer', name: 'Answer', required: true, enabled: true },
     { id: 'step-by-step', name: 'Step-by-Step', required: false, enabled: true },
@@ -266,262 +264,243 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  const latestAssistantMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role === 'assistant' && message.content.trim().length > 0) {
+        return message;
+      }
+    }
+    return null;
+  }, [messages]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-      <div className="bg-card border border-border rounded-lg shadow-lg w-[1000px] max-w-[95vw] h-[90vh] flex flex-col animate-slide-up">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <MessageSquare className="h-5 w-5 text-primary-foreground" />
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-[#020816]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(59,130,246,0.25),transparent_55%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.18),transparent_60%),radial-gradient(circle_at_50%_90%,rgba(45,212,191,0.2),transparent_65%)]" />
+      <div className="relative flex h-full w-full flex-col overflow-hidden px-4 py-6 sm:px-8 lg:px-12">
+        <div className="flex h-full w-full flex-col rounded-[32px] border border-white/10 bg-[#0b1221]/98 shadow-[0_40px_120px_-60px_rgba(2,12,33,0.9)] backdrop-blur">
+          <header className="border-b border-white/10 px-6 pb-6 pt-8 lg:px-10">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-[0_30px_50px_-35px_rgba(59,130,246,0.75)]">
+                  <MessageSquare className="h-7 w-7" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-semibold text-white">AI Chat Assistant</h2>
+                  <p className="text-sm text-blue-100/80">
+                    {uploadedDocuments.length > 0
+                      ? `${uploadedDocuments.length} document${uploadedDocuments.length === 1 ? '' : 's'} ready for analysis`
+                      : 'Upload documents to get started'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <button
+                  onClick={downloadChatHistory}
+                  disabled={messages.length === 0}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-blue-100 transition hover:bg-white/15 disabled:opacity-40"
+                >
+                  <Download className="h-4 w-4" />
+                  Export Chat
+                </button>
+                <button
+                  onClick={clearChat}
+                  disabled={messages.length === 0}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/20 disabled:opacity-40"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Clear
+                </button>
+                <button
+                  onClick={onClose}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/15 text-white transition hover:bg-white hover:text-slate-900"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-semibold">AI Chat Assistant</h2>
-              <p className="text-sm text-muted-foreground">
-                {uploadedDocuments.length > 0 
-                  ? `${uploadedDocuments.length} document(s) uploaded` 
-                  : 'Upload documents to get started'
-                }
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowOutputFormatModal(true)}
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 gap-2"
-              title="Customize Output Format"
-            >
-              <Settings className="h-4 w-4" />
-              Format
-            </button>
-            
-            <button
-              onClick={downloadChatHistory}
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 gap-2"
-              title="Download Chat History"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-            
-            <button
-              onClick={onClose}
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Document Upload Section */}
-        <div className="px-6 py-3 border-b border-border bg-muted/30">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <label className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 gap-2 cursor-pointer">
+          </header>
+          <div className="border-b border-white/10 px-6 py-4 lg:px-10">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-blue-100 transition hover:bg-white/15 cursor-pointer">
                 <Upload className="h-4 w-4" />
-                {isUploading ? 'Uploading...' : 'Upload Document'}
+                {isUploading ? 'Uploading…' : 'Upload Document'}
                 <input
                   type="file"
                   accept=".pdf,.txt,.md,.doc,.docx"
                   onChange={handleFileUpload}
                   className="hidden"
                   disabled={isUploading}
+                  multiple
                 />
               </label>
-              
-              <div className="flex items-center gap-2">
-                {uploadedDocuments.map((doc) => (
-                  <div key={doc.id} className="flex items-center gap-2 bg-background border border-border rounded-md px-3 py-1">
-                    <FileText className="h-4 w-4 text-primary" />
-                    <span className="text-sm">{doc.name}</span>
-                    <button
-                      onClick={() => removeDocument(doc.id)}
-                      className="hover:bg-muted rounded p-1"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
+              <div className="flex flex-wrap gap-2">
+                {uploadedDocuments.length === 0 ? (
+                  <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-blue-100/70">No documents uploaded yet</span>
+                ) : (
+                  uploadedDocuments.map((doc) => (
+                    <span key={doc.id} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-blue-100/80">
+                      <FileText className="h-3.5 w-3.5 text-blue-200" />
+                      {doc.name}
+                      <button
+                        onClick={() => removeDocument(doc.id)}
+                        className="rounded-full p-1 text-blue-200/70 transition hover:bg-blue-500/20 hover:text-white"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))
+                )}
               </div>
             </div>
-            
-            {messages.length > 0 && (
-              <button
-                onClick={clearChat}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 px-3 gap-2"
-              >
-                <Trash2 className="h-4 w-4" />
-                Clear Chat
-              </button>
-            )}
           </div>
-        </div>
-
-        {/* Chat Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center max-w-md">
-                <MessageSquare className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Welcome to AI Chat Assistant</h3>
-                <p className="text-muted-foreground mb-6">
-                  Upload documents and ask questions to get AI-powered insights and analysis.
-                </p>
-                
-                {!isApiKeyConfigured && (
-                  <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-4 mb-4">
-                    <p className="text-orange-700 dark:text-orange-400 text-sm">
-                      <strong>API Key Required:</strong> Configure your Gemini API key in Settings to start chatting.
+          <div className="flex-1 overflow-hidden px-6 pb-8 pt-4 lg:px-10">
+            <div className="grid h-full gap-6 lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
+              <section className="flex h-full flex-col rounded-2xl border border-white/12 bg-white/6 p-6 text-white shadow-[0_35px_60px_-40px_rgba(15,23,42,0.6)] backdrop-blur">
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Conversation</h3>
+                    <p className="text-xs text-blue-100/70">
+                      {messages.length === 0
+                        ? 'Ask anything about your uploaded documents.'
+                        : `${messages.length} message${messages.length === 1 ? '' : 's'} in this session`}
                     </p>
                   </div>
-                )}
-                
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  <p>💡 <strong>Try asking:</strong></p>
-                  <ul className="text-left space-y-1 ml-4">
-                    <li>• "Summarize the main points"</li>
-                    <li>• "Explain the key concepts"</li>
-                    <li>• "What are the important formulas?"</li>
-                    <li>• "Create study questions"</li>
-                  </ul>
                 </div>
-              </div>
-            </div>
-          ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-lg p-4 ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted border border-border'
-                  }`}
-                >
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {message.content}
+                <div className="mt-4 flex-1 overflow-hidden">
+                  <div className="scrollbar-thin h-full space-y-4 overflow-y-auto pr-2">
+                    {messages.length === 0 ? (
+                      <div className="flex h-full items-center justify-center text-center">
+                        <div className="max-w-md space-y-4 text-blue-100/80">
+                          <MessageSquare className="mx-auto h-16 w-16 text-blue-300/70" />
+                          <h3 className="text-xl font-semibold text-white">Ready when you are</h3>
+                          <p className="text-sm">
+                            Upload a file, then ask for key points, outlines, study questions, citations, or anything else you need.
+                          </p>
+                          {!isApiKeyConfigured && (
+                            <div className="rounded-xl border border-amber-400/50 bg-amber-500/10 px-4 py-3 text-left text-xs text-amber-200">
+                              <strong>API Key Required:</strong> Configure your Gemini API key in Settings to start chatting.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      messages.map((message) => (
+                        <div
+                          key={message.id}
+                          className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
+                              message.role === 'user'
+                                ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
+                                : 'bg-white/10 border border-white/12 text-blue-100/90'
+                            }`}
+                          >
+                            <div className="whitespace-pre-wrap">{message.content}</div>
+                            <div className={`mt-2 text-2xs uppercase tracking-wide ${
+                              message.role === 'user' ? 'text-white/70' : 'text-blue-100/60'
+                            }`}>
+                              {message.timestamp.toLocaleTimeString()}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    {isGenerating && (
+                      <div className="flex justify-start">
+                        <div className="rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-sm text-blue-100/80 shadow-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="h-4 w-4 border-2 border-blue-300/40 border-t-blue-300 rounded-full animate-spin" />
+                            <span>AI is thinking…</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
                   </div>
-                  <div className={`text-xs mt-2 opacity-70 ${
-                    message.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                  }`}>
-                    {message.timestamp.toLocaleTimeString()}
+                </div>
+                <div className="border-t border-white/10 pt-4">
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <textarea
+                        value={inputMessage}
+                        onChange={(e) => setInputMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            sendMessage();
+                          }
+                        }}
+                        placeholder="Ask a question about your uploaded documents..."
+                        className="w-full min-h-[64px] max-h-[132px] resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-blue-100/40 shadow-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-400/40 disabled:opacity-60"
+                        disabled={isGenerating}
+                      />
+                    </div>
+                    <button
+                      onClick={sendMessage}
+                      disabled={!inputMessage.trim() || isGenerating}
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-[0_18px_30px_-20px_rgba(37,99,235,0.6)] transition hover:brightness-110 disabled:opacity-50"
+                    >
+                      <Send className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
-              </div>
-            ))
-          )}
-          
-          {isGenerating && (
-            <div className="flex justify-start">
-              <div className="bg-muted border border-border rounded-lg p-4">
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
-                  <span className="text-sm text-muted-foreground">AI is thinking...</span>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div className="px-6 py-4 border-t border-border">
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <textarea
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                placeholder="Ask a question about your uploaded documents..."
-                className="w-full min-h-[60px] max-h-[120px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isGenerating}
-              />
-            </div>
-            <button
-              onClick={sendMessage}
-              disabled={!inputMessage.trim() || isGenerating}
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 w-10"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Output Format Customization Modal */}
-        {showOutputFormatModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60" onClick={() => setShowOutputFormatModal(false)}>
-            <div className="bg-card border border-border rounded-lg shadow-xl w-[500px] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold">Customize Output Format</h3>
-                  <button
-                    onClick={() => setShowOutputFormatModal(false)}
-                    className="p-1 hover:bg-muted rounded"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                
-                <p className="text-sm text-muted-foreground mb-6">
-                  Add, remove, or rearrange output sections to customize how Gemini's response is displayed.
-                </p>
-                
-                {/* Add New Section */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium mb-2">Add New Section</label>
-                  <div className="flex gap-2">
+              </section>
+              <aside className="flex h-full flex-col gap-6">
+                <div className="space-y-4 rounded-2xl border border-white/12 bg-white/6 p-5 text-white shadow-[0_30px_60px_-45px_rgba(15,23,42,0.6)] backdrop-blur">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-lg font-semibold">Output Layout</h4>
+                      <p className="text-xs text-blue-100/70">Toggle or add sections to tailor Gemini’s responses.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={newSectionName}
                       onChange={(e) => setNewSectionName(e.target.value)}
-                      placeholder="Enter section name"
-                      className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
+                          e.preventDefault();
                           addNewSection();
                         }
                       }}
+                      placeholder="Add new section"
+                      className="flex-1 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-blue-100/50 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-400/40"
                     />
                     <button
                       onClick={addNewSection}
-                      className="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 w-9"
+                      disabled={!newSectionName.trim()}
+                      className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-40"
                     >
                       <Plus className="h-4 w-4" />
                     </button>
                   </div>
-                </div>
-                
-                {/* Current Sections */}
-                <div>
-                  <label className="block text-sm font-medium mb-3">Current Sections</label>
                   <div className="space-y-2">
                     {outputSections.map((section) => (
-                      <div key={section.id} className="flex items-center gap-3 p-3 border border-border rounded-lg">
-                        <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-                        <div className="flex-1 flex items-center gap-2">
+                      <div
+                        key={section.id}
+                        className={`flex items-center justify-between rounded-lg border border-white/12 px-3 py-2 ${
+                          section.enabled ? 'bg-white/10' : 'bg-white/5 opacity-70'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <GripVertical className="h-4 w-4 text-blue-100/60" />
                           <button
                             onClick={() => toggleSection(section.id)}
-                            className={`p-1 rounded ${
-                              section.enabled 
-                                ? 'text-primary' 
-                                : 'text-muted-foreground'
+                            className={`rounded-full border border-white/15 px-2 py-1 text-[11px] font-medium transition ${
+                              section.enabled ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/5 text-blue-100/50'
                             }`}
                           >
-                            {section.enabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                            {section.enabled ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                           </button>
                           <span className="text-sm">{section.name}</span>
                           {section.required && (
-                            <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 px-2 py-1 rounded">
+                            <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-100 uppercase tracking-wide">
                               Required
                             </span>
                           )}
@@ -529,7 +508,7 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
                         {!section.required && (
                           <button
                             onClick={() => removeSection(section.id)}
-                            className="p-1 hover:bg-destructive/20 rounded text-destructive"
+                            className="rounded-full p-1 text-red-200 transition hover:bg-red-500/20"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -537,30 +516,29 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
                       </div>
                     ))}
                   </div>
-                  
-                  <p className="text-xs text-muted-foreground mt-3">
-                    Drag and drop to reorder sections. Required sections cannot be removed.
+                  <p className="text-2xs text-blue-100/60">Drag handles are visual only—sections will follow the order listed here.</p>
+                </div>
+                <div className="flex-1 rounded-2xl border border-white/12 bg-white/6 p-5 text-white shadow-[0_30px_60px_-45px_rgba(15,23,42,0.6)] backdrop-blur">
+                  <h4 className="text-lg font-semibold">Latest Response</h4>
+                  <p className="text-xs text-blue-100/70 mb-3">
+                    We surface the most recent assistant reply so you can copy or export without scrolling.
                   </p>
+                  <div className="h-full overflow-y-auto rounded-lg border border-white/10 bg-white/8 px-4 py-3 text-sm text-blue-100/85">
+                    {latestAssistantMessage ? (
+                      <div className="whitespace-pre-wrap">{latestAssistantMessage.content}</div>
+                    ) : (
+                      <div className="text-blue-100/60">Send a prompt to see the structured output here.</div>
+                    )}
+                  </div>
                 </div>
-                
-                <div className="flex justify-end mt-6">
-                  <button
-                    onClick={() => setShowOutputFormatModal(false)}
-                    className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
+              </aside>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
 };
 
 export default ChatAssistant;
-
-
 

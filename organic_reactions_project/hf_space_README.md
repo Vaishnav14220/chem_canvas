@@ -1,3 +1,14 @@
+---
+title: Organic Reactions Dataset Creator
+emoji: 🧪
+colorFrom: blue
+colorTo: green
+sdk: gradio
+sdk_version: "4.44.1"
+app_file: app.py
+pinned: false
+---
+
 # Organic Reactions Dataset Creator
 
 This Hugging Face Space processes organic reaction data from the `smitathkr1/organic_reactions` dataset and creates structured data using Google's Gemini Flash API.
@@ -29,6 +40,10 @@ Each reaction entry contains:
 - `conditions`: Reaction conditions (temperature, solvent, etc.)
 - `mechanism`: Brief description of reaction mechanism
 - `description`: Summary of what the reaction does
+- `reactants_smiles`: SMILES strings for each reactant
+- `reagents_smiles`: SMILES strings for each reagent
+- `products_smiles`: SMILES strings for each product
+- `byproducts_smiles`: SMILES strings for each byproduct
 - `url`: Source URL of the reaction information
 
 ## Requirements
