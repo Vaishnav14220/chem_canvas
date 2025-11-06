@@ -1,8 +1,0 @@
-datasets
-huggingface_hub<1.0.0
-requests
-beautifulsoup4
-google-genai
-pubchempy
-rdkit
-gradio
