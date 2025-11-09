@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Search, Loader2, ArrowRight, FlaskConical, AlertCircle, Database, Wand2, ChevronDown, Check } from 'lucide-react';
-import { rdkitService } from '../services/rdkitService';
 import { resolveReactionQuery, resolveReactionByName, type ReactionResolutionResult } from '../services/reactionResolver';
 import { isGeminiInitialized } from '../services/geminiService';
 import { generateTextContent } from '../services/geminiService';
@@ -295,20 +294,10 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
     const targetSmiles = resolution?.reactionSmiles ?? fallbackSmiles;
     const sanitizedSmiles = sanitizeReactionSmilesInput(targetSmiles) ?? targetSmiles;
     if (!targetSmiles) {
-      throw new Error('No reaction SMILES available for visualization.');
+      throw new Error('No reaction SMILES available.');
     }
 
-    if (!rdkitService.isReady()) {
-      await rdkitService.initialize();
-    }
-
-    const visualization = await rdkitService.getReactionSVG(sanitizedSmiles, {
-      components: resolution?.components ?? []
-    });
-    setReactionPreviewSvg(visualization.previewSvg ?? visualization.reactionSvg);
-    setReactionBaseSvg(visualization.reactionSvg ?? visualization.previewSvg);
-    setReactionHighlightSvg(visualization.highlightSvg ?? null);
-    setShowHighlights(false);
+    // Skip RDKit visualization and just set the reaction data
     setResolvedReaction(resolution);
     setReactionSmilesForCanvas(sanitizedSmiles);
   }, []);
@@ -815,7 +804,7 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
                       </div>
                       {resolvedReaction.usedGemini && (
                         <p className="text-[11px] text-blue-300">
-                          Interpreted with Gemini to identify reactants/products before RDKit rendering.
+                          Interpreted with Gemini to identify reactants/products.
                         </p>
                       )}
                       {typeof resolvedReaction.confidence === 'number' && (
@@ -1009,7 +998,6 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
                       <div>
                         <p className="font-medium text-slate-300 mb-1">Prerequisites:</p>
                         <p>• PostgreSQL (conda install postgresql)</p>
-                        <p>• RDKit (conda install -c rdkit rdkit-postgresql)</p>
                         <p>• Node.js/npm for frontend</p>
                       </div>
                       <div>

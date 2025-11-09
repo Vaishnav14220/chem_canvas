@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Loader2, FlaskConical, Database } from 'lucide-react';
-import { rdkitService, type ReactionVisualizationResult } from '../services/rdkitService';
 
 interface InlineReactionSearchProps {
   onSelectReaction?: (reactionData: any) => void;
@@ -142,18 +141,19 @@ export default function InlineReactionSearch({ onSelectReaction, className = '' 
     // Generate reaction and insert to canvas
     setIsLoading(true);
 
-    let visualization: ReactionVisualizationResult | null = null;
-
     try {
-      // Use RDKit to generate reaction SVG with highlights
-      visualization = await rdkitService.getReactionSVG(suggestion.smiles);
-      const reactionSvg = visualization.reactionSvg ?? visualization.previewSvg;
+      // RDKit visualization removed - using placeholder
+      const placeholderSvg = `<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#f3f4f6"/>
+        <text x="50%" y="40%" text-anchor="middle" font-family="monospace" font-size="10" fill="#374151">${suggestion.smiles}</text>
+        <text x="50%" y="65%" text-anchor="middle" font-size="8" fill="#6b7280">RDKit visualization removed</text>
+      </svg>`;
 
       const reactionData = {
         type: 'reaction',
-        svg: reactionSvg,
-        highlightSvg: visualization.highlightSvg,
-        previewSvg: visualization.previewSvg,
+        svg: placeholderSvg,
+        highlightSvg: null,
+        previewSvg: placeholderSvg,
         smiles: suggestion.smiles,
         name: suggestion.name,
         description: suggestion.description,

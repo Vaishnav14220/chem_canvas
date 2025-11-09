@@ -1,7 +1,6 @@
 // PubChem API Service for fetching molecule structures
 // Documentation: https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest
 
-import { rdkitService } from './rdkitService';
 import ordReactionsDataset from '../data/ordReactions.json';
 import type { ReactionMetadata, ReactionSource } from '../types/reactions';
 
@@ -115,7 +114,6 @@ export interface MoleculeData {
   isCrystal?: boolean;
   crystalData?: CrystalVisualData;
   analysis?: any; // Molecule analysis from Gemini API
-  rdkitProperties?: import('./rdkitService').MoleculeProperties;
 }
 
 export const fetchCanonicalSmiles = async (input: string): Promise<string | null> => {
@@ -622,19 +620,6 @@ export const getMoleculeByCID = async (cid: number): Promise<MoleculeData | null
     if (!moleculeData) {
       console.error(`❌ Failed to fetch molecule data for CID ${cid}`);
       return null;
-    }
-
-    // Enhance with RDKit properties if SMILES is available
-    if (moleculeData.smiles) {
-      try {
-        const rdkitMolecule = await rdkitService.parseMolecule(moleculeData.smiles);
-        if (rdkitMolecule?.properties) {
-          moleculeData.rdkitProperties = rdkitMolecule.properties;
-          console.log(`🔬 Enhanced molecule ${cid} with RDKit properties`);
-        }
-      } catch (rdkitError) {
-        console.warn(`⚠️ Failed to enhance molecule ${cid} with RDKit:`, rdkitError);
-      }
     }
 
     console.log(`✅ Successfully retrieved molecule: ${moleculeData.name}`);

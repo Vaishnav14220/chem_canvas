@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { rdkitService } from '../services/rdkitService';
 
 type HighlightColour = [number, number, number];
 
@@ -102,80 +101,24 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
       setError(null);
       setSvgContent(null);
 
-      let molecule: import('@rdkit/rdkit').JSMol | null = null;
-
+      // RDKit functionality removed - using placeholder
       try {
-        await rdkitService.initialize();
-        const parsed = await rdkitService.parseMolecule(trimmed);
-        if (!parsed) {
-          throw new Error('Unable to parse structure');
-        }
-
-        molecule = parsed.mol;
-
-        const baseOptions: Record<string, unknown> = {
-          width,
-          height,
-          clearBackground: true,
-          bondLineWidth: 1,
-          addStereoAnnotation: true,
-          ...extraDetails,
-        };
-
-        let svgMarkup: string | null = null;
-        let highlightAtoms: number[] = [];
-        let highlightBonds: number[] = [];
-
-        if (subStructure?.trim()) {
-          try {
-            const matches = await rdkitService.findSubstructureMatches(molecule, subStructure.trim());
-            const merged = mergeMatches(matches);
-            highlightAtoms = merged.atoms;
-            highlightBonds = merged.bonds;
-
-            if (highlightAtoms.length > 0) {
-              const highlight = normaliseColour(highlightColour) ?? [0.18, 0.53, 0.95];
-              svgMarkup = molecule.get_svg_with_highlights(
-                JSON.stringify({
-                  ...baseOptions,
-                  atoms: highlightAtoms,
-                  bonds: highlightBonds,
-                  highlightColour: highlight,
-                })
-              );
-            }
-          } catch (highlightError) {
-            console.warn('Substructure highlighting failed:', highlightError);
+        // Create a simple placeholder showing the molecule structure text
+        if (svgMode) {
+          const placeholderSvg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#f3f4f6"/>
+            <text x="50%" y="40%" text-anchor="middle" font-family="monospace" font-size="12" fill="#374151">${trimmed}</text>
+            <text x="50%" y="60%" text-anchor="middle" font-size="10" fill="#6b7280">RDKit visualization removed</text>
+          </svg>`;
+          if (!cancelled) {
+            setSvgContent(placeholderSvg);
           }
-        }
-
-        if (!svgMarkup && svgMode) {
-          svgMarkup = molecule.get_svg(width, height);
-        }
-
-        if (!svgMode) {
-          const canvas = canvasRef.current;
-          if (!canvas) {
-            throw new Error('Canvas element not available');
+        } else {
+          // For canvas mode, just show a placeholder
+          if (!cancelled) {
+            setSvgContent(null);
+            setError('Canvas rendering not available (RDKit removed)');
           }
-
-          molecule.draw_to_canvas_with_highlights(
-            canvas,
-            JSON.stringify({
-              ...baseOptions,
-              atoms: highlightAtoms,
-              bonds: highlightBonds,
-              highlightColour: normaliseColour(highlightColour) ?? [0.18, 0.53, 0.95],
-            })
-          );
-        }
-
-        if ((svgMode && !svgMarkup) || (!svgMode && !canvasRef.current)) {
-          throw new Error('Rendering failed');
-        }
-
-        if (!cancelled) {
-          setSvgContent(svgMode ? svgMarkup : null);
         }
       } catch (renderError) {
         if (!cancelled) {
@@ -184,9 +127,6 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
           setSvgContent(null);
         }
       } finally {
-        if (molecule) {
-          rdkitService.disposeMolecule(molecule);
-        }
         if (!cancelled) {
           setIsRendering(false);
         }

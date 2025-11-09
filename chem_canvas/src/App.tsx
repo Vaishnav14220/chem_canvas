@@ -24,7 +24,8 @@ import SrlCoachWorkspace from './components/SrlCoachWorkspace';
 import StudyToolsWorkspace from './components/StudyToolsWorkspace';
 import AdaptivePlan from './components/AdaptivePlan';
 import FlippingInfo from './components/FlippingInfo';
-import RdkitWorkspace from './components/RdkitWorkspace';
+// import RdkitWorkspace from './components/RdkitWorkspace';
+import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWorkspace';
 import type { AIInteraction, InteractionMode } from './types';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
@@ -33,11 +34,6 @@ const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedde
 • Suggest best practices for importing JCAMP-DX files, peak picking, assignments, integrations and spectrum overlays.
 • Stay concise and student-friendly, but add detail if the learner asks for deeper explanations.`;
 
-const RDKIT_ASSISTANT_PROMPT = `You are ChemAssist's RDKit workflow mentor embedded next to the RDKit.js analysis workspace. Always:
-- Reference RDKit.js APIs (e.g., \`mol.get_descriptors()\`, \`get_svg()\`, \`get_substruct_matches()\`) when explaining steps.
-- Suggest SMARTS patterns and descriptor strategies for the student to try in the workspace UI.
-- Warn about sanitisation issues, stereochemistry handling, and large-molecule performance when relevant.
-- Keep explanations concise and student-friendly, expanding when deeper detail is requested.`;
 
 type StudyToolType =
   | 'audio'
@@ -103,9 +99,9 @@ const App: React.FC = () => {
   const [isNmrAssistantActive, setIsNmrAssistantActive] = useState(false);
   const [showNmrAssistant, setShowNmrAssistant] = useState(false);
   const [showRdkitWorkspace, setShowRdkitWorkspace] = useState(false);
-  const [showRdkitAssistant, setShowRdkitAssistant] = useState(false);
   const [isRdkitAssistantActive, setIsRdkitAssistantActive] = useState(false);
-  const [rdkitStatus, setRdkitStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [showRdkitAssistant, setShowRdkitAssistant] = useState(false);
+  const [rdkitStatus, setRdkitStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
   
   // Panel sizes and visibility
   const [sourcesWidth, setSourcesWidth] = useState(384);
@@ -119,6 +115,7 @@ const App: React.FC = () => {
   const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
   const [showStudyToolsWorkspace, setShowStudyToolsWorkspace] = useState(false);
   const [showAdaptivePlan, setShowAdaptivePlan] = useState(false);
+  const [showDocumentUnderstandingWorkspace, setShowDocumentUnderstandingWorkspace] = useState(false);
   
   // Resize states
   const [isResizing, setIsResizing] = useState<'sources' | 'chat' | null>(null);
@@ -410,10 +407,6 @@ const App: React.FC = () => {
         assistantGuidance = `${NMR_ASSISTANT_PROMPT}
 
 Here is the learner's question: ${message}`;
-      } else if (isRdkitAssistantActive) {
-        assistantGuidance = `${RDKIT_ASSISTANT_PROMPT}
-
-Here is the learner's question: ${message}`;
       }
 
       const fullPrompt = contextPrompt + assistantGuidance;
@@ -665,7 +658,21 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
-                    setShowRdkitWorkspace(true);
+                    setShowNmrFullscreen(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setIsNmrAssistantActive(false);
+                    setShowChatPanel(false);
+                  }}
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
+                >
+                  <LineChart className="mr-2 h-4 w-4" />
+                  NMR
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowDocumentUnderstandingWorkspace(true);
                     setShowSrlCoachWorkspace(false);
                     setShowStudyToolsWorkspace(false);
                     setShowNmrFullscreen(false);
@@ -675,28 +682,12 @@ Here is the learner's question: ${message}`;
                     setShowNmrAssistant(false);
                     setIsRdkitAssistantActive(false);
                     setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
                   }}
                   className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
                 >
-                  <Atom className="mr-2 h-4 w-4" />
-                  RDKit
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowNmrFullscreen(true);
-                    setShowRdkitWorkspace(false);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setIsNmrAssistantActive(false);
-                    setShowChatPanel(false);
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <LineChart className="mr-2 h-4 w-4" />
-                  NMR
+                  <FileText className="mr-2 h-4 w-4" />
+                  Doc Understanding
                 </button>
               </div>
 
@@ -770,10 +761,9 @@ Here is the learner's question: ${message}`;
         </div>
 
         {/* Mobile Menu */}
-        {showMobileMenu && (
-          <div className="lg:hidden border-t border-border bg-background/95 backdrop-blur">
-            <div className="container py-4 px-6">
-              <div className="grid grid-cols-2 gap-2">
+        <div className="lg:hidden border-t border-border bg-background/95 backdrop-blur">
+          <div className="container py-4 px-6">
+            <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
                   className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
@@ -849,7 +839,7 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
-                    setShowRdkitWorkspace(true);
+                    setShowDocumentUnderstandingWorkspace(true);
                     setShowSrlCoachWorkspace(false);
                     setShowStudyToolsWorkspace(false);
                     setShowNmrFullscreen(false);
@@ -859,21 +849,19 @@ Here is the learner's question: ${message}`;
                     setShowNmrAssistant(false);
                     setIsRdkitAssistantActive(false);
                     setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
                   }}
                   className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
                 >
-                  <Atom className="h-4 w-4" />
-                  <span className="text-sm">RDKit Workspace</span>
+                  <FileText className="h-4 w-4" />
+                  <span className="text-sm">Document Understanding</span>
                 </button>
 
                 <button
                   onClick={() => {
                     setShowNmrFullscreen(true);
-                    setShowRdkitWorkspace(false);
                     setShowSrlCoachWorkspace(false);
                     setShowStudyToolsWorkspace(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
                     setIsNmrAssistantActive(false);
                     setShowChatPanel(false);
                   }}
@@ -885,7 +873,6 @@ Here is the learner's question: ${message}`;
               </div>
             </div>
           </div>
-        )}
       </header>
 
       {/* Command Palette */}
@@ -944,93 +931,16 @@ Here is the learner's question: ${message}`;
           setShowRdkitAssistant(false);
         }}
       />
-      ) : showRdkitWorkspace ? (
-        <div className="flex h-[calc(100vh-5rem)] flex-col">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-slate-950 border-b border-slate-800 px-4 md:px-6 py-3">
-            <div>
-              <h2 className="text-sm font-semibold text-white">RDKit.js Workspace</h2>
-              <p className="text-xs text-slate-400">
-                {rdkitStatus === 'loading'
-                  ? 'Parsing molecule with RDKit...'
-                  : rdkitStatus === 'error'
-                    ? 'An RDKit error occurred – check the workspace pane.'
-                    : 'Interactively compute descriptors, SMARTS matches, and SVG depictions.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => {
-                  const next = !showRdkitAssistant;
-                  setShowRdkitAssistant(next);
-                  setIsRdkitAssistantActive(next);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                  setShowChatPanel(false);
-                }}
-                className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded ${showRdkitAssistant ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-slate-900 border border-slate-700 text-slate-200 hover:bg-slate-800'}`}
-              >
-                <Headphones className="h-4 w-4" />
-                {showRdkitAssistant ? 'Hide RDKit Assistant' : 'Open RDKit Assistant'}
-              </button>
-              <button
-                onClick={() => window.open('https://docs.rdkitjs.com/', '_blank', 'noopener')}
-                className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded bg-slate-900 border border-slate-700 text-slate-200 hover:bg-slate-800"
-              >
-                <BookOpen className="h-4 w-4" /> Docs
-              </button>
-              <button
-                onClick={() => window.open('https://www.rdkitjs.com/', '_blank', 'noopener')}
-                className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded bg-slate-900 border border-slate-700 text-slate-200 hover:bg-slate-800"
-              >
-                <ExternalLink className="h-4 w-4" /> Playground
-              </button>
-              <button
-                onClick={() => {
-                  setShowRdkitWorkspace(false);
-                  setShowRdkitAssistant(false);
-                  setIsRdkitAssistantActive(false);
-                  setShowChatPanel(false);
-                }}
-                className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-500"
-              >
-                Exit RDKit View
-              </button>
-            </div>
-          </div>
-          <div className="flex flex-1 overflow-hidden">
-            <div className={`flex-1 overflow-hidden ${showRdkitAssistant ? 'lg:pr-0' : ''}`}>
-              <RdkitWorkspace onStatusChange={setRdkitStatus} />
-            </div>
-            {showRdkitAssistant && (
-              <aside className="flex w-full max-w-md flex-col border-l border-slate-800 bg-slate-950">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-slate-800">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">RDKit Assistant</h3>
-                    <p className="text-xs text-slate-400">Descriptor tips, SMARTS patterns, workflow help</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowRdkitAssistant(false);
-                      setIsRdkitAssistantActive(false);
-                      setShowChatPanel(false);
-                    }}
-                    className="text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded-md"
-                  >
-                    Close Chat
-                  </button>
-                </div>
-                <div className="flex-1 overflow-hidden bg-slate-950">
-                  <AIChat
-                    onSendMessage={handleSendMessage}
-                    interactions={interactions}
-                    isLoading={chatLoading}
-                    documentName="RDKit Workspace"
-                  />
-                </div>
-              </aside>
-            )}
-          </div>
-        </div>
+      ) : showDocumentUnderstandingWorkspace ? (
+        <DocumentUnderstandingWorkspace
+          onClose={() => {
+            setShowDocumentUnderstandingWorkspace(false);
+            setShowChatPanel(false);
+            setIsNmrAssistantActive(false);
+            setShowNmrAssistant(false);
+          }}
+          apiKey={apiKey}
+        />
       ) : showNmrFullscreen ? (
         <div className="flex h-[calc(100vh-5rem)] flex-col">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-slate-900 border-b border-slate-800 px-4 md:px-6 py-3">
@@ -1516,14 +1426,12 @@ Here is the learner's question: ${message}`;
             {/* Study Tools Panel handled via full-screen workspace */}
 
             {/* Chat Start Button - Floating */}
-            {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showRdkitWorkspace && (
+            {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && (
               <div className="absolute top-28 right-8 z-10">
                 <DarkButtonWithIcon
                   onClick={() => {
                     console.log('Starting chat panel...');
                     setIsNmrAssistantActive(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
                     setShowChatPanel(true);
                   }}
                   className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"

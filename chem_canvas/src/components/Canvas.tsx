@@ -29,7 +29,6 @@ import { PluginCommands } from 'molstar/lib/mol-plugin/commands';
 import { Color } from 'molstar/lib/mol-util/color';
 import type { Viewer } from 'molstar/build/viewer/molstar';
 import 'molstar/build/viewer/molstar.css';
-import { rdkitService } from '../services/rdkitService';
 
 const MIN_TOOLBAR_WIDTH = 280;
 const MAX_TOOLBAR_WIDTH = 480;
@@ -156,9 +155,6 @@ export default function Canvas({
   const [editingTextShapeId, setEditingTextShapeId] = useState<string | null>(null);
   const [reactionSdfLoadingId, setReactionSdfLoadingId] = useState<string | null>(null);
   const [reactionSdfError, setReactionSdfError] = useState<{ id: string; message: string } | null>(null);
-
-  // RDKit initialization state
-  const [isRdkitReady, setIsRdkitReady] = useState(false);
 
   const addCustomAnnotationLabel = () => {
     const trimmed = customAnnotationLabel.trim();
@@ -664,18 +660,6 @@ export default function Canvas({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [selectedShape]);
-
-  // Initialize RDKit for enhanced molecule features
-  useEffect(() => {
-    if (!isRdkitReady) {
-      rdkitService.initialize().then(() => {
-        setIsRdkitReady(true);
-        console.log('RDKit initialized in Canvas component');
-      }).catch(error => {
-        console.warn('Failed to initialize RDKit in Canvas:', error);
-      });
-    }
-  }, [isRdkitReady]);
 
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     // Adjust grid color based on canvas background
@@ -2936,45 +2920,6 @@ export default function Canvas({
     const cid = data.cid;
     const cache = moleculeImageCacheRef.current;
 
-    // Try RDKit SVG generation if no PubChem SVG and we have SMILES
-    if (!data.svgData && data.smiles && isRdkitReady) {
-      try {
-        const rdkitMolecule = await rdkitService.parseMolecule(data.smiles);
-        const rdkitSvg = rdkitMolecule ? await rdkitService.getSVG(rdkitMolecule.mol, width, height) : null;
-        if (rdkitSvg) {
-          const blob = new Blob([rdkitSvg], { type: 'image/svg+xml' });
-          const url = URL.createObjectURL(blob);
-
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => {
-            cache.set(cid, img);
-            ctx.save();
-            ctx.translate(centerX, centerY);
-            ctx.rotate(rotation);
-            ctx.drawImage(img, -width / 2, -height / 2, width, height);
-            ctx.restore();
-            setForceRedraw(prev => prev + 1);
-          };
-          img.onerror = () => {
-            console.warn('Failed to load RDKit SVG for molecule:', data.displayName ?? data.name ?? 'Unknown');
-            // Fallback: render molecule name as text
-            ctx.save();
-            ctx.translate(centerX, centerY);
-            ctx.rotate(rotation);
-            ctx.fillStyle = '#666';
-            ctx.font = '12px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(data.displayName ?? data.name ?? 'Molecule', 0, 0);
-            ctx.restore();
-          };
-          img.src = url;
-          return;
-        }
-      } catch (rdkitError) {
-        console.warn('RDKit SVG generation failed:', rdkitError);
-      }
-    }
 
     if (cache.has(cid)) {
       const img = cache.get(cid);
@@ -4935,19 +4880,6 @@ export default function Canvas({
                 </p>
                 {selectedShape.moleculeData.molecularFormula && (
                   <p className="text-xs text-slate-400">{selectedShape.moleculeData.molecularFormula}</p>
-                )}
-                {selectedShape.moleculeData.rdkitProperties && (
-                  <div className="mt-2 space-y-1">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">RDKit Properties</p>
-                    <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-400">
-                      <span>MW: {selectedShape.moleculeData.rdkitProperties.molecularWeight.toFixed(2)}</span>
-                      <span>LogP: {selectedShape.moleculeData.rdkitProperties.logP.toFixed(2)}</span>
-                      <span>HBD: {selectedShape.moleculeData.rdkitProperties.hbd}</span>
-                      <span>HBA: {selectedShape.moleculeData.rdkitProperties.hba}</span>
-                      <span>TPSA: {selectedShape.moleculeData.rdkitProperties.tpsa.toFixed(1)}</span>
-                      <span>Rotatable: {selectedShape.moleculeData.rdkitProperties.rotatableBonds}</span>
-                    </div>
-                  </div>
                 )}
               </div>
             </div>

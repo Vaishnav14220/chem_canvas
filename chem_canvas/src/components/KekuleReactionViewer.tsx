@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { ensureKekuleLoaded } from '../services/kekuleLoader';
-import { rdkitService } from '../services/rdkitService';
 import { sanitizeReactionSmilesInput } from '../utils/reactionSanitizer';
 
 type RenderType = 'R2D' | 'R3D';
@@ -352,33 +351,11 @@ const KekuleReactionViewer: React.FC<KekuleReactionViewerProps> = ({
           }
         }
 
-        if (!chemObj && sanitizedSmiles.includes('>')) {
-          try {
-            const rxnBlock = await rdkitService.reactionSmilesToRxnBlock(sanitizedSmiles);
-            if (cancelled || !containerRef.current) {
-              return;
-            }
-            if (rxnBlock) {
-              try {
-                chemObj = Kekule.IO.loadFormatData(rxnBlock, 'rxn');
-              } catch (rdkitLoadErr) {
-                recordError('Kekule RXN load (RDKit fallback)', rdkitLoadErr);
-                console.warn('Failed to apply RDKit RXN block:', rdkitLoadErr);
-              }
-            } else {
-              parseErrors.push('RDKit fallback did not yield RXN data.');
-            }
-          } catch (rdkitErr) {
-            recordError('RDKit RXN fallback', rdkitErr);
-            console.warn('RDKit fallback failed:', rdkitErr);
-          }
-        }
-
         if (!chemObj) {
           const details = parseErrors.length
             ? ` Details: ${Array.from(new Set(parseErrors)).slice(0, 3).join(' | ')}`
             : '';
-          throw new Error(`Unable to parse the supplied reaction. Tried SMILES parsing and RDKit RXN conversion.${details}`);
+          throw new Error(`Unable to parse the supplied reaction. Tried SMILES parsing.${details}`);
         }
 
         viewer.setChemObj(chemObj);
