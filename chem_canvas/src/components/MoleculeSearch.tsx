@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, X, Loader2, AlertCircle, CheckCircle, Eye } from 'lucide-react';
-import { getMoleculeByName, get2DStructureUrl, getMolViewUrl, getMoleculeAutocomplete, type MoleculeData } from '../services/pubchemService';
+import { getMoleculeByName, get2DStructureUrl, getMoleculeAutocomplete, type MoleculeData } from '../services/pubchemService';
+import { getRDKit3DViewerUrl, initRDKit, getMoleculeByNameRDKit, getRDKitAutocomplete } from '../services/rdkitService';
 
 interface MoleculeSearchProps {
   onSelectMolecule?: (moleculeData: MoleculeData) => void;
@@ -48,6 +49,17 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
     // Debounce the API call
     debounceTimeoutRef.current = setTimeout(async () => {
       try {
+        // Try RDKit suggestions first
+        const rdkitSuggestions = getRDKitAutocomplete(value.trim(), 8);
+        setSuggestions(rdkitSuggestions);
+
+        // If we have RDKit suggestions, don't fetch from PubChem
+        if (rdkitSuggestions.length > 0) {
+          setIsLoadingSuggestions(false);
+          return;
+        }
+
+        // Fallback to PubChem if no RDKit suggestions
         const autocompleteSuggestions = await getMoleculeAutocomplete(value.trim(), 8);
         setSuggestions(autocompleteSuggestions);
       } catch (error) {
@@ -72,14 +84,22 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
     setSearchTerm(suggestion);
     setSuggestions([]);
     setShowSuggestions(false);
-    
+
     // Auto-search and insert for the suggestion
     setError(null);
     setMoleculeData(null);
     setSuccessMessage(null);
 
     try {
-      const data = await getMoleculeByName(suggestion);
+      // Try RDKit first
+      let data = await getMoleculeByNameRDKit(suggestion);
+
+      // If RDKit doesn't have it, try PubChem as fallback
+      if (!data) {
+        console.log(`RDKit doesn't have ${suggestion}, trying PubChem...`);
+        data = await getMoleculeByName(suggestion);
+      }
+
       if (data) {
         // Automatically insert the molecule to canvas
         if (onSelectMolecule) {
@@ -92,14 +112,14 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
           }, 1500);
           return;
         }
-        
+
         // Fallback: show the data if no onSelectMolecule callback
         setMoleculeData(data);
         if (!searchHistory.includes(suggestion)) {
           setSearchHistory([suggestion, ...searchHistory].slice(0, 5));
         }
       } else {
-        setError(`Molecule "${suggestion}" not found in PubChem database.`);
+        setError(`Molecule "${suggestion}" not found in RDKit or PubChem database.`);
       }
     } catch (err) {
       console.error('Search error:', err);
@@ -121,8 +141,16 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
 
     try {
       console.log(`Searching for molecule: ${searchTerm}`);
-      const data = await getMoleculeByName(searchTerm);
-      
+
+      // Try RDKit first
+      let data = await getMoleculeByNameRDKit(searchTerm);
+
+      // If RDKit doesn't have it, try PubChem as fallback
+      if (!data) {
+        console.log(`RDKit doesn't have ${searchTerm}, trying PubChem...`);
+        data = await getMoleculeByName(searchTerm);
+      }
+
       if (data) {
         // Automatically insert the molecule to canvas
         if (onSelectMolecule) {
@@ -135,7 +163,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
           }, 1500);
           return;
         }
-        
+
         // Fallback: show the data if no onSelectMolecule callback
         setMoleculeData(data);
         // Add to search history
@@ -144,7 +172,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
         }
         setError(null);
       } else {
-        setError(`Molecule "${searchTerm}" not found in PubChem database. Try another name.`);
+        setError(`Molecule "${searchTerm}" not found in RDKit or PubChem database. Try another name.`);
       }
     } catch (err) {
       console.error('Search error:', err);
@@ -174,10 +202,21 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
     setSearchTerm(term);
   };
 
-  const handleView3D = () => {
+  const handleView3D = async () => {
     if (moleculeData) {
-      const molViewUrl = getMolViewUrl(moleculeData.cid, 'balls');
-      window.open(molViewUrl, '_blank');
+      try {
+        // Initialize RDKit if not already done
+        await initRDKit();
+
+        // Get RDKit-powered 3D viewer URL
+        const rdkitUrl = await getRDKit3DViewerUrl(moleculeData.smiles, moleculeData.name);
+        window.open(rdkitUrl, '_blank');
+      } catch (error) {
+        console.error('Failed to load 3D viewer:', error);
+        // Fallback to PubChem-based MolView
+        const molViewUrl = `https://embed.molview.org/v1/?mode=balls&smiles=${encodeURIComponent(moleculeData.smiles)}`;
+        window.open(molViewUrl, '_blank');
+      }
     }
   };
 
@@ -328,8 +367,12 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
                       <p className="text-cyan-400 font-mono text-xs break-all">{moleculeData.smiles}</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-slate-400">PubChem CID</p>
-                      <p className="text-cyan-400 font-mono">{moleculeData.cid}</p>
+                      <p className="text-slate-400">Source</p>
+                      <p className="text-cyan-400 font-mono text-xs">{moleculeData.source || 'pubchem'}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-slate-400">3D Viewer</p>
+                      <p className="text-cyan-400 font-mono text-xs">Powered by RDKit</p>
                     </div>
                   </div>
                 </div>
@@ -342,7 +385,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
                   <button
                     onClick={handleView3D}
                     className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs flex items-center gap-2 transition"
-                    title="View 3D structure in MolView"
+                    title="View 3D structure with RDKit"
                   >
                     <Eye size={14} />
                     View 3D
@@ -385,8 +428,9 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
             <div className="bg-slate-800/50 border border-slate-600 rounded-lg p-4 space-y-2">
               <p className="text-sm font-semibold text-slate-300">💡 How to Search:</p>
               <ul className="text-sm text-slate-400 space-y-1 list-disc list-inside">
-                <li>Start typing a molecule name (2+ characters) to see PubChem suggestions</li>
+                <li>Start typing a molecule name (2+ characters) to see RDKit suggestions</li>
                 <li>Click any suggestion or press Enter to instantly add it to your canvas</li>
+                <li>Click "View 3D" to see interactive 3D structures powered by RDKit</li>
                 <li>Try common molecules: benzene, glucose, caffeine, aspirin, water</li>
                 <li>Use IUPAC names or chemical formulas for precise results</li>
               </ul>
@@ -398,7 +442,7 @@ export default function MoleculeSearch({ onSelectMolecule, isOpen = true, onClos
             <div className="bg-blue-900/20 border border-blue-600/30 rounded-lg p-4 space-y-2">
               <p className="text-sm font-semibold text-blue-300">📚 How to Create a Reaction:</p>
               <ol className="text-sm text-blue-200 space-y-1 list-decimal list-inside">
-                <li>Start typing a molecule name to see real-time suggestions from PubChem</li>
+                <li>Start typing a molecule name to see real-time suggestions from RDKit</li>
                 <li>Click any suggestion or press <span className="font-semibold text-cyan-400">Enter</span> to instantly add it to your canvas</li>
                 <li>Repeat for other molecules in your reaction (reactants and products)</li>
                 <li>Use the arrow tool to show the reaction direction</li>

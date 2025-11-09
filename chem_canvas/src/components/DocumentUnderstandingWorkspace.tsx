@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, ArrowLeft, Upload, Sparkles, Loader2, Eye, Download, X, BookOpen, Target, Search, MessageSquare, Send, ExternalLink } from 'lucide-react';
+import { FileText, ArrowLeft, Upload, Sparkles, Loader2, Eye, Download, X, BookOpen, Target, Search, MessageSquare, Send, ExternalLink, PlusCircle, Star, Trash2 } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import ReactMarkdown from 'react-markdown';
 import { InlineMath, BlockMath } from 'react-katex';
@@ -42,6 +42,28 @@ interface ProcessedDocument {
   };
 }
 
+interface CustomPreparationMaterial {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+interface FavoritePreparationMaterial extends CustomPreparationMaterial {
+  type: string;
+  source: 'generated' | 'custom';
+  originId?: string;
+}
+
+const createUniqueId = (prefix: string) => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const formatPreparationType = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
 // Helper function to convert ArrayBuffer to base64
 const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   let binary = '';
@@ -76,12 +98,14 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
   const [preparationMaterials, setPreparationMaterials] = useState<{[key: string]: string}>({});
   const [generatingType, setGeneratingType] = useState<string | null>(null);
   const [activePreparationType, setActivePreparationType] = useState<string | null>(null);
-  
-  // Favorites and custom patterns
-  const [favorites, setFavorites] = useState<{[key: string]: string[]}>({});
-  const [showCustomPatternDialog, setShowCustomPatternDialog] = useState(false);
-  const [customPattern, setCustomPattern] = useState('');
-  const [patternType, setPatternType] = useState<string>('');
+  const [customPreparationMaterials, setCustomPreparationMaterials] = useState<{[key: string]: CustomPreparationMaterial[]}>({});
+  const [showCustomMaterialModal, setShowCustomMaterialModal] = useState(false);
+  const [customMaterialType, setCustomMaterialType] = useState<string | null>(null);
+  const [customMaterialTitle, setCustomMaterialTitle] = useState('');
+  const [customMaterialContent, setCustomMaterialContent] = useState('');
+  const [customMaterialFavorite, setCustomMaterialFavorite] = useState(false);
+  const [favoritePreparationMaterials, setFavoritePreparationMaterials] = useState<FavoritePreparationMaterial[]>([]);
+  const [showFavoritesPanel, setShowFavoritesPanel] = useState(false);
 
   // Chat with document state
   const [showDocumentChat, setShowDocumentChat] = useState(false);
@@ -127,25 +151,6 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
   // Create zoom plugin for better quality zooming
   const zoomPluginInstance = zoomPlugin();
   const { CurrentScale, ZoomIn, ZoomOut } = zoomPluginInstance;
-  
-  // Load favorites from localStorage on mount
-  useEffect(() => {
-    const savedFavorites = localStorage.getItem('preparationFavorites');
-    if (savedFavorites) {
-      try {
-        setFavorites(JSON.parse(savedFavorites));
-      } catch (error) {
-        console.error('Error loading favorites:', error);
-      }
-    }
-  }, []);
-  
-  // Save favorites to localStorage whenever they change
-  useEffect(() => {
-    if (Object.keys(favorites).length > 0) {
-      localStorage.setItem('preparationFavorites', JSON.stringify(favorites));
-    }
-  }, [favorites]);
   
   // Debug useEffect for preparation materials
   useEffect(() => {
@@ -568,85 +573,177 @@ Format the response using clear headings, bullet points, and numbered lists for 
     }
   };
 
-  // Handle saving current material to favorites
-  const handleSaveToFavorites = (type: string) => {
-    const currentMaterial = preparationMaterials[type];
-    if (!currentMaterial) return;
-    
-    setFavorites(prev => {
-      const typeArray = prev[type] || [];
-      // Avoid duplicates
-      if (!typeArray.includes(currentMaterial)) {
-        return {
-          ...prev,
-          [type]: [...typeArray, currentMaterial]
-        };
+  const addFavoriteMaterial = (
+    type: string,
+    title: string,
+    content: string,
+    source: 'generated' | 'custom',
+    originId?: string
+  ) => {
+    let added = false;
+    const normalizedTitle = title.trim() || `${formatPreparationType(type)} favorite`;
+
+    setFavoritePreparationMaterials(prev => {
+      if (originId && prev.some(fav => fav.originId === originId)) {
+        return prev;
       }
-      return prev;
-    });
-    
-    // Show success message (you can add a toast notification here)
-    alert('Saved to favorites!');
-  };
-  
-  // Handle removing from favorites
-  const handleRemoveFromFavorites = (type: string, index: number) => {
-    setFavorites(prev => {
-      const typeArray = prev[type] || [];
-      return {
-        ...prev,
-        [type]: typeArray.filter((_, i) => i !== index)
+
+      if (!originId && prev.some(fav => fav.type === type && fav.content === content)) {
+        return prev;
+      }
+
+      added = true;
+      const favorite: FavoritePreparationMaterial = {
+        id: createUniqueId('favorite'),
+        type,
+        title: normalizedTitle,
+        content,
+        createdAt: new Date().toISOString(),
+        source,
+        originId,
       };
+
+      return [favorite, ...prev];
     });
+
+    if (added) {
+      setShowFavoritesPanel(true);
+    }
+
+    return added;
   };
-  
-  // Handle loading a favorite
-  const handleLoadFavorite = (type: string, material: string) => {
+
+  const handleOpenCustomMaterialModal = (type: string) => {
+    setCustomMaterialType(type);
+    setCustomMaterialTitle('');
+    setCustomMaterialContent('');
+    setCustomMaterialFavorite(false);
+    setShowCustomMaterialModal(true);
+  };
+
+  const handleCloseCustomMaterialModal = () => {
+    setShowCustomMaterialModal(false);
+    setCustomMaterialType(null);
+    setCustomMaterialTitle('');
+    setCustomMaterialContent('');
+    setCustomMaterialFavorite(false);
+  };
+
+  const handleSaveCustomMaterial = () => {
+    if (!customMaterialType) return;
+
+    const trimmedContent = customMaterialContent.trim();
+    if (!trimmedContent) {
+      alert('Please provide pattern or sample content before saving.');
+      return;
+    }
+
+    const existingCount = (customPreparationMaterials[customMaterialType]?.length || 0) + 1;
+    const title = customMaterialTitle.trim() || `${formatPreparationType(customMaterialType)} sample ${existingCount}`;
+    const newSample: CustomPreparationMaterial = {
+      id: createUniqueId(customMaterialType),
+      title,
+      content: trimmedContent,
+      createdAt: new Date().toISOString(),
+    };
+
+    setCustomPreparationMaterials(prev => ({
+      ...prev,
+      [customMaterialType]: [...(prev[customMaterialType] || []), newSample],
+    }));
+
     setPreparationMaterials(prev => ({
       ...prev,
-      [type]: material
+      [customMaterialType]: trimmedContent,
+    }));
+
+    setActivePreparationType(customMaterialType);
+
+    if (customMaterialFavorite) {
+      const added = addFavoriteMaterial(customMaterialType, title, trimmedContent, 'custom', newSample.id);
+      if (!added) {
+        alert('This sample is already stored in favorites.');
+      } else {
+        alert('Sample saved and added to favorites!');
+      }
+    } else {
+      alert('Sample saved successfully!');
+    }
+
+    handleCloseCustomMaterialModal();
+  };
+
+  const handleUseCustomSample = (type: string, sampleId: string) => {
+    const sample = (customPreparationMaterials[type] || []).find(item => item.id === sampleId);
+    if (!sample) return;
+
+    setPreparationMaterials(prev => ({
+      ...prev,
+      [type]: sample.content,
     }));
     setActivePreparationType(type);
   };
-  
-  // Handle opening custom pattern dialog
-  const handleOpenCustomPattern = (type: string) => {
-    setPatternType(type);
-    setCustomPattern('');
-    setShowCustomPatternDialog(true);
+
+  const handleMarkSampleFavorite = (type: string, sampleId: string) => {
+    const sample = (customPreparationMaterials[type] || []).find(item => item.id === sampleId);
+    if (!sample) return;
+
+    const added = addFavoriteMaterial(type, sample.title, sample.content, 'custom', sample.id);
+    if (!added) {
+      alert('This sample is already stored in favorites.');
+    } else {
+      alert('Sample added to favorites!');
+    }
   };
-  
-  // Handle generating from custom pattern
-  const handleGenerateFromCustomPattern = async () => {
-    if (!customPattern.trim() || !patternType || !currentFile) return;
-    
-    setGeneratingType(patternType);
-    setShowCustomPatternDialog(false);
-    
-    try {
-      const genAI = initializeGemini();
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      
-      const content = documentContent || await processDocument(currentFile);
-      
-      const result = await model.generateContent([
-        `Document content: ${content}`,
-        `User's custom pattern/template:\n${customPattern}\n\nGenerate preparation materials following the user's pattern above. Use the document content to fill in specific details, examples, and information.`
-      ]);
-      
-      const response = result.response.text();
-      
-      setPreparationMaterials(prev => ({
-        ...prev,
-        [patternType]: response
-      }));
-      setActivePreparationType(patternType);
-    } catch (error) {
-      console.error('Error generating from custom pattern:', error);
-      alert('Failed to generate materials. Please try again.');
-    } finally {
-      setGeneratingType(null);
-      setCustomPattern('');
+
+  const handleApplyFavoriteMaterial = (favoriteId: string) => {
+    const favorite = favoritePreparationMaterials.find(item => item.id === favoriteId);
+    if (!favorite) return;
+
+    setPreparationMaterials(prev => ({
+      ...prev,
+      [favorite.type]: favorite.content,
+    }));
+    setActivePreparationType(favorite.type);
+  };
+
+  const handleRemoveFavoriteMaterial = (favoriteId: string) => {
+    setFavoritePreparationMaterials(prev => prev.filter(item => item.id !== favoriteId));
+  };
+
+  const handleSaveActiveMaterialToFavorites = () => {
+    if (!activePreparationType) return;
+
+    const content = preparationMaterials[activePreparationType];
+    if (!content) return;
+
+    const suggestedTitle = `${formatPreparationType(activePreparationType)} favorite ${new Date().toLocaleDateString()}`;
+    const userTitle = window.prompt('Give this preparation material a name for your favorites:', suggestedTitle);
+
+    if (!userTitle) {
+      return;
+    }
+
+    const added = addFavoriteMaterial(activePreparationType, userTitle, content, 'generated');
+    if (!added) {
+      alert('This material already exists in favorites.');
+    } else {
+      alert('Preparation material saved to favorites!');
+    }
+  };
+
+  const handleQuickSavePreparation = (type: string) => {
+    const content = preparationMaterials[type];
+    if (!content) {
+      alert('Generate or select materials first to save them to favorites.');
+      return;
+    }
+
+    const added = addFavoriteMaterial(type, `${formatPreparationType(type)} materials`, content, 'generated');
+    if (!added) {
+      alert('This material already exists in favorites.');
+    } else {
+      alert('Preparation material saved to favorites!');
     }
   };
 
@@ -710,10 +807,21 @@ Structure as an intensive exam preparation guide with focused study materials.`
     const prompt = prompts[type as keyof typeof prompts] || prompts.test;
     console.log('Using prompt for type:', type);
 
+    const customSamples = customPreparationMaterials[type] || [];
+    let finalPrompt = prompt;
+
+    if (customSamples.length > 0) {
+      const formattedSamples = customSamples
+        .map((sample, index) => `Sample ${index + 1} (${sample.title}):\n${sample.content}`)
+        .join('\n\n');
+
+      finalPrompt += `\n\nConsider these user-provided ${type} patterns or samples when crafting your response. Mirror their tone, depth, and structure where it helps the learner.\n\n${formattedSamples}`;
+    }
+
     console.log('Making API call to Gemini...');
     const result = await model.generateContent([
       `Document content: ${documentContent}`,
-      prompt
+      finalPrompt
     ]);
 
     console.log('API call completed, getting response...');
@@ -1104,17 +1212,24 @@ Only include definitions that are explicitly stated or clearly implied in the do
               </h4>
               {generatingType && <Loader2 className="h-4 w-4 animate-spin text-purple-400" />}
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {['test', 'colloquium', 'lab practical', 'seminar', 'exam'].map((type) => {
                 const hasContent = !!preparationMaterials[type];
                 const isGenerating = generatingType === type;
                 const isActive = activePreparationType === type;
                 const isDisabled = !currentFile || isGenerating;
-                const hasFavorites = favorites[type]?.length > 0;
-                
+                const customSamples = customPreparationMaterials[type] || [];
+                const customCount = customSamples.length;
+                const favoritesForType = favoritePreparationMaterials.filter(item => item.type === type);
+                const favoriteCount = favoritesForType.length;
+                const typeLabel = formatPreparationType(type);
+
                 return (
-                  <div key={type} className="space-y-1">
-                    <div className="flex gap-1">
+                  <div
+                    key={type}
+                    className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3 transition-colors"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <button
                         onClick={() => {
                           console.log('Button clicked:', type, 'disabled:', isDisabled);
@@ -1129,7 +1244,7 @@ Only include definitions that are explicitly stated or clearly implied in the do
                             : 'bg-slate-800/50 text-slate-300 border border-slate-700 hover:bg-slate-700/50 hover:border-purple-500/50'
                         } ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'}`}
                       >
-                        <span>{type.charAt(0).toUpperCase() + type.slice(1).replace(' ', ' ')}</span>
+                        <span>{typeLabel}</span>
                         {hasContent && !isGenerating && (
                           <span className="ml-2 text-green-400">✓</span>
                         )}
@@ -1140,64 +1255,81 @@ Only include definitions that are explicitly stated or clearly implied in the do
                           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-400">●</span>
                         )}
                       </button>
-                      
-                      {/* Custom Pattern Button */}
-                      <button
-                        onClick={() => handleOpenCustomPattern(type)}
-                        disabled={!currentFile}
-                        title="Use custom pattern"
-                        className="px-2 py-2 bg-slate-700/50 hover:bg-purple-600/30 border border-slate-600 hover:border-purple-500 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Upload className="h-3 w-3 text-purple-400" />
-                      </button>
-                      
-                      {/* Save to Favorites Button */}
-                      {hasContent && (
+                      <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => handleSaveToFavorites(type)}
-                          title="Save to favorites"
-                          className="px-2 py-2 bg-slate-700/50 hover:bg-yellow-600/30 border border-slate-600 hover:border-yellow-500 rounded-lg transition-all"
+                          type="button"
+                          onClick={() => handleOpenCustomMaterialModal(type)}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800/60 px-3 py-2 text-[11px] font-medium text-slate-200 transition-colors hover:border-purple-500 hover:bg-slate-700/70"
                         >
-                          <svg className="h-3 w-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                          </svg>
+                          <PlusCircle className="h-3.5 w-3.5 text-purple-300" />
+                          Provide sample
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => handleQuickSavePreparation(type)}
+                          disabled={!preparationMaterials[type]}
+                          className={`inline-flex items-center gap-1 rounded-md border border-yellow-400/40 px-3 py-2 text-[11px] font-medium transition-colors ${
+                            preparationMaterials[type]
+                              ? 'bg-yellow-500/10 text-yellow-200 hover:bg-yellow-500/20'
+                              : 'bg-slate-800/60 text-slate-500 cursor-not-allowed opacity-60'
+                          }`}
+                        >
+                          <Star className="h-3.5 w-3.5" />
+                          Quick save
+                        </button>
+                      </div>
                     </div>
-                    
-                    {/* Favorites Dropdown */}
-                    {hasFavorites && (
-                      <details className="group">
-                        <summary className="cursor-pointer text-xs text-slate-400 hover:text-purple-400 px-2 py-1 list-none flex items-center gap-1">
-                          <svg className="h-3 w-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                          </svg>
-                          <span>{favorites[type].length} saved</span>
-                          <svg className="h-3 w-3 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </summary>
-                        <div className="mt-1 space-y-1 pl-2">
-                          {favorites[type].map((fav, idx) => (
-                            <div key={idx} className="flex items-center gap-1 text-xs">
+
+                    {(customCount > 0 || favoriteCount > 0) && (
+                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-300">
+                        {customCount > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-800/60 px-2 py-1">
+                            <PlusCircle className="h-3 w-3 text-purple-300" />
+                            {customCount} custom sample{customCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {favoriteCount > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-1 text-yellow-200">
+                            <Star className="h-3 w-3" />
+                            {favoriteCount} favorite{favoriteCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {customCount > 0 && (
+                      <div className="mt-2 space-y-2 rounded-lg border border-slate-700/60 bg-slate-900/50 p-2">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-400">Custom samples</p>
+                        {customSamples.map(sample => (
+                          <div
+                            key={sample.id}
+                            className="flex flex-col gap-2 rounded-md border border-slate-700 bg-slate-800/60 p-2 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div>
+                              <p className="text-xs font-medium text-slate-200">{sample.title}</p>
+                              <p className="text-[10px] text-slate-500">{new Date(sample.createdAt).toLocaleString()}</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
                               <button
-                                onClick={() => handleLoadFavorite(type, fav)}
-                                className="flex-1 text-left px-2 py-1 bg-slate-800/50 hover:bg-purple-600/20 border border-slate-700 hover:border-purple-500 rounded text-slate-300 truncate"
-                                title={fav.substring(0, 100)}
+                                type="button"
+                                onClick={() => handleUseCustomSample(type, sample.id)}
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-200 transition-colors hover:border-purple-400 hover:text-purple-200"
                               >
-                                Favorite {idx + 1}
+                                <Eye className="h-3 w-3" />
+                                Use
                               </button>
                               <button
-                                onClick={() => handleRemoveFromFavorites(type, idx)}
-                                className="px-1.5 py-1 bg-red-600/20 hover:bg-red-600/40 border border-red-500/50 rounded transition-all"
-                                title="Remove"
+                                type="button"
+                                onClick={() => handleMarkSampleFavorite(type, sample.id)}
+                                className="inline-flex items-center gap-1 rounded-md border border-yellow-400/40 bg-yellow-500/10 px-2 py-1 text-[11px] font-medium text-yellow-200 transition-colors hover:bg-yellow-500/20"
                               >
-                                <X className="h-3 w-3 text-red-400" />
+                                <Star className="h-3 w-3" />
+                                Favorite
                               </button>
                             </div>
-                          ))}
-                        </div>
-                      </details>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 );
@@ -1208,6 +1340,67 @@ Only include definitions that are explicitly stated or clearly implied in the do
                 Upload a document to generate preparation materials
               </p>
             )}
+
+            <div className="mt-4 space-y-3">
+              <button
+                type="button"
+                onClick={() => setShowFavoritesPanel(prev => !prev)}
+                className="flex w-full items-center justify-between rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-3 py-2 text-xs font-medium text-yellow-200 transition-colors hover:bg-yellow-500/20"
+              >
+                <span className="flex items-center gap-2">
+                  <Star className="h-4 w-4" />
+                  {showFavoritesPanel ? 'Hide favorites' : 'Show favorites'}
+                </span>
+                <span className="text-[11px] text-yellow-100">{favoritePreparationMaterials.length} saved</span>
+              </button>
+
+              {showFavoritesPanel && (
+                <div className="space-y-2 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3 max-h-56 overflow-y-auto">
+                  {favoritePreparationMaterials.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic">
+                      No favorites yet. Save generated or custom materials to access them quickly.
+                    </p>
+                  ) : (
+                    favoritePreparationMaterials.map(favorite => (
+                      <div
+                        key={favorite.id}
+                        className="rounded-md border border-slate-700 bg-slate-800/60 p-3"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                              <Star className="h-4 w-4 text-yellow-300" />
+                              {favorite.title}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-1">
+                              Type: {formatPreparationType(favorite.type)} • Source: {favorite.source === 'custom' ? 'Custom sample' : 'Generated'}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleApplyFavoriteMaterial(favorite.id)}
+                              className="inline-flex items-center gap-1 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-200 transition-colors hover:border-purple-400 hover:text-purple-200"
+                            >
+                              <Eye className="h-3 w-3" />
+                              Use now
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFavoriteMaterial(favorite.id)}
+                              className="inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/20"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Chat with Document Button */}
@@ -1573,6 +1766,13 @@ Only include definitions that are explicitly stated or clearly implied in the do
                         </div>
                       </div>
                       <div className="mt-6 flex gap-3 justify-center flex-wrap">
+                        <button
+                          onClick={handleSaveActiveMaterialToFavorites}
+                          className="flex items-center gap-2 border border-yellow-400/40 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-200 px-6 py-3 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+                        >
+                          <Star className="h-5 w-5" />
+                          Save to Favorites
+                        </button>
                         <button
                           onClick={() => {
                             if (activePreparationType) {
@@ -2284,82 +2484,80 @@ Only include definitions that are explicitly stated or clearly implied in the do
           </div>
         </div>
       )}
-      
-      {/* Custom Pattern Dialog */}
-      {showCustomPatternDialog && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-700 flex items-center justify-between sticky top-0 bg-slate-900 z-10">
-              <h3 className="text-xl font-semibold text-white flex items-center gap-2">
-                <Upload className="h-5 w-5 text-purple-400" />
-                Custom Pattern for {patternType?.charAt(0).toUpperCase() + patternType?.slice(1)}
-              </h3>
+      {showCustomMaterialModal && customMaterialType && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-lg border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <PlusCircle className="h-5 w-5 text-purple-300" />
+                  Provide sample for {formatPreparationType(customMaterialType)}
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Add your own pattern or sample to guide future generated materials.
+                </p>
+              </div>
               <button
-                onClick={() => {
-                  setShowCustomPatternDialog(false);
-                  setCustomPattern('');
-                }}
+                onClick={handleCloseCustomMaterialModal}
                 className="text-slate-400 hover:text-white transition-colors p-2 rounded hover:bg-slate-800"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            
-            <div className="p-6 space-y-4">
+
+            <div className="space-y-4">
               <div>
-                <p className="text-slate-300 text-sm mb-4">
-                  Provide your own pattern or template for generating {patternType} materials. 
-                  The AI will use your structure and fill it with relevant information from the document.
-                </p>
-                
-                <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 mb-4">
-                  <h4 className="text-white text-sm font-medium mb-2">Example Pattern:</h4>
-                  <pre className="text-xs text-slate-400 whitespace-pre-wrap">
-{`1. **Overview**: Brief summary of main topics
-2. **Key Points**:
-   - Point 1 with details
-   - Point 2 with examples
-3. **Practice Questions**:
-   - Question format with solutions
-4. **Study Tips**: Practical advice`}
-                  </pre>
-                </div>
-                
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Your Pattern/Template:
+                <label className="text-xs uppercase tracking-wide text-slate-400 mb-2 block">
+                  Sample title (optional)
                 </label>
-                <textarea
-                  value={customPattern}
-                  onChange={(e) => setCustomPattern(e.target.value)}
-                  placeholder="Enter your custom pattern here... 
-Example:
-1. Main Concepts: [list key concepts]
-2. Important Formulas: [formulas with explanations]
-3. Practice Problems: [5 problems with solutions]
-..."
-                  className="w-full h-64 bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none font-mono text-sm"
+                <input
+                  value={customMaterialTitle}
+                  onChange={(event) => setCustomMaterialTitle(event.target.value)}
+                  className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none"
+                  placeholder="e.g., Midterm practice outline"
                 />
               </div>
-              
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => {
-                    setShowCustomPatternDialog(false);
-                    setCustomPattern('');
-                  }}
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleGenerateFromCustomPattern}
-                  disabled={!customPattern.trim()}
-                  className="px-6 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Generate
-                </button>
+
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400 mb-2 block">
+                  Pattern or sample content
+                </label>
+                <textarea
+                  value={customMaterialContent}
+                  onChange={(event) => setCustomMaterialContent(event.target.value)}
+                  className="h-48 w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none"
+                  placeholder="Paste or describe your preferred pattern..."
+                />
+                <p className="mt-2 text-[11px] text-slate-500">
+                  The AI will use this sample as a guide when generating future materials for this preparation type.
+                </p>
               </div>
+
+              <label className="flex items-center gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={customMaterialFavorite}
+                  onChange={(event) => setCustomMaterialFavorite(event.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 text-purple-500 focus:ring-purple-400"
+                />
+                Save this sample to favorites for quick access later
+              </label>
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                onClick={handleCloseCustomMaterialModal}
+                className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveCustomMaterial}
+                className="inline-flex items-center gap-2 rounded-md border border-purple-500/50 bg-purple-600/20 px-4 py-2 text-sm font-semibold text-purple-200 transition-colors hover:bg-purple-600/30"
+              >
+                <PlusCircle className="h-4 w-4" />
+                Save sample
+              </button>
             </div>
           </div>
         </div>
