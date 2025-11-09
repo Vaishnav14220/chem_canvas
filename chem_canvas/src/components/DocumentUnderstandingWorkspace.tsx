@@ -76,6 +76,12 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
   const [preparationMaterials, setPreparationMaterials] = useState<{[key: string]: string}>({});
   const [generatingType, setGeneratingType] = useState<string | null>(null);
   const [activePreparationType, setActivePreparationType] = useState<string | null>(null);
+  
+  // Favorites and custom patterns
+  const [favorites, setFavorites] = useState<{[key: string]: string[]}>({});
+  const [showCustomPatternDialog, setShowCustomPatternDialog] = useState(false);
+  const [customPattern, setCustomPattern] = useState('');
+  const [patternType, setPatternType] = useState<string>('');
 
   // Chat with document state
   const [showDocumentChat, setShowDocumentChat] = useState(false);
@@ -121,6 +127,25 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
   // Create zoom plugin for better quality zooming
   const zoomPluginInstance = zoomPlugin();
   const { CurrentScale, ZoomIn, ZoomOut } = zoomPluginInstance;
+  
+  // Load favorites from localStorage on mount
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem('preparationFavorites');
+    if (savedFavorites) {
+      try {
+        setFavorites(JSON.parse(savedFavorites));
+      } catch (error) {
+        console.error('Error loading favorites:', error);
+      }
+    }
+  }, []);
+  
+  // Save favorites to localStorage whenever they change
+  useEffect(() => {
+    if (Object.keys(favorites).length > 0) {
+      localStorage.setItem('preparationFavorites', JSON.stringify(favorites));
+    }
+  }, [favorites]);
   
   // Debug useEffect for preparation materials
   useEffect(() => {
@@ -540,6 +565,88 @@ Format the response using clear headings, bullet points, and numbered lists for 
       alert(`Error generating study materials: ${errorMessage}`);
     } finally {
       setIsGeneratingMaterials(false);
+    }
+  };
+
+  // Handle saving current material to favorites
+  const handleSaveToFavorites = (type: string) => {
+    const currentMaterial = preparationMaterials[type];
+    if (!currentMaterial) return;
+    
+    setFavorites(prev => {
+      const typeArray = prev[type] || [];
+      // Avoid duplicates
+      if (!typeArray.includes(currentMaterial)) {
+        return {
+          ...prev,
+          [type]: [...typeArray, currentMaterial]
+        };
+      }
+      return prev;
+    });
+    
+    // Show success message (you can add a toast notification here)
+    alert('Saved to favorites!');
+  };
+  
+  // Handle removing from favorites
+  const handleRemoveFromFavorites = (type: string, index: number) => {
+    setFavorites(prev => {
+      const typeArray = prev[type] || [];
+      return {
+        ...prev,
+        [type]: typeArray.filter((_, i) => i !== index)
+      };
+    });
+  };
+  
+  // Handle loading a favorite
+  const handleLoadFavorite = (type: string, material: string) => {
+    setPreparationMaterials(prev => ({
+      ...prev,
+      [type]: material
+    }));
+    setActivePreparationType(type);
+  };
+  
+  // Handle opening custom pattern dialog
+  const handleOpenCustomPattern = (type: string) => {
+    setPatternType(type);
+    setCustomPattern('');
+    setShowCustomPatternDialog(true);
+  };
+  
+  // Handle generating from custom pattern
+  const handleGenerateFromCustomPattern = async () => {
+    if (!customPattern.trim() || !patternType || !currentFile) return;
+    
+    setGeneratingType(patternType);
+    setShowCustomPatternDialog(false);
+    
+    try {
+      const genAI = initializeGemini();
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      
+      const content = documentContent || await processDocument(currentFile);
+      
+      const result = await model.generateContent([
+        `Document content: ${content}`,
+        `User's custom pattern/template:\n${customPattern}\n\nGenerate preparation materials following the user's pattern above. Use the document content to fill in specific details, examples, and information.`
+      ]);
+      
+      const response = result.response.text();
+      
+      setPreparationMaterials(prev => ({
+        ...prev,
+        [patternType]: response
+      }));
+      setActivePreparationType(patternType);
+    } catch (error) {
+      console.error('Error generating from custom pattern:', error);
+      alert('Failed to generate materials. Please try again.');
+    } finally {
+      setGeneratingType(null);
+      setCustomPattern('');
     }
   };
 
@@ -1003,34 +1110,96 @@ Only include definitions that are explicitly stated or clearly implied in the do
                 const isGenerating = generatingType === type;
                 const isActive = activePreparationType === type;
                 const isDisabled = !currentFile || isGenerating;
+                const hasFavorites = favorites[type]?.length > 0;
                 
                 return (
-                  <button
-                    key={type}
-                    onClick={() => {
-                      console.log('Button clicked:', type, 'disabled:', isDisabled);
-                      if (!isDisabled) {
-                        handlePreparationTypeSelect(type);
-                      }
-                    }}
-                    disabled={isDisabled}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 relative ${
-                      hasContent
-                        ? 'bg-green-600/20 text-green-300 border border-green-500/50 hover:bg-green-600/30'
-                        : 'bg-slate-800/50 text-slate-300 border border-slate-700 hover:bg-slate-700/50 hover:border-purple-500/50'
-                    } ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'}`}
-                  >
-                    <span>{type.charAt(0).toUpperCase() + type.slice(1).replace(' ', ' ')}</span>
-                    {hasContent && !isGenerating && (
-                      <span className="ml-2 text-green-400">✓</span>
+                  <div key={type} className="space-y-1">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          console.log('Button clicked:', type, 'disabled:', isDisabled);
+                          if (!isDisabled) {
+                            handlePreparationTypeSelect(type);
+                          }
+                        }}
+                        disabled={isDisabled}
+                        className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 relative ${
+                          hasContent
+                            ? 'bg-green-600/20 text-green-300 border border-green-500/50 hover:bg-green-600/30'
+                            : 'bg-slate-800/50 text-slate-300 border border-slate-700 hover:bg-slate-700/50 hover:border-purple-500/50'
+                        } ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'}`}
+                      >
+                        <span>{type.charAt(0).toUpperCase() + type.slice(1).replace(' ', ' ')}</span>
+                        {hasContent && !isGenerating && (
+                          <span className="ml-2 text-green-400">✓</span>
+                        )}
+                        {isGenerating && (
+                          <Loader2 className="inline-block ml-2 h-3 w-3 animate-spin text-purple-400" />
+                        )}
+                        {isActive && !isGenerating && (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-400">●</span>
+                        )}
+                      </button>
+                      
+                      {/* Custom Pattern Button */}
+                      <button
+                        onClick={() => handleOpenCustomPattern(type)}
+                        disabled={!currentFile}
+                        title="Use custom pattern"
+                        className="px-2 py-2 bg-slate-700/50 hover:bg-purple-600/30 border border-slate-600 hover:border-purple-500 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Upload className="h-3 w-3 text-purple-400" />
+                      </button>
+                      
+                      {/* Save to Favorites Button */}
+                      {hasContent && (
+                        <button
+                          onClick={() => handleSaveToFavorites(type)}
+                          title="Save to favorites"
+                          className="px-2 py-2 bg-slate-700/50 hover:bg-yellow-600/30 border border-slate-600 hover:border-yellow-500 rounded-lg transition-all"
+                        >
+                          <svg className="h-3 w-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Favorites Dropdown */}
+                    {hasFavorites && (
+                      <details className="group">
+                        <summary className="cursor-pointer text-xs text-slate-400 hover:text-purple-400 px-2 py-1 list-none flex items-center gap-1">
+                          <svg className="h-3 w-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                          <span>{favorites[type].length} saved</span>
+                          <svg className="h-3 w-3 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </summary>
+                        <div className="mt-1 space-y-1 pl-2">
+                          {favorites[type].map((fav, idx) => (
+                            <div key={idx} className="flex items-center gap-1 text-xs">
+                              <button
+                                onClick={() => handleLoadFavorite(type, fav)}
+                                className="flex-1 text-left px-2 py-1 bg-slate-800/50 hover:bg-purple-600/20 border border-slate-700 hover:border-purple-500 rounded text-slate-300 truncate"
+                                title={fav.substring(0, 100)}
+                              >
+                                Favorite {idx + 1}
+                              </button>
+                              <button
+                                onClick={() => handleRemoveFromFavorites(type, idx)}
+                                className="px-1.5 py-1 bg-red-600/20 hover:bg-red-600/40 border border-red-500/50 rounded transition-all"
+                                title="Remove"
+                              >
+                                <X className="h-3 w-3 text-red-400" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                     )}
-                    {isGenerating && (
-                      <Loader2 className="inline-block ml-2 h-3 w-3 animate-spin text-purple-400" />
-                    )}
-                    {isActive && !isGenerating && (
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-400">●</span>
-                    )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -2112,6 +2281,86 @@ Only include definitions that are explicitly stated or clearly implied in the do
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      
+      {/* Custom Pattern Dialog */}
+      {showCustomPatternDialog && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-700 flex items-center justify-between sticky top-0 bg-slate-900 z-10">
+              <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                <Upload className="h-5 w-5 text-purple-400" />
+                Custom Pattern for {patternType?.charAt(0).toUpperCase() + patternType?.slice(1)}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowCustomPatternDialog(false);
+                  setCustomPattern('');
+                }}
+                className="text-slate-400 hover:text-white transition-colors p-2 rounded hover:bg-slate-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <p className="text-slate-300 text-sm mb-4">
+                  Provide your own pattern or template for generating {patternType} materials. 
+                  The AI will use your structure and fill it with relevant information from the document.
+                </p>
+                
+                <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 mb-4">
+                  <h4 className="text-white text-sm font-medium mb-2">Example Pattern:</h4>
+                  <pre className="text-xs text-slate-400 whitespace-pre-wrap">
+{`1. **Overview**: Brief summary of main topics
+2. **Key Points**:
+   - Point 1 with details
+   - Point 2 with examples
+3. **Practice Questions**:
+   - Question format with solutions
+4. **Study Tips**: Practical advice`}
+                  </pre>
+                </div>
+                
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Your Pattern/Template:
+                </label>
+                <textarea
+                  value={customPattern}
+                  onChange={(e) => setCustomPattern(e.target.value)}
+                  placeholder="Enter your custom pattern here... 
+Example:
+1. Main Concepts: [list key concepts]
+2. Important Formulas: [formulas with explanations]
+3. Practice Problems: [5 problems with solutions]
+..."
+                  className="w-full h-64 bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none font-mono text-sm"
+                />
+              </div>
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => {
+                    setShowCustomPatternDialog(false);
+                    setCustomPattern('');
+                  }}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleGenerateFromCustomPattern}
+                  disabled={!customPattern.trim()}
+                  className="px-6 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Generate
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
