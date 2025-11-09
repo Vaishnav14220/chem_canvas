@@ -769,6 +769,76 @@ Here is the learner's question: ${message}`;
               </button>
             </nav>
           </div>
+
+          {/* Chemistry Database Toolbar - Third Row */}
+          <div className="flex h-14 items-center border-t border-slate-800/30 bg-slate-900/40">
+            <div className="flex items-center space-x-1 flex-1">
+              {/* Category Tabs */}
+              <button
+                className="group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-emerald-600/20 border border-emerald-500/50 text-emerald-300 shadow-lg shadow-emerald-500/10"
+              >
+                <svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                Minerals
+              </button>
+
+              <button
+                className="group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white"
+              >
+                <svg className="h-4 w-4 group-hover:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Reactions
+              </button>
+
+              <button
+                className="group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white"
+              >
+                <svg className="h-4 w-4 group-hover:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                </svg>
+                Reagents
+              </button>
+
+              <button
+                className="group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white"
+              >
+                <svg className="h-4 w-4 group-hover:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                </svg>
+                Proteins
+              </button>
+
+              <button
+                className="group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white"
+              >
+                <svg className="h-4 w-4 group-hover:text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                </svg>
+                AR
+              </button>
+            </div>
+
+            {/* Database Search Bar */}
+            <div className="flex items-center flex-1 max-w-md ml-auto">
+              <div className="relative w-full">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                  <Search className="h-4 w-4 text-slate-500" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search molecules..."
+                  className="w-full pl-10 pr-4 py-2 text-sm bg-slate-800/50 border border-slate-700/50 rounded-lg text-slate-300 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                />
+                <button className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-300">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
