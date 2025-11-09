@@ -1,61 +1,100 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { fetchCanonicalSmiles } from './pubchemService';
+import { setStructuredReactionApiKey } from './structuredReactionService';
+import { apiKeyRotation, executeWithRotation } from './apiKeyRotation';
 
 // Initialize Gemini API
 let genAI: GoogleGenerativeAI | null = null;
 let cachedModelName: string | null = null;
+let currentApiKey: string | null = null;
 
-export const initializeGemini = (apiKey: string) => {
-  genAI = new GoogleGenerativeAI(apiKey);
+export const initializeGemini = (apiKey?: string) => {
+  // Use rotation service if no specific key provided
+  const keyToUse = apiKey || apiKeyRotation.getNextKey();
+  if (!keyToUse) {
+    throw new Error('No API key available');
+  }
+  
+  genAI = new GoogleGenerativeAI(keyToUse);
+  currentApiKey = keyToUse;
+  cachedModelName = null; // Reset cache when reinitializing
+  
+  try {
+    setStructuredReactionApiKey(keyToUse);
+  } catch (error) {
+    console.warn('Failed to initialize structured reaction service:', error);
+  }
+};
+
+// Auto-initialize with rotation on first use
+const ensureInitialized = () => {
+  if (!genAI) {
+    initializeGemini();
+  }
 };
 
 export const isGeminiInitialized = () => {
   return genAI !== null;
 };
 
-// Helper function to get the best available model
+// Helper function to get the best available model with rotation support
 const getAvailableModel = async (genAI: GoogleGenerativeAI) => {
   // Return cached model if available
   if (cachedModelName) {
     return cachedModelName;
   }
 
-  const models = ['gemini-2.5-flash'];
+  const models = ['gemini-2.5-pro', 'gemini-flash-latest'];
   
-  for (const modelName of models) {
-    try {
-      console.log(`Testing model: ${modelName}`);
-      const model = genAI.getGenerativeModel({ model: modelName });
-      // Try a simple test to see if the model works
-      const testResult = await model.generateContent('test');
-      await testResult.response;
-      console.log(`✅ Using model: ${modelName}`);
-      cachedModelName = modelName; // Cache the working model
-      return modelName;
-    } catch (error: any) {
-      console.warn(`❌ Model ${modelName} not available:`, error.message);
-      continue;
+  return executeWithRotation(async (apiKey) => {
+    // Reinitialize with new key if needed
+    if (apiKey !== currentApiKey) {
+      genAI = new GoogleGenerativeAI(apiKey);
+      currentApiKey = apiKey;
     }
-  }
-  
-  throw new Error('No working Gemini model found. Please check your API key and internet connection.');
+    
+    for (const modelName of models) {
+      try {
+        console.log(`Testing model: ${modelName}`);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const testResult = await model.generateContent('test');
+        await testResult.response;
+        console.log(`✅ Using model: ${modelName}`);
+        cachedModelName = modelName;
+        return modelName;
+      } catch (error: any) {
+        console.warn(`❌ Model ${modelName} not available:`, error.message);
+        if (models.indexOf(modelName) === models.length - 1) {
+          throw error; // Throw on last model to trigger rotation
+        }
+        continue;
+      }
+    }
+    
+    throw new Error('No working Gemini model found');
+  });
 };
 
 export const generateTextContent = async (prompt: string): Promise<string> => {
+  ensureInitialized();
   if (!genAI) {
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
 
-  try {
-    const modelName = await getAvailableModel(genAI);
-    const model = genAI.getGenerativeModel({ model: modelName });
+  return executeWithRotation(async (apiKey) => {
+    // Reinitialize with new key if rate limit hit
+    if (apiKey !== currentApiKey) {
+      genAI = new GoogleGenerativeAI(apiKey);
+      currentApiKey = apiKey;
+      cachedModelName = null; // Reset model cache with new key
+    }
+    
+    const modelName = await getAvailableModel(genAI!);
+    const model = genAI!.getGenerativeModel({ model: modelName });
     const result = await model.generateContent(prompt);
     const response = await result.response;
     return response.text();
-  } catch (error) {
-    console.error('Error generating content:', error);
-    throw error;
-  }
+  });
 };
 
 export const streamTextContent = async (

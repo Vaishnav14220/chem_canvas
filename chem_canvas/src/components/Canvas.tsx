@@ -7,8 +7,6 @@ import { analyzeCanvasWithLLM, getStoredAPIKey, analyzeTextContent, extractDrawn
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
 import MineralSearch from './MineralSearch';
 import MineralCrystalPreview from './MineralCrystalPreview';
-import ReagentSearch from './ReagentSearch';
-import ReactionSearch from './ReactionSearch';
 import ProteinSearch from './ProteinSearch';
 import { type MoleculeData, type CrystalVisualData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID, getMoleculeBySmiles, getMoleculeByName } from '../services/pubchemService';
 import { buildCrystalVisualFromCif } from '../services/mineralService';
@@ -18,7 +16,7 @@ import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
 import InlineMoleculeSearch from './InlineMoleculeSearch';
 import InlineBicyclicSearch from './InlineBicyclicSearch';
-import InlineReactionSearch from './InlineReactionSearch';
+import InlineReactionSearch, { type ReactionSearchResult } from './InlineReactionSearch';
 import PDBViewerEmbed from './PDBViewerEmbed';
 import MolstarProteinViewer from './MolstarProteinViewer';
 import ChemistryWidgetPanel from './ChemistryWidgetPanel';
@@ -131,8 +129,6 @@ export default function Canvas({
   const [isConverting, setIsConverting] = useState(false);
   const [canvasBackground, setCanvasBackground] = useState<'dark' | 'white'>('dark');
   const [showMineralSearch, setShowMineralSearch] = useState(false);
-  const [showReagentSearch, setShowReagentSearch] = useState(false);
-  const [showReactionSearch, setShowReactionSearch] = useState(false);
   const [showInlineReactionSearch, setShowInlineReactionSearch] = useState(false);
   const [showProteinSearch, setShowProteinSearch] = useState(false);
   const [forceRedraw, setForceRedraw] = useState(0); // New state for forcing redraw
@@ -1234,7 +1230,7 @@ export default function Canvas({
     return { shapes, shapeIds };
   }, []);
 
-  const insertReactionToCanvas = async (reactionData: any) => {
+  const insertReactionToCanvas = async (reactionData: ReactionSearchResult | any) => {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
@@ -1253,10 +1249,28 @@ export default function Canvas({
     const endY = centerY + baseHeight / 2;
 
     const reactionId = `reaction-${Date.now()}`;
-    const baseReactionData = {
+    
+    // Handle new ReactionSearchResult structure with payload and svgData
+    const processedReactionData = reactionData.payload && reactionData.svgData ? {
+      type: 'reaction',
+      svg: reactionData.svgData,
+      smiles: reactionData.payload['reaction smiles'],
+      name: reactionData.payload['reaction name '],
+      description: reactionData.payload['Reaction Description'],
+      reactants: reactionData.payload.reactants,
+      products: reactionData.payload.products,
+      conditions: reactionData.payload.condition,
+      timestamp: Date.now()
+    } : {
       ...reactionData,
       includeSDF: Boolean(reactionData.includeSDF),
       sdfShapeIds: Array.isArray(reactionData.sdfShapeIds) ? [...reactionData.sdfShapeIds] : []
+    };
+
+    const baseReactionData = {
+      ...processedReactionData,
+      includeSDF: Boolean(processedReactionData.includeSDF),
+      sdfShapeIds: Array.isArray(processedReactionData.sdfShapeIds) ? [...processedReactionData.sdfShapeIds] : []
     };
 
     let sdfMoleculeShapes: Shape[] = [];
@@ -3075,12 +3089,73 @@ export default function Canvas({
       (data.metadata?.originalQuery && data.metadata.originalQuery.trim()) ||
       'Chemical Reaction';
 
-    const renderLabel = () => {
+    const description = data.description || '';
+    
+    // Helper to wrap text for canvas
+    const wrapText = (text: string, maxWidth: number): string[] => {
+      const words = text.split(' ');
+      const lines: string[] = [];
+      let currentLine = '';
+
+      words.forEach(word => {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const metrics = ctx.measureText(testLine);
+        
+        if (metrics.width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      });
+      
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+      
+      return lines;
+    };
+
+    const renderLabelAndDescription = (svgHeight: number) => {
       ctx.save();
-      ctx.fillStyle = '#ea580c';
-      ctx.font = '12px Arial';
+      
+      // Draw reaction name/title
+      ctx.fillStyle = '#a855f7'; // Purple color for reaction name
+      ctx.font = 'bold 16px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText(labelText, centerX, shape.startY - 12);
+      ctx.fillText(labelText, centerX, shape.startY - 25);
+      
+      // Draw description below the SVG if available
+      if (description && description.trim()) {
+        const descMaxWidth = width * 0.95;
+        const descriptionLines = wrapText(description, descMaxWidth);
+        const lineHeight = 14;
+        const descStartY = shape.startY + svgHeight + 25;
+        
+        // Draw semi-transparent background for description
+        const descHeight = (descriptionLines.length * lineHeight) + 16;
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.9)'; // slate-800 with opacity
+        ctx.fillRect(
+          shape.startX + 10,
+          descStartY - 10,
+          width - 20,
+          descHeight
+        );
+        
+        // Draw description text
+        ctx.fillStyle = '#cbd5e1'; // slate-300
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        
+        descriptionLines.forEach((line, idx) => {
+          ctx.fillText(
+            line,
+            shape.startX + 20,
+            descStartY + (idx * lineHeight) + 2
+          );
+        });
+      }
+      
       ctx.restore();
     };
 
@@ -3107,10 +3182,17 @@ export default function Canvas({
     const drawFromImages = (baseImage: HTMLImageElement, highlightImage?: HTMLImageElement | null) => {
       ctx.save();
 
-      const maxWidth = width * 0.92;
+      // Reserve space for description at the bottom
+      const descLines = description ? wrapText(description, width * 0.95).length : 0;
+      const descHeight = descLines > 0 ? (descLines * 14) + 30 : 0;
+      
+      // Calculate available space for SVG
+      const maxWidth = width * 0.95; // Increased from 0.92 for better zoom
+      const maxSvgHeight = (height * 0.85) - descHeight; // Reserve space for description
       const gap = highlightImage ? 20 : 0;
 
-      const baseScaleByWidth = Math.min(1, maxWidth / baseImage.width);
+      // Improved scaling - maintain aspect ratio better
+      const baseScaleByWidth = Math.min(1.2, maxWidth / baseImage.width); // Allow 1.2x zoom
       let baseDrawWidth = baseImage.width * baseScaleByWidth;
       let baseDrawHeight = baseImage.height * baseScaleByWidth;
 
@@ -3118,30 +3200,34 @@ export default function Canvas({
       let highlightDrawHeight = 0;
 
       if (!highlightImage) {
-        const maxBaseHeight = height * 0.9;
-        if (baseDrawHeight > maxBaseHeight) {
-          const scaleFactor = maxBaseHeight / baseDrawHeight;
+        // Scale to fit available height
+        if (baseDrawHeight > maxSvgHeight) {
+          const scaleFactor = maxSvgHeight / baseDrawHeight;
           baseDrawWidth *= scaleFactor;
           baseDrawHeight *= scaleFactor;
         }
 
-        const baseStartY = centerY - baseDrawHeight / 2;
+        const baseStartY = shape.startY + 40; // Start below the title
         const baseX = centerX - baseDrawWidth / 2;
+        
+        // Draw with smooth rendering
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(baseImage, baseX, baseStartY, baseDrawWidth, baseDrawHeight);
+        
         ctx.restore();
-        renderLabel();
+        renderLabelAndDescription(baseDrawHeight + 40);
         return;
       }
 
-      const highlightScaleByWidth = Math.min(1, maxWidth / highlightImage.width);
+      const highlightScaleByWidth = Math.min(1.2, maxWidth / highlightImage.width);
       highlightDrawWidth = highlightImage.width * highlightScaleByWidth;
       highlightDrawHeight = highlightImage.height * highlightScaleByWidth;
 
-      const maxTotalHeight = height * 0.92;
       const currentTotalHeight = baseDrawHeight + gap + highlightDrawHeight;
 
-      if (currentTotalHeight > maxTotalHeight) {
-        const scaleFactor = maxTotalHeight / currentTotalHeight;
+      if (currentTotalHeight > maxSvgHeight) {
+        const scaleFactor = maxSvgHeight / currentTotalHeight;
         baseDrawWidth *= scaleFactor;
         baseDrawHeight *= scaleFactor;
         highlightDrawWidth *= scaleFactor;
@@ -3149,9 +3235,14 @@ export default function Canvas({
       }
 
       const totalDrawHeight = baseDrawHeight + gap + highlightDrawHeight;
-      const startY = centerY - totalDrawHeight / 2;
+      const startY = shape.startY + 40;
 
       const baseX = centerX - baseDrawWidth / 2;
+      
+      // Enable high quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
       ctx.drawImage(baseImage, baseX, startY, baseDrawWidth, baseDrawHeight);
 
       const highlightX = centerX - highlightDrawWidth / 2;
@@ -3159,7 +3250,7 @@ export default function Canvas({
       ctx.drawImage(highlightImage, highlightX, highlightY, highlightDrawWidth, highlightDrawHeight);
 
       ctx.restore();
-      renderLabel();
+      renderLabelAndDescription(totalDrawHeight + 40);
     };
 
     const baseImage = cacheEntry.baseImage;
@@ -4451,14 +4542,6 @@ export default function Canvas({
       activeClass: 'ring-1 ring-orange-500/40 border-orange-500/60'
     },
     {
-      id: 'reagents',
-      label: 'Reagents',
-      icon: Beaker,
-      title: 'Search Lab Reagents',
-      onClick: () => setShowReagentSearch(true),
-      badgeClass: 'bg-cyan-500/15 text-cyan-300'
-    },
-    {
       id: 'proteins',
       label: 'Proteins',
       icon: Atom,
@@ -4570,7 +4653,6 @@ export default function Canvas({
             onOpenMolView={onOpenMolView}
             onOpenPeriodicTable={onOpenPeriodicTable}
             onOpenMineralSearch={() => setShowMineralSearch(true)}
-            onOpenReagentSearch={() => setShowReagentSearch(true)}
             onOpenArViewer={openArViewer}
             onOpenChemistryWidgets={() => setShowChemistryWidgetPanel(true)}
             isCollapsed={isToolbarCollapsed}
@@ -4583,14 +4665,14 @@ export default function Canvas({
       )}
 
       {/* Canvas Controls - Compact Header Layout */}
-      <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-3 transform lg:flex-row">
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-900/85 px-3 py-2 shadow-lg backdrop-blur-sm">
+      <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-4 transform lg:flex-row">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-700/60 bg-slate-900/90 px-4 py-3 shadow-xl backdrop-blur">
           {quickActionButtons.map((button) => {
             const IconComponent = button.icon;
-            const baseClasses = 'group flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-lg transition-all';
+            const baseClasses = 'group inline-flex items-center gap-2.5 rounded-xl border px-4 py-2 text-sm font-semibold transition-all duration-200';
             const activeClasses = button.active
               ? `bg-slate-800/95 text-white border-slate-500/80 shadow-lg ${button.activeClass ?? ''}`
-              : 'bg-slate-900/40 text-slate-300 border-slate-700/60 hover:border-slate-500/60 hover:bg-slate-800/60 hover:text-white';
+              : 'bg-slate-900/50 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white';
             const disabledClasses = button.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '';
 
             return (
@@ -4600,7 +4682,7 @@ export default function Canvas({
                 title={button.title}
                 className={`${baseClasses} ${activeClasses} ${disabledClasses}`}
               >
-                <span className={`flex h-6 w-6 items-center justify-center rounded-md text-[13px] ${button.badgeClass}`}>
+                <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-sm ${button.badgeClass}`}>
                   <IconComponent size={14} />
                 </span>
                 <span>{button.label}</span>
@@ -4626,19 +4708,18 @@ export default function Canvas({
           </div>
         </div>
 
-        <div className="w-full max-w-md rounded-2xl border border-slate-700/60 bg-slate-800/90 shadow-lg backdrop-blur-sm">
-          <InlineMoleculeSearch
-            onSelectMolecule={(moleculeData) => {
-              void (async () => {
-                try {
-                  await insertMoleculeToCanvas(moleculeData);
-                } catch (error) {
-                  console.error('Failed to insert molecule from search:', error);
-                }
-              })();
-            }}
-          />
-        </div>
+        <InlineMoleculeSearch
+          className="w-full max-w-md"
+          onSelectMolecule={(moleculeData) => {
+            void (async () => {
+              try {
+                await insertMoleculeToCanvas(moleculeData);
+              } catch (error) {
+                console.error('Failed to insert molecule from search:', error);
+              }
+            })();
+          }}
+        />
       </div>
 
       {/* Reaction Search - Below Header */}
@@ -5486,45 +5567,6 @@ export default function Canvas({
                 console.error('Failed to insert mineral structure:', error);
               } finally {
                 setShowMineralSearch(false);
-              }
-            })();
-          }}
-        />
-      )}
-
-      {/* Reagent Search Modal */}
-      {showReagentSearch && (
-        <ReagentSearch
-          onClose={() => setShowReagentSearch(false)}
-          onSelectReagent={(moleculeData) => {
-            void (async () => {
-              try {
-                await insertMoleculeToCanvas({
-                  ...moleculeData,
-                  role: 'reagent',
-                });
-              } catch (error) {
-                console.error('Failed to insert reagent molecule:', error);
-              } finally {
-                setShowReagentSearch(false);
-              }
-            })();
-          }}
-        />
-      )}
-
-      {/* Reaction Search Modal */}
-      {showReactionSearch && (
-        <ReactionSearch
-          onClose={() => setShowReactionSearch(false)}
-          onReactionInsert={(reactionData) => {
-            void (async () => {
-              try {
-                await insertReactionToCanvas(reactionData);
-              } catch (error) {
-                console.error('Failed to insert reaction:', error);
-              } finally {
-                setShowReactionSearch(false);
               }
             })();
           }}

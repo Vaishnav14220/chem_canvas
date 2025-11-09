@@ -224,6 +224,74 @@ export const smilesToSVG = async (smiles: string, width: number = 300, height: n
   }
 };
 
+// Convert reaction SMILES to 2D SVG representation using HuggingFace API
+export const reactionSmilesToSVGHuggingFace = async (reactionSmiles: string): Promise<string | null> => {
+  try {
+    const sanitized = reactionSmiles.trim();
+    if (!sanitized) {
+      console.warn('⚠️ Empty reaction SMILES provided');
+      return null;
+    }
+
+    const response = await fetch('https://smitathkr1-rdkit-smiles-to-reaction.hf.space/api/render/svg', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ smiles: sanitized })
+    });
+
+    if (!response.ok) {
+      console.error('❌ HuggingFace API error:', response.statusText);
+      return null;
+    }
+
+    const svgText = await response.text();
+    return svgText;
+  } catch (error) {
+    console.error('❌ Error rendering reaction SVG via HuggingFace API:', error);
+    return null;
+  }
+};
+
+// Convert reaction SMILES to 2D SVG representation (local RDKit fallback)
+export const reactionSmilesToSVG = async (reactionSmiles: string, width: number = 900, height: number = 320): Promise<string | null> => {
+  if (!rdkitModule) {
+    const initialized = await initRDKit();
+    if (!initialized) {
+      return null;
+    }
+  }
+
+  try {
+    const sanitized = reactionSmiles.trim();
+    if (!sanitized) {
+      return null;
+    }
+
+    if (typeof rdkitModule.get_rxn !== 'function') {
+      console.warn('⚠️ RDKit reaction helpers are not available in the current build.');
+      return null;
+    }
+
+    const rxn = rdkitModule.get_rxn(sanitized);
+    if (!rxn) {
+      console.warn('⚠️ RDKit could not create reaction from SMILES');
+      return null;
+    }
+
+    const svg = typeof rxn.get_svg === 'function' ? rxn.get_svg(width, height) : null;
+    if (typeof rxn.delete === 'function') {
+      rxn.delete();
+    }
+
+    return svg;
+  } catch (error) {
+    console.error('❌ Error rendering reaction SVG via RDKit:', error);
+    return null;
+  }
+};
+
 // Validate SMILES string
 export const validateSMILES = async (smiles: string): Promise<boolean> => {
   if (!rdkitModule) {

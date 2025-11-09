@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { X, Search, Loader2, ArrowRight, FlaskConical, AlertCircle, Database, Wand2, ChevronDown, Check } from 'lucide-react';
 import { resolveReactionQuery, resolveReactionByName, type ReactionResolutionResult } from '../services/reactionResolver';
 import { isGeminiInitialized } from '../services/geminiService';
@@ -6,6 +7,17 @@ import { generateTextContent } from '../services/geminiService';
 import { getReactionSuggestions, REACTION_DATABASE, type ReactionDatabaseEntry } from '../data/reactionDatabase';
 import { ordService, type ORDReaction } from '../services/ordService';
 import { sanitizeReactionSmilesInput } from '../utils/reactionSanitizer';
+import { renderReactionSvg } from '../services/rdkitService';
+import {
+  searchReactionByName,
+  searchReactionByReactant,
+  searchReactionByProduct,
+  autocompleteReactionNames,
+  autocompleteReactants,
+  autocompleteProducts,
+  generateReactionSvg,
+  NameReactionApiError,
+} from '../services/nameReactionApi';
 import MoleculeStructure from './MoleculeStructure';
 import ReactionDiagram from './ReactionDiagram';
 import ReactionMechanismScene from './ReactionMechanismScene';
@@ -17,6 +29,74 @@ interface ReactionSearchProps {
   onClose: () => void;
   onReactionInsert?: (reactionData: any) => void;
 }
+
+interface NameReactionEntry {
+  reactionName: string;
+  reactants: string;
+  reactantSmiles: string[];
+  reagents: string;
+  reagentSmiles: string[];
+  products: string;
+  productSmiles: string[];
+  description: string;
+}
+
+const splitSmilesList = (value: string): string[] => {
+  return value
+    .replace(/`/g, '')
+    .split(/,\s*/)
+    .map(item => item.trim())
+    .filter(Boolean);
+};
+
+const parseNameReactionResponse = (raw: string): NameReactionEntry[] => {
+  if (!raw?.trim()) {
+    return [];
+  }
+
+  const lines = raw
+    .replace(/\r/g, '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    return [];
+  }
+
+  const header = lines[0].split(/\t+/);
+  const indexMap = {
+    name: header.findIndex(col => col.toLowerCase().includes('reaction')),
+    reactants: header.findIndex(col => col.toLowerCase().startsWith('reactants') && !col.toLowerCase().includes('smiles')),
+    reactantSmiles: header.findIndex(col => col.toLowerCase().includes('reactants') && col.toLowerCase().includes('smiles')),
+    reagents: header.findIndex(col => col.toLowerCase().startsWith('reagents') && !col.toLowerCase().includes('smiles')),
+    reagentSmiles: header.findIndex(col => col.toLowerCase().includes('reagents') && col.toLowerCase().includes('smiles')),
+    products: header.findIndex(col => col.toLowerCase().startsWith('products') && !col.toLowerCase().includes('smiles')),
+    productSmiles: header.findIndex(col => col.toLowerCase().includes('products') && col.toLowerCase().includes('smiles')),
+    description: header.findIndex(col => col.toLowerCase().includes('description'))
+  };
+
+  const getColumn = (columns: string[], index: number): string => {
+    if (index < 0 || index >= columns.length) {
+      return '';
+    }
+    return columns[index]?.trim() ?? '';
+  };
+
+  return lines.slice(1).map(line => {
+    const columns = line.split(/\t+/);
+    return {
+      reactionName: getColumn(columns, indexMap.name),
+      reactants: getColumn(columns, indexMap.reactants),
+      reactantSmiles: splitSmilesList(getColumn(columns, indexMap.reactantSmiles)),
+      reagents: getColumn(columns, indexMap.reagents),
+      reagentSmiles: splitSmilesList(getColumn(columns, indexMap.reagentSmiles)),
+      products: getColumn(columns, indexMap.products),
+      productSmiles: splitSmilesList(getColumn(columns, indexMap.productSmiles)),
+      description: getColumn(columns, indexMap.description)
+    } satisfies NameReactionEntry;
+  });
+};
 
 const ROLE_LABELS: Record<'reactant' | 'agent' | 'product', string> = {
   reactant: 'Reactants',
@@ -42,6 +122,8 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
   const [reactionPreviewSvg, setReactionPreviewSvg] = useState<string | null>(null);
   const [reactionBaseSvg, setReactionBaseSvg] = useState<string | null>(null);
   const [reactionHighlightSvg, setReactionHighlightSvg] = useState<string | null>(null);
+  const [isRenderingSvg, setIsRenderingSvg] = useState(false);
+  const [rdkitError, setRdkitError] = useState<string | null>(null);
   const [resolvedReaction, setResolvedReaction] = useState<ReactionResolutionResult | null>(null);
   const autoPreviewTimeoutRef = useRef<number | null>(null);
   const skipAutoPreviewRef = useRef(false);
@@ -56,6 +138,19 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
   const [reactionSmilesForCanvas, setReactionSmilesForCanvas] = useState<string | null>(null);
   const [showKekuleCanvas, setShowKekuleCanvas] = useState(false);
   const svgContainerRef = useRef<HTMLDivElement | null>(null);
+  const isMountedRef = useRef(true);
+
+  // Name Reaction API state
+  const [showNameReactionExplorer, setShowNameReactionExplorer] = useState(false);
+  const [nameReactionMode, setNameReactionMode] = useState<'name' | 'reactant' | 'product'>('name');
+  const [nameReactionQuery, setNameReactionQuery] = useState('');
+  const [nameReactionResult, setNameReactionResult] = useState<string | null>(null);
+  const [nameReactionEntries, setNameReactionEntries] = useState<NameReactionEntry[]>([]);
+  const [nameReactionSuggestions, setNameReactionSuggestions] = useState<string[]>([]);
+  const [isFetchingNameReaction, setIsFetchingNameReaction] = useState(false);
+  const [nameReactionError, setNameReactionError] = useState<string | null>(null);
+  const [nameReactionSvg, setNameReactionSvg] = useState<string | null>(null);
+  const nameReactionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reaction prompt state
   const [reactionPrompt, setReactionPrompt] = useState('');
@@ -267,9 +362,46 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
     if (isUsingSuggestion) return; // Don't show suggestions when using a suggestion
 
     try {
-      const newSuggestions = await getReactionSuggestions(input, 8);
-      setSuggestions(newSuggestions);
-      setShowSuggestions(newSuggestions.length > 0 && input.length > 0);
+      const trimmed = input.trim();
+      const [coreSuggestions, hfNameSuggestions] = await Promise.all([
+        getReactionSuggestions(input, 8),
+        trimmed.length > 0 ? autocompleteReactionNames(trimmed).catch(() => []) : Promise.resolve([])
+      ]);
+
+      const hfEntries: ReactionDatabaseEntry[] = (hfNameSuggestions ?? []).map((name, index) => ({
+        id: `hf-name:${name.toLowerCase()}-${index}`,
+        name,
+        description: 'Named reaction from HuggingFace dataset',
+        reactionSmiles: '',
+        category: 'Named Reactions',
+        difficulty: 'intermediate',
+        tags: ['named reaction', 'hf-dataset'],
+        source: 'local',
+        defaultQuery: name,
+        metadata: {
+          dataset: 'HuggingFace Name Reaction API',
+          sourceUrl: 'https://huggingface.co/spaces/smitathkr1/namereaction-api'
+        }
+      }));
+
+      const merged = new Map<string, ReactionDatabaseEntry>();
+
+      const addEntry = (entry: ReactionDatabaseEntry) => {
+        const key = entry.reactionSmiles && entry.reactionSmiles.trim().length > 0
+          ? `${entry.source}:${entry.reactionSmiles.toLowerCase()}`
+          : `${entry.source}:${entry.name.toLowerCase()}`;
+        if (!merged.has(key)) {
+          merged.set(key, entry);
+        }
+      };
+
+      coreSuggestions.forEach(addEntry);
+      hfEntries.forEach(addEntry);
+
+      const mergedSuggestions = Array.from(merged.values()).slice(0, 12);
+
+      setSuggestions(mergedSuggestions);
+      setShowSuggestions(mergedSuggestions.length > 0 && input.length > 0);
       setSelectedSuggestionIndex(-1);
     } catch (error) {
       console.warn('Failed to fetch reaction suggestions:', error);
@@ -293,14 +425,48 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
   const renderResolvedReaction = useCallback(async (resolution: ReactionResolutionResult | null, fallbackSmiles: string) => {
     const targetSmiles = resolution?.reactionSmiles ?? fallbackSmiles;
     const sanitizedSmiles = sanitizeReactionSmilesInput(targetSmiles) ?? targetSmiles;
-    if (!targetSmiles) {
+
+    if (!sanitizedSmiles) {
       throw new Error('No reaction SMILES available.');
     }
 
-    // Skip RDKit visualization and just set the reaction data
-    setResolvedReaction(resolution);
-    setReactionSmilesForCanvas(sanitizedSmiles);
-  }, []);
+    if (isMountedRef.current) {
+      setResolvedReaction(resolution);
+      setReactionSmilesForCanvas(sanitizedSmiles);
+      setRdkitError(null);
+      setIsRenderingSvg(true);
+    }
+
+    try {
+  const svg = await renderReactionSvg(sanitizedSmiles, 960, 320);
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      if (svg) {
+        setReactionBaseSvg(svg);
+        setReactionPreviewSvg(svg);
+        setReactionHighlightSvg(null);
+      } else {
+        setReactionBaseSvg(null);
+        setReactionPreviewSvg(null);
+        setReactionHighlightSvg(null);
+        setRdkitError('RDKit could not generate a reaction diagram for the provided SMILES.');
+      }
+    } catch (error) {
+      if (isMountedRef.current) {
+        console.error('Failed to render RDKit reaction SVG:', error);
+        setReactionBaseSvg(null);
+        setReactionPreviewSvg(null);
+        setReactionHighlightSvg(null);
+        setRdkitError('Failed to render reaction diagram with RDKit.');
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsRenderingSvg(false);
+      }
+    }
+  }, [renderReactionSvg]);
 
   const renderSourceBadge = useCallback((source: ReactionDatabaseEntry['source']) => {
     switch (source) {
@@ -338,6 +504,138 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
     }
   }, []);
 
+  const fetchNameReactionSuggestions = useCallback(async (query: string, mode: 'name' | 'reactant' | 'product') => {
+    if (!query.trim()) {
+      setNameReactionSuggestions([]);
+      return;
+    }
+
+    try {
+      let results: string[] = [];
+      switch (mode) {
+        case 'reactant':
+          results = await autocompleteReactants(query);
+          break;
+        case 'product':
+          results = await autocompleteProducts(query);
+          break;
+        case 'name':
+        default:
+          results = await autocompleteReactionNames(query);
+          break;
+      }
+      setNameReactionSuggestions(results ?? []);
+    } catch (error) {
+      console.warn('Failed to fetch Name Reaction suggestions:', error);
+      setNameReactionSuggestions([]);
+    }
+  }, []);
+
+  const handleNameReactionQueryChange = useCallback((value: string) => {
+    setNameReactionQuery(value);
+    setNameReactionError(null);
+    setNameReactionResult(null);
+    setNameReactionEntries([]);
+    setNameReactionSvg(null);
+
+    if (nameReactionDebounceRef.current) {
+      clearTimeout(nameReactionDebounceRef.current);
+      nameReactionDebounceRef.current = null;
+    }
+
+    if (!value.trim()) {
+      setNameReactionSuggestions([]);
+      return;
+    }
+
+    nameReactionDebounceRef.current = setTimeout(() => {
+      fetchNameReactionSuggestions(value.trim(), nameReactionMode).catch(err => {
+        console.warn('Name Reaction autocomplete failed:', err);
+      });
+    }, 300);
+  }, [fetchNameReactionSuggestions, nameReactionMode]);
+
+  const handleNameReactionModeChange = useCallback((mode: 'name' | 'reactant' | 'product') => {
+    setNameReactionMode(mode);
+    setNameReactionSuggestions([]);
+    setNameReactionError(null);
+    setNameReactionResult(null);
+    setNameReactionEntries([]);
+    setNameReactionSvg(null);
+
+    if (nameReactionDebounceRef.current) {
+      clearTimeout(nameReactionDebounceRef.current);
+      nameReactionDebounceRef.current = null;
+    }
+
+    if (nameReactionQuery.trim()) {
+      nameReactionDebounceRef.current = setTimeout(() => {
+        fetchNameReactionSuggestions(nameReactionQuery.trim(), mode).catch(err => {
+          console.warn('Name Reaction autocomplete failed:', err);
+        });
+      }, 0);
+    }
+  }, [fetchNameReactionSuggestions, nameReactionQuery]);
+
+  const applyNameReactionSuggestion = useCallback((suggestion: string) => {
+    setNameReactionQuery(suggestion);
+    setNameReactionSuggestions([]);
+  }, []);
+
+  const handleFetchNameReaction = useCallback(async () => {
+    const trimmedQuery = nameReactionQuery.trim();
+    if (!trimmedQuery) {
+      setNameReactionError('Please enter a search term.');
+      return;
+    }
+
+    setIsFetchingNameReaction(true);
+    setNameReactionError(null);
+    setNameReactionResult(null);
+    setNameReactionEntries([]);
+    setNameReactionSvg(null);
+
+    try {
+      let markdown: string;
+      switch (nameReactionMode) {
+        case 'reactant':
+          markdown = await searchReactionByReactant(trimmedQuery);
+          break;
+        case 'product':
+          markdown = await searchReactionByProduct(trimmedQuery);
+          break;
+        case 'name':
+        default:
+          markdown = await searchReactionByName(trimmedQuery);
+          break;
+      }
+
+      setNameReactionResult(markdown);
+      setNameReactionEntries(parseNameReactionResponse(markdown));
+
+      if (nameReactionMode === 'name') {
+        try {
+          const svgContent = await generateReactionSvg(trimmedQuery);
+          if (svgContent?.trim()) {
+            setNameReactionSvg(svgContent);
+          }
+        } catch (svgError) {
+          console.warn('Failed to fetch reaction SVG:', svgError);
+        }
+      }
+    } catch (error) {
+      setNameReactionEntries([]);
+      if (error instanceof NameReactionApiError) {
+        setNameReactionError(error.message);
+      } else {
+        console.error('Failed to fetch Name Reaction data:', error);
+        setNameReactionError('Failed to fetch reaction data. Please try again.');
+      }
+    } finally {
+      setIsFetchingNameReaction(false);
+    }
+  }, [nameReactionMode, nameReactionQuery]);
+
   const handleInputChange = useCallback(async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setReactionInput(value);
@@ -367,6 +665,7 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
       setReactionHighlightSvg(null);
       setResolvedReaction(null);
       setReactionSmilesForCanvas(null);
+      setRdkitError(null);
     }
 
     try {
@@ -393,6 +692,8 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
       setReactionBaseSvg(null);
       setReactionHighlightSvg(null);
       setReactionSmilesForCanvas(null);
+      setIsRenderingSvg(false);
+      setRdkitError('Unable to interpret or render the reaction.');
       setError(err instanceof Error ? err.message : 'Failed to interpret the reaction. Try providing a clearer description or SMILES string.');
     } finally {
       setIsLoading(false);
@@ -413,6 +714,7 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
     setReactionHighlightSvg(null);
     setResolvedReaction(null);
     setReactionSmilesForCanvas(null);
+    setRdkitError(null);
 
     try {
       const resolution = await resolveReactionByName(trimmedName);
@@ -421,11 +723,17 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
       }
 
       skipAutoPreviewRef.current = true;
-  setReactionInput(sanitizeReactionSmilesInput(resolution.reactionSmiles) ?? resolution.reactionSmiles);
+      setReactionInput(sanitizeReactionSmilesInput(resolution.reactionSmiles) ?? resolution.reactionSmiles);
       await renderResolvedReaction(resolution, resolution.reactionSmiles);
       setReactionName('');
     } catch (err) {
       console.error('Failed to resolve reaction name:', err);
+      setReactionPreviewSvg(null);
+      setReactionBaseSvg(null);
+      setReactionHighlightSvg(null);
+      setReactionSmilesForCanvas(null);
+      setIsRenderingSvg(false);
+      setRdkitError('Unable to resolve or render the named reaction.');
       setError(err instanceof Error ? err.message : 'Unable to interpret that reaction name. Try adding more detail or an example.');
     } finally {
       setIsLoading(false);
@@ -447,7 +755,12 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
               usedGemini: resolvedReaction.usedGemini,
               components: resolvedReaction.components,
               confidence: resolvedReaction.confidence,
-              notes: resolvedReaction.notes
+              notes: resolvedReaction.notes,
+              reactionName: resolvedReaction.reactionName,
+              reactionDescription: resolvedReaction.reactionDescription,
+              reactionSmilesWithConditions: resolvedReaction.reactionSmilesWithConditions,
+              conditions: resolvedReaction.conditions,
+              structuredPayload: resolvedReaction.structuredPayload
             }
           : undefined,
         timestamp: Date.now()
@@ -514,6 +827,8 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
       setReactionHighlightSvg(null);
       setResolvedReaction(null);
       setReactionSmilesForCanvas(null);
+      setIsRenderingSvg(false);
+      setRdkitError(null);
       return;
     }
 
@@ -534,6 +849,22 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
   useEffect(() => {
     checkOrdApiStatus();
   }, [checkOrdApiStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (nameReactionDebounceRef.current) {
+        clearTimeout(nameReactionDebounceRef.current);
+        nameReactionDebounceRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   return (
     <>
@@ -715,30 +1046,236 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
               </div>
 
               {/* Browse Reactions Button */}
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={async () => {
-                    try {
-                      const allReactions = await getReactionSuggestions('', 20);
-                      setSuggestions(allReactions);
-                      setShowSuggestions(true);
-                      setReactionInput('');
-                    } catch (error) {
-                      console.warn('Failed to fetch all reactions:', error);
-                      // Fallback to local database
-                      setSuggestions(REACTION_DATABASE);
-                      setShowSuggestions(true);
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const allReactions = await getReactionSuggestions('', 20);
+                        setSuggestions(allReactions);
+                        setShowSuggestions(true);
+                        setReactionInput('');
+                      } catch (error) {
+                        console.warn('Failed to fetch all reactions:', error);
+                        // Fallback to local database
+                        setSuggestions(REACTION_DATABASE);
+                        setShowSuggestions(true);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white rounded-lg border border-slate-600/50 hover:border-slate-500/70 transition-colors"
+                  >
+                    <Database size={14} />
+                    Browse All Reactions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowNameReactionExplorer(prev => {
+                        const next = !prev;
+                        if (!next) {
+                          setNameReactionSuggestions([]);
+                          setNameReactionError(null);
+                          setNameReactionResult(null);
+                          setNameReactionEntries([]);
+                          setNameReactionSvg(null);
+                        }
+                        return next;
+                      })
                     }
-                  }}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white rounded-lg border border-slate-600/50 hover:border-slate-500/70 transition-colors"
-                >
-                  <Database size={14} />
-                  Browse All Reactions
-                </button>
-                <div className="text-xs text-slate-500">
-                  Connected to PubChem · KEGG · ORD datasets
+                    className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                      showNameReactionExplorer
+                        ? 'bg-emerald-600/90 text-white border-emerald-500 hover:bg-emerald-500'
+                        : 'bg-slate-800/60 text-slate-200 border-emerald-500/40 hover:border-emerald-400 hover:text-white'
+                    }`}
+                    title="Search 800+ named reactions with reagents and products"
+                  >
+                    <Search size={14} />
+                    {showNameReactionExplorer ? 'Hide Named Reactions' : 'Fetch Named Reactions'}
+                  </button>
+                </div>
+                <div className="text-xs text-slate-500 text-right">
+                  <div>Connected to PubChem · KEGG · ORD datasets</div>
+                  <div className="text-emerald-300/80">HuggingFace Name Reaction API · 800+ reactions</div>
                 </div>
               </div>
+
+              {showNameReactionExplorer && (
+                <div className="mt-4 rounded-xl border border-emerald-500/30 bg-slate-800/50 p-4 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                      <Search size={16} />
+                      Fetch reactions with reagents, products, and conditions
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(['name', 'reactant', 'product'] as const).map(mode => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => handleNameReactionModeChange(mode)}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                            nameReactionMode === mode
+                              ? 'bg-emerald-500/90 text-white border-emerald-400'
+                              : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-400/60'
+                          }`}
+                        >
+                          {mode === 'name' ? 'By Reaction' : mode === 'reactant' ? 'By Reactant' : 'By Product'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={nameReactionQuery}
+                      onChange={(event) => handleNameReactionQueryChange(event.target.value)}
+                      placeholder={
+                        nameReactionMode === 'name'
+                          ? 'e.g., Appel reaction, Claisen rearrangement'
+                          : nameReactionMode === 'reactant'
+                            ? 'e.g., benzaldehyde, allyl bromide'
+                            : 'e.g., lactone, alkene'
+                      }
+                      className="w-full rounded-lg border border-emerald-500/30 bg-slate-900/70 px-3 py-2 text-sm text-white placeholder-slate-400 focus:border-emerald-400 focus:outline-none"
+                      autoComplete="off"
+                    />
+
+                    {nameReactionSuggestions.length > 0 && (
+                      <div className="absolute z-40 mt-2 max-h-48 w-full overflow-y-auto rounded-lg border border-emerald-500/30 bg-slate-900/95 shadow-xl">
+                        {nameReactionSuggestions.map(suggestion => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onClick={() => applyNameReactionSuggestion(suggestion)}
+                            className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-200 hover:bg-emerald-500/10"
+                          >
+                            <span className="truncate">{suggestion}</span>
+                            <ArrowRight size={14} className="text-emerald-300 flex-shrink-0 ml-2" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleFetchNameReaction()}
+                      disabled={isFetchingNameReaction || !nameReactionQuery.trim()}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-900"
+                    >
+                      {isFetchingNameReaction ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                      {isFetchingNameReaction ? 'Fetching...' : 'Fetch Reaction Data'}
+                    </button>
+                    <p className="text-xs text-slate-400">
+                      Data sourced from HuggingFace Name Reaction API (828 named reactions)
+                    </p>
+                  </div>
+
+                  {nameReactionError && (
+                    <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                      <AlertCircle size={16} className="mt-0.5" />
+                      <span>{nameReactionError}</span>
+                    </div>
+                  )}
+
+                  {nameReactionEntries.length > 0 ? (
+                    <div className="space-y-4">
+                      {nameReactionEntries.map((entry, index) => {
+                        const reactionLabel = entry.reactionName || `Reaction ${index + 1}`;
+                        const renderSection = (
+                          title: string,
+                          content: string,
+                          smiles: string[]
+                        ) => (
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300/80">
+                              {title}
+                            </p>
+                            <p className="text-sm text-slate-200 whitespace-pre-line">{content || '—'}</p>
+                            {smiles.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {smiles.map((smile, smileIndex) => (
+                                  <code
+                                    key={`${title}-${smile}-${smileIndex}`}
+                                    className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-100"
+                                  >
+                                    {smile}
+                                  </code>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+
+                        return (
+                          <div
+                            key={`${reactionLabel}-${index}`}
+                            className="space-y-4 rounded-lg border border-emerald-500/30 bg-slate-900/70 p-4"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <h4 className="text-lg font-semibold text-emerald-100">{reactionLabel}</h4>
+                                <p className="text-xs uppercase tracking-wide text-slate-400">
+                                  Named Reaction · HuggingFace dataset
+                                </p>
+                              </div>
+                              {entry.productSmiles.length > 0 && (
+                                <div className="text-right">
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300/70">
+                                    Products (SMILES)
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap justify-end gap-1.5">
+                                    {entry.productSmiles.map((smile, smileIndex) => (
+                                      <code
+                                        key={`product-${smile}-${smileIndex}`}
+                                        className="rounded bg-slate-800/80 px-2 py-0.5 text-xs text-emerald-200"
+                                      >
+                                        {smile}
+                                      </code>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {entry.description && (
+                              <p className="text-sm leading-relaxed text-slate-200">
+                                {entry.description}
+                              </p>
+                            )}
+
+                            <div className="grid gap-4 md:grid-cols-3">
+                              {renderSection('Reactants', entry.reactants, entry.reactantSmiles)}
+                              {renderSection('Reagents', entry.reagents, entry.reagentSmiles)}
+                              {renderSection('Products', entry.products, entry.productSmiles)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : nameReactionResult ? (
+                    <div className="space-y-3 rounded-lg border border-emerald-500/20 bg-slate-900/70 p-3">
+                      <div className="prose prose-invert max-w-none text-sm leading-relaxed">
+                        <ReactMarkdown>{nameReactionResult}</ReactMarkdown>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {nameReactionSvg && (
+                    <div className="rounded-lg border border-emerald-500/20 bg-slate-900/70 p-3">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-300/80">
+                        Reaction Diagram
+                      </div>
+                      <div
+                        className="overflow-x-auto"
+                        // SVG returned by trusted API endpoint; ensure content remains SVG before rendering
+                        dangerouslySetInnerHTML={{ __html: nameReactionSvg }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -802,6 +1339,30 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
                           {resolvedReaction.reactionSmiles}
                         </p>
                       </div>
+                      {resolvedReaction.reactionSmilesWithConditions && (
+                        <div>
+                          <span className="text-slate-400">Reaction SMILES (with conditions):</span>
+                          <p className="mt-1 break-all font-mono text-[11px] text-sky-300">
+                            {resolvedReaction.reactionSmilesWithConditions}
+                          </p>
+                        </div>
+                      )}
+                      {resolvedReaction.reactionName && (
+                        <div>
+                          <span className="text-slate-400">Reaction Name:</span>
+                          <p className="mt-1 text-sm text-slate-200">{resolvedReaction.reactionName}</p>
+                        </div>
+                      )}
+                      {resolvedReaction.conditions && resolvedReaction.conditions.length > 0 && (
+                        <div>
+                          <span className="text-slate-400">Conditions:</span>
+                          <ul className="mt-1 list-inside list-disc space-y-1 text-[11px] text-slate-200">
+                            {resolvedReaction.conditions.map((condition, index) => (
+                              <li key={`${condition}-${index}`}>{condition}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       {resolvedReaction.usedGemini && (
                         <p className="text-[11px] text-blue-300">
                           Interpreted with Gemini to identify reactants/products.
@@ -812,7 +1373,15 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
                           Confidence: {(resolvedReaction.confidence * 100).toFixed(0)}%
                         </p>
                       )}
-                      {resolvedReaction.notes && (
+                      {resolvedReaction.reactionDescription && (
+                        <div>
+                          <span className="text-slate-400">Description:</span>
+                          <p className="mt-1 whitespace-pre-wrap text-[11px] text-slate-300">
+                            {resolvedReaction.reactionDescription}
+                          </p>
+                        </div>
+                      )}
+                      {resolvedReaction.notes && resolvedReaction.notes !== resolvedReaction.reactionDescription && (
                         <p className="text-[11px] text-slate-400">{resolvedReaction.notes}</p>
                       )}
                       {resolvedReaction.components.length > 0 && (
@@ -1128,6 +1697,20 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
                 </button>
               )}
             </div>
+
+            {isRenderingSvg && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-slate-700/60 bg-slate-800/60 px-3 py-2 text-xs text-slate-200">
+                <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
+                Rendering reaction diagram with RDKit...
+              </div>
+            )}
+
+            {rdkitError && !isRenderingSvg && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                <AlertCircle className="h-4 w-4" />
+                {rdkitError}
+              </div>
+            )}
 
             {(() => {
               const renderStructured = () => (

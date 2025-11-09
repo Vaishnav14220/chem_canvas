@@ -18,7 +18,6 @@ import {
   ChevronDown,
   ChevronUp,
   GripVertical,
-  FlaskConical,
   Gem,
   Scan,
   Eraser,
@@ -42,7 +41,6 @@ interface ChemistryToolbarProps {
   onOpenCalculator?: () => void;
   onOpenMolView?: () => void;
   onOpenPeriodicTable?: () => void;
-  onOpenReagentSearch?: () => void;
   onOpenMineralSearch?: () => void;
   onOpenArViewer?: () => void;
   onOpenChemistryWidgets?: () => void;
@@ -76,7 +74,6 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
   onOpenCalculator,
   onOpenMolView,
   onOpenPeriodicTable,
-  onOpenReagentSearch,
   onOpenMineralSearch,
   onOpenArViewer,
   onOpenChemistryWidgets,
@@ -115,11 +112,10 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
     { id: 'minus', name: 'Minus', icon: Minus, description: 'Minus sign for ions' },
     { id: 'equal', name: 'Equal', icon: Equal, description: 'Equilibrium arrows' },
     { id: 'calculator', name: 'Calculator', icon: Calculator, description: 'Quick calculations', isSpecial: true },
-  { id: 'molview', name: '3D Molecules', icon: MolViewIcon, description: '3D molecular viewer', isSpecial: true },
-  { id: 'ar', name: 'AR Viewer', icon: Scan, description: 'Place molecules in AR', isSpecial: true },
+    { id: 'molview', name: '3D Molecules', icon: MolViewIcon, description: '3D molecular viewer', isSpecial: true },
+    { id: 'ar', name: 'AR Viewer', icon: Scan, description: 'Place molecules in AR', isSpecial: true },
     { id: 'periodic', name: 'Periodic Table', icon: Grid3X3, description: 'Interactive periodic table', isSpecial: true },
-  { id: 'reagents', name: 'Search Reagents', icon: FlaskConical, description: 'Find reagent molecules', isSpecial: true },
-  { id: 'minerals', name: 'Search Minerals', icon: Gem, description: 'Pull 3D minerals from COD', isSpecial: true },
+    { id: 'minerals', name: 'Minerals', icon: Gem, description: 'Browse mineral structures', isSpecial: true },
     { id: 'widgets', name: 'Chemistry Widgets', icon: Beaker, description: 'Interactive chemistry tools', isSpecial: true },
     { id: 'move', name: 'Move', icon: Move, description: 'Move elements' },
     { id: 'rotate', name: 'Rotate', icon: RotateCw, description: 'Rotate elements' },
@@ -215,8 +211,6 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
                       onOpenArViewer();
                     } else if (tool.isSpecial && tool.id === 'periodic' && onOpenPeriodicTable) {
                       onOpenPeriodicTable();
-                    } else if (tool.isSpecial && tool.id === 'reagents' && onOpenReagentSearch) {
-                      onOpenReagentSearch();
                     } else if (tool.isSpecial && tool.id === 'minerals' && onOpenMineralSearch) {
                       onOpenMineralSearch();
                     } else if (tool.isSpecial && tool.id === 'widgets' && onOpenChemistryWidgets) {

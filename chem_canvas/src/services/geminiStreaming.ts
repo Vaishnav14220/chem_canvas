@@ -4,6 +4,44 @@ import { assignRandomApiKey, initializeApiKeys, checkApiKeysInitialized } from '
 // Initialize Gemini AI instance
 let genAI: GoogleGenAI | null = null;
 let isInitialized = false;
+let cachedModelName: string | null = null;
+
+// Helper function to get the best available model
+const getAvailableModel = async (): Promise<string> => {
+  // Return cached model if available
+  if (cachedModelName) {
+    return cachedModelName;
+  }
+
+  const models = ['gemini-2.5-pro', 'gemini-flash-latest'];
+  
+  for (const modelName of models) {
+    try {
+      console.log(`Testing streaming model: ${modelName}`);
+      if (!genAI) throw new Error('GenAI not initialized');
+      
+      // Try a simple test
+      const response = await genAI.models.generateContent({
+        model: modelName,
+        contents: [{ role: 'user', parts: [{ text: 'test' }] }],
+      });
+      
+      if (response) {
+        console.log(`✅ Using streaming model: ${modelName}`);
+        cachedModelName = modelName;
+        return modelName;
+      }
+    } catch (error: any) {
+      console.warn(`❌ Streaming model ${modelName} not available:`, error.message);
+      continue;
+    }
+  }
+  
+  // Fallback to default if nothing works
+  console.warn('⚠️ No model test succeeded, using fallback: gemini-flash-latest');
+  cachedModelName = 'gemini-flash-latest';
+  return 'gemini-flash-latest';
+};
 
 // Initialize the Gemini AI service
 export const initializeGeminiStreaming = async (): Promise<void> => {
@@ -28,6 +66,7 @@ export const initializeGeminiStreaming = async (): Promise<void> => {
       apiKey: apiKey,
     });
 
+    cachedModelName = null; // Reset cache when reinitializing
     isInitialized = true;
     console.log('✅ Gemini Streaming API initialized successfully!');
   } catch (error) {
@@ -74,7 +113,7 @@ Please format your response using proper markdown:
       },
     };
 
-    const model = 'gemini-2.5-flash';
+    const model = await getAvailableModel();
     const contents = [
       {
         role: 'user' as const,
@@ -190,7 +229,7 @@ Provide a clear, educational response with proper markdown formatting that helps
       },
     };
 
-    const model = 'gemini-2.5-flash';
+    const model = await getAvailableModel();
     const contents: any[] = [
       {
         role: 'user' as const,

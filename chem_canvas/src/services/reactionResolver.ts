@@ -1,5 +1,7 @@
 import { fetchCanonicalSmiles } from './pubchemService';
 import { generateTextContent, isGeminiInitialized } from './geminiService';
+import { fetchStructuredReaction, StructuredReactionPayload } from './structuredReactionService';
+import { sanitizeReactionSmilesInput } from '../utils/reactionSanitizer';
 
 export interface ReactionComponentDetails {
   role: 'reactant' | 'product' | 'agent';
@@ -16,6 +18,11 @@ export interface ReactionResolutionResult {
   usedGemini: boolean;
   confidence?: number;
   notes?: string;
+  reactionName?: string;
+  conditions?: string[];
+  reactionDescription?: string;
+  reactionSmilesWithConditions?: string;
+  structuredPayload?: StructuredReactionPayload;
 }
 
 const smilesCache = new Map<string, string | null>();
@@ -35,10 +42,16 @@ const sanitizeJson = (rawText: string): string => {
   return trimmed;
 };
 
+const ENABLE_PUBCHEM_CANONICALIZATION = false;
+
 const canonicalizeCandidate = async (value?: string | null): Promise<string | null> => {
   const candidate = value?.trim();
   if (!candidate) {
     return null;
+  }
+
+  if (!ENABLE_PUBCHEM_CANONICALIZATION) {
+    return candidate;
   }
 
   if (smilesCache.has(candidate)) {
@@ -312,10 +325,83 @@ const interpretGeminiPayload = async (
   };
 };
 
+export const interpretStructuredReactionPayload = async (
+  payload: StructuredReactionPayload
+): Promise<ReactionResolutionResult | null> => {
+  if (!payload) {
+    return null;
+  }
+
+  const rawPrimary = typeof payload['reaction smiles'] === 'string' ? payload['reaction smiles'].trim() : '';
+  const rawWithConditions = typeof payload['reaction smiles with conditions'] === 'string'
+    ? payload['reaction smiles with conditions'].trim()
+    : '';
+
+  const candidateSmiles =
+    sanitizeReactionSmilesInput(rawPrimary) ??
+    sanitizeReactionSmilesInput(rawWithConditions) ??
+    rawPrimary ??
+    rawWithConditions;
+
+  if (!candidateSmiles || !candidateSmiles.trim()) {
+    return null;
+  }
+
+  const description = typeof payload['Reaction Description'] === 'string'
+    ? payload['Reaction Description'].trim()
+    : undefined;
+
+  const resolution = await parseBySmiles(candidateSmiles.trim(), {
+    usedGemini: true,
+    notes: description
+  });
+
+  if (!resolution) {
+    return null;
+  }
+
+  const conditions = Array.isArray(payload.condition)
+    ? payload.condition
+        .map(value => (typeof value === 'string' ? value.trim() : ''))
+        .filter(value => value.length > 0)
+    : [];
+
+  const reactionName = typeof payload['reaction name '] === 'string'
+    ? payload['reaction name '].trim()
+    : undefined;
+
+  const reactionSmilesWithConditions = rawWithConditions
+    ? (sanitizeReactionSmilesInput(rawWithConditions) ?? rawWithConditions).trim()
+    : undefined;
+
+  return {
+    ...resolution,
+    reactionName,
+    reactionDescription: description,
+    reactionSmilesWithConditions,
+    conditions: conditions.length > 0 ? conditions : undefined,
+    structuredPayload: payload
+  };
+};
+
 const requestReactionViaGemini = async (
   input: string,
   options: { mode: 'description' | 'name'; enforceFull?: boolean }
 ): Promise<GeminiAttemptResult> => {
+  try {
+    const structuredPayload = await fetchStructuredReaction(input, { mode: options.mode });
+    const structuredResult = await interpretStructuredReactionPayload(structuredPayload);
+    if (structuredResult) {
+      return {
+        resolution: structuredResult,
+        missingReactants: false,
+        missingProducts: false
+      };
+    }
+  } catch (error) {
+    console.warn('Structured Gemini reaction attempt failed, falling back to legacy prompt:', error);
+  }
+
   const prompt = buildGeminiReactionPrompt(input, options);
   const aiResponse = await generateTextContent(prompt);
   const jsonPayload = sanitizeJson(aiResponse);

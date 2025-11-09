@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, ArrowLeft, Upload, Sparkles, Loader2, Eye, Download, X, BookOpen, Target, Search, MessageSquare, Send, ExternalLink, PlusCircle, Star, Trash2 } from 'lucide-react';
+import { FileText, ArrowLeft, Upload, Sparkles, Loader2, Eye, Download, X, BookOpen, Target, Search, MessageSquare, Send, ExternalLink, PlusCircle, Star, Trash2, AlertCircle, RefreshCw, Calculator, Lightbulb } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import ReactMarkdown from 'react-markdown';
 import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
+import { apiKeyRotation, executeWithRotation } from '../services/apiKeyRotation';
 
 // React PDF Viewer imports
 import { Viewer, Worker } from '@react-pdf-viewer/core';
@@ -11,6 +12,8 @@ import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import { highlightPlugin, Trigger } from '@react-pdf-viewer/highlight';
 import { zoomPlugin } from '@react-pdf-viewer/zoom';
 import type { RenderHighlightsProps, HighlightArea } from '@react-pdf-viewer/highlight';
+import DocumentMindMap, { type MindMapData, type MindMapBranchNode } from './DocumentMindMap';
+import DynamicSimulationGenerator from './DynamicSimulationGenerator';
 
 // Import styles
 import '@react-pdf-viewer/core/lib/styles/index.css';
@@ -89,6 +92,10 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
   const [studyMaterials, setStudyMaterials] = useState<string>('');
   const [isGeneratingMaterials, setIsGeneratingMaterials] = useState(false);
   const [showStudyMaterials, setShowStudyMaterials] = useState(false);
+  const [mindMapData, setMindMapData] = useState<MindMapData | null>(null);
+  const [isGeneratingMindMap, setIsGeneratingMindMap] = useState(false);
+  const [mindMapError, setMindMapError] = useState<string | null>(null);
+  const [showMindMap, setShowMindMap] = useState(false);
   const [extractedFormulas, setExtractedFormulas] = useState<string[]>([]);
   const [extractedDefinitions, setExtractedDefinitions] = useState<{term: string, definition: string}[]>([]);
   const [isExtractingFormulas, setIsExtractingFormulas] = useState(false);
@@ -119,6 +126,10 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
   const [showPdfViewer, setShowPdfViewer] = useState(false);
   const [highlightAreas, setHighlightAreas] = useState<HighlightArea[]>([]);
   const [searchingPages, setSearchingPages] = useState(false);
+  
+  // Simulation Generator state
+  const [showSimulationGenerator, setShowSimulationGenerator] = useState(false);
+  const [selectedDocumentForSimulation, setSelectedDocumentForSimulation] = useState<ProcessedDocument | null>(null);
   
   // Custom rendering for highlights
   const renderHighlights = (props: RenderHighlightsProps) => (
@@ -310,31 +321,415 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
   };
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Cached model name for DocumentUnderstandingWorkspace
+  const cachedDocModelRef = useRef<string | null>(null);
+  const currentApiKeyRef = useRef<string | null>(null);
+
   const initializeGemini = () => {
     console.log('initializeGemini called with apiKey:', apiKey ? 'present' : 'missing');
-    if (!apiKey) {
-      console.error('No API key provided to DocumentUnderstandingWorkspace');
+    
+    // Use rotation service if no specific key provided or to handle rate limits
+    const keyToUse = apiKey || apiKeyRotation.getNextKey();
+    if (!keyToUse) {
+      console.error('No API key available');
       throw new Error('Gemini API key is required');
     }
-    return new GoogleGenerativeAI(apiKey);
+    
+    cachedDocModelRef.current = null; // Reset cache when reinitializing
+    currentApiKeyRef.current = keyToUse;
+    return new GoogleGenerativeAI(keyToUse);
+  };
+
+  const getAvailableModel = async (genAI: GoogleGenerativeAI): Promise<string> => {
+    // Return cached model if available
+    if (cachedDocModelRef.current) {
+      return cachedDocModelRef.current;
+    }
+
+    const models = ['gemini-2.5-pro', 'gemini-flash-latest'];
+    
+    return executeWithRotation(async (rotatedApiKey) => {
+      // Reinitialize with new key if needed
+      if (rotatedApiKey !== currentApiKeyRef.current) {
+        console.log('[DocWorkspace] Switching to new API key due to rotation');
+        genAI = new GoogleGenerativeAI(rotatedApiKey);
+        currentApiKeyRef.current = rotatedApiKey;
+      }
+      
+      for (const modelName of models) {
+        try {
+          console.log(`[DocWorkspace] Testing model: ${modelName}`);
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const testResult = await model.generateContent('test');
+          await testResult.response;
+          console.log(`[DocWorkspace] ✅ Using model: ${modelName}`);
+          cachedDocModelRef.current = modelName;
+          return modelName;
+        } catch (error: any) {
+          console.warn(`[DocWorkspace] ❌ Model ${modelName} not available:`, error.message);
+          if (models.indexOf(modelName) === models.length - 1) {
+            throw error;
+          }
+          continue;
+        }
+      }
+      
+      throw new Error('No working Gemini model found');
+    });
+  };
+
+  const MIND_MAP_CONTEXT_LIMIT = 3200;
+  const MAX_MIND_MAP_CHILDREN = 4;
+  const MAX_MIND_MAP_DEPTH = 3;
+
+  type RawMindMapBranch = {
+    id?: string;
+    title?: string;
+    summary?: string;
+    concepts?: unknown;
+    keyConcepts?: unknown;
+    topics?: unknown;
+    guidingQuestions?: unknown;
+    guidingPrompts?: unknown;
+    questions?: unknown;
+    prompts?: unknown;
+    examples?: unknown;
+    applications?: unknown;
+    caseStudies?: unknown;
+    children?: RawMindMapBranch[];
+  };
+
+  type RawMindMapResponse = {
+    centralIdea?: string;
+    learningObjectives?: unknown;
+    learningOutcomes?: unknown;
+    keyTakeaways?: unknown;
+    keyInsights?: unknown;
+    branches?: RawMindMapBranch[];
+  };
+
+  const cleanString = (value: unknown): string | undefined => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+    return undefined;
+  };
+
+  const toStringArray = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value
+        .map(item => (typeof item === 'string' ? item.trim() : ''))
+        .filter((item): item is string => item.length > 0);
+    }
+
+    if (typeof value === 'string') {
+      return value
+        .split(/(?:\r?\n|\u2022|•|\-|–|—)/g)
+        .map(token => token.replace(/^[0-9]+[\.)]\s*/, '').trim())
+        .filter((token): token is string => token.length > 0);
+    }
+
+    return [];
+  };
+
+  const mergeStringArrays = (...values: unknown[]): string[] => {
+    const seen = new Set<string>();
+    values.forEach(value => {
+      toStringArray(value).forEach(entry => {
+        if (entry.length > 0) {
+          seen.add(entry);
+        }
+      });
+    });
+    return Array.from(seen);
+  };
+
+  const extractJsonBlock = (raw: string): string => {
+    const trimmed = raw.trim();
+    const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenceMatch) {
+      return fenceMatch[1].trim();
+    }
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return jsonMatch[0];
+    }
+    return trimmed;
+  };
+
+  const getMindMapContextSnippet = (content: string): string =>
+    content.replace(/\s+/g, ' ').slice(0, MIND_MAP_CONTEXT_LIMIT);
+
+  const buildFallbackMindMap = (topics: string[]): MindMapData => {
+    if (topics.length === 0) {
+      return {
+        centralIdea: 'Study Mind Map',
+        learningObjectives: [
+          'Identify priority topics',
+          'Link related concepts visually',
+          'Plan follow-up study actions'
+        ],
+        branches: [
+          {
+            id: createUniqueId('mindmap-branch'),
+            title: 'Getting Started',
+            summary: 'Select one or more topics to generate a personalised map.',
+            concepts: [
+              'Choose focus concepts',
+              'Outline key definitions',
+              'Plan applications and practice'
+            ],
+            guidingQuestions: ['What do you need to revise first?', 'Which resources support this topic?'],
+            examples: ['Example: Core principles of stoichiometry'],
+            children: []
+          }
+        ]
+      };
+    }
+
+    const centralIdea = topics.length > 1 ? `${topics[0]} and related topics` : topics[0];
+    const learningObjectives = topics
+      .map(topic => `Explain and apply the foundational ideas of ${topic}.`)
+      .slice(0, 6);
+
+    const branches: MindMapBranchNode[] = topics.map(topic => ({
+      id: createUniqueId('mindmap-branch'),
+      title: topic,
+      summary: `Essential concepts, misconceptions, and applications associated with ${topic}.`,
+      concepts: [
+        `Foundational laws or definitions for ${topic}`,
+        `Common mistakes learners make with ${topic}`,
+        `Advanced extension pathways for ${topic}`
+      ],
+      guidingQuestions: [
+        `How does ${topic} connect to prior knowledge?`,
+        `Where does ${topic} appear in real experiments or assessments?`
+      ],
+      examples: [`Scenario or problem that demonstrates ${topic}`],
+      children: [
+        {
+          id: createUniqueId('mindmap-sub'),
+          title: `${topic} fundamentals`,
+          summary: `Key vocabulary, core representations, and benchmark problems for ${topic}.`,
+          concepts: [
+            `Essential terminology for ${topic}`,
+            `Representative calculation or diagram`
+          ],
+          guidingQuestions: [`Which misconception needs to be resolved about ${topic}?`],
+          examples: [],
+          children: []
+        },
+        {
+          id: createUniqueId('mindmap-sub'),
+          title: `${topic} applications`,
+          summary: `Practical uses, lab techniques, or case studies illustrating ${topic}.`,
+          concepts: [
+            `Laboratory or industrial application for ${topic}`,
+            `Link to a follow-on topic or project`
+          ],
+          guidingQuestions: [`What is the next idea to explore after ${topic}?`],
+          examples: [],
+          children: []
+        }
+      ]
+    }));
+
+    return {
+      centralIdea,
+      learningObjectives,
+      branches
+    };
+  };
+
+  const normalizeMindMapBranch = (
+    branch: RawMindMapBranch,
+    topics: string[],
+    depth = 1
+  ): MindMapBranchNode => {
+    const fallbackTopic = topics[(depth - 1) % (topics.length || 1)] ?? `Concept ${depth}`;
+
+    const title = cleanString(branch.title) ?? `${fallbackTopic} focus`;
+    const summary = cleanString(branch.summary);
+    const concepts = mergeStringArrays(branch.concepts, branch.keyConcepts, branch.topics).slice(0, 6);
+    const guidingQuestions = mergeStringArrays(
+      branch.guidingQuestions,
+      branch.guidingPrompts,
+      branch.questions,
+      branch.prompts
+    ).slice(0, 4);
+    const examples = mergeStringArrays(branch.examples, branch.applications, branch.caseStudies).slice(0, 4);
+
+    let children: MindMapBranchNode[] = [];
+    if (Array.isArray(branch.children) && branch.children.length > 0 && depth < MAX_MIND_MAP_DEPTH) {
+      children = branch.children
+        .slice(0, MAX_MIND_MAP_CHILDREN)
+        .map(child => normalizeMindMapBranch(child, topics, depth + 1));
+    }
+
+    return {
+      id: createUniqueId(`mindmap-${depth}`),
+      title,
+      summary,
+      concepts,
+      guidingQuestions,
+      examples,
+      children
+    };
+  };
+
+  const normalizeMindMapResponse = (raw: RawMindMapResponse | null, topics: string[]): MindMapData => {
+    const fallback = buildFallbackMindMap(topics);
+
+    if (!raw) {
+      return fallback;
+    }
+
+    const centralIdea = cleanString(raw.centralIdea) ?? fallback.centralIdea;
+    const learningObjectives = mergeStringArrays(
+      raw.learningObjectives,
+      raw.learningOutcomes,
+      raw.keyTakeaways,
+      raw.keyInsights
+    ).slice(0, 6);
+
+    const sourceBranches = Array.isArray(raw.branches) ? raw.branches.slice(0, 6) : [];
+    let branches = sourceBranches.length > 0
+      ? sourceBranches.map(branch => normalizeMindMapBranch(branch, topics))
+      : [];
+
+    if (branches.length === 0) {
+      return {
+        centralIdea,
+        learningObjectives: learningObjectives.length > 0 ? learningObjectives : fallback.learningObjectives,
+        branches: fallback.branches
+      };
+    }
+
+    if (topics.length > 0) {
+      const lowerTopics = topics.map(topic => topic.toLowerCase());
+      const coveredTopics = new Set<number>();
+
+      branches.forEach(branch => {
+        lowerTopics.forEach((topic, index) => {
+          if (branch.title.toLowerCase().includes(topic)) {
+            coveredTopics.add(index);
+          }
+        });
+      });
+
+      lowerTopics.forEach((topic, index) => {
+        if (!coveredTopics.has(index)) {
+          const supplemental = buildFallbackMindMap([topics[index]]);
+          if (supplemental.branches.length > 0) {
+            branches.push(supplemental.branches[0]);
+          }
+        }
+      });
+    }
+
+    return {
+      centralIdea,
+      learningObjectives: learningObjectives.length > 0 ? learningObjectives : fallback.learningObjectives,
+      branches
+    };
+  };
+
+  const createMindMapFromGemini = async (topics: string[], contextSnippet: string): Promise<MindMapData> => {
+    return executeWithRotation(async () => {
+      const genAI = initializeGemini();
+      const modelName = await getAvailableModel(genAI);
+      
+      // Check if API key changed during getAvailableModel
+      const newKey = apiKeyRotation.getNextKey();
+      if (newKey && newKey !== currentApiKeyRef.current) {
+        console.log('[DocWorkspace] Re-initializing after key rotation in createMindMapFromGemini');
+        currentApiKeyRef.current = newKey;
+      }
+      
+      const freshGenAI = initializeGemini();
+      const model = freshGenAI.getGenerativeModel({ model: modelName });
+
+      const promptParts: string[] = [
+        'You are an expert learning designer creating visually compelling mind maps for chemistry students.',
+        'Return JSON that matches this exact schema:',
+        '{',
+        '  "centralIdea": "string",',
+        '  "learningObjectives": ["string", "..."],',
+        '  "branches": [',
+        '    {',
+        '      "title": "string",',
+        '      "summary": "string",',
+        '      "concepts": ["string", "..."],',
+        '      "guidingQuestions": ["string", "..."],',
+        '      "examples": ["string", "..."],',
+        '      "children": [',
+        '        { "title": "string", "summary": "string", "concepts": ["..."], "guidingQuestions": ["..."], "examples": ["..."], "children": [] }',
+        '      ]',
+        '    }',
+        '  ]',
+        '}',
+        'Rules:',
+        '- Provide 3-5 top-level branches.',
+        '- Each branch should include 2-4 children unless the topic does not require deeper layers.',
+        '- Keep every string under 140 characters and omit markdown formatting.',
+        '- Concepts and questions must be actionable and specific.',
+        `Selected topics: ${topics.join(', ') || 'n/a'}.`
+      ];
+
+      if (contextSnippet) {
+        promptParts.push('Document context to ground the mind map:');
+        promptParts.push(`"""${contextSnippet}"""`);
+      }
+
+      promptParts.push('Return only valid JSON with no commentary or code fences.');
+
+      const result = await model.generateContent(promptParts.join('\n'));
+      const responseText = result.response.text();
+
+      if (!responseText) {
+        throw new Error('Gemini returned an empty response for the mind map request.');
+      }
+
+      const jsonPayload = extractJsonBlock(responseText);
+
+      let parsed: RawMindMapResponse;
+      try {
+        parsed = JSON.parse(jsonPayload) as RawMindMapResponse;
+      } catch (error) {
+        console.error('Failed to parse Gemini mind map JSON:', error, jsonPayload);
+        throw new Error('Gemini mind map JSON parsing failed.');
+      }
+
+      return normalizeMindMapResponse(parsed, topics);
+    });
   };
 
   const analyzeDocumentMetadata = async (file: File): Promise<{subject: string, topics: string[], metadata: any}> => {
-    const genAI = initializeGemini();
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    return executeWithRotation(async () => {
+      const genAI = initializeGemini();
+      const modelName = await getAvailableModel(genAI);
+      
+      // Check if API key changed during getAvailableModel
+      const newKey = apiKeyRotation.getNextKey();
+      if (newKey && newKey !== currentApiKeyRef.current) {
+        console.log('[DocWorkspace] Re-initializing after key rotation in analyzeDocumentMetadata');
+        currentApiKeyRef.current = newKey;
+        const freshGenAI = initializeGemini();
+        const model = freshGenAI.getGenerativeModel({ model: modelName });
 
-    // Convert file to base64 properly for binary data
-    const bytes = await file.arrayBuffer();
-    const base64Data = arrayBufferToBase64(bytes);
+        // Convert file to base64 properly for binary data
+        const bytes = await file.arrayBuffer();
+        const base64Data = arrayBufferToBase64(bytes);
 
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'application/pdf',
-          data: base64Data
-        }
-      },
-      `Analyze this document and provide the following information in JSON format:
+        const result = await model.generateContent([
+          {
+            inlineData: {
+              mimeType: 'application/pdf',
+              data: base64Data
+            }
+          },
+          `Analyze this document and provide the following information in JSON format:
       {
         "subject": "The main academic subject/discipline this document belongs to (e.g., Chemistry, Physics, Mathematics, Biology, etc.)",
         "topics": ["List of specific topics covered in the document, maximum 8 topics"],
@@ -346,57 +741,74 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
         }
       }
       Return only valid JSON, no additional text.`
-    ]);
+        ]);
 
-    const responseText = result.response.text();
-    try {
-      // Clean the response to extract JSON
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
+        const responseText = result.response.text();
+        try {
+          // Clean the response to extract JSON
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            return {
+              subject: parsed.subject || 'Unknown',
+              topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+              metadata: parsed.metadata || {}
+            };
+          }
+        } catch (error) {
+          console.error('Error parsing metadata JSON:', error);
+        }
+
         return {
-          subject: parsed.subject || 'Unknown',
-          topics: Array.isArray(parsed.topics) ? parsed.topics : [],
-          metadata: parsed.metadata || {}
+          subject: 'Unknown',
+          topics: [],
+          metadata: {}
         };
       }
-    } catch (error) {
-      console.error('Error parsing metadata JSON:', error);
-    }
-
-    // Fallback
-    return {
-      subject: 'Unknown',
-      topics: [],
-      metadata: {}
-    };
+      
+      // This shouldn't happen, but fallback
+      return {
+        subject: 'Unknown',
+        topics: [],
+        metadata: {}
+      };
+    });
   };
 
   const processDocument = async (file: File): Promise<string> => {
-    console.log('processDocument called with file:', file.name);
-    const genAI = initializeGemini();
-    console.log('Gemini initialized for document processing');
+    return executeWithRotation(async () => {
+      console.log('processDocument called with file:', file.name);
+      const genAI = initializeGemini();
+      console.log('Gemini initialized for document processing');
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    console.log('Model created for document processing');
+      const modelName = await getAvailableModel(genAI);
+      
+      // Check if API key changed during getAvailableModel
+      const newKey = apiKeyRotation.getNextKey();
+      if (newKey && newKey !== currentApiKeyRef.current) {
+        console.log('[DocWorkspace] Re-initializing after key rotation in processDocument');
+        currentApiKeyRef.current = newKey;
+        const freshGenAI = initializeGemini();
+        const model = freshGenAI.getGenerativeModel({ model: modelName });
+        console.log('Model created for document processing');
 
-    setProcessingStatus('Reading file data...');
+        setProcessingStatus('Reading file data...');
 
-    // Convert file to base64 properly for binary data
-    const bytes = await file.arrayBuffer();
-    const base64Data = arrayBufferToBase64(bytes);
-    console.log('File converted to base64, length:', base64Data.length);
+        // Convert file to base64 properly for binary data
+        const bytes = await file.arrayBuffer();
+        const base64Data = arrayBufferToBase64(bytes);
+        console.log('File converted to base64, length:', base64Data.length);
 
-    setProcessingStatus('Sending to Gemini API...');
+        setProcessingStatus('Sending to Gemini API...');
 
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'application/pdf',
-          data: base64Data
-        }
-      },
-      `Please extract the complete text content from this PDF document. 
+        const result = await model.generateContent([
+          {
+            inlineData: {
+              mimeType: 'application/pdf',
+              data: base64Data
+            }
+          },
+          `Please extract the complete text content from this PDF document. 
 
 CRITICAL REQUIREMENTS:
 1. Preserve ALL text content from the document
@@ -413,13 +825,18 @@ Format example:
 [PAGE 2] Content from page 2...
 
 This will be used to answer questions with accurate page citations.`
-    ]);
+        ]);
 
-    setProcessingStatus('Processing AI response...');
-    const response = result.response.text();
-    console.log('Document processing completed, response length:', response.length);
+        setProcessingStatus('Processing AI response...');
+        const response = result.response.text();
+        console.log('Document processing completed, response length:', response.length);
 
-    return response;
+        return response;
+      }
+      
+      // This shouldn't happen, but fallback
+      throw new Error('Failed to initialize model');
+    });
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -531,10 +948,19 @@ This will be used to answer questions with accurate page citations.`
   };
 
   const generateStudyMaterials = async (topics: string[]): Promise<string> => {
-    const genAI = initializeGemini();
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    return executeWithRotation(async () => {
+      const genAI = initializeGemini();
+      const modelName = await getAvailableModel(genAI);
+      
+      // Check if API key changed during getAvailableModel
+      const newKey = apiKeyRotation.getNextKey();
+      if (newKey && newKey !== currentApiKeyRef.current) {
+        console.log('[DocWorkspace] Re-initializing after key rotation in generateStudyMaterials');
+        currentApiKeyRef.current = newKey;
+        const freshGenAI = initializeGemini();
+        const model = freshGenAI.getGenerativeModel({ model: modelName });
 
-    const prompt = `Generate comprehensive study materials for the following topics: ${topics.join(', ')}
+        const prompt = `Generate comprehensive study materials for the following topics: ${topics.join(', ')}
 
 Please create detailed study materials that include:
 
@@ -547,8 +973,13 @@ Please create detailed study materials that include:
 
 Format the response using clear headings, bullet points, and numbered lists for easy reading. Make it educational and comprehensive but not overwhelming.`;
 
-    const result = await model.generateContent(prompt);
-    return result.response.text();
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+      }
+      
+      // This shouldn't happen, but fallback
+      throw new Error('Failed to initialize model');
+    });
   };
 
   const handleGenerateStudyMaterials = async () => {
@@ -570,6 +1001,30 @@ Format the response using clear headings, bullet points, and numbered lists for 
       alert(`Error generating study materials: ${errorMessage}`);
     } finally {
       setIsGeneratingMaterials(false);
+    }
+  };
+
+  const handleGenerateMindMap = async () => {
+    if (selectedTopics.length === 0) {
+      alert('Please select at least one topic first');
+      return;
+    }
+
+    setIsGeneratingMindMap(true);
+    setMindMapError(null);
+    setShowMindMap(true);
+
+    try {
+      const contextSnippet = documentContent ? getMindMapContextSnippet(documentContent) : '';
+      const generatedMindMap = await createMindMapFromGemini(selectedTopics, contextSnippet);
+      setMindMapData(generatedMindMap);
+    } catch (error) {
+      console.error('Error generating mind map:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setMindMapError(errorMessage);
+      setMindMapData(buildFallbackMindMap(selectedTopics));
+    } finally {
+      setIsGeneratingMindMap(false);
     }
   };
 
@@ -754,7 +1209,8 @@ Format the response using clear headings, bullet points, and numbered lists for 
     const genAI = initializeGemini();
     console.log('Gemini initialized');
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const modelName = await getAvailableModel(genAI);
+    const model = genAI.getGenerativeModel({ model: modelName });
     console.log('Model created');
 
     const prompts = {
@@ -890,10 +1346,19 @@ Structure as an intensive exam preparation guide with focused study materials.`
     setIsGeneratingResponse(true);
 
     try {
-      const genAI = initializeGemini();
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      await executeWithRotation(async () => {
+        const genAI = initializeGemini();
+        const modelName = await getAvailableModel(genAI);
+        
+        // Check if API key changed during getAvailableModel
+        const newKey = apiKeyRotation.getNextKey();
+        if (newKey && newKey !== currentApiKeyRef.current) {
+          console.log('[DocWorkspace] Re-initializing after key rotation in handleChatWithDocument');
+          currentApiKeyRef.current = newKey;
+          const freshGenAI = initializeGemini();
+          const model = freshGenAI.getGenerativeModel({ model: modelName });
 
-      const prompt = `You are a helpful academic assistant analyzing a document. Based on the following document content, answer the user's question.
+          const prompt = `You are a helpful academic assistant analyzing a document. Based on the following document content, answer the user's question.
 
 IMPORTANT CITATION RULES: 
 1. Provide accurate answers based ONLY on the document content
@@ -923,12 +1388,17 @@ User Question: ${userMessage}
 
 Please answer with accurate citations including real page numbers from the [PAGE X] markers:`;
 
-      const result = await model.generateContent(prompt);
-      const response = result.response.text();
+          const result = await model.generateContent(prompt);
+          const response = result.response.text();
 
-      // Add assistant response to chat
-      const newAssistantMessage = { role: 'assistant' as const, content: response };
-      setChatMessages(prev => [...prev, newAssistantMessage]);
+          // Add assistant response to chat
+          const newAssistantMessage = { role: 'assistant' as const, content: response };
+          setChatMessages(prev => [...prev, newAssistantMessage]);
+          return response;
+        }
+        
+        throw new Error('Failed to initialize model');
+      });
     } catch (error) {
       console.error('Error generating chat response:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -943,13 +1413,22 @@ Please answer with accurate citations including real page numbers from the [PAGE
   };
 
   const extractFormulasFromDocument = async (file: File): Promise<string[]> => {
-    const genAI = initializeGemini();
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    return executeWithRotation(async () => {
+      const genAI = initializeGemini();
+      const modelName = await getAvailableModel(genAI);
+      
+      // Check if API key changed during getAvailableModel
+      const newKey = apiKeyRotation.getNextKey();
+      if (newKey && newKey !== currentApiKeyRef.current) {
+        console.log('[DocWorkspace] Re-initializing after key rotation in extractFormulas');
+        currentApiKeyRef.current = newKey;
+        const freshGenAI = initializeGemini();
+        const model = freshGenAI.getGenerativeModel({ model: modelName });
 
-    const bytes = await file.arrayBuffer();
-    const base64Data = arrayBufferToBase64(bytes);
+        const bytes = await file.arrayBuffer();
+        const base64Data = arrayBufferToBase64(bytes);
 
-    const prompt = `Extract all mathematical formulas, equations, and mathematical expressions from this document. 
+        const prompt = `Extract all mathematical formulas, equations, and mathematical expressions from this document. 
 
 Please return them in the following format:
 - Each formula should be on a separate line
@@ -965,29 +1444,43 @@ Example format:
 
 Return only the formulas, one per line. If no formulas are found, return an empty list.`;
 
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'application/pdf',
-          data: base64Data
-        }
-      },
-      prompt
-    ]);
+        const result = await model.generateContent([
+          {
+            inlineData: {
+              mimeType: 'application/pdf',
+              data: base64Data
+            }
+          },
+          prompt
+        ]);
 
-    const response = result.response.text();
-    // Split by newlines and filter out empty lines
-    return response.split('\n').filter(line => line.trim().length > 0);
+        const response = result.response.text();
+        // Split by newlines and filter out empty lines
+        return response.split('\n').filter(line => line.trim().length > 0);
+      }
+      
+      // This shouldn't happen, but fallback
+      return [];
+    });
   };
 
   const extractDefinitionsFromDocument = async (file: File): Promise<{term: string, definition: string}[]> => {
-    const genAI = initializeGemini();
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    return executeWithRotation(async () => {
+      const genAI = initializeGemini();
+      const modelName = await getAvailableModel(genAI);
+      
+      // Check if API key changed during getAvailableModel
+      const newKey = apiKeyRotation.getNextKey();
+      if (newKey && newKey !== currentApiKeyRef.current) {
+        console.log('[DocWorkspace] Re-initializing after key rotation in extractDefinitions');
+        currentApiKeyRef.current = newKey;
+        const freshGenAI = initializeGemini();
+        const model = freshGenAI.getGenerativeModel({ model: modelName });
+        
+        const bytes = await file.arrayBuffer();
+        const base64Data = arrayBufferToBase64(bytes);
 
-    const bytes = await file.arrayBuffer();
-    const base64Data = arrayBufferToBase64(bytes);
-
-    const prompt = `Extract all important definitions, terms, and key concepts from this document.
+        const prompt = `Extract all important definitions, terms, and key concepts from this document.
 
 Please return them in JSON format as an array of objects with "term" and "definition" fields:
 
@@ -1006,29 +1499,34 @@ Focus on:
 
 Only include definitions that are explicitly stated or clearly implied in the document. Return valid JSON only.`;
 
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'application/pdf',
-          data: base64Data
+        const result = await model.generateContent([
+          {
+            inlineData: {
+              mimeType: 'application/pdf',
+              data: base64Data
+            }
+          },
+          prompt
+        ]);
+
+        const response = result.response.text();
+        try {
+          // Clean the response to extract JSON
+          const jsonMatch = response.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            return Array.isArray(parsed) ? parsed : [];
+          }
+        } catch (error) {
+          console.error('Error parsing definitions JSON:', error);
         }
-      },
-      prompt
-    ]);
 
-    const response = result.response.text();
-    try {
-      // Clean the response to extract JSON
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return Array.isArray(parsed) ? parsed : [];
+        return [];
       }
-    } catch (error) {
-      console.error('Error parsing definitions JSON:', error);
-    }
-
-    return [];
+      
+      // This shouldn't happen, but fallback
+      return [];
+    });
   };
 
   const generateFormulaPDF = async (formulas: string[], definitions: {term: string, definition: string}[]) => {
@@ -1203,16 +1701,16 @@ Only include definitions that are explicitly stated or clearly implied in the do
           </div>
 
           {/* Preparation Section */}
-          <div className="p-4 border-t border-slate-800">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-white font-medium text-sm flex items-center gap-2">
-                <Target className="h-4 w-4 text-purple-400" />
+          <div className="p-3 border-t border-slate-800">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-white font-medium text-xs flex items-center gap-1.5">
+                <Target className="h-3.5 w-3.5 text-purple-400" />
                 I am preparing for
-                {currentFile && <span className="text-green-400 text-xs ml-2">● Ready</span>}
+                {currentFile && <span className="text-green-400 text-[10px] ml-1">● Ready</span>}
               </h4>
-              {generatingType && <Loader2 className="h-4 w-4 animate-spin text-purple-400" />}
+              {generatingType && <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-1.5">
               {['test', 'colloquium', 'lab practical', 'seminar', 'exam'].map((type) => {
                 const hasContent = !!preparationMaterials[type];
                 const isGenerating = generatingType === type;
@@ -1227,9 +1725,9 @@ Only include definitions that are explicitly stated or clearly implied in the do
                 return (
                   <div
                     key={type}
-                    className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3 transition-colors"
+                    className="rounded-md border border-slate-700/50 bg-slate-900/30 p-2 transition-colors"
                   >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => {
                           console.log('Button clicked:', type, 'disabled:', isDisabled);
@@ -1238,93 +1736,87 @@ Only include definitions that are explicitly stated or clearly implied in the do
                           }
                         }}
                         disabled={isDisabled}
-                        className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 relative ${
+                        className={`flex-1 px-2 py-1.5 rounded-md text-[10px] font-medium transition-all relative ${
                           hasContent
-                            ? 'bg-green-600/20 text-green-300 border border-green-500/50 hover:bg-green-600/30'
-                            : 'bg-slate-800/50 text-slate-300 border border-slate-700 hover:bg-slate-700/50 hover:border-purple-500/50'
-                        } ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02]'}`}
+                            ? 'bg-green-600/20 text-green-300 border border-green-500/40 hover:bg-green-600/30'
+                            : 'bg-slate-800/40 text-slate-300 border border-slate-700 hover:bg-slate-700/40'
+                        } ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                       >
-                        <span>{typeLabel}</span>
-                        {hasContent && !isGenerating && (
-                          <span className="ml-2 text-green-400">✓</span>
-                        )}
-                        {isGenerating && (
-                          <Loader2 className="inline-block ml-2 h-3 w-3 animate-spin text-purple-400" />
-                        )}
-                        {isActive && !isGenerating && (
-                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-400">●</span>
-                        )}
+                        {typeLabel}
+                        {hasContent && !isGenerating && <span className="ml-1 text-green-400">✓</span>}
+                        {isGenerating && <Loader2 className="inline-block ml-1 h-2.5 w-2.5 animate-spin text-purple-400" />}
+                        {isActive && !isGenerating && <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-purple-400 text-[8px]">●</span>}
                       </button>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenCustomMaterialModal(type)}
-                          className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800/60 px-3 py-2 text-[11px] font-medium text-slate-200 transition-colors hover:border-purple-500 hover:bg-slate-700/70"
-                        >
-                          <PlusCircle className="h-3.5 w-3.5 text-purple-300" />
-                          Provide sample
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickSavePreparation(type)}
-                          disabled={!preparationMaterials[type]}
-                          className={`inline-flex items-center gap-1 rounded-md border border-yellow-400/40 px-3 py-2 text-[11px] font-medium transition-colors ${
-                            preparationMaterials[type]
-                              ? 'bg-yellow-500/10 text-yellow-200 hover:bg-yellow-500/20'
-                              : 'bg-slate-800/60 text-slate-500 cursor-not-allowed opacity-60'
-                          }`}
-                        >
-                          <Star className="h-3.5 w-3.5" />
-                          Quick save
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCustomMaterialModal(type)}
+                        className="inline-flex items-center gap-0.5 rounded-md border border-slate-700 bg-slate-800/50 px-2 py-1.5 text-[10px] font-medium text-slate-200 transition-colors hover:border-purple-500 hover:bg-slate-700/60"
+                        title="Provide sample"
+                      >
+                        <PlusCircle className="h-3 w-3 text-purple-300" />
+                        <span className="hidden sm:inline">Sample</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickSavePreparation(type)}
+                        disabled={!preparationMaterials[type]}
+                        className={`inline-flex items-center gap-0.5 rounded-md border border-yellow-400/30 px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                          preparationMaterials[type]
+                            ? 'bg-yellow-500/10 text-yellow-200 hover:bg-yellow-500/20'
+                            : 'bg-slate-800/50 text-slate-500 cursor-not-allowed opacity-50'
+                        }`}
+                        title="Quick save"
+                      >
+                        <Star className="h-3 w-3" />
+                        <span className="hidden sm:inline">Save</span>
+                      </button>
                     </div>
 
                     {(customCount > 0 || favoriteCount > 0) && (
-                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-300">
+                      <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] text-slate-300">
                         {customCount > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-800/60 px-2 py-1">
-                            <PlusCircle className="h-3 w-3 text-purple-300" />
-                            {customCount} custom sample{customCount > 1 ? 's' : ''}
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-800/50 px-1.5 py-0.5">
+                            <PlusCircle className="h-2.5 w-2.5 text-purple-300" />
+                            {customCount} custom
                           </span>
                         )}
                         {favoriteCount > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-1 text-yellow-200">
-                            <Star className="h-3 w-3" />
-                            {favoriteCount} favorite{favoriteCount > 1 ? 's' : ''}
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-yellow-500/10 px-1.5 py-0.5 text-yellow-200">
+                            <Star className="h-2.5 w-2.5" />
+                            {favoriteCount} saved
                           </span>
                         )}
                       </div>
                     )}
 
                     {customCount > 0 && (
-                      <div className="mt-2 space-y-2 rounded-lg border border-slate-700/60 bg-slate-900/50 p-2">
-                        <p className="text-[11px] uppercase tracking-wide text-slate-400">Custom samples</p>
+                      <div className="mt-1.5 space-y-1 rounded-md border border-slate-700/50 bg-slate-900/40 p-1.5">
+                        <p className="text-[9px] uppercase tracking-wide text-slate-400">Custom samples</p>
                         {customSamples.map(sample => (
                           <div
                             key={sample.id}
-                            className="flex flex-col gap-2 rounded-md border border-slate-700 bg-slate-800/60 p-2 sm:flex-row sm:items-center sm:justify-between"
+                            className="flex items-center justify-between gap-1.5 rounded-md border border-slate-700 bg-slate-800/50 p-1.5"
                           >
-                            <div>
-                              <p className="text-xs font-medium text-slate-200">{sample.title}</p>
-                              <p className="text-[10px] text-slate-500">{new Date(sample.createdAt).toLocaleString()}</p>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-medium text-slate-200 truncate">{sample.title}</p>
+                              <p className="text-[9px] text-slate-500">{new Date(sample.createdAt).toLocaleDateString()}</p>
                             </div>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleUseCustomSample(type, sample.id)}
-                                className="inline-flex items-center gap-1 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-200 transition-colors hover:border-purple-400 hover:text-purple-200"
+                                className="inline-flex items-center gap-0.5 rounded-md border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-[9px] font-medium text-slate-200 transition-colors hover:border-purple-400"
+                                title="Use sample"
                               >
-                                <Eye className="h-3 w-3" />
-                                Use
+                                <Eye className="h-2.5 w-2.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleMarkSampleFavorite(type, sample.id)}
-                                className="inline-flex items-center gap-1 rounded-md border border-yellow-400/40 bg-yellow-500/10 px-2 py-1 text-[11px] font-medium text-yellow-200 transition-colors hover:bg-yellow-500/20"
+                                className="inline-flex items-center gap-0.5 rounded-md border border-yellow-400/30 bg-yellow-500/10 px-1.5 py-0.5 text-[9px] font-medium text-yellow-200 transition-colors hover:bg-yellow-500/20"
+                                title="Mark as favorite"
                               >
-                                <Star className="h-3 w-3" />
-                                Favorite
+                                <Star className="h-2.5 w-2.5" />
                               </button>
                             </div>
                           </div>
@@ -1336,19 +1828,19 @@ Only include definitions that are explicitly stated or clearly implied in the do
               })}
             </div>
             {!currentFile && (
-              <p className="text-slate-500 text-xs italic mt-2">
+              <p className="text-slate-500 text-[10px] italic mt-1.5">
                 Upload a document to generate preparation materials
               </p>
             )}
 
-            <div className="mt-4 space-y-3">
+            <div className="mt-3 space-y-2">
               <button
                 type="button"
                 onClick={() => setShowFavoritesPanel(prev => !prev)}
-                className="flex w-full items-center justify-between rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-3 py-2 text-xs font-medium text-yellow-200 transition-colors hover:bg-yellow-500/20"
+                className="flex w-full items-center justify-between rounded-md border border-yellow-400/30 bg-yellow-500/10 px-2.5 py-1.5 text-[10px] font-medium text-yellow-200 transition-colors hover:bg-yellow-500/20"
               >
-                <span className="flex items-center gap-2">
-                  <Star className="h-4 w-4" />
+                <span className="flex items-center gap-1.5">
+                  <Star className="h-3.5 w-3.5" />
                   {showFavoritesPanel ? 'Hide favorites' : 'Show favorites'}
                 </span>
                 <span className="text-[11px] text-yellow-100">{favoritePreparationMaterials.length} saved</span>
@@ -1405,7 +1897,7 @@ Only include definitions that are explicitly stated or clearly implied in the do
 
           {/* Chat with Document Button */}
           {currentFile && documentContent && (
-            <div className="p-4 border-t border-slate-800">
+            <div className="p-4 border-t border-slate-800 space-y-3">
               <button
                 onClick={() => setShowDocumentChat(true)}
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium shadow-lg hover:scale-105"
@@ -1413,8 +1905,66 @@ Only include definitions that are explicitly stated or clearly implied in the do
                 <MessageSquare className="h-4 w-4" />
                 Chat with Document
               </button>
-              <p className="text-slate-400 text-xs italic mt-2 text-center">
-                Ask questions about your document
+              
+              {/* Generate Simulations Button */}
+              <button
+                onClick={() => {
+                  const currentDoc = uploadedFiles.find(doc => doc.name === currentFile.name);
+                  if (currentDoc) {
+                    setSelectedDocumentForSimulation(currentDoc);
+                    setShowSimulationGenerator(true);
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium shadow-lg hover:scale-105"
+              >
+                <Calculator className="h-4 w-4" />
+                Generate Simulations
+              </button>
+
+              {/* Simulation Idea Input */}
+              <div className="bg-slate-800/40 border border-slate-700 rounded-lg p-3">
+                <label className="block text-slate-300 text-xs font-medium mb-2 flex items-center gap-1.5">
+                  <Lightbulb className="h-3.5 w-3.5 text-yellow-400" />
+                  Have a simulation idea?
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Describe your simulation idea..."
+                    className="flex-1 bg-slate-900/50 border border-slate-600 rounded-md px-3 py-2 text-slate-200 text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                        // Handle simulation idea submission
+                        const idea = e.currentTarget.value.trim();
+                        console.log('Simulation idea:', idea);
+                        // You can add your custom logic here
+                        e.currentTarget.value = '';
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={(e) => {
+                      const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                      if (input && input.value.trim()) {
+                        const idea = input.value.trim();
+                        console.log('Simulation idea:', idea);
+                        // You can add your custom logic here
+                        input.value = '';
+                      }
+                    }}
+                    className="flex items-center gap-1 bg-purple-600/20 border border-purple-500/40 hover:bg-purple-600/30 text-purple-200 px-3 py-2 rounded-md transition-colors text-xs font-medium"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Submit</span>
+                  </button>
+                </div>
+                <p className="text-slate-500 text-[10px] mt-1.5 italic">
+                  Share your ideas for custom simulations based on this document
+                </p>
+              </div>
+              
+              <p className="text-slate-400 text-xs italic text-center">
+                Ask questions or create interactive simulations
               </p>
             </div>
           )}
@@ -2059,19 +2609,85 @@ Only include definitions that are explicitly stated or clearly implied in the do
                 </button>
 
                 <button
-                  onClick={() => {
-                    // TODO: Implement mind map generation
-                    alert('Creating mind map for: ' + selectedTopics.join(', '));
-                  }}
-                  className="flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-all duration-200 group"
+                  onClick={handleGenerateMindMap}
+                  disabled={isGeneratingMindMap}
+                  className="flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Sparkles className="h-5 w-5 text-orange-400 group-hover:scale-110 transition-transform" />
+                  {isGeneratingMindMap ? (
+                    <Loader2 className="h-5 w-5 text-orange-400 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-5 w-5 text-orange-400 group-hover:scale-110 transition-transform" />
+                  )}
                   <div className="text-left">
                     <div className="text-white font-medium">Mind Map</div>
-                    <div className="text-slate-400 text-sm">Visual connections</div>
+                    <div className="text-slate-400 text-sm">
+                      {isGeneratingMindMap ? 'Generating...' : 'Visual connections'}
+                    </div>
                   </div>
                 </button>
               </div>
+
+              {(showMindMap || isGeneratingMindMap) && (
+                <div className="mt-10 overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/60 shadow-[0_25px_80px_rgba(15,23,42,0.45)]">
+                  <div className="flex items-center justify-between border-b border-slate-700/80 bg-slate-900/80 px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-300">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-lg font-semibold text-white">AI Study Mind Map</div>
+                        <p className="text-sm text-slate-400">
+                          Visualising {selectedTopics.length > 0 ? selectedTopics.join(', ') : 'selected topics'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {mindMapError && (
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-sm text-amber-200">
+                          Showing fallback map: {mindMapError}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          setShowMindMap(false);
+                          setMindMapError(null);
+                        }}
+                        className="rounded-full border border-slate-600/70 p-2 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+                        aria-label="Close mind map"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    {isGeneratingMindMap && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-950/70 backdrop-blur">
+                        <Loader2 className="h-8 w-8 animate-spin text-orange-300" />
+                        <p className="text-sm text-slate-300">Asking the study assistant to draft your map…</p>
+                      </div>
+                    )}
+
+                    {mindMapData && mindMapData.learningObjectives && mindMapData.learningObjectives.length > 0 && (
+                      <div className="flex flex-wrap gap-3 border-b border-slate-800 bg-slate-900/70 px-6 py-4">
+                        {mindMapData.learningObjectives.map((objective, index) => (
+                          <div
+                            key={`objective-${index}`}
+                            className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm text-blue-100"
+                          >
+                            {objective}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="bg-slate-950/40 px-6 py-6">
+                      <DocumentMindMap mindMap={mindMapData} />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Study Materials Display */}
               {showStudyMaterials && studyMaterials && (
@@ -2559,6 +3175,24 @@ Only include definitions that are explicitly stated or clearly implied in the do
                 Save sample
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Simulation Generator Modal */}
+      {showSimulationGenerator && selectedDocumentForSimulation && (
+        <div className="fixed inset-0 z-50 overflow-auto">
+          <div className="min-h-screen">
+            <DynamicSimulationGenerator
+              documentContent={documentContent}
+              documentName={selectedDocumentForSimulation.name}
+              documentId={selectedDocumentForSimulation.id}
+              apiKey={apiKey}
+              onClose={() => {
+                setShowSimulationGenerator(false);
+                setSelectedDocumentForSimulation(null);
+              }}
+            />
           </div>
         </div>
       )}

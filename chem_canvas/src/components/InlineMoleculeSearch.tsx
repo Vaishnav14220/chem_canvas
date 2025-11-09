@@ -109,40 +109,34 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
 
   return (
     <div ref={componentRef} className={`relative ${className}`}>
-      <div className="relative">
+      <div className="flex items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-900/80 px-4 py-2 text-slate-100 shadow-inner transition-all duration-200 focus-within:border-blue-400 focus-within:shadow-lg">
         <input
           type="text"
           value={searchTerm}
           onChange={(e) => handleSearchTermChange(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder="Search molecules..."
-          className="w-80 px-4 py-2 pr-10 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm"
+          className="flex-1 bg-transparent text-sm placeholder-slate-500 focus:outline-none"
         />
-
-        {/* Loading/Search icon */}
-        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-          {isLoading ? (
-            <Loader2 size={16} className="animate-spin text-slate-400" />
-          ) : (
-            <Search size={16} className="text-slate-400" />
-          )}
+        <div className="text-slate-400">
+          {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
         </div>
-
-        {/* Autocomplete Suggestions Dropdown */}
-        {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute top-full left-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto w-80">
-            {suggestions.map((suggestion, index) => (
-              <button
-                key={index}
-                onClick={() => handleSuggestionClick(suggestion)}
-                className="w-full text-left px-3 py-2 hover:bg-slate-600 text-slate-200 border-b border-slate-600 last:border-b-0 transition text-sm"
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* Autocomplete Suggestions Dropdown */}
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute left-0 right-0 z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-600 bg-slate-900/95 shadow-2xl">
+          {suggestions.map((suggestion, index) => (
+            <button
+              key={index}
+              onClick={() => handleSuggestionClick(suggestion)}
+              className="w-full border-b border-slate-700/60 px-4 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-700/60 last:border-b-0"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

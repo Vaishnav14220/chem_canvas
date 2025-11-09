@@ -85,9 +85,9 @@ export default function InlineBicyclicSearch({
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
-      <div className="flex items-center rounded-lg border border-slate-600 bg-slate-800/80 text-slate-200 shadow-lg">
-        <div className="pl-3 pr-2 text-slate-400">
-          {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+      <div className="flex items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-900/80 px-3 py-2 text-slate-100 shadow-inner transition-all duration-200 focus-within:border-cyan-400 focus-within:shadow-lg">
+        <div className="text-slate-400">
+          {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
         </div>
         <input
           type="text"
@@ -100,12 +100,12 @@ export default function InlineBicyclicSearch({
             }
           }}
           placeholder="Bicyclic dataset..."
-          className="w-52 bg-transparent py-1.5 text-sm placeholder-slate-500 focus:outline-none"
+          className="flex-1 bg-transparent text-sm placeholder-slate-500 focus:outline-none"
         />
         <button
           type="button"
           onClick={() => void handleSubmit()}
-          className="flex items-center gap-1 rounded-r-lg bg-slate-700/60 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600/80 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-cyan-500/80 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
           title="Search bicyclic chair conformers"
         >
           <Database size={13} />
@@ -114,7 +114,7 @@ export default function InlineBicyclicSearch({
       </div>
 
       {showResults && (
-        <div className="absolute left-0 z-50 mt-2 w-[22rem] max-h-72 overflow-y-auto rounded-xl border border-slate-600/70 bg-slate-900/95 p-3 shadow-2xl">
+        <div className="absolute left-0 right-0 z-50 mt-2 max-h-72 overflow-y-auto rounded-xl border border-slate-600/70 bg-slate-900/95 p-3 shadow-2xl">
           <div className="mb-2 flex flex-wrap gap-2 text-xs text-slate-400">
             {COMMON_BICYCLIC_QUERIES.map((item) => (
               <button
