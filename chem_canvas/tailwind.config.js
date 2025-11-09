@@ -43,6 +43,16 @@ export default {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      animation: {
+        'spin-slow': 'spin 3s linear infinite',
+        'spin-reverse': 'spin-reverse 3s linear infinite',
+      },
+      keyframes: {
+        'spin-reverse': {
+          from: { transform: 'rotate(360deg)' },
+          to: { transform: 'rotate(0deg)' },
+        },
+      },
     },
   },
   plugins: [],

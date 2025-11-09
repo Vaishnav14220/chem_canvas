@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import { apiKeyRotation, executeWithRotation } from '../services/apiKeyRotation';
+import { RandomDocumentLoader } from './LoadingAnimations';
 
 // React PDF Viewer imports
 import { Viewer, Worker } from '@react-pdf-viewer/core';
@@ -2028,15 +2029,20 @@ Only include definitions that are explicitly stated or clearly implied in the do
                   />
 
                   {isProcessing ? (
-                    <div className="space-y-4">
-                      <Loader2 className="h-12 w-12 text-blue-400 animate-spin mx-auto" />
+                    <div className="space-y-6">
+                      {/* Custom Loading Animation */}
+                      <RandomDocumentLoader className="my-4" />
                       <div>
                         <p className="text-white font-medium">
                           Processing: {currentFile?.name}
                         </p>
-                        <p className="text-slate-400 text-sm mt-1">
+                        <p className="text-cyan-400 text-sm mt-1 animate-pulse">
                           {processingStatus}
                         </p>
+                        <div className="mt-4 flex items-center justify-center gap-2 text-slate-400 text-xs">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>Using Gemini AI...</span>
+                        </div>
                       </div>
                     </div>
                   ) : (
