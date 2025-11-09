@@ -529,176 +529,59 @@ Here is the learner's question: ${message}`;
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground dark">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 max-w-screen-2xl items-center px-6">
-          {/* Logo and Brand */}
-          <div className="mr-8 flex items-center space-x-4">
-            <div className="flex items-center space-x-3">
-              <div className="flex flex-col">
-                <span className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Studium
-                </span>
-                <span className="text-xs text-muted-foreground">Chemistry Workspace</span>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-foreground dark">
+      {/* Enhanced Header */}
+      <header className="sticky top-0 z-50 w-full border-b border-slate-800/50 bg-slate-950/80 backdrop-blur-xl supports-[backdrop-filter]:bg-slate-950/60 shadow-lg shadow-black/20">
+        {/* Top Bar */}
+        <div className="container max-w-screen-2xl px-6">
+          <div className="flex h-14 items-center justify-between">
+            {/* Logo and Brand */}
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 shadow-lg shadow-blue-500/30">
+                  <Atom className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-base font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent tracking-tight">
+                    Studium Chemistry
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">AI-Powered Lab Workspace</span>
+                </div>
+              </div>
+
+              {/* AI Status Badge */}
+              <div className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 backdrop-blur-sm">
+                <div className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-400">AI Active</span>
+                <div className="h-3 w-px bg-emerald-500/30"></div>
+                <span className="text-[10px] text-slate-400">Gemini 2.0</span>
               </div>
             </div>
 
-            {/* AI Status Badge */}
-            <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">AI Connected</span>
-              <span className="text-xs text-muted-foreground">Gemini 2.0</span>
+            {/* Center - Quick Actions */}
+            <div className="flex flex-1 items-center justify-center px-6">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setCommandPaletteOpen(true)}
+                  className="group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all bg-slate-800/80 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 hover:shadow-lg hover:shadow-blue-500/10 text-slate-300 hover:text-white"
+                >
+                  <Search className="h-4 w-4 group-hover:text-blue-400 transition-colors" />
+                  <span className="hidden sm:inline">Quick Search</span>
+                  <kbd className="hidden md:inline-flex h-5 select-none items-center gap-1 rounded border border-slate-700 bg-slate-900 px-1.5 font-mono text-[10px] font-medium text-slate-400">
+                    ⌘K
+                  </kbd>
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Main Navigation */}
-          <div className="flex flex-1 items-center justify-between">
-            {/* Primary Actions */}
+            {/* Right - Actions & User */}
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setCommandPaletteOpen(true)}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-              >
-                <Search className="mr-2 h-4 w-4" />
-                Search
-                <kbd className="pointer-events-none ml-2 inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium opacity-100">
-                  <span className="text-xs">⌘K</span>
-                </kbd>
-              </button>
-
-              <div className="hidden md:flex items-center space-x-1">
-                <button
-                  onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md h-9 px-3"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  {documentViewerOpen ? 'Hide Sources' : 'Sources'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowStudyToolsWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-purple-600 text-white hover:bg-purple-700 hover:shadow-md h-9 px-3"
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Study Tools
-                </button>
-              </div>
-            </div>
-
-            {/* Flipping Info Display */}
-            <div className="hidden lg:flex items-center">
-              <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
-            </div>
-
-            {/* Secondary Actions & User */}
-            <div className="flex items-center space-x-2">
-              {/* Tool Buttons - Collapsed on mobile */}
-              <div className="hidden lg:flex items-center space-x-1">
-                <button
-                  onClick={() => setIsMolecularMode(!isMolecularMode)}
-                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-9 px-3 ${
-                    isMolecularMode
-                      ? 'border border-input bg-background hover:bg-accent hover:text-accent-foreground'
-                      : 'bg-orange-600 text-white hover:bg-orange-700'
-                  } hover:shadow-md`}
-                >
-                  {isMolecularMode ? <Beaker className="mr-2 h-4 w-4" /> : <FlaskConical className="mr-2 h-4 w-4" />}
-                  {isMolecularMode ? 'Simple' : 'Canvas'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowSrlCoachWorkspace(true);
-                    setShowStudyToolsWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <Target className="mr-2 h-4 w-4" />
-                  SRL
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowStudyToolsWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <BookOpen className="mr-2 h-4 w-4" />
-                  Study Tools
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowNmrFullscreen(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowChatPanel(false);
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <LineChart className="mr-2 h-4 w-4" />
-                  NMR
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowDocumentUnderstandingWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  Doc Understanding
-                </button>
-              </div>
-
-              {/* Mobile Menu Button */}
-              <div className="lg:hidden">
-                <button
-                  onClick={() => setShowMobileMenu(!showMobileMenu)}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 w-9"
-                >
-                  <Menu className="h-4 w-4" />
-                </button>
+              {/* Flipping Info */}
+              <div className="hidden 2xl:flex items-center">
+                <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
               </div>
 
               {/* Session Status */}
@@ -706,9 +589,9 @@ Here is the learner's question: ${message}`;
                 const sessionStatus = getSessionStatus();
                 if (sessionStatus.isValid && sessionStatus.remainingHours) {
                   return (
-                    <div className="hidden sm:flex items-center px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                      <Clock className="mr-1.5 h-3 w-3 text-amber-600" />
-                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                    <div className="hidden md:flex items-center px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 backdrop-blur-sm">
+                      <Clock className="mr-1.5 h-3 w-3 text-amber-400" />
+                      <span className="text-xs font-semibold text-amber-400">
                         {sessionStatus.remainingHours}h
                       </span>
                       {sessionStatus.remainingHours < 24 && (
@@ -719,7 +602,7 @@ Here is the learner's question: ${message}`;
                               window.location.reload();
                             }
                           }}
-                          className="ml-2 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                          className="ml-2 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
                         >
                           Extend
                         </button>
@@ -730,11 +613,11 @@ Here is the learner's question: ${message}`;
                 return null;
               })()}
 
-              {/* User Menu */}
-              <div className="flex items-center space-x-2">
+              {/* User Controls */}
+              <div className="flex items-center space-x-1">
                 <button
                   onClick={() => setShowProfileUpdate(true)}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 w-9"
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-medium transition-all bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 text-slate-400 hover:text-white hover:shadow-lg"
                   title="Update Profile"
                 >
                   <User className="h-4 w-4" />
@@ -742,29 +625,159 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => setShowSettings(!showSettings)}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 w-9"
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-medium transition-all bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 text-slate-400 hover:text-white hover:shadow-lg"
+                  title="Settings"
                 >
                   <Settings className="h-4 w-4" />
                 </button>
 
-                <button
-                  onClick={handleLogout}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-red-600 text-white hover:bg-red-700 hover:shadow-md h-9 px-3"
-                  title={`Logged in as ${user?.username || user?.displayName}`}
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span className="hidden sm:inline">{user?.username || user?.displayName}</span>
-                </button>
+                {/* Mobile Menu Button */}
+                <div className="lg:hidden">
+                  <button
+                    onClick={() => setShowMobileMenu(!showMobileMenu)}
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-medium transition-all bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 text-slate-400 hover:text-white"
+                  >
+                    <Menu className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Mobile Menu */}
-        <div className="lg:hidden border-t border-border bg-background/95 backdrop-blur">
+          {/* Navigation Tabs - Second Row */}
+          <div className="flex h-12 items-center border-t border-slate-800/50">
+            <nav className="flex items-center space-x-1 overflow-x-auto scrollbar-hide">
+              <button
+                onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  documentViewerOpen
+                    ? 'bg-blue-600/20 border border-blue-500/50 text-blue-300 shadow-lg shadow-blue-500/20'
+                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                }`}
+              >
+                <FileText className={`h-4 w-4 ${documentViewerOpen ? 'text-blue-400' : 'group-hover:text-blue-400'}`} />
+                Sources
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowStudyToolsWorkspace(true);
+                  setShowSrlCoachWorkspace(false);
+                  setShowChatPanel(false);
+                  setShowNmrFullscreen(false);
+                  setShowRdkitWorkspace(false);
+                  setIsNmrAssistantActive(false);
+                  setShowNmrAssistant(false);
+                  setIsRdkitAssistantActive(false);
+                  setShowRdkitAssistant(false);
+                  setRdkitStatus('idle');
+                }}
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  showStudyToolsWorkspace
+                    ? 'bg-purple-600/20 border border-purple-500/50 text-purple-300 shadow-lg shadow-purple-500/20'
+                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className={`h-4 w-4 ${showStudyToolsWorkspace ? 'text-purple-400' : 'group-hover:text-purple-400'}`} />
+                Study Tools
+              </button>
+
+              <button
+                onClick={() => setIsMolecularMode(!isMolecularMode)}
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  isMolecularMode
+                    ? 'bg-orange-600/20 border border-orange-500/50 text-orange-300 shadow-lg shadow-orange-500/20'
+                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                }`}
+              >
+                {isMolecularMode ? (
+                  <>
+                    <Beaker className="h-4 w-4 text-orange-400" />
+                    Simple Mode
+                  </>
+                ) : (
+                  <>
+                    <FlaskConical className="h-4 w-4 group-hover:text-orange-400" />
+                    Canvas
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowSrlCoachWorkspace(true);
+                  setShowStudyToolsWorkspace(false);
+                  setShowChatPanel(false);
+                  setShowNmrFullscreen(false);
+                  setShowRdkitWorkspace(false);
+                  setIsNmrAssistantActive(false);
+                  setShowNmrAssistant(false);
+                  setIsRdkitAssistantActive(false);
+                  setShowRdkitAssistant(false);
+                  setRdkitStatus('idle');
+                }}
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  showSrlCoachWorkspace
+                    ? 'bg-green-600/20 border border-green-500/50 text-green-300 shadow-lg shadow-green-500/20'
+                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                }`}
+              >
+                <Target className={`h-4 w-4 ${showSrlCoachWorkspace ? 'text-green-400' : 'group-hover:text-green-400'}`} />
+                SRL Coach
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowNmrFullscreen(true);
+                  setShowSrlCoachWorkspace(false);
+                  setShowStudyToolsWorkspace(false);
+                  setIsNmrAssistantActive(false);
+                  setShowChatPanel(false);
+                }}
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  showNmrFullscreen
+                    ? 'bg-cyan-600/20 border border-cyan-500/50 text-cyan-300 shadow-lg shadow-cyan-500/20'
+                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                }`}
+              >
+                <LineChart className={`h-4 w-4 ${showNmrFullscreen ? 'text-cyan-400' : 'group-hover:text-cyan-400'}`} />
+                NMR Analysis
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowDocumentUnderstandingWorkspace(true);
+                  setShowSrlCoachWorkspace(false);
+                  setShowStudyToolsWorkspace(false);
+                  setShowNmrFullscreen(false);
+                  setShowChemistryPanel(false);
+                  setShowChatPanel(false);
+                  setIsNmrAssistantActive(false);
+                  setShowNmrAssistant(false);
+                  setIsRdkitAssistantActive(false);
+                  setShowRdkitAssistant(false);
+                  setRdkitStatus('idle');
+                }}
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  showDocumentUnderstandingWorkspace
+                    ? 'bg-pink-600/20 border border-pink-500/50 text-pink-300 shadow-lg shadow-pink-500/20'
+                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                }`}
+              >
+                <BookOpen className={`h-4 w-4 ${showDocumentUnderstandingWorkspace ? 'text-pink-400' : 'group-hover:text-pink-400'}`} />
+                Doc Analysis
+              </button>
+            </nav>
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile Menu */}
+      {showMobileMenu && (
+        <div className="lg:hidden border-t border-slate-800/50 bg-slate-950/95 backdrop-blur-xl">
           <div className="container py-4 px-6">
             <div className="grid grid-cols-2 gap-2">
-                <button
+              <button
                   onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
                   className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
                 >
@@ -865,15 +878,15 @@ Here is the learner's question: ${message}`;
                     setIsNmrAssistantActive(false);
                     setShowChatPanel(false);
                   }}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white"
                 >
                   <LineChart className="h-4 w-4" />
-                  <span className="text-sm">NMR Viewer</span>
+                  <span className="text-sm">NMR Analysis</span>
                 </button>
-              </div>
             </div>
           </div>
-      </header>
+        </div>
+      )}
 
       {/* Command Palette */}
       <CommandPalette
