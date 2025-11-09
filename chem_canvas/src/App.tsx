@@ -23,7 +23,6 @@ import ArMobileView from './components/ArMobileView';
 import SrlCoachWorkspace from './components/SrlCoachWorkspace';
 import StudyToolsWorkspace from './components/StudyToolsWorkspace';
 import AdaptivePlan from './components/AdaptivePlan';
-import FlippingInfo from './components/FlippingInfo';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWorkspace';
 import type { AIInteraction, InteractionMode } from './types';
@@ -538,50 +537,64 @@ Here is the learner's question: ${message}`;
             {/* Logo and Brand */}
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 shadow-lg shadow-blue-500/30">
-                  <Atom className="h-5 w-5 text-white" />
+                <div className="relative rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 p-[2px] shadow-xl shadow-blue-500/20">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950">
+                    <Atom className="h-5 w-5 text-blue-200" />
+                  </div>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-base font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent tracking-tight">
+                  <span className="text-lg font-semibold tracking-tight text-slate-100">
                     Studium Chemistry
                   </span>
-                  <span className="text-[10px] text-slate-500 font-medium">AI-Powered Lab Workspace</span>
+                  <span className="text-[11px] uppercase tracking-[0.3em] text-slate-500">AI Workspace</span>
                 </div>
               </div>
 
               {/* AI Status Badge */}
-              <div className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 backdrop-blur-sm">
-                <div className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              <div className="hidden xl:flex items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-1.5 text-emerald-300 shadow-sm shadow-emerald-500/20">
+                <div className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/60"></span>
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
                 </div>
-                <span className="text-[11px] font-semibold text-emerald-400">AI Active</span>
+                <span className="text-[11px] font-semibold tracking-wide">AI Active</span>
                 <div className="h-3 w-px bg-emerald-500/30"></div>
-                <span className="text-[10px] text-slate-400">Gemini 2.0</span>
+                <span className="text-[10px] text-emerald-200/80">Gemini&nbsp;2.0</span>
               </div>
             </div>
 
             {/* Center - Quick Actions */}
             <div className="flex flex-1 items-center justify-center px-6">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setCommandPaletteOpen(true)}
-                  className="group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all bg-slate-800/80 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 hover:shadow-lg hover:shadow-blue-500/10 text-slate-300 hover:text-white"
-                >
-                  <Search className="h-4 w-4 group-hover:text-blue-400 transition-colors" />
-                  <span className="hidden sm:inline">Quick Search</span>
-                  <kbd className="hidden md:inline-flex h-5 select-none items-center gap-1 rounded border border-slate-700 bg-slate-900 px-1.5 font-mono text-[10px] font-medium text-slate-400">
-                    ⌘K
-                  </kbd>
-                </button>
-              </div>
+              <button
+                onClick={() => setCommandPaletteOpen(true)}
+                className="group inline-flex items-center gap-3 rounded-full border border-slate-700/60 bg-slate-900/70 px-5 py-2 text-sm font-medium text-slate-300 shadow-sm shadow-blue-500/10 transition-all hover:border-blue-500/50 hover:text-white hover:shadow-blue-500/30 hover:bg-slate-900"
+              >
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500/10 text-blue-300 transition-colors group-hover:text-blue-200">
+                  <Search className="h-3.5 w-3.5" />
+                </div>
+                <span className="hidden sm:inline tracking-wide">Quick Search</span>
+                <kbd className="hidden md:inline-flex h-6 select-none items-center gap-1 rounded-full border border-slate-700/70 bg-slate-950 px-2 font-mono text-[11px] font-medium text-slate-400 group-hover:border-blue-500/40 group-hover:text-blue-200">
+                  ⌘K
+                </kbd>
+              </button>
             </div>
 
             {/* Right - Actions & User */}
-            <div className="flex items-center space-x-2">
-              {/* Flipping Info */}
-              <div className="hidden 2xl:flex items-center">
-                <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
+            <div className="flex items-center space-x-3">
+              <div className="hidden xl:flex items-center">
+                <div className="relative rounded-2xl bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-[1px] shadow-lg shadow-purple-500/20">
+                  <div className="flex items-center gap-3 rounded-2xl bg-slate-950/80 px-4 py-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/30 via-purple-500/30 to-pink-500/30 text-blue-200">
+                      <User className="h-4 w-4" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Welcome</span>
+                      <span className="text-sm font-semibold text-slate-100">{user?.displayName || user?.username || 'Chemist'}</span>
+                      <div className="mt-2 h-1.5 w-32 rounded-full bg-slate-800">
+                        <div className="h-full w-3/5 rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Session Status */}
@@ -589,11 +602,14 @@ Here is the learner's question: ${message}`;
                 const sessionStatus = getSessionStatus();
                 if (sessionStatus.isValid && sessionStatus.remainingHours) {
                   return (
-                    <div className="hidden md:flex items-center px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 backdrop-blur-sm">
-                      <Clock className="mr-1.5 h-3 w-3 text-amber-400" />
-                      <span className="text-xs font-semibold text-amber-400">
-                        {sessionStatus.remainingHours}h
-                      </span>
+                    <div className="hidden md:flex items-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-300 shadow-sm shadow-amber-500/20">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/15">
+                        <Clock className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="flex flex-col leading-tight">
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-amber-400/80">Session</span>
+                        <span className="text-sm font-semibold text-amber-200">{sessionStatus.remainingHours}h</span>
+                      </div>
                       {sessionStatus.remainingHours < 24 && (
                         <button
                           onClick={() => {
@@ -602,7 +618,7 @@ Here is the learner's question: ${message}`;
                               window.location.reload();
                             }
                           }}
-                          className="ml-2 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                          className="ml-2 text-xs font-semibold text-blue-300 transition-colors hover:text-blue-200"
                         >
                           Extend
                         </button>
@@ -614,10 +630,10 @@ Here is the learner's question: ${message}`;
               })()}
 
               {/* User Controls */}
-              <div className="flex items-center space-x-1">
+              <div className="flex items-center space-x-1.5">
                 <button
                   onClick={() => setShowProfileUpdate(true)}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-medium transition-all bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 text-slate-400 hover:text-white hover:shadow-lg"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700/60 bg-slate-900/70 text-slate-400 transition-all hover:border-blue-500/40 hover:bg-slate-900 hover:text-white hover:shadow-lg hover:shadow-blue-500/20"
                   title="Update Profile"
                 >
                   <User className="h-4 w-4" />
@@ -625,7 +641,7 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => setShowSettings(!showSettings)}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-medium transition-all bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 text-slate-400 hover:text-white hover:shadow-lg"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700/60 bg-slate-900/70 text-slate-400 transition-all hover:border-purple-500/40 hover:bg-slate-900 hover:text-white hover:shadow-lg hover:shadow-purple-500/20"
                   title="Settings"
                 >
                   <Settings className="h-4 w-4" />
@@ -635,7 +651,7 @@ Here is the learner's question: ${message}`;
                 <div className="lg:hidden">
                   <button
                     onClick={() => setShowMobileMenu(!showMobileMenu)}
-                    className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-medium transition-all bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 text-slate-400 hover:text-white"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700/60 bg-slate-900/70 text-slate-400 transition-all hover:border-blue-500/40 hover:bg-slate-900 hover:text-white"
                   >
                     <Menu className="h-4 w-4" />
                   </button>
@@ -645,17 +661,17 @@ Here is the learner's question: ${message}`;
           </div>
 
           {/* Navigation Tabs - Second Row */}
-          <div className="flex h-12 items-center border-t border-slate-800/50">
+          <div className="flex h-12 items-center border-t border-slate-800/40 bg-slate-950/70">
             <nav className="flex items-center space-x-1 overflow-x-auto scrollbar-hide">
               <button
                 onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
-                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                   documentViewerOpen
-                    ? 'bg-blue-600/20 border border-blue-500/50 text-blue-300 shadow-lg shadow-blue-500/20'
-                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                    ? 'border border-blue-500/60 bg-blue-500/15 text-blue-200 shadow-[0_0_20px] shadow-blue-500/30'
+                    : 'bg-transparent hover:bg-slate-900/50 border border-transparent hover:border-slate-700/60 text-slate-400 hover:text-slate-100'
                 }`}
               >
-                <FileText className={`h-4 w-4 ${documentViewerOpen ? 'text-blue-400' : 'group-hover:text-blue-400'}`} />
+                <FileText className={`h-4 w-4 ${documentViewerOpen ? 'text-blue-300' : 'group-hover:text-blue-200'}`} />
                 Sources
               </button>
 
@@ -672,32 +688,32 @@ Here is the learner's question: ${message}`;
                   setShowRdkitAssistant(false);
                   setRdkitStatus('idle');
                 }}
-                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                   showStudyToolsWorkspace
-                    ? 'bg-purple-600/20 border border-purple-500/50 text-purple-300 shadow-lg shadow-purple-500/20'
-                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                    ? 'border border-purple-500/60 bg-purple-500/15 text-purple-200 shadow-[0_0_20px] shadow-purple-500/30'
+                    : 'bg-transparent hover:bg-slate-900/50 border border-transparent hover:border-slate-700/60 text-slate-400 hover:text-slate-100'
                 }`}
               >
-                <Sparkles className={`h-4 w-4 ${showStudyToolsWorkspace ? 'text-purple-400' : 'group-hover:text-purple-400'}`} />
+                <Sparkles className={`h-4 w-4 ${showStudyToolsWorkspace ? 'text-purple-300' : 'group-hover:text-purple-200'}`} />
                 Study Tools
               </button>
 
               <button
                 onClick={() => setIsMolecularMode(!isMolecularMode)}
-                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                   isMolecularMode
-                    ? 'bg-orange-600/20 border border-orange-500/50 text-orange-300 shadow-lg shadow-orange-500/20'
-                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                    ? 'border border-orange-500/60 bg-orange-500/15 text-orange-200 shadow-[0_0_20px] shadow-orange-500/30'
+                    : 'bg-transparent hover:bg-slate-900/50 border border-transparent hover:border-slate-700/60 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 {isMolecularMode ? (
                   <>
-                    <Beaker className="h-4 w-4 text-orange-400" />
+                    <Beaker className="h-4 w-4 text-orange-300" />
                     Simple Mode
                   </>
                 ) : (
                   <>
-                    <FlaskConical className="h-4 w-4 group-hover:text-orange-400" />
+                    <FlaskConical className="h-4 w-4 group-hover:text-orange-200" />
                     Canvas
                   </>
                 )}
@@ -716,13 +732,13 @@ Here is the learner's question: ${message}`;
                   setShowRdkitAssistant(false);
                   setRdkitStatus('idle');
                 }}
-                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                   showSrlCoachWorkspace
-                    ? 'bg-green-600/20 border border-green-500/50 text-green-300 shadow-lg shadow-green-500/20'
-                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                    ? 'border border-emerald-500/60 bg-emerald-500/15 text-emerald-200 shadow-[0_0_20px] shadow-emerald-500/30'
+                    : 'bg-transparent hover:bg-slate-900/50 border border-transparent hover:border-slate-700/60 text-slate-400 hover:text-slate-100'
                 }`}
               >
-                <Target className={`h-4 w-4 ${showSrlCoachWorkspace ? 'text-green-400' : 'group-hover:text-green-400'}`} />
+                <Target className={`h-4 w-4 ${showSrlCoachWorkspace ? 'text-emerald-300' : 'group-hover:text-emerald-200'}`} />
                 SRL Coach
               </button>
 
@@ -734,13 +750,13 @@ Here is the learner's question: ${message}`;
                   setIsNmrAssistantActive(false);
                   setShowChatPanel(false);
                 }}
-                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                   showNmrFullscreen
-                    ? 'bg-cyan-600/20 border border-cyan-500/50 text-cyan-300 shadow-lg shadow-cyan-500/20'
-                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                    ? 'border border-cyan-500/60 bg-cyan-500/15 text-cyan-200 shadow-[0_0_20px] shadow-cyan-500/30'
+                    : 'bg-transparent hover:bg-slate-900/50 border border-transparent hover:border-slate-700/60 text-slate-400 hover:text-slate-100'
                 }`}
               >
-                <LineChart className={`h-4 w-4 ${showNmrFullscreen ? 'text-cyan-400' : 'group-hover:text-cyan-400'}`} />
+                <LineChart className={`h-4 w-4 ${showNmrFullscreen ? 'text-cyan-300' : 'group-hover:text-cyan-200'}`} />
                 NMR Analysis
               </button>
 
@@ -758,13 +774,13 @@ Here is the learner's question: ${message}`;
                   setShowRdkitAssistant(false);
                   setRdkitStatus('idle');
                 }}
-                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                className={`group inline-flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                   showDocumentUnderstandingWorkspace
-                    ? 'bg-pink-600/20 border border-pink-500/50 text-pink-300 shadow-lg shadow-pink-500/20'
-                    : 'bg-transparent hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 text-slate-400 hover:text-white'
+                    ? 'border border-pink-500/60 bg-pink-500/15 text-pink-200 shadow-[0_0_20px] shadow-pink-500/30'
+                    : 'bg-transparent hover:bg-slate-900/50 border border-transparent hover:border-slate-700/60 text-slate-400 hover:text-slate-100'
                 }`}
               >
-                <BookOpen className={`h-4 w-4 ${showDocumentUnderstandingWorkspace ? 'text-pink-400' : 'group-hover:text-pink-400'}`} />
+                <BookOpen className={`h-4 w-4 ${showDocumentUnderstandingWorkspace ? 'text-pink-300' : 'group-hover:text-pink-200'}`} />
                 Doc Analysis
               </button>
             </nav>
