@@ -26,6 +26,7 @@ import AdaptivePlan from './components/AdaptivePlan';
 import FlippingInfo from './components/FlippingInfo';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWorkspace';
+import SubjectExplorer from './components/SubjectExplorer';
 import type { AIInteraction, InteractionMode } from './types';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
@@ -116,6 +117,7 @@ const App: React.FC = () => {
   const [showStudyToolsWorkspace, setShowStudyToolsWorkspace] = useState(false);
   const [showAdaptivePlan, setShowAdaptivePlan] = useState(false);
   const [showDocumentUnderstandingWorkspace, setShowDocumentUnderstandingWorkspace] = useState(false);
+  const [showSubjectExplorer, setShowSubjectExplorer] = useState(false);
   
   // Resize states
   const [isResizing, setIsResizing] = useState<'sources' | 'chat' | null>(null);
@@ -689,6 +691,27 @@ Here is the learner's question: ${message}`;
                   <FileText className="mr-2 h-4 w-4" />
                   Doc Understanding
                 </button>
+
+                <button
+                  onClick={() => {
+                    setShowSubjectExplorer(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                  }}
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white hover:shadow-md h-9 px-3"
+                >
+                  <Target className="mr-2 h-4 w-4" />
+                  Subject Explorer
+                </button>
               </div>
 
               {/* Mobile Menu Button */}
@@ -859,6 +882,27 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
+                    setShowSubjectExplorer(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                  }}
+                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border-2 border-purple-500 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-500 hover:to-blue-500"
+                >
+                  <Target className="h-4 w-4" />
+                  <span className="text-sm font-semibold">Subject Explorer</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setShowNmrFullscreen(true);
                     setShowSrlCoachWorkspace(false);
                     setShowStudyToolsWorkspace(false);
@@ -938,6 +982,13 @@ Here is the learner's question: ${message}`;
             setShowChatPanel(false);
             setIsNmrAssistantActive(false);
             setShowNmrAssistant(false);
+          }}
+          apiKey={apiKey}
+        />
+      ) : showSubjectExplorer ? (
+        <SubjectExplorer
+          onClose={() => {
+            setShowSubjectExplorer(false);
           }}
           apiKey={apiKey}
         />
