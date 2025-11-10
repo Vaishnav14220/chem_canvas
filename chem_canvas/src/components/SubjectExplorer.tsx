@@ -19,7 +19,6 @@ interface SubjectExplorerProps {
   apiKey: string;
 }
 
-// Agent workflow types
 type WorkflowStage = 'upload' | 'topic_selection' | 'assessment' | 'learning';
 
 interface Topic {
@@ -55,7 +54,6 @@ interface KnowledgeGapReport {
   overall_level: string;
 }
 
-// Interactive Module Types
 interface Flashcard {
   module_type: 'flashcard';
   front: string;
@@ -91,6 +89,165 @@ interface MatchPairs {
 
 type InteractiveModule = Flashcard | MCQMulti | ShortAnswer | FillBlanks | MatchPairs;
 
+interface SectionExample {
+  scenario?: string;
+  connection?: string;
+}
+
+interface SectionDiagram {
+  type: string;
+  description: string;
+  steps: string[];
+  image?: string;
+}
+
+interface LearningSection {
+  id: string;
+  title: string;
+  description: string;
+  icon?: string;
+  diagram?: SectionDiagram;
+  example?: SectionExample;
+  insights: string[];
+}
+
+interface JourneySummary {
+  bullets: string[];
+  takeaway?: string;
+}
+
+interface QuickCheckItem {
+  question: string;
+  options: string[];
+  answerIndex: number;
+}
+
+const sanitizeSnippet = (text: string, maxLength = 160): string => {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/\[[^\]]*\]/g, '')
+    .trim()
+    .slice(0, maxLength);
+};
+
+const shuffleArray = <T,>(items: T[]): T[] => {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
+const extractContentBetweenTags = (source: string, tag: string): string | null => {
+  const regex = new RegExp(`\\[${tag}\\]([\\s\\S]*?)\\[\\/${tag}\\]`, 'i');
+  const match = regex.exec(source);
+  return match ? match[1].trim() : null;
+};
+
+const parseLearningSections = (content: string): {
+  sections: LearningSection[];
+  summary: JourneySummary | null;
+} => {
+  const sections: LearningSection[] = [];
+  const sectionRegex = /\[CONCEPT_CARD\]([\s\S]*?)\[\/CONCEPT_CARD\]([\s\S]*?)(?=\[CONCEPT_CARD\]|\[SUMMARY\]|$)/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = sectionRegex.exec(content)) !== null) {
+    const conceptBlock = match[1] || '';
+    const trailingBlock = match[2] || '';
+
+    const title = conceptBlock.match(/Title:\s*(.+)/i)?.[1]?.trim() || 'Key Concept';
+    const description = conceptBlock.match(/Description:\s*([\s\S]*?)(?:Icon:|$)/i)?.[1]?.trim() || '';
+    const icon = conceptBlock.match(/Icon:\s*(.+)/i)?.[1]?.trim();
+
+    const diagramMatch = /\[DIAGRAM\]([\s\S]*?)\[\/DIAGRAM\]/i.exec(trailingBlock);
+    const diagram: SectionDiagram | undefined = diagramMatch ? (() => {
+      const block = diagramMatch[1];
+      const type = block.match(/Type:\s*(.+)/i)?.[1]?.trim() || 'visual';
+      const diagramDescription = block.match(/Description:\s*([\s\S]*?)(?=Steps:|Image:|$)/i)?.[1]?.trim() || '';
+      const stepsText = block.match(/Steps:\s*([\s\S]*?)(?=Image:|$)/i)?.[1] || '';
+      const steps = stepsText
+        .split(/\n+/)
+        .map(step => step.replace(/^\d+\.\s*/, '').trim())
+        .filter(Boolean);
+      const image = block.match(/Image:\s*(.+)/i)?.[1]?.trim();
+      return { type, description: diagramDescription, steps, image };
+    })() : undefined;
+
+    const exampleMatch = /\[EXAMPLE\]([\s\S]*?)\[\/EXAMPLE\]/i.exec(trailingBlock);
+    const example: SectionExample | undefined = exampleMatch ? (() => {
+      const block = exampleMatch[1];
+      return {
+        scenario: block.match(/Scenario:\s*([\s\S]*?)(?=Connection:|$)/i)?.[1]?.trim(),
+        connection: block.match(/Connection:\s*([\s\S]*?)$/i)?.[1]?.trim(),
+      };
+    })() : undefined;
+
+    const insightRegex = /\[INSIGHT\]([\s\S]*?)\[\/INSIGHT\]/gi;
+    const insights: string[] = [];
+    let insightMatch: RegExpExecArray | null;
+    while ((insightMatch = insightRegex.exec(trailingBlock)) !== null) {
+      const insightText = insightMatch[1]?.trim();
+      if (insightText) {
+        insights.push(insightText);
+      }
+    }
+
+    sections.push({
+      id: `section-${sections.length + 1}`,
+      title,
+      description,
+      icon,
+      diagram,
+      example,
+      insights,
+    });
+  }
+
+  const summaryBlock = extractContentBetweenTags(content, 'SUMMARY');
+  const summary: JourneySummary | null = summaryBlock
+    ? (() => {
+        const lines = summaryBlock.split(/\n+/).map(line => line.trim()).filter(Boolean);
+        const bullets = lines.filter(line => line.startsWith('-')).map(line => line.replace(/^[-*]\s*/, '').trim());
+        const takeaway = lines.find(line => line.toLowerCase().includes('takeaway'));
+        return {
+          bullets: bullets.length > 0 ? bullets : lines,
+          takeaway: takeaway && takeaway.includes(':') ? takeaway.split(':').slice(1).join(':').trim() : undefined,
+        };
+      })()
+    : null;
+
+  return { sections, summary };
+};
+
+const buildQuickChecks = (sections: LearningSection[]): QuickCheckItem[] => {
+  if (!sections.length) {
+    return [];
+  }
+
+  return sections.map((section, index) => {
+    const correct = sanitizeSnippet(section.description);
+    const distractorsPool = sections
+      .filter((_, idx) => idx !== index)
+      .map(other => sanitizeSnippet(other.description))
+      .filter(Boolean);
+
+    while (distractorsPool.length < 2) {
+      distractorsPool.push('Focus on a different concept from the lesson.');
+    }
+
+    const options = shuffleArray([correct, distractorsPool[0], distractorsPool[1]]);
+    const answerIndex = options.findIndex(option => option === correct);
+
+    return {
+      question: `Which statement best describes ${section.title}?`,
+      options,
+      answerIndex: answerIndex >= 0 ? answerIndex : 0,
+    };
+  });
+};
+
 // Helper function to convert ArrayBuffer to base64
 const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   let binary = '';
@@ -108,24 +265,16 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   const [documentName, setDocumentName] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
-  
-  // Agent 1: Librarian state
   const [topics, setTopics] = useState<Topic[]>([]);
   const [academicLevel, setAcademicLevel] = useState<string>('');
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
-  
-  // Agent 2: Assessor state
   const [assessmentType, setAssessmentType] = useState<string | null>(null);
   const [currentModule, setCurrentModule] = useState<InteractiveModule | null>(null);
   const [knowledgeGapReport, setKnowledgeGapReport] = useState<KnowledgeGapReport | null>(null);
-  
-  // Agent 3: Tutor state
   const [learningContent, setLearningContent] = useState<string>('');
   const [tutorModules, setTutorModules] = useState<InteractiveModule[]>([]);
   const [currentTutorModuleIndex, setCurrentTutorModuleIndex] = useState(0);
   const [userProgress, setUserProgress] = useState<Array<{ success: boolean; moduleType: string }>>([]);
-  
-  // User interaction state
   const [userAnswer, setUserAnswer] = useState<any>(null);
   const [showFlashcardBack, setShowFlashcardBack] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
@@ -135,14 +284,10 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   const [feedbackMessage, setFeedbackMessage] = useState<string>('');
   const [showFeedback, setShowFeedback] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  
-  // Hints and attempt tracking
   const [attemptCount, setAttemptCount] = useState(0);
   const [showHint, setShowHint] = useState(false);
   const [currentHint, setCurrentHint] = useState('');
   const [wrongAnswers, setWrongAnswers] = useState<number[]>([]);
-  
-  // Learning preferences tracking
   const [learningPreferences, setLearningPreferences] = useState<LearningPreferences | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<number>(Date.now());
   const [readingStartTime, setReadingStartTime] = useState<number>(0);
@@ -157,14 +302,18 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
     timeSpentReading: 0,
     timeSpentOnExercises: 0,
   });
-  
-  // Interactive learning content state
   const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
   const [interactiveSimulationActive, setInteractiveSimulationActive] = useState(false);
   const [conceptHighlights, setConceptHighlights] = useState<string[]>([]);
   const [userNotes, setUserNotes] = useState<Map<string, string>>(new Map());
+  const [simulationTopic, setSimulationTopic] = useState<string | null>(null);
+  const [learningSections, setLearningSections] = useState<LearningSection[]>([]);
+  const [journeySummary, setJourneySummary] = useState<JourneySummary | null>(null);
+  const [quickChecks, setQuickChecks] = useState<QuickCheckItem[]>([]);
+  const [currentLearningStep, setCurrentLearningStep] = useState<number>(0);
+  const [completedLearningSteps, setCompletedLearningSteps] = useState<Set<number>>(new Set());
+  const [quizResponses, setQuizResponses] = useState<Record<string, number>>({});
 
-  // Load user learning preferences on mount
   useEffect(() => {
     const loadPreferences = async () => {
       const user = auth.currentUser;
@@ -174,15 +323,14 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
         console.log('[SubjectExplorer] Loaded learning preferences:', prefs);
       }
     };
+
     loadPreferences();
   }, []);
 
-  // Monitor API key changes
   useEffect(() => {
     console.log('[SubjectExplorer] API key updated:', apiKey ? `${apiKey.substring(0, 10)}...` : 'none');
   }, [apiKey]);
 
-  // Initialize Gemini with fallback models
   const getGeminiModel = (modelName: string, useApiKey?: string) => {
     const keyToUse = useApiKey || apiKey;
     if (!keyToUse) {
@@ -193,16 +341,15 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   };
 
   const callGeminiWithFallback = async (prompt: string, schema?: any) => {
-    const models = ['gemini-flash-latest']; // Use only flash for speed
-    
+    const models = ['gemini-flash-latest'];
+
     for (const modelName of models) {
       try {
-        // First try with user's API key directly (no rotation)
         if (apiKey) {
           try {
             console.log(`[SubjectExplorer] Attempting with user's API key and model: ${modelName}`);
             const model = getGeminiModel(modelName, apiKey);
-            
+
             if (schema) {
               const result = await model.generateContent({
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -212,12 +359,11 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
                 },
               });
               return JSON.parse(result.response.text());
-            } else {
-              const result = await model.generateContent(prompt);
-              return result.response.text();
             }
+
+            const result = await model.generateContent(prompt);
+            return result.response.text();
           } catch (directError: any) {
-            // If user's key fails (not rate limit), try rotation
             if (directError?.message?.includes('429') || directError?.message?.includes('quota')) {
               console.log(`[SubjectExplorer] User's API key is rate limited for ${modelName}, trying rotation...`);
             } else {
@@ -225,12 +371,11 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
             }
           }
         }
-        
-        // Fall back to API key rotation
+
         console.log(`[SubjectExplorer] Attempting with rotation for model: ${modelName}`);
         return await executeWithRotation(async () => {
           const model = getGeminiModel(modelName);
-          
+
           if (schema) {
             const result = await model.generateContent({
               contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -240,18 +385,164 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
               },
             });
             return JSON.parse(result.response.text());
-          } else {
-            const result = await model.generateContent(prompt);
-            return result.response.text();
           }
+
+          const result = await model.generateContent(prompt);
+          return result.response.text();
         });
       } catch (error) {
         console.error(`[SubjectExplorer] Error with model ${modelName}:`, error);
         if (modelName === models[models.length - 1]) {
           throw error;
         }
-        console.log(`[SubjectExplorer] Falling back to next model...`);
+        console.log('[SubjectExplorer] Falling back to next model...');
       }
+    }
+
+    throw new Error('Failed to generate content with available models.');
+  };
+
+  const markStepComplete = (stepIndex: number) => {
+    setCompletedLearningSteps(prev => {
+      const next = new Set(prev);
+      next.add(stepIndex);
+      return next;
+    });
+
+    if (stepIndex < learningSections.length - 1) {
+      setCurrentLearningStep(stepIndex + 1);
+    }
+  };
+
+  const handleQuickCheckSelection = (stepIndex: number, optionIndex: number) => {
+    setQuizResponses(prev => ({
+      ...prev,
+      [stepIndex.toString()]: optionIndex,
+    }));
+
+    const check = quickChecks[stepIndex];
+    if (check && optionIndex === check.answerIndex) {
+      markStepComplete(stepIndex);
+    }
+  };
+
+  const activeSection = learningSections.length > 0
+    ? learningSections[Math.min(currentLearningStep, learningSections.length - 1)]
+    : undefined;
+  const currentQuickCheck = quickChecks[currentLearningStep];
+  const currentQuickCheckSelection = quizResponses[currentLearningStep.toString()];
+  const allStepsComplete = learningSections.length > 0 && completedLearningSteps.size >= learningSections.length;
+  const learningProgress = learningSections.length > 0
+    ? Math.round((completedLearningSteps.size / learningSections.length) * 100)
+    : 0;
+  
+  // Agent 3: Tutor - Generate adaptive learning path
+  const generateLearningPath = async (gapReport: KnowledgeGapReport) => {
+    setIsProcessing(true);
+    setProcessingMessage('Designing guided learning journey...');
+    setReadingStartTime(Date.now());
+
+    try {
+      const adaptiveGuidelines = learningPreferences
+        ? getAdaptivePrompts(learningPreferences)
+        : {
+            contentLengthGuideline: 'Keep explanations concise (2-3 short paragraphs).',
+            styleGuidelines: '',
+            moduleTypePreference: '',
+          };
+
+      const riskNotice = gapReport.gaps.some(gap => gap.severity === 'high')
+        ? 'IMPORTANT: The learner struggles with this topic. Use plain language, short steps, and reinforce each idea before moving on.'
+        : '';
+
+      const promptLines = [
+        'You are the "Tutor" agent of an adaptive learning system.',
+        `Topic: ${selectedTopic?.name}`,
+        `Academic level: ${academicLevel || 'general learner'}`,
+        `Knowledge gaps: ${JSON.stringify(gapReport.gaps)}`,
+        `Learner strengths: ${JSON.stringify(gapReport.strengths)}`,
+        '',
+        'Document reference (trimmed to stay within limits):',
+        documentContent.substring(0, 4000),
+        '',
+        'Teaching directives:',
+        `- ${adaptiveGuidelines.contentLengthGuideline}`,
+        adaptiveGuidelines.styleGuidelines ? `- ${adaptiveGuidelines.styleGuidelines}` : '',
+        riskNotice ? `- ${riskNotice}` : '',
+        '- Produce between 3 and 5 sections.',
+        '- Each section must focus on one sub-concept and follow this pattern: teach → quick self-check idea → optional experiment or scenario.',
+        '- Use only the tags listed below so the UI can parse the output.',
+        '',
+        '[CONCEPT_CARD]',
+        'Title: <friendly section title>',
+        'Description: <2-3 sentences explaining the concept simply>',
+        'Icon: <single emoji or ASCII icon>',
+        '[/CONCEPT_CARD]',
+        '',
+        '[DIAGRAM]',
+        'Type: <visual | simulation | flowchart | example>',
+        'Description: <guide the learner on what to observe>',
+        'Steps:',
+        '1. <step one>',
+        '2. <step two>',
+        '3. <step three>',
+        'Image: <optional public URL>',
+        '[/DIAGRAM]',
+        '',
+        '[EXAMPLE]',
+        'Scenario: <relatable moment or question>',
+        'Connection: <how it ties back to the concept>',
+        '[/EXAMPLE]',
+        '',
+        '[INSIGHT]',
+        '<one short aha moment or reminder>',
+        '[/INSIGHT]',
+        '',
+        'Repeat the structure for every section.',
+        '',
+        '[SUMMARY]',
+        '- <bullet takeaway>',
+        '- <bullet takeaway>',
+        '- <bullet takeaway>',
+        'Main takeaway: <single sentence call-to-action>',
+        '[/SUMMARY]',
+        '',
+        'Keep tone encouraging and classroom-friendly.',
+      ].filter(Boolean);
+
+      const contentPrompt = promptLines.join('\n');
+      const content = await callGeminiWithFallback(contentPrompt);
+      setLearningContent(content);
+
+      const { sections, summary } = parseLearningSections(content);
+      setLearningSections(sections);
+      setJourneySummary(summary);
+      setQuickChecks(buildQuickChecks(sections));
+      setCurrentLearningStep(0);
+      setCompletedLearningSteps(new Set());
+      setQuizResponses({});
+
+      setCurrentSessionData(prev => ({
+        ...prev,
+        contentLengthProvided: content.split(' ').length,
+      }));
+
+      setProcessingMessage('Creating practice exercise...');
+      if (gapReport.gaps.length > 0) {
+        await generateTutorModule(gapReport.gaps[0]);
+      }
+    } catch (error: any) {
+      console.error('[SubjectExplorer] Error generating learning path:', error);
+
+      if (error?.message?.includes('rate limited') || error?.message?.includes('quota')) {
+        setFeedbackMessage('⚠️ API rate limit reached. Please add your personal Gemini API key in Settings to continue.');
+        setShowApiKeyModal(true);
+      } else {
+        setFeedbackMessage('Failed to generate learning path. Please try again or add your API key in Settings.');
+      }
+      setShowFeedback(true);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -558,118 +849,7 @@ Respond with a structured JSON report.`;
     }
   };
 
-  // Agent 3: Tutor - Generate adaptive learning path
-  const generateLearningPath = async (gapReport: KnowledgeGapReport) => {
-    setIsProcessing(true);
-    setProcessingMessage('Creating personalized learning path...');
-    setReadingStartTime(Date.now()); // Start tracking reading time
-    
-    try {
-      // Get adaptive prompts based on user preferences
-      const adaptiveGuidelines = learningPreferences 
-        ? getAdaptivePrompts(learningPreferences)
-        : {
-            contentLengthGuideline: 'Provide balanced explanations (3-4 paragraphs, around 300 words).',
-            styleGuidelines: '',
-            moduleTypePreference: '',
-          };
-
-      // First, generate INTERACTIVE explanatory content with visual elements
-      const contentPrompt = `You are the "Tutor" agent creating INTERACTIVE learning content. Based on this Knowledge Gap Report, create engaging step-by-step content:
-
-Topic: ${selectedTopic?.name}
-Academic Level: ${academicLevel}
-Knowledge Gaps: ${JSON.stringify(gapReport.gaps)}
-Strengths: ${JSON.stringify(gapReport.strengths)}
-
-Document context:
-${documentContent.substring(0, 4000)}
-
-ADAPTIVE TEACHING GUIDELINES:
-- ${adaptiveGuidelines.contentLengthGuideline}
-${adaptiveGuidelines.styleGuidelines ? `- ${adaptiveGuidelines.styleGuidelines}` : ''}
-
-${learningPreferences?.topicsStruggledWith.includes(selectedTopic?.name || '') 
-  ? '⚠️ IMPORTANT: This student has struggled with this topic before. Break down into smaller steps with clear explanations.'
-  : ''}
-
-INTERACTIVE CONTENT STRUCTURE - Create a GRADUAL learning experience:
-
-# Understanding ${selectedTopic?.name}
-
-[CONCEPT_CARD]
-Title: What is ${selectedTopic?.name}?
-Description: [2-3 sentence simple explanation that anyone can understand]
-Icon: [one emoji representing the concept]
-[/CONCEPT_CARD]
-
-## Step-by-Step Breakdown
-
-[DIAGRAM]
-Type: flowchart
-Description: [Clear description of the process/concept]
-Image: [Optional: Add a public image URL from Wikimedia Commons, educational sites, or diagram repositories that illustrates this concept]
-Steps:
-1. [First step - simple and clear]
-2. [Second step - build on first]
-3. [Third step - continue building]
-4. [Final step - complete understanding]
-[/DIAGRAM]
-
-## See It In Action
-
-[EXAMPLE]
-Scenario: [Real-world relatable scenario that demonstrates this concept]
-Connection: [How this connects to what they just learned]
-[/EXAMPLE]
-
-## Deep Insights
-
-[INSIGHT]
-[One key insight that makes them say "Aha!"]
-[/INSIGHT]
-
-[INSIGHT]
-[A practical tip or common misconception cleared]
-[/INSIGHT]
-
-## Quick Recap
-
-[SUMMARY]
-**What we learned:**
-- [Key point 1]
-- [Key point 2]  
-- [Key point 3]
-- [Why it matters]
-[/SUMMARY]
-
-Make each section build on the previous one. Use simple language. Include specific numbered steps in DIAGRAM sections. If relevant educational images exist online (Wikimedia, educational resources), include their URLs in the Image field.`;
-
-      const content = await callGeminiWithFallback(contentPrompt);
-      setLearningContent(content);
-      
-      // Track content length
-      setCurrentSessionData(prev => ({
-        ...prev,
-        contentLengthProvided: content.split(' ').length,
-      }));
-
-      // Generate an interactive module to test understanding
-      await generateTutorModule(gapReport.gaps[0]);
-    } catch (error: any) {
-      console.error('[SubjectExplorer] Error generating learning path:', error);
-      
-      if (error?.message?.includes('rate limited') || error?.message?.includes('quota')) {
-        setFeedbackMessage('⚠️ API rate limit reached. Please add your personal Gemini API key in Settings to continue.');
-        setShowApiKeyModal(true);
-      } else {
-        setFeedbackMessage('Failed to generate learning path. Please try again or add your API key in Settings.');
-      }
-      setShowFeedback(true);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  
 
   // Agent 3: Tutor - Generate interactive module with AI-driven format selection
   const generateTutorModule = async (gap: KnowledgeGap) => {
@@ -1596,7 +1776,13 @@ Respond with a JSON object:
             )) : <div className="grid grid-cols-3 gap-4">{['Start', 'Process', 'Result'].map((label, idx) => <div key={idx} className="bg-gradient-to-br from-purple-600/20 to-blue-600/20 rounded-lg p-6 text-center border border-purple-500/30 hover:scale-105 transition-transform cursor-pointer"><div className="text-4xl mb-3">{idx === 0 ? '🎯' : idx === 1 ? '⚡' : '✨'}</div><div className="text-purple-300 font-semibold">{label}</div></div>)}</div>}
           </div>
           <div className="mt-6 flex justify-center">
-            <button onClick={() => { setShowSimulation(true); setSimulationTopic(selectedTopic?.name || type); }} className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg text-white font-semibold hover:scale-105 transition-transform shadow-lg hover:shadow-purple-500/50">
+            <button
+              onClick={() => {
+                setSimulationTopic(selectedTopic?.name || type);
+                setInteractiveSimulationActive(true);
+              }}
+              className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg text-white font-semibold hover:scale-105 transition-transform shadow-lg hover:shadow-purple-500/50"
+            >
               <Play className="h-5 w-5 group-hover:animate-pulse" />Launch Interactive Simulation
             </button>
           </div>
@@ -1676,11 +1862,16 @@ Respond with a JSON object:
               // Heading
               const level = para.match(/^#+/)?.[0].length || 1;
               const text = para.replace(/^#+\s*/, '');
-              const HeadingTag = `h${Math.min(level, 6)}` as keyof JSX.IntrinsicElements;
+              const headingLevel = Math.min(level, 6);
+              const HeadingTag = `h${headingLevel}` as keyof JSX.IntrinsicElements;
               const className = level === 1 ? 'text-3xl font-bold text-white mb-4 mt-6' :
                                level === 2 ? 'text-2xl font-bold text-white mb-3 mt-6' :
                                'text-xl font-semibold text-white mb-2 mt-4';
-              return <HeadingTag key={idx} className={className}>{renderInlineWithMath(text)}</HeadingTag>;
+              return React.createElement(
+                HeadingTag,
+                { key: idx, className },
+                renderInlineWithMath(text),
+              );
             } else if (para.trim().startsWith('-') || para.trim().startsWith('*')) {
               // List
               const items = para.split('\n').filter(l => l.trim());
@@ -2097,183 +2288,423 @@ Respond with a JSON object:
                 </div>
               )}
 
-              {/* Interactive Learning Content */}
-              {learningContent && (
+              {/* Guided Learning Journey */}
+              {learningSections.length > 0 ? (
                 <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-8 shadow-2xl">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-white text-2xl font-bold flex items-center gap-3">
-                      <div className="p-2 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg">
-                        <Lightbulb className="h-6 w-6 text-white" />
+                  <div className="flex flex-col gap-6 lg:flex-row">
+                    <aside className="lg:w-72 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-semibold uppercase tracking-wide text-purple-200 flex items-center gap-2">
+                          <Lightbulb className="h-4 w-4" />
+                          Learning Roadmap
+                        </h4>
+                        <span className="text-xs font-medium text-slate-400">{learningProgress}%</span>
                       </div>
-                      Interactive Learning Experience
-                    </h3>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          const highlights = learningContent.match(/\*\*(.*?)\*\*/g)?.map(m => m.replace(/\*\*/g, '')) || [];
-                          setConceptHighlights(highlights);
-                        }}
-                        className="px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/50 rounded-lg text-purple-300 text-sm transition-all flex items-center gap-2"
-                        title="Highlight key concepts"
-                      >
-                        <Zap className="h-4 w-4" />
-                        Highlights
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  <div className="mb-6 bg-slate-700 rounded-full h-2 overflow-hidden">
-                    <div 
-                      className="bg-gradient-to-r from-purple-500 to-blue-500 h-full transition-all duration-500"
-                      style={{ width: `${(expandedSections.size / 5) * 100}%` }}
-                    ></div>
-                  </div>
-                  
-                  {/* Interactive Content Sections */}
-                  <div className="space-y-4">
-                    {renderInteractiveLearningContent(learningContent)}
-                  </div>
-                  
-                  {/* Key Concepts Highlight */}
-                  {conceptHighlights.length > 0 && (
-                    <div className="mt-6 bg-purple-900/20 border border-purple-500/30 rounded-lg p-5">
-                      <h5 className="text-lg font-semibold text-purple-300 mb-3 flex items-center gap-2">
-                        <Zap className="h-5 w-5" />
-                        Key Concepts to Remember
-                      </h5>
-                      <div className="flex flex-wrap gap-2">
-                        {conceptHighlights.map((concept, idx) => (
-                          <span
-                            key={idx}
-                            className="px-3 py-1 bg-purple-600/30 border border-purple-500/50 rounded-full text-purple-200 text-sm"
-                          >
-                            {concept}
-                          </span>
-                        ))}
+                      <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all"
+                          style={{ width: `${learningProgress}%` }}
+                        />
                       </div>
-                    </div>
-                  )}
-                  
-                  {/* Personal Notes Section */}
-                  <div className="mt-6 bg-slate-800/50 border border-slate-600 rounded-lg p-5">
-                    <h5 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-                      📝 My Notes
-                    </h5>
-                    <textarea
-                      placeholder="Write your own notes, questions, or insights here..."
-                      className="w-full bg-slate-700 border border-slate-600 rounded-lg p-4 text-white min-h-[100px] focus:outline-none focus:ring-2 focus:ring-purple-400 placeholder-slate-400"
-                      value={userNotes.get(selectedTopic?.id || '') || ''}
-                      onChange={(e) => {
-                        const newNotes = new Map(userNotes);
-                        newNotes.set(selectedTopic?.id || '', e.target.value);
-                        setUserNotes(newNotes);
-                      }}
-                    />
-                  </div>
-                  
-                  {/* Interactive Actions */}
-                  <div className="mt-6 flex gap-3 flex-wrap">
-                    <button
-                      onClick={() => {
-                        const text = learningContent.replace(/\[.*?\]/g, '').replace(/#/g, '');
-                        const speech = new SpeechSynthesisUtterance(text.substring(0, 500));
-                        window.speechSynthesis.speak(speech);
-                      }}
-                      className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 rounded-lg text-blue-300 transition-all flex items-center gap-2"
-                    >
-                      <span className="text-lg">🔊</span>
-                      Listen to Content
-                    </button>
-                    
-                    <button
-                      onClick={() => {
-                        setInteractiveSimulationActive(!interactiveSimulationActive);
-                      }}
-                      className={`px-4 py-2 border rounded-lg transition-all flex items-center gap-2 ${
-                        interactiveSimulationActive
-                          ? 'bg-green-600/30 border-green-500/50 text-green-300'
-                          : 'bg-slate-700/50 border-slate-600 text-slate-300 hover:border-slate-500'
-                      }`}
-                    >
-                      <span className="text-lg">⚡</span>
-                      {interactiveSimulationActive ? 'Simulation Active' : 'Try Interactive Demo'}
-                    </button>
-                    
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(learningContent);
-                        setFeedbackMessage('✓ Content copied to clipboard!');
-                        setShowFeedback(true);
-                        setTimeout(() => setShowFeedback(false), 2000);
-                      }}
-                      className="px-4 py-2 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 hover:border-slate-500 rounded-lg text-slate-300 transition-all flex items-center gap-2"
-                    >
-                      <span className="text-lg">📋</span>
-                      Copy Content
-                    </button>
-                  </div>
-                  
-                  {/* Interactive Simulation Overlay */}
-                  {interactiveSimulationActive && (
-                    <div className="mt-6 bg-gradient-to-br from-green-900/30 to-blue-900/30 border-2 border-green-500/50 rounded-xl p-6 animate-in">
-                      <div className="flex items-center justify-between mb-4">
-                        <h5 className="text-xl font-bold text-green-300 flex items-center gap-2">
-                          <Zap className="h-6 w-6" />
-                          Interactive Simulation
-                        </h5>
-                        <button
-                          onClick={() => setInteractiveSimulationActive(false)}
-                          className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                        >
-                          <X className="h-5 w-5 text-slate-400" />
-                        </button>
-                      </div>
-                      
-                      <div className="bg-slate-900 rounded-lg p-8 border border-slate-600">
-                        <div className="text-center space-y-4">
-                          <div className="text-6xl mb-4">🧪</div>
-                          <p className="text-white text-lg">Visualize the Concept</p>
-                          <p className="text-slate-400">
-                            {knowledgeGapReport?.gaps[0]?.concept || 'Current Topic'}
-                          </p>
-                          
-                          {/* Simple Interactive Slider Demo */}
-                          <div className="mt-6 space-y-3">
-                            <label className="block text-slate-300 text-sm">Adjust parameters:</label>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              className="w-full"
-                              onChange={(e) => {
-                                // Interactive simulation logic here
-                              }}
-                            />
-                            <div className="grid grid-cols-3 gap-4 mt-4">
-                              <div className="bg-slate-800 rounded-lg p-3">
-                                <div className="text-blue-400 text-2xl font-bold">+</div>
-                                <div className="text-slate-400 text-xs">Increase</div>
+                      <div className="space-y-2">
+                        {learningSections.map((section, idx) => {
+                          const isActive = idx === currentLearningStep;
+                          const isCompleted = completedLearningSteps.has(idx);
+                          return (
+                            <button
+                              type="button"
+                              key={section.id}
+                              onClick={() => setCurrentLearningStep(idx)}
+                              className={`w-full text-left rounded-lg border px-4 py-3 transition-all ${
+                                isActive
+                                  ? 'border-purple-400 bg-purple-600/20 shadow-lg'
+                                  : 'border-slate-700 bg-slate-800/50 hover:border-purple-400/60 hover:bg-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span
+                                  className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm font-semibold ${
+                                    isActive ? 'border-purple-400 text-purple-200' : 'border-slate-600 text-slate-300'
+                                  }`}
+                                >
+                                  {idx + 1}
+                                </span>
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold text-white">{section.title}</p>
+                                  <p className="text-xs text-slate-400">{sanitizeSnippet(section.description, 70)}</p>
+                                </div>
+                                {isCompleted && <CheckCircle className="h-4 w-4 text-green-400" />}
                               </div>
-                              <div className="bg-slate-800 rounded-lg p-3">
-                                <div className="text-purple-400 text-2xl font-bold">⟷</div>
-                                <div className="text-slate-400 text-xs">Balance</div>
-                              </div>
-                              <div className="bg-slate-800 rounded-lg p-3">
-                                <div className="text-red-400 text-2xl font-bold">-</div>
-                                <div className="text-slate-400 text-xs">Decrease</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </aside>
+                    <div className="flex-1 space-y-6">
+                      {activeSection && (
+                        <>
+                          <div className="bg-slate-900/60 border border-purple-500/30 rounded-xl p-6">
+                            <div className="flex items-start gap-4">
+                              <div className="text-4xl">{activeSection.icon || '📘'}</div>
+                              <div>
+                                <h4 className="text-2xl font-bold text-white">{activeSection.title}</h4>
+                                <div className="mt-2 text-slate-200 leading-relaxed">
+                                  {renderInlineWithMath(activeSection.description)}
+                                </div>
                               </div>
                             </div>
                           </div>
-                          
-                          <p className="text-slate-500 text-sm mt-4">
-                            💡 Experiment with the controls to see how concepts interact
-                          </p>
-                        </div>
-                      </div>
+                          {activeSection.diagram && (
+                            <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-6 space-y-4">
+                              <div className="flex items-center gap-2">
+                                <Zap className="h-5 w-5 text-yellow-400" />
+                                <h5 className="text-lg font-semibold text-white">
+                                  Interactive {activeSection.diagram.type}
+                                </h5>
+                              </div>
+                              <p className="text-slate-300 leading-relaxed">
+                                {renderInlineWithMath(activeSection.diagram.description)}
+                              </p>
+                              {activeSection.diagram.steps.length > 0 && (
+                                <ol className="space-y-3">
+                                  {activeSection.diagram.steps.map((step, idx) => (
+                                    <li
+                                      key={idx}
+                                      className="flex gap-3 bg-slate-800/60 border border-slate-700 rounded-lg p-3"
+                                    >
+                                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-purple-600/30 border border-purple-400 text-purple-200 font-semibold">
+                                        {idx + 1}
+                                      </span>
+                                      <div className="text-slate-200">
+                                        {renderInlineWithMath(step)}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ol>
+                              )}
+                              {activeSection.diagram.image && (
+                                <div className="rounded-lg overflow-hidden border border-slate-700">
+                                  <img
+                                    src={activeSection.diagram.image}
+                                    alt={activeSection.diagram.type}
+                                    className="w-full h-auto"
+                                  />
+                                </div>
+                              )}
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSimulationTopic(selectedTopic?.name || activeSection.diagram?.type || activeSection.title);
+                                    setInteractiveSimulationActive(true);
+                                  }}
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg text-white text-sm font-semibold shadow-lg hover:scale-[1.02] transition-transform"
+                                >
+                                  <Play className="h-4 w-4" />
+                                  Launch Simulation
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {activeSection.example && (
+                            <div className="bg-green-900/20 border border-green-500/40 rounded-xl p-6 space-y-3">
+                              <h5 className="text-lg font-semibold text-green-300 flex items-center gap-2">
+                                <Target className="h-5 w-5" />
+                                Apply the Idea
+                              </h5>
+                              {activeSection.example.scenario && (
+                                <p className="text-slate-100">
+                                  {renderInlineWithMath(activeSection.example.scenario)}
+                                </p>
+                              )}
+                              {activeSection.example.connection && (
+                                <p className="text-slate-300 text-sm">
+                                  {renderInlineWithMath(activeSection.example.connection)}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {activeSection.insights.length > 0 && (
+                            <div className="bg-purple-900/20 border border-purple-500/40 rounded-xl p-6">
+                              <h5 className="text-lg font-semibold text-purple-300 mb-3 flex items-center gap-2">
+                                <Lightbulb className="h-5 w-5" />
+                                Quick Insights
+                              </h5>
+                              <ul className="space-y-2">
+                                {activeSection.insights.map((insight, idx) => (
+                                  <li key={idx} className="flex items-start gap-2 text-slate-200">
+                                    <span className="text-purple-300 mt-1">•</span>
+                                    <span>{renderInlineWithMath(insight)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {currentQuickCheck && (
+                            <div className="bg-slate-900/60 border border-indigo-500/30 rounded-xl p-6">
+                              <h5 className="text-lg font-semibold text-indigo-200 mb-2 flex items-center gap-2">
+                                <Brain className="h-5 w-5" />
+                                Quick Check
+                              </h5>
+                              <div className="text-slate-200 mb-4">
+                                {renderInlineWithMath(currentQuickCheck.question)}
+                              </div>
+                              <div className="space-y-3">
+                                {currentQuickCheck.options.map((option, idx) => {
+                                  const isSelected = currentQuickCheckSelection === idx;
+                                  const isCorrect = currentQuickCheck.answerIndex === idx;
+                                  const showFeedback = currentQuickCheckSelection !== undefined;
+                                  const classes = showFeedback
+                                    ? isCorrect
+                                      ? 'border-green-400 bg-green-500/10 text-green-200'
+                                      : isSelected
+                                        ? 'border-red-400 bg-red-500/10 text-red-200'
+                                        : 'border-slate-600 bg-slate-800 text-slate-200'
+                                    : isSelected
+                                      ? 'border-purple-400 bg-purple-500/10 text-purple-200'
+                                      : 'border-slate-600 bg-slate-800 text-slate-200 hover:border-purple-400/60';
+                                  return (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => handleQuickCheckSelection(currentLearningStep, idx)}
+                                      className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${classes}`}
+                                    >
+                                      <span>{renderInlineWithMath(option)}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {currentQuickCheckSelection !== undefined && (
+                                <p
+                                  className={`mt-4 text-sm ${
+                                    currentQuickCheckSelection === currentQuickCheck.answerIndex
+                                      ? 'text-green-300'
+                                      : 'text-red-300'
+                                  }`}
+                                >
+                                  {currentQuickCheckSelection === currentQuickCheck.answerIndex
+                                    ? 'Great work! Move ahead when you are ready.'
+                                    : 'Review the notes above and try another option.'}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-3">
+                            {currentLearningStep > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setCurrentLearningStep(currentLearningStep - 1)}
+                                className="px-4 py-2 rounded-lg border border-slate-600 text-slate-300 hover:border-slate-400 transition"
+                              >
+                                Previous Concept
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => markStepComplete(currentLearningStep)}
+                              className="px-4 py-2 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold shadow hover:opacity-90 transition"
+                            >
+                              {currentLearningStep === learningSections.length - 1 ? 'Complete Journey' : 'Mark Step Complete'}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {allStepsComplete && journeySummary && (
+                    <div className="mt-8 bg-slate-900/60 border border-blue-500/30 rounded-xl p-6">
+                      <h4 className="text-white text-xl font-bold mb-4 flex items-center gap-2">
+                        <Award className="h-5 w-5 text-blue-300" />
+                        Journey Summary
+                      </h4>
+                      <ul className="space-y-2 mb-3">
+                        {journeySummary.bullets.map((bullet, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-slate-200">
+                            <CheckCircle className="h-4 w-4 text-green-400 mt-1" />
+                            <span>{renderInlineWithMath(bullet)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {journeySummary.takeaway && (
+                        <p className="text-blue-200 text-sm bg-blue-900/30 border border-blue-500/30 rounded-lg p-3">
+                          <strong>Takeaway:</strong> {renderInlineWithMath(journeySummary.takeaway)}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
+              ) : (
+                learningContent && (
+                  <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-8 shadow-2xl">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-white text-2xl font-bold flex items-center gap-3">
+                        <div className="p-2 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg">
+                          <Lightbulb className="h-6 w-6 text-white" />
+                        </div>
+                        Interactive Learning Experience
+                      </h3>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const highlights = learningContent.match(/\*\*(.*?)\*\*/g)?.map(m => m.replace(/\*\*/g, '')) || [];
+                            setConceptHighlights(highlights);
+                          }}
+                          className="px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/50 rounded-lg text-purple-300 text-sm transition-all flex items-center gap-2"
+                          title="Highlight key concepts"
+                        >
+                          <Zap className="h-4 w-4" />
+                          Highlights
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mb-6 bg-slate-700 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-purple-500 to-blue-500 h-full transition-all duration-500"
+                        style={{ width: `${(expandedSections.size / 5) * 100}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {renderInteractiveLearningContent(learningContent)}
+                    </div>
+
+                    {conceptHighlights.length > 0 && (
+                      <div className="mt-6 bg-purple-900/20 border border-purple-500/30 rounded-lg p-5">
+                        <h5 className="text-lg font-semibold text-purple-300 mb-3 flex items-center gap-2">
+                          <Zap className="h-5 w-5" />
+                          Key Concepts to Remember
+                        </h5>
+                        <div className="flex flex-wrap gap-2">
+                          {conceptHighlights.map((concept, idx) => (
+                            <span
+                              key={idx}
+                              className="px-3 py-1 bg-purple-600/30 border border-purple-500/50 rounded-full text-purple-200 text-sm"
+                            >
+                              {concept}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-6 bg-slate-800/50 border border-slate-600 rounded-lg p-5">
+                      <h5 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                        📝 My Notes
+                      </h5>
+                      <textarea
+                        placeholder="Write your own notes, questions, or insights here..."
+                        className="w-full bg-slate-700 border border-slate-600 rounded-lg p-4 text-white min-h-[100px] focus:outline-none focus:ring-2 focus:ring-purple-400 placeholder-slate-400"
+                        value={userNotes.get(selectedTopic?.id || '') || ''}
+                        onChange={(e) => {
+                          const newNotes = new Map(userNotes);
+                          newNotes.set(selectedTopic?.id || '', e.target.value);
+                          setUserNotes(newNotes);
+                        }}
+                      />
+                    </div>
+
+                    <div className="mt-6 flex gap-3 flex-wrap">
+                      <button
+                        onClick={() => {
+                          const text = learningContent.replace(/\[.*?\]/g, '').replace(/#/g, '');
+                          const speech = new SpeechSynthesisUtterance(text.substring(0, 500));
+                          window.speechSynthesis.speak(speech);
+                        }}
+                        className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 rounded-lg text-blue-300 transition-all flex items-center gap-2"
+                      >
+                        <span className="text-lg">🔊</span>
+                        Listen to Content
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setInteractiveSimulationActive(!interactiveSimulationActive);
+                        }}
+                        className={`px-4 py-2 border rounded-lg transition-all flex items-center gap-2 ${
+                          interactiveSimulationActive
+                            ? 'bg-green-600/30 border-green-500/50 text-green-300'
+                            : 'bg-slate-700/50 border-slate-600 text-slate-300 hover:border-slate-500'
+                        }`}
+                      >
+                        <span className="text-lg">⚡</span>
+                        {interactiveSimulationActive ? 'Simulation Active' : 'Try Interactive Demo'}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(learningContent);
+                          setFeedbackMessage('✓ Content copied to clipboard!');
+                          setShowFeedback(true);
+                          setTimeout(() => setShowFeedback(false), 2000);
+                        }}
+                        className="px-4 py-2 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 hover:border-slate-500 rounded-lg text-slate-300 transition-all flex items-center gap-2"
+                      >
+                        <span className="text-lg">📋</span>
+                        Copy Content
+                      </button>
+                    </div>
+
+                    {interactiveSimulationActive && (
+                      <div className="mt-6 bg-gradient-to-br from-green-900/30 to-blue-900/30 border-2 border-green-500/50 rounded-xl p-6 animate-in">
+                        <div className="flex items-center justify-between mb-4">
+                          <h5 className="text-xl font-bold text-green-300 flex items-center gap-2">
+                            <Zap className="h-6 w-6" />
+                            Interactive Simulation
+                          </h5>
+                          <button
+                            onClick={() => setInteractiveSimulationActive(false)}
+                            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                          >
+                            <X className="h-5 w-5 text-slate-400" />
+                          </button>
+                        </div>
+
+                        <div className="bg-slate-900 rounded-lg p-8 border border-slate-600">
+                          <div className="text-center space-y-4">
+                            <div className="text-6xl mb-4">🧪</div>
+                            <p className="text-white text-lg">Visualize the Concept</p>
+                            <p className="text-slate-400">
+                              {simulationTopic || knowledgeGapReport?.gaps[0]?.concept || 'Current Topic'}
+                            </p>
+
+                            <div className="mt-6 space-y-3">
+                              <label className="block text-slate-300 text-sm">Adjust parameters:</label>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                className="w-full"
+                                onChange={() => {
+                                  // Interactive simulation logic placeholder
+                                }}
+                              />
+                              <div className="grid grid-cols-3 gap-4 mt-4">
+                                <div className="bg-slate-800 rounded-lg p-3">
+                                  <div className="text-blue-400 text-2xl font-bold">+</div>
+                                  <div className="text-slate-400 text-xs">Increase</div>
+                                </div>
+                                <div className="bg-slate-800 rounded-lg p-3">
+                                  <div className="text-purple-400 text-2xl font-bold">⟷</div>
+                                  <div className="text-slate-400 text-xs">Balance</div>
+                                </div>
+                                <div className="bg-slate-800 rounded-lg p-3">
+                                  <div className="text-red-400 text-2xl font-bold">-</div>
+                                  <div className="text-slate-400 text-xs">Decrease</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <p className="text-slate-500 text-sm mt-4">
+                              💡 Experiment with the controls to see how concepts interact
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
               )}
 
               {/* Interactive Learning Module */}
