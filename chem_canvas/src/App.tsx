@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Plus, File, Video, Globe, Upload, Clipboard, Headphones, LineChart, Target, X, Menu, Clock, LogOut, Atom, ExternalLink } from 'lucide-react';
+﻿import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Plus, File, Video, Globe, Upload, Clipboard, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3 } from 'lucide-react';
 import Canvas from './components/Canvas';
 import AIChat from './components/AIChat';
 import LobeChat from './components/LobeChat';
@@ -27,6 +28,7 @@ import FlippingInfo from './components/FlippingInfo';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWorkspace';
 import SubjectExplorer from './components/SubjectExplorer';
+import EpoxidationLearningExperience from './components/epoxidation/EpoxidationLearningExperience';
 import type { AIInteraction, InteractionMode } from './types';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
@@ -50,8 +52,13 @@ type StudyToolType =
   | 'tests';
 
 const App: React.FC = () => {
-  const isArRoute =
-    typeof window !== 'undefined' && window.location.pathname.startsWith('/ar/');
+  const location = useLocation();
+
+  if (location.pathname.startsWith('/epoxidation')) {
+    return <EpoxidationLearningExperience />;
+  }
+
+  const isArRoute = location.pathname.startsWith('/ar/');
 
   if (isArRoute) {
     return <ArMobileView />;
@@ -111,7 +118,7 @@ const App: React.FC = () => {
   const CHAT_MAX_WIDTH = 700;
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
-  const [chemistryPanelInitialView] = useState<'overview' | 'nmr'>('overview');
+  const [chemistryPanelInitialView, setChemistryPanelInitialView] = useState<'overview' | 'nmr' | 'explorer'>('overview');
   const [showNmrFullscreen, setShowNmrFullscreen] = useState(false);
   const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
   const [showStudyToolsWorkspace, setShowStudyToolsWorkspace] = useState(false);
@@ -272,6 +279,22 @@ const App: React.FC = () => {
 
   const handleClosePeriodicTable = () => {
     setShowPeriodicTable(false);
+  };
+
+  const openChemistryPanel = (view: 'overview' | 'nmr' | 'explorer') => {
+    setChemistryPanelInitialView(view);
+    setShowChemistryPanel(true);
+    setShowSrlCoachWorkspace(false);
+    setShowStudyToolsWorkspace(false);
+    setShowDocumentUnderstandingWorkspace(false);
+    setShowSubjectExplorer(false);
+    setShowNmrFullscreen(false);
+    setShowChatPanel(false);
+    setShowNmrAssistant(false);
+    setIsNmrAssistantActive(false);
+    setShowRdkitWorkspace(false);
+    setIsRdkitAssistantActive(false);
+    setShowRdkitAssistant(false);
   };
 
   // Sources handlers
@@ -552,6 +575,7 @@ Here is the learner's question: ${message}`;
               <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">AI Connected</span>
               <span className="text-xs text-muted-foreground">Gemini 2.0</span>
             </div>
+
           </div>
 
           {/* Main Navigation */}
@@ -693,6 +717,14 @@ Here is the learner's question: ${message}`;
                 </button>
 
                 <button
+                  onClick={() => openChemistryPanel('explorer')}
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-500 hover:to-purple-500 hover:shadow-md h-9 px-3"
+                >
+                  <Layers3 className="mr-2 h-4 w-4" />
+                  3D Explorer
+                </button>
+
+                <button
                   onClick={() => {
                     setShowSubjectExplorer(true);
                     setShowSrlCoachWorkspace(false);
@@ -712,6 +744,7 @@ Here is the learner's question: ${message}`;
                   <Target className="mr-2 h-4 w-4" />
                   Subject Explorer
                 </button>
+
               </div>
 
               {/* Mobile Menu Button */}
@@ -879,6 +912,14 @@ Here is the learner's question: ${message}`;
                   <FileText className="h-4 w-4" />
                   <span className="text-sm">Document Understanding</span>
                 </button>
+                <button
+                  onClick={() => openChemistryPanel('explorer')}
+                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-500 hover:to-purple-500"
+                >
+                  <Layers3 className="h-4 w-4" />
+                  <span className="text-sm font-semibold">3D Explorer</span>
+                </button>
+
 
                 <button
                   onClick={() => {

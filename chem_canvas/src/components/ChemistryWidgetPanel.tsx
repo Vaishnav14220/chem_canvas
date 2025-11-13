@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Maximize2, Minimize2, Info, LineChart, ExternalLink } from 'lucide-react';
+import { Maximize2, Minimize2, Info, LineChart, ExternalLink, Layers3 } from 'lucide-react';
+import MolecularVisualizationWorkspace from './MolecularVisualizationWorkspace';
 
 interface ChemistryWidgetPanelProps {
   onClose?: () => void;
-  initialView?: 'overview' | 'nmr';
+  initialView?: 'overview' | 'nmr' | 'explorer';
 }
 
 const NMR_IFRAME_URL = 'https://nmrium.nmrxiv.org?workspace=default';
 
+type ActiveView = 'overview' | 'nmr' | 'explorer';
+
 const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({ onClose, initialView = 'overview' }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [activeView, setActiveView] = useState<'overview' | 'nmr'>(initialView);
+  const [activeView, setActiveView] = useState<ActiveView>(initialView);
   const [isLoadingNmr, setIsLoadingNmr] = useState(initialView === 'nmr');
 
   useEffect(() => {
@@ -25,12 +28,22 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({ onClose, in
       <div className="bg-gradient-to-r from-slate-800 to-slate-750 border-b border-slate-700 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600">
-            {activeView === 'nmr' ? <LineChart size={20} className="text-white" /> : <Info size={20} className="text-white" />}
+            {activeView === 'nmr' ? (
+              <LineChart size={20} className="text-white" />
+            ) : activeView === 'explorer' ? (
+              <Layers3 size={20} className="text-white" />
+            ) : (
+              <Info size={20} className="text-white" />
+            )}
           </div>
           <div>
             <h2 className="font-bold text-white">Chemistry Tools</h2>
             <p className="text-xs text-slate-400">
-              {activeView === 'nmr' ? 'Embedded NMRium viewer (Beta)' : 'Select a tool to get started.'}
+              {activeView === 'nmr'
+                ? 'Embedded NMRium viewer (Beta)'
+                : activeView === 'explorer'
+                  ? 'Interactive JSmol demos, loaders, and guided activities.'
+                  : 'Select a tool to get started.'}
             </p>
           </div>
         </div>
@@ -52,6 +65,12 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({ onClose, in
             className={`px-4 py-2 rounded-lg text-sm font-medium ${activeView === 'overview' ? 'bg-blue-600 text-white' : 'bg-slate-700/60 text-slate-300 hover:bg-slate-600/60'}`}
           >
             Overview
+          </button>
+          <button
+            onClick={() => setActiveView('explorer')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${activeView === 'explorer' ? 'bg-blue-600 text-white' : 'bg-slate-700/60 text-slate-300 hover:bg-slate-600/60'}`}
+          >
+            3D Explorer
           </button>
           <button
             onClick={() => {
@@ -81,7 +100,7 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({ onClose, in
               </ul>
             </div>
           </div>
-        ) : (
+        ) : activeView === 'nmr' ? (
           <div className="flex flex-col gap-4 p-4 h-full">
             <div className="flex items-center justify-between">
               <div>
@@ -116,6 +135,10 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({ onClose, in
               <p className="font-semibold text-blue-200 mb-1">Tip:</p>
               <p>Drag and drop JCAMP-DX files directly into the embedded viewer or use the toolbar inside NMRium for advanced analysis.</p>
             </div>
+          </div>
+        ) : (
+          <div className="p-4 h-full overflow-y-auto bg-slate-900">
+            <MolecularVisualizationWorkspace />
           </div>
         )}
       </div>

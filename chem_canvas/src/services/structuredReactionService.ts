@@ -52,51 +52,6 @@ export const setStructuredReactionApiKey = (apiKey: string): void => {
   client = new GoogleGenAI({ apiKey: activeApiKey });
 };
 
-const reactionSchema = {
-  type: Type.OBJECT,
-  required: [
-    'reaction name ',
-    'reaction smiles',
-    'condition',
-    'reactants',
-    'products',
-    'reaction smiles with conditions',
-    'Reaction Description'
-  ],
-  properties: {
-    'reaction name ': {
-      type: Type.STRING
-    },
-    'reaction smiles': {
-      type: Type.STRING
-    },
-    condition: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.STRING
-      }
-    },
-    reactants: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.STRING
-      }
-    },
-    products: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.STRING
-      }
-    },
-    'reaction smiles with conditions': {
-      type: Type.STRING
-    },
-    'Reaction Description': {
-      type: Type.STRING
-    }
-  }
-} as const;
-
 const buildPrompt = (input: string, mode: 'description' | 'name'): string => {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -117,91 +72,95 @@ export const fetchStructuredReaction = async (
   const ai = ensureClient();
   const prompt = buildPrompt(input, options.mode);
 
-  // List of models to try in order (primary -> fallback)
-  const modelsToTry = [
-    { name: 'gemini-2.5-pro', supportsThinking: true },
-    { name: 'gemini-2.0-flash-exp', supportsThinking: false }
+  const config: any = {
+    thinkingConfig: {
+      thinkingBudget: -1,
+    },
+    imageConfig: {
+      imageSize: '1K',
+    },
+    responseMimeType: 'application/json',
+    responseSchema: {
+      type: Type.OBJECT,
+      required: ["reaction name ", "reaction smiles", "condition", "reactants", "products", "reaction smiles with conditions", "Reaction Description"],
+      properties: {
+        "reaction name ": {
+          type: Type.STRING,
+        },
+        "reaction smiles": {
+          type: Type.STRING,
+        },
+        condition: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.STRING,
+          },
+        },
+        reactants: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.STRING,
+          },
+        },
+        products: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.STRING,
+          },
+        },
+        "reaction smiles with conditions": {
+          type: Type.STRING,
+        },
+        "Reaction Description": {
+          type: Type.STRING,
+        },
+      },
+    },
+  };
+
+  const model = 'gemini-2.5-pro';
+  const contents = [
+    {
+      role: 'user',
+      parts: [
+        {
+          text: prompt,
+        },
+      ],
+    },
   ];
-  
-  let lastError: Error | null = null;
 
-  for (const model of modelsToTry) {
-    try {
-      console.log(`🔄 Attempting structured reaction search with model: ${model.name}`);
-      
-      // Build config based on model capabilities
-      const config: any = {
-        responseMimeType: 'application/json',
-        responseSchema: reactionSchema
-      };
-      
-      // Only add thinkingConfig if model supports it
-      if (model.supportsThinking) {
-        config.thinkingConfig = {
-          thinkingBudget: -1
-        };
-      }
-      
-      // Use generateContentStream as per the official SDK example
-      const response = await ai.models.generateContentStream({
-        model: model.name,
-        config,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: prompt
-              }
-            ]
-          }
-        ]
-      });
+  try {
+    console.log(`🔄 Fetching structured reaction with ${model}...`);
+    
+    const response = await ai.models.generateContentStream({
+      model,
+      config,
+      contents,
+    });
 
-      // Collect all chunks from the stream
-      let fullText = '';
-      for await (const chunk of response) {
-        // Access text property directly (it's a getter, not a function)
-        const chunkText = chunk.text || '';
-        fullText += chunkText;
-      }
-
-      if (!fullText || !fullText.trim()) {
-        throw new Error('Structured Gemini response did not include JSON payload.');
-      }
-
-      // Parse the accumulated JSON
-      const parsed = JSON.parse(fullText.trim()) as StructuredReactionPayload;
-      console.log(`✅ Successfully fetched reaction data using ${model.name}`);
-      return parsed;
-      
-    } catch (error: any) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      
-      // Check if it's a 503 overload error or 400 invalid argument (thinking not supported)
-      const errorMessage = error?.message || JSON.stringify(error);
-      const isRetryable = errorMessage.includes('503') || 
-                          errorMessage.includes('overloaded') || 
-                          errorMessage.includes('UNAVAILABLE') ||
-                          errorMessage.includes('400') ||
-                          errorMessage.includes('INVALID_ARGUMENT') ||
-                          errorMessage.includes('thinking is not supported');
-      
-      const isLastModel = model.name === modelsToTry[modelsToTry.length - 1].name;
-      
-      if (isRetryable && !isLastModel) {
-        console.warn(`⚠️ Model ${model.name} error, trying fallback model...`);
-        continue; // Try next model
-      }
-      
-      // If not retryable or last model, throw the error
-      console.error(`❌ Failed to fetch structured reaction with ${model.name}:`, error);
-      throw lastError;
+    // Collect all chunks from the stream
+    let fullText = '';
+    for await (const chunk of response) {
+      const chunkText = chunk.text || '';
+      fullText += chunkText;
+      console.log(chunkText); // Log each chunk as it arrives
     }
-  }
 
-  // If we've exhausted all models
-  throw lastError || new Error('All Gemini models failed to provide structured reaction data.');
+    if (!fullText || !fullText.trim()) {
+      throw new Error('Structured Gemini response did not include JSON payload.');
+    }
+
+    // Parse the accumulated JSON
+    const parsed = JSON.parse(fullText.trim()) as StructuredReactionPayload;
+    console.log(`✅ Successfully fetched reaction data using ${model}`);
+    console.log('📦 Reaction SMILES:', parsed['reaction smiles']); // Log the SMILES we're getting
+    return parsed;
+    
+  } catch (error: any) {
+    console.error(`❌ Failed to fetch structured reaction with ${model}:`, error);
+    throw error instanceof Error ? error : new Error(String(error));
+  }
 };
 
 const storedKey = loadStoredApiKey();

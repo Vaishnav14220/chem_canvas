@@ -2,6 +2,7 @@
 import { Search, Loader2, Beaker } from 'lucide-react';
 import { fetchStructuredReaction, type StructuredReactionPayload } from '../services/structuredReactionService';
 import { reactionSmilesToSVGHuggingFace } from '../services/rdkitService';
+import { sanitizeReactionSmilesInput, stripAtomMappings } from '../utils/reactionSanitizer';
 
 export interface ReactionSearchResult {
   payload: StructuredReactionPayload;
@@ -87,7 +88,9 @@ export default function InlineReactionSearch({ onSelectReaction, className = '' 
 
     setIsLoading(true);
     try {
-      const svgData = await reactionSmilesToSVGHuggingFace(payload['reaction smiles']);
+      const targetSmiles = payload['reaction smiles'];
+      const sanitizedForRender = stripAtomMappings(sanitizeReactionSmilesInput(targetSmiles) ?? targetSmiles);
+      const svgData = await reactionSmilesToSVGHuggingFace(sanitizedForRender);
       
       if (svgData && onSelectReaction) {
         onSelectReaction({

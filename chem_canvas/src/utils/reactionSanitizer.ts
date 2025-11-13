@@ -57,3 +57,15 @@ export function sanitizeReactionSmilesInput(raw: string | null | undefined): str
   working = working.trim();
   return working.length && working.includes('>') ? working : null;
 }
+
+/**
+ * Remove atom-mapping annotations like ":1" from a reaction SMILES string.
+ * Keeps the original structure while dropping numeric labels that clutter drawings.
+ */
+export function stripAtomMappings(smiles: string | null | undefined): string {
+  if (!smiles) {
+    return '';
+  }
+
+  return smiles.replace(/:([0-9]+)/g, '');
+}

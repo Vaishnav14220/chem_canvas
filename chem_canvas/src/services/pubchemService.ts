@@ -145,11 +145,16 @@ export const fetchCanonicalSmiles = async (input: string): Promise<string | null
   }
 
   // If canonicalization fails, treat the input as a potential compound name
-  const nameEndpoint = `${PUBCHEM_PUG_URL}/compound/name/${encodeURIComponent(identifier)}/property/CanonicalSMILES/JSON`;
-  const nameResult = await tryEndpoint(nameEndpoint);
-  if (nameResult) {
-    console.log('✅ Fetched SMILES from PubChem using compound name');
-    return nameResult;
+  const isLikelySmiles = /[\[\]@+\-=#()\\/]/.test(identifier) || /[cnops]\d/i.test(identifier);
+  if (!isLikelySmiles) {
+    const nameEndpoint = `${PUBCHEM_PUG_URL}/compound/name/${encodeURIComponent(identifier)}/property/CanonicalSMILES/JSON`;
+    const nameResult = await tryEndpoint(nameEndpoint);
+    if (nameResult) {
+      console.log('✅ Fetched SMILES from PubChem using compound name');
+      return nameResult;
+    }
+  } else {
+    console.warn(`⚠️ Treating input as SMILES; skipping PubChem name lookup: ${identifier}`);
   }
 
   console.warn(`⚠️ Unable to verify SMILES for input: ${identifier}`);
@@ -2233,5 +2238,27 @@ export const getPopularReactions = async (limit: number = 10): Promise<PubChemRe
   } catch (error) {
     console.error('Error fetching popular reactions:', error);
     return [];
+  }
+};
+export const fetchSDFBySmiles = async (smiles: string, recordType: '2d' | '3d' = '2d'): Promise<string | null> => {
+  try {
+    const encoded = encodeURIComponent(smiles);
+    const sdfUrl = `${PUBCHEM_PUG_URL}/compound/SMILES/${encoded}/SDF?record_type=${recordType}`;
+    console.log(` Fetching ${recordType.toUpperCase()} SDF for SMILES ${smiles}`);
+
+    const response = await fetchWithRetry(sdfUrl);
+    if (response && response.ok) {
+      const sdfText = await response.text();
+      if (sdfText?.trim().length) {
+        console.log(` SDF (${recordType.toUpperCase()}) fetched successfully for SMILES ${smiles}`);
+        return sdfText;
+      }
+    }
+
+    console.warn(` Could not fetch ${recordType.toUpperCase()} SDF for SMILES ${smiles}`);
+    return null;
+  } catch (error) {
+    console.error(` Error fetching ${recordType.toUpperCase()} SDF for SMILES ${smiles}:`, error);
+    return null;
   }
 };

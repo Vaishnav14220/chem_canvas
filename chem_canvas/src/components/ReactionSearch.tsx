@@ -6,8 +6,8 @@ import { isGeminiInitialized } from '../services/geminiService';
 import { generateTextContent } from '../services/geminiService';
 import { getReactionSuggestions, REACTION_DATABASE, type ReactionDatabaseEntry } from '../data/reactionDatabase';
 import { ordService, type ORDReaction } from '../services/ordService';
-import { sanitizeReactionSmilesInput } from '../utils/reactionSanitizer';
-import { renderReactionSvg } from '../services/rdkitService';
+import { sanitizeReactionSmilesInput, stripAtomMappings } from '../utils/reactionSanitizer';
+import { reactionSmilesToSVG } from '../services/rdkitService';
 import {
   searchReactionByName,
   searchReactionByReactant,
@@ -181,14 +181,14 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
       if (smilesMatch) {
         const extracted = sanitizeReactionSmilesInput(smilesMatch[0]) ?? smilesMatch[0];
         setInterpretedReactionSmiles(extracted);
-        setReactionSmilesForCanvas(extracted); // Also set for Kekule viewer
+        setReactionSmilesForCanvas(stripAtomMappings(extracted)); // Also set for Kekule viewer
       } else {
         // Try to find any SMILES-like string
         const anySmilesMatch = response.match(/[A-Za-z0-9\[\]\(\)\+\-\=\.#@]+/);
         if (anySmilesMatch) {
           const extracted = sanitizeReactionSmilesInput(anySmilesMatch[0]) ?? anySmilesMatch[0];
           setInterpretedReactionSmiles(extracted);
-          setReactionSmilesForCanvas(extracted);
+          setReactionSmilesForCanvas(stripAtomMappings(extracted));
         } else {
           throw new Error('Could not extract SMILES from Gemini response');
         }
@@ -424,7 +424,8 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
 
   const renderResolvedReaction = useCallback(async (resolution: ReactionResolutionResult | null, fallbackSmiles: string) => {
     const targetSmiles = resolution?.reactionSmiles ?? fallbackSmiles;
-    const sanitizedSmiles = sanitizeReactionSmilesInput(targetSmiles) ?? targetSmiles;
+  const sanitizedSmiles = sanitizeReactionSmilesInput(targetSmiles) ?? targetSmiles;
+  const displaySmiles = stripAtomMappings(sanitizedSmiles) || sanitizedSmiles;
 
     if (!sanitizedSmiles) {
       throw new Error('No reaction SMILES available.');
@@ -432,13 +433,13 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
 
     if (isMountedRef.current) {
       setResolvedReaction(resolution);
-      setReactionSmilesForCanvas(sanitizedSmiles);
+  setReactionSmilesForCanvas(displaySmiles);
       setRdkitError(null);
       setIsRenderingSvg(true);
     }
 
     try {
-  const svg = await renderReactionSvg(sanitizedSmiles, 960, 320);
+  const svg = await reactionSmilesToSVG(displaySmiles, 960, 320);
       if (!isMountedRef.current) {
         return;
       }
@@ -466,7 +467,7 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
         setIsRenderingSvg(false);
       }
     }
-  }, [renderReactionSvg]);
+  }, [reactionSmilesToSVG]);
 
   const renderSourceBadge = useCallback((source: ReactionDatabaseEntry['source']) => {
     switch (source) {
@@ -682,7 +683,7 @@ const ReactionSearch: React.FC<ReactionSearchProps> = ({ onClose, onReactionInse
         sanitizedResolutionSmiles !== candidateInput
       ) {
         skipAutoPreviewRef.current = true;
-        setReactionInput(sanitizedResolutionSmiles);
+  setReactionInput(stripAtomMappings(sanitizedResolutionSmiles));
       }
 
       await renderResolvedReaction(resolution, sanitizedResolutionSmiles ?? resolvedSmiles);

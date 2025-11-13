@@ -12,6 +12,12 @@ export interface ReactionComponentDetails {
   notes?: string;
 }
 
+export interface ReactionMechanismStage {
+  label: string;
+  description?: string;
+  smiles?: string[];
+}
+
 export interface ReactionResolutionResult {
   reactionSmiles: string;
   components: ReactionComponentDetails[];
@@ -23,6 +29,7 @@ export interface ReactionResolutionResult {
   reactionDescription?: string;
   reactionSmilesWithConditions?: string;
   structuredPayload?: StructuredReactionPayload;
+  mechanismStages?: ReactionMechanismStage[];
 }
 
 const smilesCache = new Map<string, string | null>();
@@ -42,16 +49,10 @@ const sanitizeJson = (rawText: string): string => {
   return trimmed;
 };
 
-const ENABLE_PUBCHEM_CANONICALIZATION = false;
-
 const canonicalizeCandidate = async (value?: string | null): Promise<string | null> => {
   const candidate = value?.trim();
   if (!candidate) {
     return null;
-  }
-
-  if (!ENABLE_PUBCHEM_CANONICALIZATION) {
-    return candidate;
   }
 
   if (smilesCache.has(candidate)) {
@@ -131,6 +132,34 @@ interface GeminiAttemptResult {
   missingProducts: boolean;
 }
 
+const normalizeMechanismStages = (value: any): ReactionMechanismStage[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry, index) => {
+      const label = typeof entry?.label === 'string' ? entry.label.trim() : `Stage ${index + 1}`;
+      const description = typeof entry?.description === 'string' ? entry.description.trim() : undefined;
+      const smiles = Array.isArray(entry?.smiles)
+        ? entry.smiles
+            .map((token: any) => (typeof token === 'string' ? token.trim() : ''))
+            .filter(Boolean)
+        : [];
+
+      if (!label && smiles.length === 0) {
+        return null;
+      }
+
+      return {
+        label: label || `Stage ${index + 1}`,
+        description,
+        smiles,
+      } as ReactionMechanismStage;
+    })
+    .filter((stage): stage is ReactionMechanismStage => Boolean(stage));
+};
+
 const buildGeminiReactionPrompt = (
   input: string,
   options: { mode: 'description' | 'name'; enforceFull?: boolean }
@@ -151,14 +180,17 @@ const buildGeminiReactionPrompt = (
       '  "reactants": [{ "label": "optional name", "smiles": "SMILES" }],',
       '  "agents": [{ "label": "optional", "smiles": "optional" }],',
       '  "products": [{ "label": "optional", "smiles": "SMILES" }],',
+      '  "mechanismStages": [',
+      '    { "label": "Stage 1", "description": "optional", "smiles": ["SMILES1", "SMILES2"] }',
+      '  ],',
       '  "confidence": 0.0-1.0,',
       '  "notes": "optional"',
       '}',
       'Rules:',
-      '- Prefer canonical SMILES when possible.',
       '- If the user only mentions the product or asks what will form, infer the most likely reactants and reagents that produce it.',
       '- If no agents are needed, use an empty array and format reactionSmiles as reactants>>products.',
       '- ALWAYS provide at least one reactant and one product when chemically meaningful.',
+      '- Populate "mechanismStages" with 2-4 chronological stages (start, key intermediates, end). Each stage must include SMILES strings for the species present. Reagents/catalysts should appear in their own stage when they drive the transformation.',
       ...enforceLines,
       '- Do not add commentary outside the JSON.',
       '',
@@ -174,6 +206,9 @@ const buildGeminiReactionPrompt = (
     '  "reactants": [{ "label": "name", "smiles": "optional SMILES", "notes": "optional" }],',
     '  "agents": [{ "label": "optional", "smiles": "optional", "notes": "optional" }],',
     '  "products": [{ "label": "name", "smiles": "optional SMILES", "notes": "optional" }],',
+    '  "mechanismStages": [',
+    '    { "label": "Stage 1", "description": "optional", "smiles": ["SMILES1", "SMILES2"] }',
+    '  ],',
     '  "confidence": 0.0-1.0,',
     '  "notes": "optional assumptions or variants"',
     '}',
@@ -183,6 +218,7 @@ const buildGeminiReactionPrompt = (
     '- Provide SMILES when known; leave as null only if genuinely unknown.',
     '- If the user focuses on products, deduce the typical reactants and reagents used to obtain them.',
     '- ALWAYS include both reactants and products in the structured output.',
+    '- Populate "mechanismStages" with chronological stages (minimum start/end). Each stage should list the SMILES present during that step.',
     ...enforceLines,
     '- Do not output commentary outside of the JSON.',
     '',
@@ -276,6 +312,7 @@ const interpretGeminiPayload = async (
   const productEntries = Array.isArray(parsed?.products) ? parsed.products : [];
   const confidence = typeof parsed?.confidence === 'number' ? parsed.confidence : undefined;
   const notes = typeof parsed?.notes === 'string' ? parsed.notes : undefined;
+  const mechanismStages = normalizeMechanismStages(parsed?.mechanismStages);
 
   const components: ReactionComponentDetails[] = [
     ...(await canonicalizeEntries(reactantEntries, 'reactant')),
@@ -294,7 +331,8 @@ const interpretGeminiPayload = async (
         components,
         usedGemini: options.usedGemini,
         confidence,
-        notes
+        notes,
+        mechanismStages: mechanismStages.length > 0 ? mechanismStages : undefined
       },
       missingReactants: !hasReactants,
       missingProducts: !hasProducts
@@ -311,7 +349,10 @@ const interpretGeminiPayload = async (
 
     if (fallback) {
       return {
-        resolution: fallback,
+        resolution: {
+          ...fallback,
+          mechanismStages: mechanismStages.length > 0 ? mechanismStages : fallback.mechanismStages
+        },
         missingReactants: false,
         missingProducts: false
       };
@@ -325,7 +366,7 @@ const interpretGeminiPayload = async (
   };
 };
 
-export const interpretStructuredReactionPayload = async (
+const interpretStructuredReactionPayload = async (
   payload: StructuredReactionPayload
 ): Promise<ReactionResolutionResult | null> => {
   if (!payload) {

@@ -492,12 +492,10 @@ export default function Canvas({
 
   const handleTextSubmit = () => {
     if (currentTextInput.trim()) {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+      if (!canvasRef.current) return;
 
-      const rect = canvas.getBoundingClientRect();
-      const x = textInputPosition.x;
-      const y = textInputPosition.y;
+      const worldX = textInputPosition.x / zoom;
+      const worldY = textInputPosition.y / zoom;
 
       if (editingTextShapeId) {
         // Update existing text shape
@@ -517,10 +515,10 @@ export default function Canvas({
         const textShape: Shape = {
           id: `text-${Date.now()}`,
           type: 'text',
-          startX: x,
-          startY: y,
-          endX: x,
-          endY: y,
+          startX: worldX,
+          startY: worldY,
+          endX: worldX,
+          endY: worldY,
           color: chemistryColor,
           strokeColor: chemistryStrokeColor,
           size: 24, // Larger default size for text readability on canvas
@@ -2601,10 +2599,10 @@ export default function Canvas({
       ctx.stroke();
 
       // Rotation based on shape.rotation3D
-      const rot = shape.rotation3D || { x: 25, y: 35, z: 0 } as any;
-      const rx = (rot.x * Math.PI) / 180;
-      const ry = (rot.y * Math.PI) / 180;
-      const rz = (rot.z ? rot.z : 0) * Math.PI / 180;
+  const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
+  const rx = (rot.x * Math.PI) / 180;
+  const ry = (rot.y * Math.PI) / 180;
+  const rz = ((rot.z ?? 0) * Math.PI) / 180;
 
       const cosx = Math.cos(rx), sinx = Math.sin(rx);
       const cosy = Math.cos(ry), siny = Math.sin(ry);
@@ -2725,10 +2723,10 @@ export default function Canvas({
       ctx.stroke();
 
       // Simple orthographic projection using rotation3D
-      const rot = shape.rotation3D || { x: 25, y: 35, z: 0 };
-      const rx = (rot.x * Math.PI) / 180;
-      const ry = (rot.y * Math.PI) / 180;
-      const rz = (rot.z * Math.PI) / 180;
+  const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
+  const rx = (rot.x * Math.PI) / 180;
+  const ry = (rot.y * Math.PI) / 180;
+  const rz = ((rot.z ?? 0) * Math.PI) / 180;
 
       const cosx = Math.cos(rx), sinx = Math.sin(rx);
       const cosy = Math.cos(ry), siny = Math.sin(ry);
@@ -2849,10 +2847,10 @@ export default function Canvas({
         const sx = maxX - minX || 1;
         const sy = maxY - minY || 1;
         const sz = maxZ - minZ || 1;
-        const rot = shape.rotation3D || { x: 25, y: 35, z: 0 } as any;
-        const rx = (rot.x * Math.PI) / 180;
-        const ry = (rot.y * Math.PI) / 180;
-        const rz = (rot.z ? rot.z : 0) * Math.PI / 180;
+  const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
+  const rx = (rot.x * Math.PI) / 180;
+  const ry = (rot.y * Math.PI) / 180;
+  const rz = ((rot.z ?? 0) * Math.PI) / 180;
         const cosx = Math.cos(rx), sinx = Math.sin(rx);
         const cosy = Math.cos(ry), siny = Math.sin(ry);
         const cosz = Math.cos(rz), sinz = Math.sin(rz);
@@ -3125,36 +3123,7 @@ export default function Canvas({
       ctx.textAlign = 'center';
       ctx.fillText(labelText, centerX, shape.startY - 25);
       
-      // Draw description below the SVG if available
-      if (description && description.trim()) {
-        const descMaxWidth = width * 0.95;
-        const descriptionLines = wrapText(description, descMaxWidth);
-        const lineHeight = 14;
-        const descStartY = shape.startY + svgHeight + 25;
-        
-        // Draw semi-transparent background for description
-        const descHeight = (descriptionLines.length * lineHeight) + 16;
-        ctx.fillStyle = 'rgba(30, 41, 59, 0.9)'; // slate-800 with opacity
-        ctx.fillRect(
-          shape.startX + 10,
-          descStartY - 10,
-          width - 20,
-          descHeight
-        );
-        
-        // Draw description text
-        ctx.fillStyle = '#cbd5e1'; // slate-300
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'left';
-        
-        descriptionLines.forEach((line, idx) => {
-          ctx.fillText(
-            line,
-            shape.startX + 20,
-            descStartY + (idx * lineHeight) + 2
-          );
-        });
-      }
+      // Description rendering disabled - only show SVG
       
       ctx.restore();
     };
@@ -3182,9 +3151,8 @@ export default function Canvas({
     const drawFromImages = (baseImage: HTMLImageElement, highlightImage?: HTMLImageElement | null) => {
       ctx.save();
 
-      // Reserve space for description at the bottom
-      const descLines = description ? wrapText(description, width * 0.95).length : 0;
-      const descHeight = descLines > 0 ? (descLines * 14) + 30 : 0;
+      // No space reserved for description (description disabled)
+      const descHeight = 0;
       
       // Calculate available space for SVG
       const maxWidth = width * 0.95; // Increased from 0.92 for better zoom
@@ -3332,7 +3300,7 @@ export default function Canvas({
     ctx.globalAlpha = 1;
     ctx.fillText(labelText, centerX, centerY);
     ctx.restore();
-    renderLabel();
+    renderLabelAndDescription(0);
   };
 
   // PDB parsing and rendering utilities

@@ -18,6 +18,12 @@
   to = "/index.html"
   status = 200
 
+[dev]
+  command = "npm run dev"
+  port = 8888
+  targetPort = 1754
+  framework = "#custom"
+
 [build.environment]
   NODE_VERSION = "18"
 

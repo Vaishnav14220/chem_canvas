@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { ReactionResolutionResult, ReactionComponentDetails } from '../services/reactionResolver';
@@ -468,6 +468,8 @@ const StageLegend: React.FC<{
 const ReactionMechanismScene: React.FC<ReactionMechanismSceneProps> = ({ resolution }) => {
   const grouped = useGroupedComponents(resolution);
   const { structures, loading, errors } = useStageStructures(resolution);
+  const [webglLost, setWebglLost] = useState(false);
+  const [canvasCycle, setCanvasCycle] = useState(0);
 
   const hasComponents = grouped.some(stage => stage.items.length > 0);
   const hasStructures = stageMeta.some(stage => structures[stage.key].length > 0);
@@ -477,6 +479,22 @@ const ReactionMechanismScene: React.FC<ReactionMechanismSceneProps> = ({ resolut
     agent: 0,
     product: 7.2
   }), []);
+
+  const handleCanvasCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {
+    const canvas = gl.domElement;
+    const handleLost = (event: Event) => {
+      event.preventDefault();
+      setWebglLost(true);
+    };
+    const handleRestored = () => setWebglLost(false);
+    canvas.addEventListener('webglcontextlost', handleLost, false);
+    canvas.addEventListener('webglcontextrestored', handleRestored, false);
+  }, []);
+
+  const handleRestoreCanvas = () => {
+    setWebglLost(false);
+    setCanvasCycle(prev => prev + 1);
+  };
 
   return (
     <div className="flex w-full flex-col gap-4 rounded-xl border border-slate-200/40 bg-slate-900/60 p-4 shadow-inner">
@@ -489,8 +507,22 @@ const ReactionMechanismScene: React.FC<ReactionMechanismSceneProps> = ({ resolut
           <div className="flex h-full items-center justify-center text-sm text-slate-300">
             Generating RDKit geometries…
           </div>
+        ) : webglLost ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-slate-300">
+            <p>WebGL context was lost, likely due to GPU resource limits. Reload the viewer to continue.</p>
+            <button
+              onClick={handleRestoreCanvas}
+              className="rounded-md bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500"
+            >
+              Reload 3D Viewer
+            </button>
+          </div>
         ) : hasStructures ? (
-          <Canvas camera={{ position: [0, 0, 16], fov: 45 }}>
+          <Canvas
+            key={canvasCycle}
+            camera={{ position: [0, 0, 16], fov: 45 }}
+            onCreated={handleCanvasCreated}
+          >
             <color attach="background" args={['#020617']} />
             <ambientLight intensity={0.65} />
             <pointLight position={[10, 14, 8]} intensity={0.85} />

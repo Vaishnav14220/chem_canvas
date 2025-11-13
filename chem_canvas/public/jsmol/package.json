@@ -1,0 +1,27 @@
+{
+  "name": "jsmol",
+  "version": "1.0.0",
+  "description": "Library for loading JSmol (JSmol/HTML5)",
+  "main": "dist/jsmol.js",
+  "scripts": {
+    "build": "webpack"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antvaset/jsmol.git"
+  },
+  "keywords": [
+    "jsmol",
+    "jmol"
+  ],
+  "author": "Anton Vasetenkov <antvaset@gmail.com> (https://github.com/antvaset)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/antvaset/jsmol/issues"
+  },
+  "homepage": "https://github.com/antvaset/jsmol#readme",
+  "devDependencies": {
+    "webpack": "^4.42.0",
+    "webpack-cli": "^3.3.11"
+  }
+}

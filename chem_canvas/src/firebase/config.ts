@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import { getAnalytics } from "firebase/analytics";
 
 // Your web app's Firebase configuration
@@ -29,6 +30,9 @@ setPersistence(auth, browserLocalPersistence).catch((error) => {
 
 // Initialize Cloud Firestore and get a reference to the service
 export const db = getFirestore(app);
+
+// Initialize Firebase Storage and get a reference to the service
+export const storage = getStorage(app);
 
 // Initialize Analytics (only in browser environment)
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;

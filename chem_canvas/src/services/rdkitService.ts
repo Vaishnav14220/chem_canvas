@@ -2,6 +2,7 @@
 // Uses RDKit.js (WebAssembly) for client-side molecular computations
 
 import type { MoleculeData } from './pubchemService';
+import { fetchSDFBySmiles } from './pubchemService';
 
 declare global {
   interface Window {
@@ -10,6 +11,21 @@ declare global {
 }
 
 let rdkitModule: any = null;
+
+const fetchPubChemFallback3D = async (smiles: string, name?: string): Promise<RDKit3DData | null> => {
+  const sdf = (await fetchSDFBySmiles(smiles, '3d')) || (await fetchSDFBySmiles(smiles, '2d'));
+  if (!sdf) {
+    return null;
+  }
+  console.warn('rdkit_fallback_pubchem Using PubChem SDF fallback for', smiles);
+  return {
+    pdb: '',
+    sdf,
+    smiles,
+    name,
+  };
+};
+
 
 // Common molecules database with SMILES
 const COMMON_MOLECULES: Record<string, { smiles: string; formula: string; weight: number }> = {
@@ -153,42 +169,37 @@ const loadRDKitScript = (): Promise<void> => {
 export const generate3DStructure = async (smiles: string, name?: string): Promise<RDKit3DData | null> => {
   if (!rdkitModule) {
     const initialized = await initRDKit();
-    if (!initialized) return null;
+    if (!initialized) {
+      return fetchPubChemFallback3D(smiles, name);
+    }
   }
 
   try {
-    console.log(`🧪 Generating 3D structure for: ${smiles}`);
+    console.log(` Generating 3D structure for: ${smiles}`);
 
-    // Create molecule from SMILES
     const mol = rdkitModule.get_mol(smiles);
     if (!mol) {
-      console.error('❌ Failed to create molecule from SMILES');
-      return null;
+      console.error(' Failed to create molecule from SMILES');
+      return fetchPubChemFallback3D(smiles, name);
     }
 
-    // Add hydrogens
     mol.add_hs();
 
-    // Generate 3D coordinates
-    const success = mol.embed_molecule(true); // use random coordinates
+    const success = mol.embed_molecule(true);
     if (!success) {
-      console.error('❌ Failed to generate 3D coordinates');
+      console.error(' Failed to generate 3D coordinates');
       mol.delete();
-      return null;
+      return fetchPubChemFallback3D(smiles, name);
     }
 
-    // Optimize geometry (optional, can be slow)
     try {
       mol.mmff_optimize_molecule();
     } catch (error) {
-      console.warn('⚠️ MMFF optimization failed, using raw coordinates');
+      console.warn(' MMFF optimization failed, using raw coordinates');
     }
 
-    // Export to different formats
     const sdf = mol.get_sdf();
     const pdb = mol.get_pdb();
-
-    // Clean up
     mol.delete();
 
     return {
@@ -198,8 +209,8 @@ export const generate3DStructure = async (smiles: string, name?: string): Promis
       name
     };
   } catch (error) {
-    console.error('❌ Error generating 3D structure:', error);
-    return null;
+    console.error(' Error generating 3D structure:', error);
+    return fetchPubChemFallback3D(smiles, name);
   }
 };
 
@@ -227,18 +238,17 @@ export const smilesToSVG = async (smiles: string, width: number = 300, height: n
 // Convert reaction SMILES to 2D SVG representation using HuggingFace API
 export const reactionSmilesToSVGHuggingFace = async (reactionSmiles: string): Promise<string | null> => {
   try {
-    const sanitized = reactionSmiles.trim();
-    if (!sanitized) {
-      console.warn('⚠️ Empty reaction SMILES provided');
-      return null;
-    }
-
+    // Send raw SMILES directly from Gemini to HF API
+    // Add show_atom_numbers: false to prevent atom numbering
     const response = await fetch('https://smitathkr1-rdkit-smiles-to-reaction.hf.space/api/render/svg', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ smiles: sanitized })
+      body: JSON.stringify({ 
+        smiles: reactionSmiles,
+        show_atom_numbers: false  // Disable atom numbering/labels
+      })
     });
 
     if (!response.ok) {
@@ -264,17 +274,12 @@ export const reactionSmilesToSVG = async (reactionSmiles: string, width: number 
   }
 
   try {
-    const sanitized = reactionSmiles.trim();
-    if (!sanitized) {
-      return null;
-    }
-
     if (typeof rdkitModule.get_rxn !== 'function') {
       console.warn('⚠️ RDKit reaction helpers are not available in the current build.');
       return null;
     }
 
-    const rxn = rdkitModule.get_rxn(sanitized);
+    const rxn = rdkitModule.get_rxn(reactionSmiles);
     if (!rxn) {
       console.warn('⚠️ RDKit could not create reaction from SMILES');
       return null;

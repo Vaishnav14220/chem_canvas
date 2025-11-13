@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Upload, FileText, Loader2, Brain, Target, BookOpen, Zap, CheckCircle, XCircle, ArrowRight, Lightbulb, RefreshCw, Award, AlertCircle, Play, Volume2, Copy, StickyNote } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { X, Upload, FileText, Loader2, Brain, Target, BookOpen, Zap, CheckCircle, XCircle, ArrowRight, Lightbulb, RefreshCw, Award, AlertCircle, Play, Volume2, Copy, StickyNote, Heart, Flame, Sparkles, Trophy, Trash2, Clock, FlaskConical, Atom, Activity, MonitorPlay } from 'lucide-react';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import ReactMarkdown from 'react-markdown';
 import { InlineMath, BlockMath } from 'react-katex';
@@ -13,12 +13,27 @@ import {
   type LearningPreferences,
   type SessionData
 } from '../firebase/learningPreferences';
+import {
+  deleteSubjectExplorerSession,
+  getSubjectExplorerSession,
+  getSubjectExplorerSessions,
+  saveSubjectExplorerSession,
+  type SubjectExplorerSessionPayload,
+  type SubjectExplorerSessionRecord,
+} from '../firebase/subjectExplorerSessions';
+import ReactMolReactionViewer from './ReactMolReactionViewer';
+import ChemistryStructureViewer from './ChemistryStructureViewer';
+import InteractiveSimulationRenderer from './InteractiveSimulationRenderer';
+import FocusedLearningSession from './FocusedLearningSession';
+import DocumentManager from './DocumentManager';
+import type { SimulationSchema } from '../types/simulation';
+import { executeSimulation } from '../services/simulationService';
+import type { ReactionResolutionResult } from '../services/reactionResolver';
 
 interface SubjectExplorerProps {
   onClose: () => void;
   apiKey: string;
 }
-
 type WorkflowStage = 'upload' | 'topic_selection' | 'assessment' | 'learning';
 
 interface Topic {
@@ -122,6 +137,447 @@ interface QuickCheckItem {
   answerIndex: number;
 }
 
+type LessonBiteType = 'teach' | 'practice' | 'challenge';
+
+type LessonBiteActivityType = 'multiple_choice' | 'fill_blank' | 'reflection';
+
+interface LessonBite {
+  id: string;
+  title: string;
+  focus: string;
+  type: LessonBiteType;
+  xp: number;
+  heartCost: number;
+  teach: string;
+  prompt: string;
+  activityType: LessonBiteActivityType;
+  options?: string[];
+  answerIndex?: number;
+  correctAnswer?: string;
+  acceptableAnswers?: string[];
+  rubric?: string;
+  tip?: string;
+  reward?: string;
+}
+
+interface SessionSummaryPlan {
+  xpEarned: number;
+  skillLevel: string;
+  nextStep: string;
+  encouragement?: string;
+}
+
+interface ChemistryStructureAtom {
+  id: string;
+  element: string;
+  x: number;
+  y: number;
+  charge?: number;
+}
+
+interface ChemistryStructureBond {
+  id: string;
+  from: string;
+  to: string;
+  type: 'single' | 'double' | 'triple' | 'aromatic';
+  stereo?: string;
+}
+
+interface ChemistryStructureData {
+  metadata: {
+    name: string;
+    formula?: string;
+    smiles?: string;
+    inchi?: string;
+    notes?: string;
+    [key: string]: any;
+  };
+  type: string;
+  atoms: ChemistryStructureAtom[];
+  bonds: ChemistryStructureBond[];
+}
+
+interface ImmersiveMetric {
+  id: string;
+  label: string;
+  unit?: string;
+  precision?: number;
+}
+
+interface ImmersiveScenario {
+  id: string;
+  title: string;
+  description: string;
+  keywords: string[];
+  reaction: {
+    name: string;
+    summary: string;
+    reactionSmiles: string;
+    resolution: ReactionResolutionResult;
+    learningTargets: string[];
+  };
+  structure: ChemistryStructureData;
+  simulation: {
+    schema: SimulationSchema;
+    synopsis: string;
+    metrics: ImmersiveMetric[];
+    caution?: string;
+  };
+  assessmentBridge: string;
+  externalResource?: {
+    title: string;
+    url: string;
+    description?: string;
+    attribution?: string;
+  };
+  guidingQuestion?: string;
+}
+
+const IMMERSIVE_SCENARIOS: ImmersiveScenario[] = (() => {
+  const baldwinSimulationSchema: SimulationSchema = {
+    id: 'baldwin-6-endo-dig-energy-scan',
+    title: '6-endo-dig Cyclization Energetics Sandbox',
+    description: 'Tune geometric and electronic parameters to explore how a 6-endo-dig ring closure competes with Baldwin\'s preferred pathways.',
+    inputs: [
+      {
+        id: 'orbitalAlignment',
+        name: 'orbitalAlignment',
+        type: 'number',
+        label: 'Orbital Alignment (0-1)',
+        description: 'Fractional alignment between the attacking lone pair and the digonal center.',
+        defaultValue: 0.45,
+        unit: 'ratio',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        controlType: 'slider',
+      },
+      {
+        id: 'tetherFlexibility',
+        name: 'tetherFlexibility',
+        type: 'number',
+        label: 'Tether Flexibility',
+        description: 'How freely the tether can adopt the Bürgi–Dunitz approach angle.',
+        defaultValue: 0.6,
+        unit: 'ratio',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        controlType: 'slider',
+      },
+      {
+        id: 'electrophileActivation',
+        name: 'electrophileActivation',
+        type: 'number',
+        label: 'Electrophile Activation',
+        description: 'Degree to which the alkyne is activated (e.g., by a Lewis acid).',
+        defaultValue: 0.4,
+        unit: 'ratio',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        controlType: 'slider',
+      },
+      {
+        id: 'solventPolarity',
+        name: 'solventPolarity',
+        type: 'number',
+        label: 'Solvent Polarity Index',
+        description: 'Scaled dielectric constant influencing charge development in the transition state.',
+        defaultValue: 0.3,
+        unit: 'index',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        controlType: 'slider',
+      },
+    ],
+    outputs: [
+      {
+        id: 'activation_barrier',
+        name: 'activation_barrier',
+        type: 'number',
+        label: 'Activation Barrier',
+        description: 'Estimated barrier height for the 6-endo-dig closure.',
+        unit: 'kcal/mol',
+        format: 'decimal',
+        precision: 1,
+      },
+      {
+        id: 'six_endo_probability',
+        name: 'six_endo_probability',
+        type: 'number',
+        label: '6-endo-dig Success Probability',
+        description: 'Heuristic likelihood that the 6-endo-dig pathway is competitive.',
+        unit: '%',
+        format: 'decimal',
+        precision: 0,
+      },
+      {
+        id: 'predicted_rate_constant',
+        name: 'predicted_rate_constant',
+        type: 'number',
+        label: 'Predicted Rate Constant',
+        description: 'Relative rate constant for the 6-endo-dig trajectory.',
+        unit: 's^-1',
+        format: 'scientific',
+        precision: 2,
+      },
+    ],
+    logic: {
+      formulaId: 'baldwin-heuristic',
+      equation: '\\Delta G^\\ddagger = f(\text{alignment}, \text{activation}, \text{flexibility})',
+      implementation: `
+        const baseBarrier = 20.5;
+        const alignmentGain = (inputs.orbitalAlignment - 0.5) * -8;
+        const activationGain = inputs.electrophileActivation * -6;
+        const tetherPenalty = (1 - inputs.tetherFlexibility) * 5.5;
+        const solventAdjustment = (inputs.solventPolarity - 0.3) * -1.5;
+        const barrier = Math.max(8, baseBarrier + alignmentGain + activationGain + tetherPenalty + solventAdjustment);
+        const successRaw = 55 - (barrier - 12) * 3 + inputs.orbitalAlignment * 30 + inputs.tetherFlexibility * 20;
+        const sixEndoProbability = Math.max(0, Math.min(100, successRaw));
+        const rateConstant = Math.max(1e-6, 0.12 * Math.exp(-(barrier - 10) / 2.2));
+        return {
+          activation_barrier: barrier,
+          six_endo_probability: sixEndoProbability,
+          predicted_rate_constant: rateConstant
+        };
+      `,
+      explanation: 'Heuristic model illustrating how alignment and activation alter 6-endo-dig feasibility compared with Baldwin\'s preferred 5-exo-dig closures.',
+    },
+    metadata: {
+      domain: 'Chemistry',
+      difficulty: 'advanced',
+      tags: ['baldwin', 'cyclization', 'pericyclic'],
+    },
+  };
+
+  const baldwinStructure: ChemistryStructureData = {
+    metadata: {
+      name: '6-endo-dig Cyclization Product',
+      formula: 'C8H8O',
+      smiles: 'C1=CC=CCO1',
+      notes: 'Stylized cyclic enol ether formed via a 6-endo-dig Baldwin cyclization.',
+    },
+    type: 'molecule',
+    atoms: [
+      { id: 'c1', element: 'C', x: 0.0, y: 0.0 },
+      { id: 'c2', element: 'C', x: 1.2, y: 0.0 },
+      { id: 'c3', element: 'C', x: 2.0, y: 1.0 },
+      { id: 'c4', element: 'C', x: 1.2, y: 2.0 },
+      { id: 'c5', element: 'C', x: 0.0, y: 2.0 },
+      { id: 'c6', element: 'C', x: -0.8, y: 1.0 },
+      { id: 'c7', element: 'C', x: 2.8, y: 0.2 },
+      { id: 'c8', element: 'C', x: 3.6, y: -0.6 },
+      { id: 'o1', element: 'O', x: 2.2, y: -0.8 },
+      { id: 'h1', element: 'H', x: -1.5, y: 1.8 },
+      { id: 'h2', element: 'H', x: -1.2, y: 0.2 },
+    ],
+    bonds: [
+      { id: 'b1', from: 'c1', to: 'c2', type: 'single' },
+      { id: 'b2', from: 'c2', to: 'c3', type: 'single' },
+      { id: 'b3', from: 'c3', to: 'c4', type: 'single' },
+      { id: 'b4', from: 'c4', to: 'c5', type: 'single' },
+      { id: 'b5', from: 'c5', to: 'c6', type: 'single' },
+      { id: 'b6', from: 'c6', to: 'c1', type: 'single' },
+      { id: 'b7', from: 'c2', to: 'o1', type: 'single' },
+      { id: 'b8', from: 'c3', to: 'c7', type: 'double' },
+      { id: 'b9', from: 'c7', to: 'c8', type: 'single' },
+      { id: 'b10', from: 'c6', to: 'h1', type: 'single' },
+      { id: 'b11', from: 'c6', to: 'h2', type: 'single' },
+    ],
+  };
+
+  const baldwinResolution: ReactionResolutionResult = {
+    reactionSmiles: 'C#CC=CCO>>C1=CC=CCO1',
+    components: [
+      { role: 'reactant', label: 'Enyne nucleophile', smiles: 'C#CC=CCO' },
+      { role: 'product', label: '6-membered enol ether', smiles: 'C1=CC=CCO1' },
+    ],
+    usedGemini: false,
+    confidence: 0.4,
+    notes: 'Stylized Baldwin 6-endo-dig cyclization illustrating an intramolecular attack on an activated alkyne.',
+    reactionName: '6-endo-dig intramolecular cyclization',
+  };
+
+  return [
+    {
+      id: 'baldwin-6-endo-dig-lab',
+      title: "Baldwin's Rule (6-endo-dig) Immersive Lab",
+      description: 'Explore why 6-endo-dig cyclizations challenge Baldwin\'s guidelines by combining 3D visualization, heuristic energetics, and assessment prompts.',
+      keywords: ['6-endo-dig', 'baldwin', 'cyclization', 'alkyne', 'ring closure'],
+      reaction: {
+        name: '6-endo-dig Cyclization',
+        summary: 'An intramolecular attack closes a six-membered ring via a digonal (sp) center, categorized as 6-endo-dig in Baldwin\'s rules.',
+        reactionSmiles: baldwinResolution.reactionSmiles,
+        resolution: baldwinResolution,
+        learningTargets: [
+          'Relate Baldwin\'s digonal classification to the attacking trajectory of an alkyne.',
+          'Contrast 6-endo-dig outcomes with the favored 5-exo-dig pathway using orbital alignment cues.',
+          'Identify activation strategies that can overcome the geometric penalty for 6-endo-dig closures.',
+        ],
+      },
+      structure: baldwinStructure,
+      simulation: {
+        schema: baldwinSimulationSchema,
+        synopsis: 'Adjust alignment, tether flexibility, activation, and solvent effects to reason about the feasibility of a 6-endo-dig ring closure.',
+        metrics: [
+          { id: 'activation_barrier', label: 'Activation barrier', unit: 'kcal/mol', precision: 1 },
+          { id: 'six_endo_probability', label: '6-endo-dig probability', unit: '%' },
+          { id: 'predicted_rate_constant', label: 'Rate constant', unit: 's^-1', precision: 2 },
+        ],
+        caution: 'Heuristic model for exploratory learning—use qualitative trends rather than absolute numbers.',
+      },
+      assessmentBridge: 'After experimenting with the sandbox, use evidence from the molecular models to justify when a 6-endo-dig pathway might compete with a 5-exo-dig alternative.',
+      guidingQuestion: 'After inspecting the molecular models, what geometric limitation makes the 6-endo-dig closure less favorable than a competing 5-exo-dig pathway?',
+    },
+  ];
+})();
+
+const cloneScenario = (scenario: ImmersiveScenario | undefined): ImmersiveScenario | null => {
+  if (!scenario) {
+    return null;
+  }
+  return JSON.parse(JSON.stringify(scenario)) as ImmersiveScenario;
+};
+
+const selectImmersiveScenario = (topicName?: string | null): ImmersiveScenario | null => {
+  const search = topicName?.toLowerCase() ?? '';
+  const match = IMMERSIVE_SCENARIOS.find(scenario =>
+    scenario.keywords.some(keyword => search.includes(keyword))
+  );
+  return cloneScenario(match ?? IMMERSIVE_SCENARIOS[0]);
+};
+
+type LessonBiteStateOverrides = {
+  choiceResponses?: Record<string, number>;
+  textInputs?: Record<string, string>;
+  textSubmissions?: Record<string, string>;
+};
+
+const formatRelativeTime = (date?: Date | null): string => {
+  if (!date) {
+    return 'Just now';
+  }
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 1) {
+    return 'Just now';
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes} min ago`;
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} hr${diffHours > 1 ? 's' : ''} ago`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+};
+
+const toResumeSnippet = (text: string, maxLength = 120): string => {
+  return text.replace(/\s+/g, ' ').trim().slice(0, maxLength);
+};
+
+const getAcademicScenarioDirectives = (
+  academicLevel: string,
+  gaps: KnowledgeGap[]
+): string[] => {
+  const level = academicLevel.toLowerCase();
+  const directives: string[] = [];
+  const focusConcepts = gaps.map(gap => gap.concept).slice(0, 3).join(', ');
+
+  const advancedDirective =
+    '- Calibrate every explanation to university-level rigor—reference underlying equations, quantitative reasoning, and professional terminology.';
+  directives.push(advancedDirective);
+
+  if (focusConcepts) {
+    directives.push(`- Tie reinforcement activities directly to these focus concepts: ${focusConcepts}.`);
+  }
+
+  if (level.includes('master') || level.includes('graduate') || level.includes('postgraduate')) {
+    directives.push(
+      '- Frame each bite as part of a research-lab workshop: highlight instrumentation choices, data interpretation steps, and how findings relate to ongoing studies.'
+    );
+    directives.push(
+      '- Whenever possible, propose a compact experiment or simulation run. Specify equipment, control variables, safety notes, and expected observations so learners can replicate it.'
+    );
+  }
+
+  if (level.includes('engineer') || level.includes('engineering')) {
+    directives.push(
+      '- Emphasize design thinking: include system models, process diagrams, or calculations engineers would perform before running an experiment.'
+    );
+    directives.push(
+      '- Encourage learners to iterate on parameters using the interactive simulation toggle; call out which variables to sweep and what metrics to monitor.'
+    );
+  }
+
+  directives.push(
+    '- If a reaction, structure, or molecular interaction is discussed, prompt the learner to open the canvas reaction tools or 3D molecular viewer and describe what to inspect.'
+  );
+  directives.push(
+    '- Where visuals aid understanding, describe the diagram or image to display and explain what features to pay attention to.'
+  );
+  directives.push(
+    '- Blend conceptual depth with applied context—link the idea to industry, research, or experimental scenarios relevant to advanced university students.'
+  );
+
+  return directives;
+};
+
+const computeDocumentFingerprint = async (text: string): Promise<string> => {
+  if (typeof window !== 'undefined' && window.crypto?.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hashBuffer))
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+    } catch (error) {
+      console.warn('[SubjectExplorer] Failed to compute SHA-256 fingerprint, falling back:', error);
+    }
+  }
+
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash << 5) - hash + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return `fallback_${Math.abs(hash)}`;
+};
+
+const generateSessionId = (fingerprint: string) => {
+  const prefix = fingerprint.slice(0, 10) || 'session';
+  return `sess_${prefix}_${Date.now().toString(36)}`;
+};
+
+const LESSON_TYPE_META: Record<LessonBiteType, { label: string; badgeClass: string; textClass: string }> = {
+  teach: {
+    label: 'Learn',
+    badgeClass: 'bg-blue-500/20 border border-blue-400/40 text-blue-200',
+    textClass: 'text-blue-200',
+  },
+  practice: {
+    label: 'Practice',
+    badgeClass: 'bg-purple-500/20 border border-purple-400/40 text-purple-200',
+    textClass: 'text-purple-200',
+  },
+  challenge: {
+    label: 'Challenge',
+    badgeClass: 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-200',
+    textClass: 'text-emerald-200',
+  },
+};
+
+const LESSON_ACTIVITY_LABELS: Record<LessonBiteActivityType, string> = {
+  multiple_choice: 'Choose the best answer',
+  fill_blank: 'Fill in the blank',
+  reflection: 'Reflection moment',
+};
+
 const sanitizeSnippet = (text: string, maxLength = 160): string => {
   return text
     .replace(/\s+/g, ' ')
@@ -143,6 +599,144 @@ const extractContentBetweenTags = (source: string, tag: string): string | null =
   const regex = new RegExp(`\\[${tag}\\]([\\s\\S]*?)\\[\\/${tag}\\]`, 'i');
   const match = regex.exec(source);
   return match ? match[1].trim() : null;
+};
+
+const parseDuolingoLearningJourney = (content: string): {
+  bites: LessonBite[];
+  summary: SessionSummaryPlan | null;
+} => {
+  const bites: LessonBite[] = [];
+  const biteRegex = /\[LESSON_BITE\]([\s\S]*?)\[\/LESSON_BITE\]/gi;
+  let biteMatch: RegExpExecArray | null;
+
+  while ((biteMatch = biteRegex.exec(content)) !== null) {
+    const block = biteMatch[1];
+    const grabSegment = (label: string, untilLabels: string[]): string => {
+      const pattern = new RegExp(`${label}:\\s*([\\s\\S]*?)${untilLabels.length ? `(?=\\n(?:${untilLabels.join('|')}):|$)` : '$'}`, 'i');
+      const match = pattern.exec(block);
+      return match?.[1]?.trim() ?? '';
+    };
+
+    const title = grabSegment('Title', ['Focus', 'Type', 'ActivityType', 'XP', 'HeartCost', 'Teach', 'Prompt', 'Options', 'Answer', 'AltAnswers', 'Tip', 'Reward', 'ReflectionGuide']) || 'Lesson Bite';
+    const focus = grabSegment('Focus', ['Type', 'ActivityType', 'XP', 'HeartCost', 'Teach', 'Prompt', 'Options', 'Answer', 'AltAnswers', 'Tip', 'Reward', 'ReflectionGuide']) || 'Core concept';
+    const typeRaw = grabSegment('Type', ['ActivityType', 'XP', 'HeartCost', 'Teach', 'Prompt', 'Options', 'Answer', 'AltAnswers', 'Tip', 'Reward', 'ReflectionGuide']).toLowerCase();
+    const type: LessonBiteType = (['teach', 'practice', 'challenge'] as LessonBiteType[]).includes(typeRaw as LessonBiteType)
+      ? (typeRaw as LessonBiteType)
+      : 'teach';
+    const activityTypeRaw = grabSegment('ActivityType', ['XP', 'HeartCost', 'Teach', 'Prompt', 'Options', 'Answer', 'AltAnswers', 'Tip', 'Reward', 'ReflectionGuide']).toLowerCase();
+    const activityType: LessonBiteActivityType = (['multiple_choice', 'fill_blank', 'reflection'] as LessonBiteActivityType[]).includes(activityTypeRaw as LessonBiteActivityType)
+      ? (activityTypeRaw as LessonBiteActivityType)
+      : 'multiple_choice';
+    const xpValue = parseInt(grabSegment('XP', ['HeartCost', 'Teach', 'Prompt', 'Options', 'Answer', 'AltAnswers', 'Tip', 'Reward', 'ReflectionGuide']) || '15', 10);
+    const heartCostValue = parseInt(grabSegment('HeartCost', ['Teach', 'Prompt', 'Options', 'Answer', 'AltAnswers', 'Tip', 'Reward', 'ReflectionGuide']) || '1', 10);
+    const teach = grabSegment('Teach', ['Prompt', 'Options', 'Answer', 'AltAnswers', 'Tip', 'Reward', 'ReflectionGuide']) || '';
+    const prompt = grabSegment('Prompt', ['Options', 'Answer', 'AltAnswers', 'Steps', 'CorrectOrder', 'ReflectionGuide', 'Guidance', 'Tip', 'Reward']) || '';
+    const optionsBlock = grabSegment('Options', ['Answer', 'AltAnswers', 'Tip', 'Reward']) || '';
+    const options = optionsBlock
+      .split('\n')
+      .map(line => line.replace(/^-\s*/, '').trim())
+      .filter(Boolean);
+    const answerSegment = grabSegment('Answer', ['AltAnswers', 'Tip', 'Reward', 'ReflectionGuide']);
+    const altAnswersSegment = grabSegment('AltAnswers', ['Tip', 'Reward', 'ReflectionGuide']);
+    const reflectionGuide = grabSegment('ReflectionGuide', ['Tip', 'Reward']) || grabSegment('Guidance', ['Tip', 'Reward']);
+    const tip = grabSegment('Tip', ['Reward']);
+    const reward = grabSegment('Reward', []);
+
+    const xp = Number.isFinite(xpValue) ? xpValue : 15;
+    const baseHeartCost = Number.isFinite(heartCostValue) ? heartCostValue : 1;
+    const normalizedPrompt = prompt.trim();
+
+    if (activityType === 'multiple_choice' || (!activityTypeRaw && options.length)) {
+      if (!options.length) {
+        continue;
+      }
+      const answerIndex = Math.max(0, (parseInt(answerSegment || '1', 10) || 1) - 1);
+      bites.push({
+        id: `bite-${bites.length + 1}`,
+        title,
+        focus,
+        type,
+        xp,
+        heartCost: Math.max(1, baseHeartCost),
+        teach,
+        prompt: normalizedPrompt,
+        activityType: 'multiple_choice',
+        options,
+        answerIndex: Math.min(answerIndex, options.length - 1),
+        tip,
+        reward,
+      });
+      continue;
+    }
+
+    if (activityType === 'fill_blank') {
+      const correctAnswer = (answerSegment || '').trim();
+      if (!correctAnswer) {
+        continue;
+      }
+      const acceptableAnswers = altAnswersSegment
+        ? altAnswersSegment
+            .split(/[\n,]/)
+            .map(ans => ans.trim())
+            .filter(Boolean)
+        : [];
+
+      bites.push({
+        id: `bite-${bites.length + 1}`,
+        title,
+        focus,
+        type,
+        xp,
+        heartCost: Math.max(1, baseHeartCost),
+        teach,
+        prompt: normalizedPrompt,
+        activityType,
+        correctAnswer,
+        acceptableAnswers: acceptableAnswers.length ? acceptableAnswers : undefined,
+        tip,
+        reward,
+      });
+      continue;
+    }
+
+    if (activityType === 'reflection') {
+      bites.push({
+        id: `bite-${bites.length + 1}`,
+        title,
+        focus,
+        type,
+        xp,
+        heartCost: 0,
+        teach,
+        prompt: normalizedPrompt,
+        activityType,
+        rubric: reflectionGuide || 'Jot down how you will use this skill next.',
+        tip,
+        reward,
+      });
+      continue;
+    }
+  }
+
+  const summaryMatch = /\[SESSION_SUMMARY\]([\s\S]*?)\[\/SESSION_SUMMARY\]/i.exec(content);
+  let summary: SessionSummaryPlan | null = null;
+
+  if (summaryMatch) {
+    const block = summaryMatch[1];
+    const xpEarned = parseInt(block.match(/XP_Earned:\s*(\d+)/i)?.[1] ?? '0', 10);
+    const skillLevel = block.match(/Skill_Level:\s*([^\n]+)/i)?.[1]?.trim() ?? '';
+    const nextStep = block.match(/Next_Step:\s*([^\n]+)/i)?.[1]?.trim() ?? '';
+    const encouragement = block.match(/Encouragement:\s*([\s\S]*?)$/i)?.[1]?.trim();
+
+    summary = {
+      xpEarned: Number.isFinite(xpEarned) ? xpEarned : 0,
+      skillLevel,
+      nextStep,
+      encouragement,
+    };
+  }
+
+  return { bites, summary };
 };
 
 const parseLearningSections = (content: string): {
@@ -263,6 +857,13 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   const [stage, setStage] = useState<WorkflowStage>('upload');
   const [documentContent, setDocumentContent] = useState<string>('');
   const [documentName, setDocumentName] = useState<string>('');
+  const [documentFileUrl, setDocumentFileUrl] = useState<string | null>(null);
+  const [documentFingerprint, setDocumentFingerprint] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState(() => auth.currentUser);
+  const [savedSessions, setSavedSessions] = useState<SubjectExplorerSessionRecord[]>([]);
+  const [savedSessionsLoading, setSavedSessionsLoading] = useState<boolean>(false);
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -313,6 +914,102 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   const [currentLearningStep, setCurrentLearningStep] = useState<number>(0);
   const [completedLearningSteps, setCompletedLearningSteps] = useState<Set<number>>(new Set());
   const [quizResponses, setQuizResponses] = useState<Record<string, number>>({});
+  const [lessonBites, setLessonBites] = useState<LessonBite[]>([]);
+  const [sessionSummaryPlan, setSessionSummaryPlan] = useState<SessionSummaryPlan | null>(null);
+  const [currentBiteIndex, setCurrentBiteIndex] = useState(0);
+  const [biteChoiceResponses, setBiteChoiceResponses] = useState<Record<string, number>>({});
+  const [biteTextInputs, setBiteTextInputs] = useState<Record<string, string>>({});
+  const [biteTextSubmissions, setBiteTextSubmissions] = useState<Record<string, string>>({});
+  const [completedBites, setCompletedBites] = useState<Set<string>>(new Set());
+  const [xpScore, setXpScore] = useState(0);
+  const [streakCount, setStreakCount] = useState(0);
+  const [hearts, setHearts] = useState(5);
+  const [biteFeedback, setBiteFeedback] = useState<string | null>(null);
+  const [useFocusedLearningMode, setUseFocusedLearningMode] = useState(false);
+  const [wasAutoResumed, setWasAutoResumed] = useState(false);
+  const immersiveScenario = useMemo(() => {
+    const base = selectImmersiveScenario(selectedTopic?.name ?? null);
+    if (!base) {
+      return null;
+    }
+    if (selectedTopic?.name) {
+      base.title = `${selectedTopic.name} Immersive Lab`;
+    }
+    return base;
+  }, [selectedTopic?.name]);
+  const [showStructureViewer, setShowStructureViewer] = useState(false);
+  const [activeStructure, setActiveStructure] = useState<ChemistryStructureData | null>(() => immersiveScenario?.structure ?? null);
+
+  useEffect(() => {
+    setActiveStructure(immersiveScenario?.structure ?? null);
+  }, [immersiveScenario]);
+
+  const immersiveSimulationBaseline = useMemo<{
+    inputs: Record<string, any>;
+    outputs: Record<string, any>;
+  } | null>(() => {
+    if (!immersiveScenario?.simulation?.schema) {
+      return null;
+    }
+    const defaults = immersiveScenario.simulation.schema.inputs.reduce<Record<string, any>>((accumulator, input) => {
+      accumulator[input.id] = input.defaultValue;
+      return accumulator;
+    }, {});
+    try {
+      const outputs = executeSimulation(immersiveScenario.simulation.schema, defaults) as Record<string, any>;
+      return { inputs: defaults, outputs };
+    } catch (error) {
+      console.error('[SubjectExplorer] Failed to evaluate immersive simulation baseline:', error);
+      return null;
+    }
+  }, [immersiveScenario]);
+
+  const handleStructureRegenerate = useCallback(() => {
+    setActiveStructure(previous => {
+      if (!previous) {
+        return previous;
+      }
+      const jitter = () => Number(((Math.random() - 0.5) * 0.2).toFixed(2));
+      const atoms = previous.atoms.map(atom => ({
+        ...atom,
+        x: Number((atom.x + jitter()).toFixed(2)),
+        y: Number((atom.y + jitter()).toFixed(2)),
+      }));
+      return {
+        ...previous,
+        atoms,
+        metadata: {
+          ...previous.metadata,
+          renderId: Math.random().toString(36).slice(2, 7),
+        },
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!simulationTopic && immersiveScenario?.reaction?.name) {
+      setSimulationTopic(immersiveScenario.reaction.name);
+    }
+  }, [immersiveScenario, simulationTopic]);
+
+  const refreshSavedSessions = useCallback(async (uid?: string) => {
+    const targetUid = uid ?? currentUser?.uid;
+    if (!targetUid) {
+      setSavedSessions([]);
+      setSavedSessionsLoading(false);
+      return;
+    }
+
+    setSavedSessionsLoading(true);
+    try {
+      const sessions = await getSubjectExplorerSessions(targetUid);
+      setSavedSessions(sessions);
+    } catch (error) {
+      console.error('[SubjectExplorer] Failed to load saved sessions:', error);
+    } finally {
+      setSavedSessionsLoading(false);
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     const loadPreferences = async () => {
@@ -328,8 +1025,390 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   }, []);
 
   useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async user => {
+      setCurrentUser(user);
+      if (!user) {
+        setSavedSessions([]);
+        setSavedSessionsLoading(false);
+        return;
+      }
+
+      await refreshSavedSessions(user.uid);
+      
+      // Auto-load most recent session if user has saved learning journeys
+      try {
+        const sessions = await getSubjectExplorerSessions(user.uid);
+        if (sessions.length > 0) {
+          // Sort by updatedAt descending and get the most recent
+          const mostRecent = sessions.sort((a, b) => {
+            const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return dateB - dateA;
+          })[0];
+          
+          // Auto-resume if the session was in learning stage
+          if (mostRecent && mostRecent.stage === 'learning' && (mostRecent.lessonBites?.length ?? 0) > 0) {
+            console.log('[SubjectExplorer] Auto-resuming learning journey:', mostRecent.id);
+            applySavedSession(mostRecent);
+            setWasAutoResumed(true);
+            setFeedbackMessage('✨ Welcome back! Your learning journey has been resumed.');
+            setShowFeedback(true);
+            setTimeout(() => setShowFeedback(false), 4000);
+          }
+        }
+      } catch (error) {
+        console.error('[SubjectExplorer] Failed to auto-load recent session:', error);
+      }
+    });
+
+    return unsubscribe;
+  }, [refreshSavedSessions]);
+
+  useEffect(() => {
     console.log('[SubjectExplorer] API key updated:', apiKey ? `${apiKey.substring(0, 10)}...` : 'none');
   }, [apiKey]);
+
+  const resetSessionState = useCallback(() => {
+    setStage('upload');
+    setDocumentContent('');
+    setDocumentName('');
+    setDocumentFingerprint(null);
+    setActiveSessionId(null);
+    setIsProcessing(false);
+    setProcessingMessage('');
+    setTopics([]);
+    setAcademicLevel('');
+    setSelectedTopic(null);
+    setAssessmentType(null);
+    setCurrentModule(null);
+    setKnowledgeGapReport(null);
+    setLearningContent('');
+    setTutorModules([]);
+    setCurrentTutorModuleIndex(0);
+    setUserProgress([]);
+    setUserAnswer(null);
+    setShowFlashcardBack(false);
+    setSelectedOptions([]);
+    setShortAnswerText('');
+    setFillBlanksAnswers([]);
+    setMatchPairsAnswers(new Map());
+    setFeedbackMessage('');
+    setShowFeedback(false);
+    setAttemptCount(0);
+    setShowHint(false);
+    setCurrentHint('');
+    setWrongAnswers([]);
+    setSessionStartTime(Date.now());
+    setReadingStartTime(0);
+    setCurrentSessionData({
+      questionsAttempted: 0,
+      questionsCorrectFirstTry: 0,
+      questionsSkipped: [],
+      hintsUsed: 0,
+      attemptsPerQuestion: [],
+      moduleTypesUsed: [],
+      moduleTypesSucceeded: [],
+      timeSpentReading: 0,
+      timeSpentOnExercises: 0,
+    });
+    setExpandedSections(new Set());
+    setInteractiveSimulationActive(false);
+    setConceptHighlights([]);
+    setUserNotes(new Map());
+    setSimulationTopic(null);
+    setLearningSections([]);
+    setJourneySummary(null);
+    setQuickChecks([]);
+    setCurrentLearningStep(0);
+    setCompletedLearningSteps(new Set());
+    setQuizResponses({});
+    setLessonBites([]);
+    setSessionSummaryPlan(null);
+    setCurrentBiteIndex(0);
+    setBiteChoiceResponses({});
+    setBiteTextInputs({});
+    setBiteTextSubmissions({});
+    setCompletedBites(new Set());
+    setXpScore(0);
+    setStreakCount(0);
+    setHearts(5);
+    setBiteFeedback(null);
+    setShowApiKeyModal(false);
+    setWasAutoResumed(false);
+  }, []);
+
+  const formatStageLabel = (value: string): string => {
+    switch (value) {
+      case 'upload':
+        return 'Upload ready';
+      case 'topic_selection':
+        return 'Topics identified';
+      case 'assessment':
+        return 'Assessment in progress';
+      case 'learning':
+        return 'Learning journey active';
+      default:
+        return 'In progress';
+    }
+  };
+
+  const buildSessionPayload = (
+    stageOverride?: WorkflowStage,
+    overrides: Partial<SubjectExplorerSessionPayload> = {}
+  ): SubjectExplorerSessionPayload => {
+    const normalizedStage = stageOverride ?? stage;
+    const topicList = topics.map(topic => ({
+      id: topic.id,
+      name: topic.name,
+      ...(topic.description ? { description: topic.description } : {}),
+    }));
+    const selectedTopicPayload = selectedTopic
+      ? {
+          id: selectedTopic.id,
+          name: selectedTopic.name,
+          ...(selectedTopic.description ? { description: selectedTopic.description } : {}),
+        }
+      : null;
+
+    const payload: SubjectExplorerSessionPayload = {
+      documentId: documentFingerprint || '',
+      documentName,
+      documentContent,
+      stage: normalizedStage,
+      academicLevel,
+      topics: topicList,
+      selectedTopic: selectedTopicPayload,
+      assessmentType,
+      currentModule,
+      knowledgeGapReport,
+      learningContent,
+      lessonBites,
+      sessionSummaryPlan,
+      currentBiteIndex,
+      biteChoiceResponses,
+      biteTextInputs,
+      biteTextSubmissions,
+      completedBites: Array.from(completedBites),
+      xpScore,
+      streakCount,
+      hearts,
+      tutorModules,
+      currentTutorModuleIndex,
+      quickChecks,
+      learningSections,
+      journeySummary,
+      currentLearningStep,
+      completedLearningSteps: Array.from(completedLearningSteps),
+      quizResponses,
+      userProgress,
+      conceptHighlights,
+      userNotes: Array.from(userNotes.entries()).map(([topicId, note]) => ({ topicId, note })),
+      fillBlanksAnswers,
+      selectedOptions,
+      shortAnswerText,
+      matchPairsAnswers: Array.from(matchPairsAnswers.entries()),
+      attemptCount,
+      showHint,
+      currentHint,
+      wrongAnswers,
+      biteFeedback,
+      sessionStartTime,
+      readingStartTime,
+      currentSessionData,
+    };
+
+    return {
+      ...payload,
+      ...overrides,
+    };
+  };
+
+  const persistSession = async (
+    stageOverride?: WorkflowStage,
+    overrides: Partial<SubjectExplorerSessionPayload> = {},
+    sessionIdOverride?: string
+  ) => {
+    const targetSessionId = sessionIdOverride ?? activeSessionId;
+    if (!currentUser || !targetSessionId) {
+      return;
+    }
+    const fingerprintToPersist = (overrides.documentId as string | undefined) ?? documentFingerprint;
+    const contentToPersist = (overrides.documentContent as string | undefined) ?? documentContent;
+    if (!fingerprintToPersist || !contentToPersist) {
+      return;
+    }
+
+    const payload = buildSessionPayload(stageOverride, overrides);
+    const sanitized = JSON.parse(JSON.stringify(payload)) as SubjectExplorerSessionPayload;
+
+    try {
+      await saveSubjectExplorerSession(currentUser.uid, targetSessionId, sanitized);
+
+      const timestamp = new Date();
+      setSavedSessions(prev => {
+        const existing = prev.find(session => session.id === targetSessionId);
+        const createdAt = existing?.createdAt ?? timestamp;
+        const updatedRecord: SubjectExplorerSessionRecord = {
+          id: targetSessionId,
+          documentId: sanitized.documentId,
+          documentName: sanitized.documentName,
+          documentContent: sanitized.documentContent,
+          stage: sanitized.stage,
+          academicLevel: sanitized.academicLevel,
+          topics: sanitized.topics,
+          selectedTopic: sanitized.selectedTopic,
+          assessmentType: sanitized.assessmentType,
+          currentModule: sanitized.currentModule,
+          knowledgeGapReport: sanitized.knowledgeGapReport,
+          learningContent: sanitized.learningContent,
+          lessonBites: sanitized.lessonBites,
+          sessionSummaryPlan: sanitized.sessionSummaryPlan,
+          currentBiteIndex: sanitized.currentBiteIndex,
+          biteChoiceResponses: sanitized.biteChoiceResponses,
+          biteTextInputs: sanitized.biteTextInputs,
+          biteTextSubmissions: sanitized.biteTextSubmissions,
+          completedBites: sanitized.completedBites,
+          xpScore: sanitized.xpScore,
+          streakCount: sanitized.streakCount,
+          hearts: sanitized.hearts,
+          tutorModules: sanitized.tutorModules,
+          currentTutorModuleIndex: sanitized.currentTutorModuleIndex,
+          quickChecks: sanitized.quickChecks,
+          learningSections: sanitized.learningSections,
+          journeySummary: sanitized.journeySummary,
+          currentLearningStep: sanitized.currentLearningStep,
+          completedLearningSteps: sanitized.completedLearningSteps,
+          quizResponses: sanitized.quizResponses,
+          userProgress: sanitized.userProgress,
+          conceptHighlights: sanitized.conceptHighlights,
+          userNotes: sanitized.userNotes,
+          fillBlanksAnswers: sanitized.fillBlanksAnswers,
+          selectedOptions: sanitized.selectedOptions,
+          shortAnswerText: sanitized.shortAnswerText,
+          matchPairsAnswers: sanitized.matchPairsAnswers,
+          attemptCount: sanitized.attemptCount,
+          showHint: sanitized.showHint,
+          currentHint: sanitized.currentHint,
+          wrongAnswers: sanitized.wrongAnswers,
+          biteFeedback: sanitized.biteFeedback,
+          sessionStartTime: sanitized.sessionStartTime,
+          readingStartTime: sanitized.readingStartTime,
+          currentSessionData: sanitized.currentSessionData,
+          createdAt,
+          updatedAt: timestamp,
+        };
+
+        const filtered = prev.filter(session => session.id !== targetSessionId);
+        return [updatedRecord, ...filtered];
+      });
+    } catch (error) {
+      console.error('[SubjectExplorer] Failed to persist session state:', error);
+    }
+  };
+
+  const applySavedSession = (session: SubjectExplorerSessionRecord) => {
+    const normalizedStage: WorkflowStage = (['upload', 'topic_selection', 'assessment', 'learning'] as WorkflowStage[]).includes(session.stage as WorkflowStage)
+      ? (session.stage as WorkflowStage)
+      : 'topic_selection';
+
+    setActiveSessionId(session.id);
+    setDocumentFingerprint(session.documentId || null);
+    setDocumentName(session.documentName || '');
+    setDocumentContent(session.documentContent || '');
+    setStage(normalizedStage);
+    setAcademicLevel(session.academicLevel || '');
+    setTopics((session.topics as Topic[]) ?? []);
+    setSelectedTopic((session.selectedTopic as Topic | null) ?? null);
+    setAssessmentType(session.assessmentType ?? null);
+    setCurrentModule((session.currentModule as InteractiveModule | null) ?? null);
+    setKnowledgeGapReport((session.knowledgeGapReport as KnowledgeGapReport | null) ?? null);
+    setLearningContent(session.learningContent ?? '');
+    setLessonBites((session.lessonBites as LessonBite[]) ?? []);
+    setSessionSummaryPlan((session.sessionSummaryPlan as SessionSummaryPlan | null) ?? null);
+    setCurrentBiteIndex(session.currentBiteIndex ?? 0);
+    setBiteChoiceResponses(session.biteChoiceResponses ?? {});
+    setBiteTextInputs(session.biteTextInputs ?? {});
+    setBiteTextSubmissions(session.biteTextSubmissions ?? {});
+    setCompletedBites(new Set(session.completedBites ?? []));
+    setXpScore(session.xpScore ?? 0);
+    setStreakCount(session.streakCount ?? 0);
+    setHearts(session.hearts ?? 5);
+    setTutorModules((session.tutorModules as InteractiveModule[]) ?? []);
+    setCurrentTutorModuleIndex(session.currentTutorModuleIndex ?? 0);
+    setQuickChecks((session.quickChecks as QuickCheckItem[]) ?? []);
+    setLearningSections((session.learningSections as LearningSection[]) ?? []);
+    setJourneySummary((session.journeySummary as JourneySummary | null) ?? null);
+    setCurrentLearningStep(session.currentLearningStep ?? 0);
+    setCompletedLearningSteps(new Set(session.completedLearningSteps ?? []));
+    setQuizResponses(session.quizResponses ?? {});
+    setUserProgress(session.userProgress ?? []);
+    setConceptHighlights(session.conceptHighlights ?? []);
+    setUserNotes(new Map((session.userNotes ?? []).map(({ topicId, note }: { topicId: string; note: string }) => [topicId, note])));
+    setFillBlanksAnswers(session.fillBlanksAnswers ?? []);
+    setSelectedOptions(session.selectedOptions ?? []);
+    setShortAnswerText(session.shortAnswerText ?? '');
+    setMatchPairsAnswers(new Map(session.matchPairsAnswers ?? []));
+    setAttemptCount(session.attemptCount ?? 0);
+    setShowHint(session.showHint ?? false);
+    setCurrentHint(session.currentHint ?? '');
+    setWrongAnswers(session.wrongAnswers ?? []);
+    setBiteFeedback(session.biteFeedback ?? null);
+    setSessionStartTime(session.sessionStartTime ?? Date.now());
+    setReadingStartTime(session.readingStartTime ?? 0);
+    setCurrentSessionData(session.currentSessionData ?? {
+      questionsAttempted: 0,
+      questionsCorrectFirstTry: 0,
+      questionsSkipped: [],
+      hintsUsed: 0,
+      attemptsPerQuestion: [],
+      moduleTypesUsed: [],
+      moduleTypesSucceeded: [],
+      timeSpentReading: 0,
+      timeSpentOnExercises: 0,
+    });
+    setExpandedSections(new Set());
+    setInteractiveSimulationActive(false);
+    setSimulationTopic(null);
+    setUserAnswer(null);
+    setShowFlashcardBack(false);
+    setFeedbackMessage('');
+    setShowFeedback(false);
+    setIsProcessing(false);
+    setProcessingMessage('');
+  };
+
+  const handleResumeSession = (session: SubjectExplorerSessionRecord) => {
+    setIsRestoringSession(true);
+    try {
+      applySavedSession(session);
+      setFeedbackMessage('Resumed your saved learning journey!');
+      setShowFeedback(true);
+      setTimeout(() => setShowFeedback(false), 2500);
+    } finally {
+      setIsRestoringSession(false);
+    }
+  };
+
+  const handleDeleteSavedSession = async (sessionId: string) => {
+    if (!currentUser) {
+      return;
+    }
+
+    try {
+      await deleteSubjectExplorerSession(currentUser.uid, sessionId);
+      setSavedSessions(prev => prev.filter(session => session.id !== sessionId));
+
+      if (activeSessionId === sessionId) {
+        resetSessionState();
+      }
+
+      setFeedbackMessage('Removed saved journey.');
+      setShowFeedback(true);
+      setTimeout(() => setShowFeedback(false), 2000);
+    } catch (error) {
+      console.error('[SubjectExplorer] Failed to delete saved session:', error);
+    }
+  };
 
   const getGeminiModel = (modelName: string, useApiKey?: string) => {
     const keyToUse = useApiKey || apiKey;
@@ -403,26 +1482,206 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   };
 
   const markStepComplete = (stepIndex: number) => {
-    setCompletedLearningSteps(prev => {
-      const next = new Set(prev);
-      next.add(stepIndex);
-      return next;
-    });
+    const nextCompleted = new Set(completedLearningSteps);
+    nextCompleted.add(stepIndex);
+    setCompletedLearningSteps(new Set(nextCompleted));
+
+    const nextStep = stepIndex < learningSections.length - 1 ? stepIndex + 1 : stepIndex;
 
     if (stepIndex < learningSections.length - 1) {
-      setCurrentLearningStep(stepIndex + 1);
+      setCurrentLearningStep(nextStep);
     }
+
+    persistSession('learning', {
+      completedLearningSteps: Array.from(nextCompleted),
+      currentLearningStep: nextStep,
+    });
   };
 
   const handleQuickCheckSelection = (stepIndex: number, optionIndex: number) => {
-    setQuizResponses(prev => ({
-      ...prev,
+    const updatedResponses = {
+      ...quizResponses,
       [stepIndex.toString()]: optionIndex,
-    }));
+    };
+    setQuizResponses(updatedResponses);
 
     const check = quickChecks[stepIndex];
     if (check && optionIndex === check.answerIndex) {
       markStepComplete(stepIndex);
+    }
+
+    persistSession('learning', {
+      quizResponses: updatedResponses,
+    });
+  };
+
+  const updateBiteTextInput = (biteId: string, value: string) => {
+    setBiteTextInputs(prev => ({
+      ...prev,
+      [biteId]: value,
+    }));
+  };
+
+  const handleBiteSuccess = (
+    bite: LessonBite,
+    alreadyCompleted: boolean,
+    customMessage?: string,
+    overrides?: LessonBiteStateOverrides
+  ) => {
+    const choiceResponses = overrides?.choiceResponses ?? biteChoiceResponses;
+    const textInputsPayload = overrides?.textInputs ?? biteTextInputs;
+    const textSubmissionsPayload = overrides?.textSubmissions ?? biteTextSubmissions;
+
+    const updatedCompleted = new Set(completedBites);
+    let updatedXp = xpScore;
+    if (!alreadyCompleted) {
+      updatedCompleted.add(bite.id);
+      updatedXp += bite.xp;
+    }
+
+    setCompletedBites(new Set(updatedCompleted));
+    setXpScore(updatedXp);
+
+    const updatedStreak = streakCount + 1;
+    setStreakCount(updatedStreak);
+
+    const rewardMessage = bite.reward ? bite.reward : '';
+    const decoratedReward = rewardMessage ? ` · ${rewardMessage}` : '';
+    const defaultMessage = !alreadyCompleted ? `+${bite.xp} XP!${decoratedReward}` : `Great recap!${decoratedReward}`;
+    const feedback = customMessage ?? defaultMessage;
+    setBiteFeedback(feedback);
+
+    const shouldAdvance = !alreadyCompleted && currentBiteIndex < lessonBites.length - 1;
+    const nextIndex = shouldAdvance ? Math.min(currentBiteIndex + 1, lessonBites.length - 1) : currentBiteIndex;
+
+    persistSession('learning', {
+      biteChoiceResponses: choiceResponses,
+      biteTextInputs: textInputsPayload,
+      biteTextSubmissions: textSubmissionsPayload,
+      completedBites: Array.from(updatedCompleted),
+      xpScore: updatedXp,
+      streakCount: updatedStreak,
+      hearts,
+      currentBiteIndex: nextIndex,
+      biteFeedback: feedback,
+    });
+
+    if (shouldAdvance) {
+      setTimeout(() => {
+        setCurrentBiteIndex(prev => Math.min(prev + 1, lessonBites.length - 1));
+        setBiteFeedback(null);
+        persistSession('learning', { biteFeedback: null });
+      }, 900);
+    }
+  };
+
+  const handleInteractiveMistake = (
+    bite: LessonBite,
+    alreadyCompleted: boolean,
+    encouragement?: string,
+    overrides?: LessonBiteStateOverrides
+  ) => {
+    const choiceResponses = overrides?.choiceResponses ?? biteChoiceResponses;
+    const textInputsPayload = overrides?.textInputs ?? biteTextInputs;
+    const textSubmissionsPayload = overrides?.textSubmissions ?? biteTextSubmissions;
+
+    let remainingHearts = hearts;
+    if (!alreadyCompleted) {
+      const heartsToLose = Math.min(hearts, Math.max(1, bite.heartCost));
+      if (heartsToLose > 0) {
+        remainingHearts = Math.max(hearts - heartsToLose, 0);
+        setHearts(remainingHearts);
+      }
+    }
+
+    setStreakCount(0);
+    const message =
+      remainingHearts === 0
+        ? 'You are out of hearts. Review earlier bites or regenerate the path to keep practicing.'
+        : encouragement ?? (bite.tip ? `Try again: ${bite.tip}` : 'Keep going! Review the bite and give it another shot.');
+    setBiteFeedback(message);
+
+    persistSession('learning', {
+      biteChoiceResponses: choiceResponses,
+      biteTextInputs: textInputsPayload,
+      biteTextSubmissions: textSubmissionsPayload,
+      hearts: remainingHearts,
+      streakCount: 0,
+      biteFeedback: message,
+      completedBites: Array.from(completedBites),
+      currentBiteIndex,
+    });
+  };
+
+  const handleLessonBiteOption = (bite: LessonBite, optionIndex: number) => {
+    if (!bite || (hearts === 0 && !completedBites.has(bite.id))) {
+      return;
+    }
+
+    const updatedChoiceResponses = {
+      ...biteChoiceResponses,
+      [bite.id]: optionIndex,
+    };
+    setBiteChoiceResponses(updatedChoiceResponses);
+
+    const alreadyCompleted = completedBites.has(bite.id);
+    const isCorrect = optionIndex === bite.answerIndex;
+
+    if (isCorrect) {
+      handleBiteSuccess(bite, alreadyCompleted, undefined, { choiceResponses: updatedChoiceResponses });
+    } else {
+      handleInteractiveMistake(bite, alreadyCompleted, undefined, { choiceResponses: updatedChoiceResponses });
+    }
+  };
+
+  const handleLessonBiteTextSubmit = (bite: LessonBite) => {
+    if (!bite) {
+      return;
+    }
+
+    const response = (biteTextInputs[bite.id] || '').trim();
+    if (!response) {
+      setBiteFeedback('Share your answer before checking.');
+      return;
+    }
+
+    const updatedTextSubmissions = {
+      ...biteTextSubmissions,
+      [bite.id]: response,
+    };
+    setBiteTextSubmissions(updatedTextSubmissions);
+
+    const alreadyCompleted = completedBites.has(bite.id);
+
+    if (bite.activityType === 'fill_blank') {
+      if (hearts === 0 && !alreadyCompleted) {
+        return;
+      }
+
+      const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const candidateAnswers = [bite.correctAnswer || '', ...(bite.acceptableAnswers ?? [])]
+        .map(ans => ans.trim())
+        .filter(Boolean);
+      const isCorrect = candidateAnswers.some(ans => normalize(ans) === normalize(response));
+
+      if (isCorrect) {
+        handleBiteSuccess(bite, alreadyCompleted, undefined, { textSubmissions: updatedTextSubmissions });
+      } else {
+        handleInteractiveMistake(
+          bite,
+          alreadyCompleted,
+          bite.tip ? `Almost! ${bite.tip}` : 'Close! Re-read the bite and adjust your wording.',
+          { textSubmissions: updatedTextSubmissions }
+        );
+      }
+      return;
+    }
+
+    if (bite.activityType === 'reflection') {
+      const xpSnippet = alreadyCompleted ? '' : ` +${bite.xp} XP`;
+      const customMessage = `Reflection saved!${xpSnippet}${bite.reward ? ` · ${bite.reward}` : ''}`;
+      handleBiteSuccess(bite, alreadyCompleted, customMessage, { textSubmissions: updatedTextSubmissions });
+      return;
     }
   };
 
@@ -435,6 +1694,12 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   const learningProgress = learningSections.length > 0
     ? Math.round((completedLearningSteps.size / learningSections.length) * 100)
     : 0;
+  const activeLessonBite = lessonBites.length > 0 ? lessonBites[Math.min(currentBiteIndex, lessonBites.length - 1)] : null;
+  const lessonBiteProgress = lessonBites.length > 0
+    ? Math.round((completedBites.size / lessonBites.length) * 100)
+    : 0;
+  const allLessonBitesComplete = lessonBites.length > 0 && completedBites.size >= lessonBites.length;
+  const activeLessonBiteCompleted = activeLessonBite ? completedBites.has(activeLessonBite.id) : false;
   
   // Agent 3: Tutor - Generate adaptive learning path
   const generateLearningPath = async (gapReport: KnowledgeGapReport) => {
@@ -451,12 +1716,14 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
             moduleTypePreference: '',
           };
 
+      const scenarioDirectives = getAcademicScenarioDirectives(academicLevel, gapReport.gaps);
+
       const riskNotice = gapReport.gaps.some(gap => gap.severity === 'high')
         ? 'IMPORTANT: The learner struggles with this topic. Use plain language, short steps, and reinforce each idea before moving on.'
         : '';
 
       const promptLines = [
-        'You are the "Tutor" agent of an adaptive learning system.',
+        'You are the "Tutor" agent of an adaptive learning system delivering a Duolingo-style, upbeat experience.',
         `Topic: ${selectedTopic?.name}`,
         `Academic level: ${academicLevel || 'general learner'}`,
         `Knowledge gaps: ${JSON.stringify(gapReport.gaps)}`,
@@ -469,58 +1736,138 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
         `- ${adaptiveGuidelines.contentLengthGuideline}`,
         adaptiveGuidelines.styleGuidelines ? `- ${adaptiveGuidelines.styleGuidelines}` : '',
         riskNotice ? `- ${riskNotice}` : '',
-        '- Produce between 3 and 5 sections.',
-        '- Each section must focus on one sub-concept and follow this pattern: teach → quick self-check idea → optional experiment or scenario.',
-        '- Use only the tags listed below so the UI can parse the output.',
+        '- Keep every explanation playful, concise, and emoji-friendly.',
+        '- Avoid dense paragraphs. Think in quick bites learners can finish in under a minute.',
+    '- Explicitly reference any diagrams, spectra, or figures that should be shown so the UI can surface an image preview.',
+    ...scenarioDirectives,
+  '- Vary activity formats across bites—mix multiple choice, fill-in, and reflection moments. Include at least one bite that is NOT multiple choice.',
         '',
-        '[CONCEPT_CARD]',
-        'Title: <friendly section title>',
-        'Description: <2-3 sentences explaining the concept simply>',
-        'Icon: <single emoji or ASCII icon>',
-        '[/CONCEPT_CARD]',
+        'Produce between 3 and 5 lesson bites using ONLY the structure below so the UI can parse it:',
+        '[LESSON_BITE]',
+        'Title: <fun, motivating bite name with one emoji>',
+        'Focus: <the micro-skill being targeted>',
+        'Type: <teach | practice | challenge>',
+  'ActivityType: <multiple_choice | fill_blank | reflection>',
+        'XP: <integer between 10 and 25>',
+  'HeartCost: <1 or 2; use 0 for reflection>',
+        'Teach: <1-2 short sentences explaining the idea in plain language>',
+        'Prompt: <instruction for the learner to act on the concept>',
+  'Options:',
+  '- <option 1 (<= 12 words)>',
+  '- <option 2>',
+  '- <option 3>',
+  'Answer: <number of the correct option starting at 1 OR the exact fill-in answer>',
+  'AltAnswers: <optional comma-separated list of acceptable responses for fill_blank>',
+  'ReflectionGuide: <one-line coaching cue for reflection bites>',
+        'Tip: <quick hint shown after an incorrect attempt>',
+        'Reward: <excited celebration after success>',
+        '[/LESSON_BITE]',
+  '',
+  'Formatting rules by activity type:',
+  '- If ActivityType is multiple_choice: include Options (exactly 3 choices) and Answer as the correct option number.',
+  '- If ActivityType is fill_blank: skip the Options list if you prefer, but Answer must be the correct phrase. AltAnswers may list acceptable synonyms.',
+  '- If ActivityType is reflection: set HeartCost to 0, skip Options/Answer, and provide a ReflectionGuide cue.',
         '',
-        '[DIAGRAM]',
-        'Type: <visual | simulation | flowchart | example>',
-        'Description: <guide the learner on what to observe>',
-        'Steps:',
-        '1. <step one>',
-        '2. <step two>',
-        '3. <step three>',
-        'Image: <optional public URL>',
-        '[/DIAGRAM]',
+        'After all lesson bites, finish with a single [SESSION_SUMMARY] block containing:',
+        '[SESSION_SUMMARY]',
+        'XP_Earned: <sum of XP available today>',
+        'Skill_Level: <brief statement of current mastery>',
+        'Next_Step: <one actionable suggestion for what to do next>',
+        'Encouragement: <upbeat closing line>',
+        '[/SESSION_SUMMARY]',
         '',
-        '[EXAMPLE]',
-        'Scenario: <relatable moment or question>',
-        'Connection: <how it ties back to the concept>',
-        '[/EXAMPLE]',
-        '',
-        '[INSIGHT]',
-        '<one short aha moment or reminder>',
-        '[/INSIGHT]',
-        '',
-        'Repeat the structure for every section.',
-        '',
-        '[SUMMARY]',
-        '- <bullet takeaway>',
-        '- <bullet takeaway>',
-        '- <bullet takeaway>',
-        'Main takeaway: <single sentence call-to-action>',
-        '[/SUMMARY]',
-        '',
-        'Keep tone encouraging and classroom-friendly.',
+        'Do NOT output any other text outside these blocks. No Markdown headings, no bullet points beyond the defined tags.',
+        'Keep tone supportive, energetic, and focused on progress.',
       ].filter(Boolean);
 
       const contentPrompt = promptLines.join('\n');
       const content = await callGeminiWithFallback(contentPrompt);
       setLearningContent(content);
 
-      const { sections, summary } = parseLearningSections(content);
-      setLearningSections(sections);
-      setJourneySummary(summary);
-      setQuickChecks(buildQuickChecks(sections));
-      setCurrentLearningStep(0);
-      setCompletedLearningSteps(new Set());
-      setQuizResponses({});
+      const { bites, summary } = parseDuolingoLearningJourney(content);
+
+      if (bites.length > 0) {
+        setLessonBites(bites);
+        setSessionSummaryPlan(summary);
+        setCurrentBiteIndex(0);
+        setBiteChoiceResponses({});
+        setBiteTextInputs({});
+        setBiteTextSubmissions({});
+        setCompletedBites(new Set());
+        setXpScore(0);
+        setStreakCount(0);
+        setHearts(5);
+        setBiteFeedback(null);
+
+        // Reset legacy structures
+        setLearningSections([]);
+        setJourneySummary(null);
+        setQuickChecks([]);
+        setCurrentLearningStep(0);
+        setCompletedLearningSteps(new Set());
+        setQuizResponses({});
+
+        await persistSession('learning', {
+          knowledgeGapReport: gapReport,
+          learningContent: content,
+          lessonBites: bites,
+          sessionSummaryPlan: summary,
+          currentBiteIndex: 0,
+          biteChoiceResponses: {},
+          biteTextInputs: {},
+          biteTextSubmissions: {},
+          completedBites: [],
+          xpScore: 0,
+          streakCount: 0,
+          hearts: 5,
+          quickChecks: [],
+          learningSections: [],
+          journeySummary: null,
+          currentLearningStep: 0,
+          completedLearningSteps: [],
+        });
+      } else {
+        const fallback = parseLearningSections(content);
+        const quickChecksData = buildQuickChecks(fallback.sections);
+        setLearningSections(fallback.sections);
+        setJourneySummary(fallback.summary);
+        setQuickChecks(quickChecksData);
+        setCurrentLearningStep(0);
+        setCompletedLearningSteps(new Set());
+        setQuizResponses({});
+
+        setLessonBites([]);
+        setSessionSummaryPlan(null);
+        setCurrentBiteIndex(0);
+        setCompletedBites(new Set());
+        setBiteChoiceResponses({});
+        setBiteTextInputs({});
+        setBiteTextSubmissions({});
+        setXpScore(0);
+        setStreakCount(0);
+        setHearts(5);
+        setBiteFeedback(null);
+
+        await persistSession('learning', {
+          knowledgeGapReport: gapReport,
+          learningContent: content,
+          lessonBites: [],
+          sessionSummaryPlan: null,
+          currentBiteIndex: 0,
+          biteChoiceResponses: {},
+          biteTextInputs: {},
+          biteTextSubmissions: {},
+          completedBites: [],
+          xpScore: 0,
+          streakCount: 0,
+          hearts: 5,
+          quickChecks: quickChecksData,
+          learningSections: fallback.sections,
+          journeySummary: fallback.summary,
+          currentLearningStep: 0,
+          completedLearningSteps: [],
+        });
+      }
 
       setCurrentSessionData(prev => ({
         ...prev,
@@ -553,6 +1900,12 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
     
     try {
       let documentText = '';
+      
+      // Create a URL for the PDF file to be used by the PDF viewer
+      if (file.type === 'application/pdf') {
+        const fileUrl = URL.createObjectURL(file);
+        setDocumentFileUrl(fileUrl);
+      }
       
       // Extract text based on file type
       if (file.type === 'application/pdf') {
@@ -618,7 +1971,26 @@ Provide the complete text content.`
       }
       
       setDocumentContent(documentText);
-      
+
+      const fingerprint = await computeDocumentFingerprint(documentText);
+      const matchingSession = currentUser
+        ? savedSessions.find(session => session.documentId === fingerprint)
+        : undefined;
+
+      if (matchingSession && typeof window !== 'undefined') {
+        const shouldResume = window.confirm('We found a saved learning journey for this document. Resume where you left off?');
+        if (shouldResume) {
+          setProcessingMessage('Resuming your saved learning journey...');
+          handleResumeSession(matchingSession);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      setDocumentFingerprint(fingerprint);
+      const sessionId = generateSessionId(fingerprint);
+      setActiveSessionId(sessionId);
+
       // Now analyze the extracted text
       setProcessingMessage('Analyzing topics and academic level...');
       
@@ -651,10 +2023,27 @@ Respond with a JSON object containing:
 - academic_level: The determined academic level`;
 
       const response = await callGeminiWithFallback(prompt, schema) as TopicSelectionResponse;
-      
-      setAcademicLevel(response.academic_level || 'general');
-      setTopics(response.topics.map((topic, idx) => ({ id: `topic-${idx}`, name: topic })));
+
+      const normalizedAcademicLevel = response.academic_level || 'general';
+      const topicOptions = response.topics.map((topic, idx) => ({ id: `topic-${idx}`, name: topic }));
+
+      setAcademicLevel(normalizedAcademicLevel);
+      setTopics(topicOptions);
       setStage('topic_selection');
+
+      await persistSession(
+        'topic_selection',
+        {
+          documentId: fingerprint,
+          documentName: file.name,
+          documentContent: documentText,
+          academicLevel: normalizedAcademicLevel,
+          topics: topicOptions,
+          selectedTopic: null,
+          assessmentType: null,
+        },
+        sessionId
+      );
     } catch (error: any) {
       console.error('[SubjectExplorer] Error analyzing document:', error);
       
@@ -765,6 +2154,10 @@ Respond with a JSON object for a short_answer module.`;
       const module = await callGeminiWithFallback(prompt, moduleSchema);
       setCurrentModule(module);
       setStage('assessment');
+      await persistSession('assessment', {
+        assessmentType,
+        currentModule: module,
+      });
     } catch (error: any) {
       console.error('[SubjectExplorer] Error generating assessment:', error);
       
@@ -830,7 +2223,9 @@ Respond with a structured JSON report.`;
 
       const report = await callGeminiWithFallback(prompt, schema) as KnowledgeGapReport;
       setKnowledgeGapReport(report);
+      setUseFocusedLearningMode(true); // Auto-enable focused mode after assessment
       setStage('learning');
+  await persistSession('assessment', { knowledgeGapReport: report });
       
       // Generate initial learning content
       await generateLearningPath(report);
@@ -891,6 +2286,26 @@ Respond with a structured JSON report.`;
       
       setTutorModules([module]);
       setCurrentTutorModuleIndex(0);
+      setFillBlanksAnswers([]);
+      setSelectedOptions([]);
+      setShortAnswerText('');
+      setMatchPairsAnswers(new Map());
+      setAttemptCount(0);
+      setShowHint(false);
+      setWrongAnswers([]);
+      setBiteFeedback(null);
+      persistSession('learning', {
+        tutorModules: [module],
+        currentTutorModuleIndex: 0,
+        fillBlanksAnswers: [],
+        selectedOptions: [],
+        shortAnswerText: '',
+        matchPairsAnswers: [],
+        attemptCount: 0,
+        showHint: false,
+        wrongAnswers: [],
+        biteFeedback: null,
+      });
       
       // Track reading time before exercise
       if (readingStartTime > 0) {
@@ -906,6 +2321,26 @@ Respond with a structured JSON report.`;
       const fallbackModule = await generateFillBlanksModule(gap);
       setTutorModules([fallbackModule]);
       setCurrentTutorModuleIndex(0);
+      setFillBlanksAnswers([]);
+      setSelectedOptions([]);
+      setShortAnswerText('');
+      setMatchPairsAnswers(new Map());
+      setAttemptCount(0);
+      setShowHint(false);
+      setWrongAnswers([]);
+      setBiteFeedback(null);
+      persistSession('learning', {
+        tutorModules: [fallbackModule],
+        currentTutorModuleIndex: 0,
+        fillBlanksAnswers: [],
+        selectedOptions: [],
+        shortAnswerText: '',
+        matchPairsAnswers: [],
+        attemptCount: 0,
+        showHint: false,
+        wrongAnswers: [],
+        biteFeedback: null,
+      });
     }
   };
 
@@ -925,6 +2360,9 @@ Respond with a structured JSON report.`;
       const isStrugglingWithCurrent = avgRecentAttempts > 2;
       const hasSkippedOnTopic = learningPreferences?.skippedQuestions
         .filter(q => q.topic === selectedTopic?.name).length || 0;
+
+      const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n')
+        || '- Align with the specified academic level using rigorous, experiment-driven framing when appropriate.';
       
       // Call Gemini to intelligently select module type
       const analysisPrompt = `You are an AI Teaching Assistant specializing in adaptive learning.
@@ -946,6 +2384,9 @@ LEARNING PREFERENCES:
 - Information Length: ${learningPreferences?.informationLength || 'moderate'}
 - Needs More Examples: ${learningPreferences?.needsMoreExamples || false}
 - Prefers Analogies: ${learningPreferences?.prefersAnalogyExplanations || false}
+
+ADVANCED SCENARIO EXPECTATIONS:
+${scenarioDirectives}
 
 AVAILABLE TEACHING FORMATS:
 1. "fill_blanks" - Good for testing recall and understanding of key terms in context
@@ -1026,10 +2467,15 @@ Respond with ONLY the format name: fill_blanks, mcq_multi, match_pairs, short_an
       required: ['module_type', 'text', 'blanks']
     };
 
+  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+
     const prompt = `You are the "Tutor" agent. Create a fill-in-the-blanks exercise to test understanding of: "${gap.concept}"
 
 Topic: ${selectedTopic?.name}
 Academic Level: ${academicLevel}
+
+Scenario expectations:
+${scenarioDirectives}
 
 Create a sentence or short paragraph with 2-3 blanks marked as [____]. 
 Provide the correct answers in the blanks array.
@@ -1066,10 +2512,15 @@ Respond with a JSON object for a fill_blanks module.`;
       required: ['module_type', 'question', 'options', 'correct_ids']
     };
 
+  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+
     const prompt = `You are the "Tutor" agent. Create a multiple-choice question to test understanding of: "${gap.concept}"
 
 Topic: ${selectedTopic?.name}
 Academic Level: ${academicLevel}
+
+Scenario expectations:
+${scenarioDirectives}
 
 Create a clear question with 4-5 options. Mark 1-2 correct answers.
 Options should be plausible but distinguishable.
@@ -1119,10 +2570,15 @@ Respond with a JSON object:
       required: ['module_type', 'prompt', 'column_a', 'column_b', 'correct_pairs']
     };
 
+  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+
     const prompt = `You are the "Tutor" agent. Create a matching exercise to test understanding of: "${gap.concept}"
 
 Topic: ${selectedTopic?.name}
 Academic Level: ${academicLevel}
+
+Scenario expectations:
+${scenarioDirectives}
 
 Create 4-5 pairs of related items (terms and definitions, concepts and examples, etc.).
 This format helps students connect ideas and is easier for those who struggle with large chunks of information.
@@ -1157,10 +2613,15 @@ Respond with a JSON object:
       required: ['module_type', 'question', 'keywords_to_check']
     };
 
+  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+
     const prompt = `You are the "Tutor" agent. Create a short-answer question to test deep understanding of: "${gap.concept}"
 
 Topic: ${selectedTopic?.name}
 Academic Level: ${academicLevel}
+
+Scenario expectations:
+${scenarioDirectives}
 
 Create an open-ended question that requires explanation.
 Provide 3-5 key terms/concepts that should appear in a correct answer.
@@ -1187,10 +2648,15 @@ Respond with a JSON object:
       required: ['module_type', 'front', 'back']
     };
 
+  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+
     const prompt = `You are the "Tutor" agent. Create a flashcard to help memorize: "${gap.concept}"
 
 Topic: ${selectedTopic?.name}
 Academic Level: ${academicLevel}
+
+Scenario expectations:
+${scenarioDirectives}
 
 Create a clear question/term for the front and a concise answer/definition for the back.
 Keep the back brief (1-3 sentences).
@@ -1210,6 +2676,7 @@ Respond with a JSON object:
     const file = event.target.files?.[0];
     if (!file) return;
 
+    resetSessionState();
     setDocumentName(file.name);
     
     // Validate file type
@@ -1227,11 +2694,18 @@ Respond with a JSON object:
   // Handle topic selection
   const handleTopicSelect = (topic: Topic) => {
     setSelectedTopic(topic);
+    const topicPayload = {
+      id: topic.id,
+      name: topic.name,
+      ...(topic.description ? { description: topic.description } : {}),
+    };
+    persistSession('topic_selection', { selectedTopic: topicPayload });
   };
 
   // Handle assessment type selection
   const handleAssessmentTypeSelect = (type: string) => {
     setAssessmentType(type);
+    persistSession('topic_selection', { assessmentType: type });
     if (selectedTopic) {
       generateAssessment(selectedTopic, type);
     }
@@ -2035,6 +3509,112 @@ Respond with a JSON object:
                   onChange={handleFileUpload}
                 />
               </label>
+
+              {/* Document Manager - Load Previous Uploads */}
+              <div className="mt-8">
+                <h4 className="text-white text-lg font-semibold mb-4 flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-blue-400" />
+                  My Saved Documents
+                </h4>
+                <DocumentManager 
+                  onDocumentSelected={(doc) => {
+                    // When user selects a document from their library
+                    setDocumentName(doc.name);
+                    setFeedbackMessage(`📄 Loading "${doc.name}"...`);
+                    setShowFeedback(true);
+                    
+                    // Fetch the document and process it
+                    fetch(doc.url)
+                      .then(res => res.blob())
+                      .then(blob => {
+                        const file = new File([blob], doc.name, { type: 'application/pdf' });
+                        analyzeDocument(file);
+                      })
+                      .catch(err => {
+                        console.error('[SubjectExplorer] Error loading document:', err);
+                        setFeedbackMessage('❌ Failed to load document. Please try again.');
+                        setShowFeedback(true);
+                      });
+                  }}
+                />
+              </div>
+
+              {currentUser ? (
+                <div className="mt-6 bg-slate-800 border border-slate-700 rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-white text-lg font-semibold flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-purple-300" />
+                      Saved Learning Journeys
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => refreshSavedSessions()}
+                      disabled={savedSessionsLoading}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-slate-600 text-slate-300 hover:border-purple-400/60 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Refresh
+                    </button>
+                  </div>
+
+                  {savedSessionsLoading ? (
+                    <div className="flex items-center gap-2 text-slate-400 text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading your saved journeys...
+                    </div>
+                  ) : savedSessions.length > 0 ? (
+                    <div className="space-y-3">
+                      {savedSessions.map(session => (
+                        <div
+                          key={session.id}
+                          className="flex flex-col md:flex-row md:items-center gap-3 border border-slate-700/60 rounded-lg p-4 bg-slate-900/40"
+                        >
+                          <div className="flex-1">
+                            <p className="text-white font-semibold">{session.documentName}</p>
+                            <p className="text-slate-400 text-sm mt-1">
+                              {formatStageLabel(session.stage)}
+                              {session.selectedTopic?.name ? ` • ${session.selectedTopic.name}` : ''}
+                              {' '}
+                              • Updated {formatRelativeTime(session.updatedAt)}
+                            </p>
+                            {(session.learningContent || session.documentContent) && (
+                              <p className="text-slate-500 text-xs mt-2">
+                                {toResumeSnippet(session.learningContent || session.documentContent)}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleResumeSession(session)}
+                              disabled={isProcessing || isRestoringSession}
+                              className="inline-flex items-center gap-2 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-400/40 text-purple-200 text-sm rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Resume
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSavedSession(session.id)}
+                              className="p-2 rounded-lg border border-red-400/40 text-red-300 hover:bg-red-500/10 transition"
+                              title="Delete saved session"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-slate-400 text-sm">
+                      No saved journeys yet. Upload a document to kick off your first adaptive path.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-6 p-4 bg-slate-700/40 border border-slate-600 rounded-lg text-slate-300 text-sm">
+                  Sign in to save your Gemini tokens and resume your learning journeys without re-uploading documents.
+                </div>
+              )}
             </div>
           )}
 
@@ -2207,795 +3787,28 @@ Respond with a JSON object:
 
           {/* Stage 4: Learning Path */}
           {stage === 'learning' && !isProcessing && (
-            <div className="space-y-6">
-              {/* Learning Preferences Dashboard */}
-              {learningPreferences && (
-                <div className="bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-700/50 rounded-lg p-6">
-                  <h3 className="text-white text-lg font-bold mb-3 flex items-center gap-2">
-                    <Brain className="h-5 w-5 text-indigo-400" />
-                    Your Adaptive Learning Profile
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div className="bg-slate-800/50 p-3 rounded-lg">
-                      <p className="text-slate-400 mb-1">Content Preference</p>
-                      <p className="text-white font-medium capitalize">
-                        {learningPreferences.informationLength} Explanations
-                      </p>
-                    </div>
-                    <div className="bg-slate-800/50 p-3 rounded-lg">
-                      <p className="text-slate-400 mb-1">Learning Style</p>
-                      <p className="text-white font-medium">
-                        {learningPreferences.prefersAnalogyExplanations ? '🎯 Analogies & Examples' : '📝 Direct Teaching'}
-                      </p>
-                    </div>
-                    <div className="bg-slate-800/50 p-3 rounded-lg">
-                      <p className="text-slate-400 mb-1">Success Rate</p>
-                      <p className="text-white font-medium">
-                        {learningPreferences.averageAttemptsBeforeSuccess > 0 
-                          ? `${(1 / learningPreferences.averageAttemptsBeforeSuccess * 100).toFixed(0)}%`
-                          : 'Starting out'}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-indigo-200 text-xs mt-3">
-                    💡 This system adapts to your learning style based on your interactions
-                  </p>
-                </div>
-              )}
-              
-              {/* Knowledge Gap Report */}
-              {knowledgeGapReport && (
-                <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-                  <h3 className="text-white text-xl font-bold mb-4 flex items-center gap-2">
-                    <Target className="h-6 w-6 text-purple-400" />
-                    Your Knowledge Profile
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-red-300 font-semibold mb-2">Areas to Improve:</h4>
-                      <ul className="space-y-2">
-                        {knowledgeGapReport.gaps.map((gap, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            <XCircle className="h-4 w-4 text-red-400 mt-1 flex-shrink-0" />
-                            <div>
-                              <p className="text-white font-medium">{gap.concept}</p>
-                              <p className="text-slate-400 text-sm">{gap.description}</p>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    
-                    <div>
-                      <h4 className="text-green-300 font-semibold mb-2">Your Strengths:</h4>
-                      <ul className="space-y-2">
-                        {knowledgeGapReport.strengths.map((strength, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-400 mt-1 flex-shrink-0" />
-                            <p className="text-white">{strength}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 p-3 bg-blue-900/30 border border-blue-500/30 rounded-lg">
-                    <p className="text-blue-200 text-sm">
-                      <strong>Overall Level:</strong> {knowledgeGapReport.overall_level}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Guided Learning Journey */}
-              {learningSections.length > 0 ? (
-                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-8 shadow-2xl">
-                  <div className="flex flex-col gap-6 lg:flex-row">
-                    <aside className="lg:w-72 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-sm font-semibold uppercase tracking-wide text-purple-200 flex items-center gap-2">
-                          <Lightbulb className="h-4 w-4" />
-                          Learning Roadmap
-                        </h4>
-                        <span className="text-xs font-medium text-slate-400">{learningProgress}%</span>
-                      </div>
-                      <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all"
-                          style={{ width: `${learningProgress}%` }}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        {learningSections.map((section, idx) => {
-                          const isActive = idx === currentLearningStep;
-                          const isCompleted = completedLearningSteps.has(idx);
-                          return (
-                            <button
-                              type="button"
-                              key={section.id}
-                              onClick={() => setCurrentLearningStep(idx)}
-                              className={`w-full text-left rounded-lg border px-4 py-3 transition-all ${
-                                isActive
-                                  ? 'border-purple-400 bg-purple-600/20 shadow-lg'
-                                  : 'border-slate-700 bg-slate-800/50 hover:border-purple-400/60 hover:bg-slate-800'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <span
-                                  className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm font-semibold ${
-                                    isActive ? 'border-purple-400 text-purple-200' : 'border-slate-600 text-slate-300'
-                                  }`}
-                                >
-                                  {idx + 1}
-                                </span>
-                                <div className="flex-1">
-                                  <p className="text-sm font-semibold text-white">{section.title}</p>
-                                  <p className="text-xs text-slate-400">{sanitizeSnippet(section.description, 70)}</p>
-                                </div>
-                                {isCompleted && <CheckCircle className="h-4 w-4 text-green-400" />}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </aside>
-                    <div className="flex-1 space-y-6">
-                      {activeSection && (
-                        <>
-                          <div className="bg-slate-900/60 border border-purple-500/30 rounded-xl p-6">
-                            <div className="flex items-start gap-4">
-                              <div className="text-4xl">{activeSection.icon || '📘'}</div>
-                              <div>
-                                <h4 className="text-2xl font-bold text-white">{activeSection.title}</h4>
-                                <div className="mt-2 text-slate-200 leading-relaxed">
-                                  {renderInlineWithMath(activeSection.description)}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          {activeSection.diagram && (
-                            <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-6 space-y-4">
-                              <div className="flex items-center gap-2">
-                                <Zap className="h-5 w-5 text-yellow-400" />
-                                <h5 className="text-lg font-semibold text-white">
-                                  Interactive {activeSection.diagram.type}
-                                </h5>
-                              </div>
-                              <p className="text-slate-300 leading-relaxed">
-                                {renderInlineWithMath(activeSection.diagram.description)}
-                              </p>
-                              {activeSection.diagram.steps.length > 0 && (
-                                <ol className="space-y-3">
-                                  {activeSection.diagram.steps.map((step, idx) => (
-                                    <li
-                                      key={idx}
-                                      className="flex gap-3 bg-slate-800/60 border border-slate-700 rounded-lg p-3"
-                                    >
-                                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-purple-600/30 border border-purple-400 text-purple-200 font-semibold">
-                                        {idx + 1}
-                                      </span>
-                                      <div className="text-slate-200">
-                                        {renderInlineWithMath(step)}
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ol>
-                              )}
-                              {activeSection.diagram.image && (
-                                <div className="rounded-lg overflow-hidden border border-slate-700">
-                                  <img
-                                    src={activeSection.diagram.image}
-                                    alt={activeSection.diagram.type}
-                                    className="w-full h-auto"
-                                  />
-                                </div>
-                              )}
-                              <div className="flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSimulationTopic(selectedTopic?.name || activeSection.diagram?.type || activeSection.title);
-                                    setInteractiveSimulationActive(true);
-                                  }}
-                                  className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg text-white text-sm font-semibold shadow-lg hover:scale-[1.02] transition-transform"
-                                >
-                                  <Play className="h-4 w-4" />
-                                  Launch Simulation
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          {activeSection.example && (
-                            <div className="bg-green-900/20 border border-green-500/40 rounded-xl p-6 space-y-3">
-                              <h5 className="text-lg font-semibold text-green-300 flex items-center gap-2">
-                                <Target className="h-5 w-5" />
-                                Apply the Idea
-                              </h5>
-                              {activeSection.example.scenario && (
-                                <p className="text-slate-100">
-                                  {renderInlineWithMath(activeSection.example.scenario)}
-                                </p>
-                              )}
-                              {activeSection.example.connection && (
-                                <p className="text-slate-300 text-sm">
-                                  {renderInlineWithMath(activeSection.example.connection)}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {activeSection.insights.length > 0 && (
-                            <div className="bg-purple-900/20 border border-purple-500/40 rounded-xl p-6">
-                              <h5 className="text-lg font-semibold text-purple-300 mb-3 flex items-center gap-2">
-                                <Lightbulb className="h-5 w-5" />
-                                Quick Insights
-                              </h5>
-                              <ul className="space-y-2">
-                                {activeSection.insights.map((insight, idx) => (
-                                  <li key={idx} className="flex items-start gap-2 text-slate-200">
-                                    <span className="text-purple-300 mt-1">•</span>
-                                    <span>{renderInlineWithMath(insight)}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {currentQuickCheck && (
-                            <div className="bg-slate-900/60 border border-indigo-500/30 rounded-xl p-6">
-                              <h5 className="text-lg font-semibold text-indigo-200 mb-2 flex items-center gap-2">
-                                <Brain className="h-5 w-5" />
-                                Quick Check
-                              </h5>
-                              <div className="text-slate-200 mb-4">
-                                {renderInlineWithMath(currentQuickCheck.question)}
-                              </div>
-                              <div className="space-y-3">
-                                {currentQuickCheck.options.map((option, idx) => {
-                                  const isSelected = currentQuickCheckSelection === idx;
-                                  const isCorrect = currentQuickCheck.answerIndex === idx;
-                                  const showFeedback = currentQuickCheckSelection !== undefined;
-                                  const classes = showFeedback
-                                    ? isCorrect
-                                      ? 'border-green-400 bg-green-500/10 text-green-200'
-                                      : isSelected
-                                        ? 'border-red-400 bg-red-500/10 text-red-200'
-                                        : 'border-slate-600 bg-slate-800 text-slate-200'
-                                    : isSelected
-                                      ? 'border-purple-400 bg-purple-500/10 text-purple-200'
-                                      : 'border-slate-600 bg-slate-800 text-slate-200 hover:border-purple-400/60';
-                                  return (
-                                    <button
-                                      key={idx}
-                                      type="button"
-                                      onClick={() => handleQuickCheckSelection(currentLearningStep, idx)}
-                                      className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${classes}`}
-                                    >
-                                      <span>{renderInlineWithMath(option)}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              {currentQuickCheckSelection !== undefined && (
-                                <p
-                                  className={`mt-4 text-sm ${
-                                    currentQuickCheckSelection === currentQuickCheck.answerIndex
-                                      ? 'text-green-300'
-                                      : 'text-red-300'
-                                  }`}
-                                >
-                                  {currentQuickCheckSelection === currentQuickCheck.answerIndex
-                                    ? 'Great work! Move ahead when you are ready.'
-                                    : 'Review the notes above and try another option.'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          <div className="flex flex-wrap gap-3">
-                            {currentLearningStep > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setCurrentLearningStep(currentLearningStep - 1)}
-                                className="px-4 py-2 rounded-lg border border-slate-600 text-slate-300 hover:border-slate-400 transition"
-                              >
-                                Previous Concept
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => markStepComplete(currentLearningStep)}
-                              className="px-4 py-2 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold shadow hover:opacity-90 transition"
-                            >
-                              {currentLearningStep === learningSections.length - 1 ? 'Complete Journey' : 'Mark Step Complete'}
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {allStepsComplete && journeySummary && (
-                    <div className="mt-8 bg-slate-900/60 border border-blue-500/30 rounded-xl p-6">
-                      <h4 className="text-white text-xl font-bold mb-4 flex items-center gap-2">
-                        <Award className="h-5 w-5 text-blue-300" />
-                        Journey Summary
-                      </h4>
-                      <ul className="space-y-2 mb-3">
-                        {journeySummary.bullets.map((bullet, idx) => (
-                          <li key={idx} className="flex items-start gap-2 text-slate-200">
-                            <CheckCircle className="h-4 w-4 text-green-400 mt-1" />
-                            <span>{renderInlineWithMath(bullet)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      {journeySummary.takeaway && (
-                        <p className="text-blue-200 text-sm bg-blue-900/30 border border-blue-500/30 rounded-lg p-3">
-                          <strong>Takeaway:</strong> {renderInlineWithMath(journeySummary.takeaway)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
+            <>
+              {/* FOCUSED LEARNING MODE - Auto-enabled after assessment */}
+              {lessonBites.length > 0 ? (
+                <FocusedLearningSession
+                  lessonBites={lessonBites}
+                  academicLevel={academicLevel}
+                  documentContent={documentContent}
+                  documentName={documentName}
+                  documentFileUrl={documentFileUrl}
+                  onProgressUpdate={(completed: number, total: number) => {
+                    console.log(`Progress: ${completed}/${total}`);
+                  }}
+                />
               ) : (
-                learningContent && (
-                  <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-8 shadow-2xl">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-white text-2xl font-bold flex items-center gap-3">
-                        <div className="p-2 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg">
-                          <Lightbulb className="h-6 w-6 text-white" />
-                        </div>
-                        Interactive Learning Experience
-                      </h3>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            const highlights = learningContent.match(/\*\*(.*?)\*\*/g)?.map(m => m.replace(/\*\*/g, '')) || [];
-                            setConceptHighlights(highlights);
-                          }}
-                          className="px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/50 rounded-lg text-purple-300 text-sm transition-all flex items-center gap-2"
-                          title="Highlight key concepts"
-                        >
-                          <Zap className="h-4 w-4" />
-                          Highlights
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mb-6 bg-slate-700 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-purple-500 to-blue-500 h-full transition-all duration-500"
-                        style={{ width: `${(expandedSections.size / 5) * 100}%` }}
-                      ></div>
-                    </div>
-
-                    <div className="space-y-4">
-                      {renderInteractiveLearningContent(learningContent)}
-                    </div>
-
-                    {conceptHighlights.length > 0 && (
-                      <div className="mt-6 bg-purple-900/20 border border-purple-500/30 rounded-lg p-5">
-                        <h5 className="text-lg font-semibold text-purple-300 mb-3 flex items-center gap-2">
-                          <Zap className="h-5 w-5" />
-                          Key Concepts to Remember
-                        </h5>
-                        <div className="flex flex-wrap gap-2">
-                          {conceptHighlights.map((concept, idx) => (
-                            <span
-                              key={idx}
-                              className="px-3 py-1 bg-purple-600/30 border border-purple-500/50 rounded-full text-purple-200 text-sm"
-                            >
-                              {concept}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="mt-6 bg-slate-800/50 border border-slate-600 rounded-lg p-5">
-                      <h5 className="text-lg font-semibold text-slate-300 mb-3 flex items-center gap-2">
-                        📝 My Notes
-                      </h5>
-                      <textarea
-                        placeholder="Write your own notes, questions, or insights here..."
-                        className="w-full bg-slate-700 border border-slate-600 rounded-lg p-4 text-white min-h-[100px] focus:outline-none focus:ring-2 focus:ring-purple-400 placeholder-slate-400"
-                        value={userNotes.get(selectedTopic?.id || '') || ''}
-                        onChange={(e) => {
-                          const newNotes = new Map(userNotes);
-                          newNotes.set(selectedTopic?.id || '', e.target.value);
-                          setUserNotes(newNotes);
-                        }}
-                      />
-                    </div>
-
-                    <div className="mt-6 flex gap-3 flex-wrap">
-                      <button
-                        onClick={() => {
-                          const text = learningContent.replace(/\[.*?\]/g, '').replace(/#/g, '');
-                          const speech = new SpeechSynthesisUtterance(text.substring(0, 500));
-                          window.speechSynthesis.speak(speech);
-                        }}
-                        className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 rounded-lg text-blue-300 transition-all flex items-center gap-2"
-                      >
-                        <span className="text-lg">🔊</span>
-                        Listen to Content
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setInteractiveSimulationActive(!interactiveSimulationActive);
-                        }}
-                        className={`px-4 py-2 border rounded-lg transition-all flex items-center gap-2 ${
-                          interactiveSimulationActive
-                            ? 'bg-green-600/30 border-green-500/50 text-green-300'
-                            : 'bg-slate-700/50 border-slate-600 text-slate-300 hover:border-slate-500'
-                        }`}
-                      >
-                        <span className="text-lg">⚡</span>
-                        {interactiveSimulationActive ? 'Simulation Active' : 'Try Interactive Demo'}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(learningContent);
-                          setFeedbackMessage('✓ Content copied to clipboard!');
-                          setShowFeedback(true);
-                          setTimeout(() => setShowFeedback(false), 2000);
-                        }}
-                        className="px-4 py-2 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 hover:border-slate-500 rounded-lg text-slate-300 transition-all flex items-center gap-2"
-                      >
-                        <span className="text-lg">📋</span>
-                        Copy Content
-                      </button>
-                    </div>
-
-                    {interactiveSimulationActive && (
-                      <div className="mt-6 bg-gradient-to-br from-green-900/30 to-blue-900/30 border-2 border-green-500/50 rounded-xl p-6 animate-in">
-                        <div className="flex items-center justify-between mb-4">
-                          <h5 className="text-xl font-bold text-green-300 flex items-center gap-2">
-                            <Zap className="h-6 w-6" />
-                            Interactive Simulation
-                          </h5>
-                          <button
-                            onClick={() => setInteractiveSimulationActive(false)}
-                            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                          >
-                            <X className="h-5 w-5 text-slate-400" />
-                          </button>
-                        </div>
-
-                        <div className="bg-slate-900 rounded-lg p-8 border border-slate-600">
-                          <div className="text-center space-y-4">
-                            <div className="text-6xl mb-4">🧪</div>
-                            <p className="text-white text-lg">Visualize the Concept</p>
-                            <p className="text-slate-400">
-                              {simulationTopic || knowledgeGapReport?.gaps[0]?.concept || 'Current Topic'}
-                            </p>
-
-                            <div className="mt-6 space-y-3">
-                              <label className="block text-slate-300 text-sm">Adjust parameters:</label>
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                className="w-full"
-                                onChange={() => {
-                                  // Interactive simulation logic placeholder
-                                }}
-                              />
-                              <div className="grid grid-cols-3 gap-4 mt-4">
-                                <div className="bg-slate-800 rounded-lg p-3">
-                                  <div className="text-blue-400 text-2xl font-bold">+</div>
-                                  <div className="text-slate-400 text-xs">Increase</div>
-                                </div>
-                                <div className="bg-slate-800 rounded-lg p-3">
-                                  <div className="text-purple-400 text-2xl font-bold">⟷</div>
-                                  <div className="text-slate-400 text-xs">Balance</div>
-                                </div>
-                                <div className="bg-slate-800 rounded-lg p-3">
-                                  <div className="text-red-400 text-2xl font-bold">-</div>
-                                  <div className="text-slate-400 text-xs">Decrease</div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <p className="text-slate-500 text-sm mt-4">
-                              💡 Experiment with the controls to see how concepts interact
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              )}
-
-              {/* Interactive Learning Module */}
-              {tutorModules.length > 0 && tutorModules[currentTutorModuleIndex] && (
-                <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-                  <h3 className="text-white text-xl font-bold mb-4">Practice Exercise</h3>
-                  <p className="text-slate-400 text-sm mb-4">
-                    Format: <span className="text-purple-400 font-medium capitalize">
-                      {tutorModules[currentTutorModuleIndex].module_type.replace('_', ' ')}
-                    </span>
-                  </p>
-                  
-                  {/* Fill in the Blanks */}
-                  {tutorModules[currentTutorModuleIndex].module_type === 'fill_blanks' && (
-                    <div>
-                      <p className="text-white mb-4 leading-relaxed">
-                        {(tutorModules[currentTutorModuleIndex] as FillBlanks).text.split('[____]').map((part, idx, arr) => (
-                          <React.Fragment key={idx}>
-                            {part}
-                            {idx < arr.length - 1 && (
-                              <input
-                                type="text"
-                                value={fillBlanksAnswers[idx] || ''}
-                                onChange={(e) => {
-                                  const newAnswers = [...fillBlanksAnswers];
-                                  newAnswers[idx] = e.target.value;
-                                  setFillBlanksAnswers(newAnswers);
-                                }}
-                                className={`mx-2 px-3 py-1 bg-slate-700 border rounded text-white focus:outline-none focus:ring-2 transition-all ${
-                                  wrongAnswers.includes(idx)
-                                    ? 'border-red-500 focus:ring-red-400 animate-shake'
-                                    : fillBlanksAnswers[idx] && attemptCount > 0 && !wrongAnswers.includes(idx)
-                                    ? 'border-green-500 focus:ring-green-400'
-                                    : 'border-slate-600 focus:ring-purple-400'
-                                }`}
-                                placeholder="___"
-                              />
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Multiple Choice */}
-                  {tutorModules[currentTutorModuleIndex].module_type === 'mcq_multi' && (
-                    <div>
-                      <h4 className="text-white font-medium mb-4">
-                        {(tutorModules[currentTutorModuleIndex] as MCQMulti).question}
-                      </h4>
-                      <div className="space-y-3">
-                        {(tutorModules[currentTutorModuleIndex] as MCQMulti).options.map((option) => (
-                          <label
-                            key={option.id}
-                            className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                              selectedOptions.includes(option.id)
-                                ? 'bg-purple-900/30 border-purple-500'
-                                : 'bg-slate-700/50 border-slate-600 hover:border-slate-500'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedOptions.includes(option.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedOptions([...selectedOptions, option.id]);
-                                } else {
-                                  setSelectedOptions(selectedOptions.filter(id => id !== option.id));
-                                }
-                              }}
-                              className="w-5 h-5"
-                            />
-                            <span className="text-white">{option.text}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <p className="text-slate-400 text-sm mt-2">Select all that apply</p>
-                    </div>
-                  )}
-
-                  {/* Match Pairs */}
-                  {tutorModules[currentTutorModuleIndex].module_type === 'match_pairs' && (
-                    <div>
-                      <p className="text-white mb-4">
-                        {(tutorModules[currentTutorModuleIndex] as MatchPairs).prompt}
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h5 className="text-slate-400 text-sm font-semibold mb-2">Column A</h5>
-                          <div className="space-y-2">
-                            {(tutorModules[currentTutorModuleIndex] as MatchPairs).column_a.map((item, idx) => (
-                              <div key={idx} className="bg-slate-700 p-3 rounded-lg">
-                                <p className="text-white text-sm">{item}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <h5 className="text-slate-400 text-sm font-semibold mb-2">Column B</h5>
-                          <div className="space-y-2">
-                            {(tutorModules[currentTutorModuleIndex] as MatchPairs).column_b.map((item, idx) => (
-                              <select
-                                key={idx}
-                                value={Array.from(matchPairsAnswers.entries()).find(([k, v]) => v === item)?.[0] || ''}
-                                onChange={(e) => {
-                                  const newMap = new Map(matchPairsAnswers);
-                                  // Remove previous mapping to this item
-                                  Array.from(newMap.entries()).forEach(([k, v]) => {
-                                    if (v === item) newMap.delete(k);
-                                  });
-                                  // Add new mapping
-                                  if (e.target.value) {
-                                    newMap.set(e.target.value, item);
-                                  }
-                                  setMatchPairsAnswers(newMap);
-                                }}
-                                className="w-full bg-slate-700 border border-slate-600 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
-                              >
-                                <option value="">Select match...</option>
-                                {(tutorModules[currentTutorModuleIndex] as MatchPairs).column_a.map((aItem, aIdx) => (
-                                  <option key={aIdx} value={aItem}>{aItem}</option>
-                                ))}
-                              </select>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Short Answer */}
-                  {tutorModules[currentTutorModuleIndex].module_type === 'short_answer' && (
-                    <div>
-                      <h4 className="text-white font-medium mb-4">
-                        {(tutorModules[currentTutorModuleIndex] as ShortAnswer).question}
-                      </h4>
-                      <textarea
-                        value={shortAnswerText}
-                        onChange={(e) => setShortAnswerText(e.target.value)}
-                        className="w-full bg-slate-700 border border-slate-600 rounded-lg p-4 text-white min-h-[120px] focus:outline-none focus:ring-2 focus:ring-purple-400"
-                        placeholder="Type your answer here..."
-                      />
-                      <p className="text-slate-400 text-sm mt-2">
-                        Expected concepts: {(tutorModules[currentTutorModuleIndex] as ShortAnswer).keywords_to_check.join(', ')}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Flashcard */}
-                  {tutorModules[currentTutorModuleIndex].module_type === 'flashcard' && (
-                    <div>
-                      <div
-                        onClick={() => setShowFlashcardBack(!showFlashcardBack)}
-                        className="bg-gradient-to-br from-purple-900/40 to-blue-900/40 border-2 border-purple-500/50 rounded-xl p-8 min-h-[200px] cursor-pointer hover:scale-105 transition-transform flex items-center justify-center"
-                      >
-                        <div className="text-center">
-                          <p className="text-white text-lg">
-                            {showFlashcardBack 
-                              ? (tutorModules[currentTutorModuleIndex] as Flashcard).back
-                              : (tutorModules[currentTutorModuleIndex] as Flashcard).front}
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-slate-400 text-sm text-center mt-2">
-                        {showFlashcardBack ? 'Click to see question' : 'Click to see answer'}
-                      </p>
-                    </div>
-                  )}
-                      
-                  {/* Hint Display */}
-                  {showHint && currentHint && (
-                    <div className="mt-4 p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-lg">
-                      <p className="text-yellow-200 text-sm">{currentHint}</p>
-                    </div>
-                  )}
-                  
-                  {/* Feedback Message */}
-                  {showFeedback && feedbackMessage && (
-                    <div className={`mt-4 p-4 rounded-lg ${
-                      feedbackMessage.startsWith('✓') || feedbackMessage.startsWith('🎉') || feedbackMessage.startsWith('✨')
-                        ? 'bg-green-900/30 border border-green-600/50'
-                        : feedbackMessage.startsWith('⏭️')
-                        ? 'bg-blue-900/30 border border-blue-600/50'
-                        : 'bg-red-900/30 border border-red-600/50'
-                    }`}>
-                      <p className={
-                        feedbackMessage.startsWith('✓') || feedbackMessage.startsWith('🎉') || feedbackMessage.startsWith('✨')
-                          ? 'text-green-200' 
-                          : feedbackMessage.startsWith('⏭️')
-                          ? 'text-blue-200'
-                          : 'text-red-200'
-                      }>
-                        {feedbackMessage}
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="flex gap-3 mt-4">
-                    <button
-                      onClick={handleTutorModuleAnswer}
-                      disabled={
-                        (tutorModules[currentTutorModuleIndex].module_type === 'mcq_multi' && selectedOptions.length === 0) ||
-                        (tutorModules[currentTutorModuleIndex].module_type === 'short_answer' && shortAnswerText.trim() === '') ||
-                        (tutorModules[currentTutorModuleIndex].module_type === 'match_pairs' && matchPairsAnswers.size === 0)
-                      }
-                      className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white px-6 py-3 rounded-lg font-medium transition-all disabled:cursor-not-allowed"
-                    >
-                      Check Answer
-                    </button>
-                    
-                    <button
-                      onClick={handleSkipQuestion}
-                      className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg font-medium transition-all border border-slate-600 hover:border-slate-500"
-                      title="Skip this question and try a different learning approach"
-                    >
-                      Skip
-                    </button>
-                  </div>
+                <div className="text-center py-12">
+                  <p className="text-slate-400">Loading your personalized learning session...</p>
                 </div>
               )}
-
-              {/* Progress Tracker */}
-              {userProgress.length > 0 && (
-                <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-                  <h3 className="text-white text-lg font-bold mb-4">Your Progress</h3>
-                  <div className="flex gap-2">
-                    {userProgress.map((progress, idx) => (
-                      <div
-                        key={idx}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          progress.success ? 'bg-green-500' : 'bg-red-500'
-                        }`}
-                      >
-                        {progress.success ? <CheckCircle className="h-5 w-5 text-white" /> : <XCircle className="h-5 w-5 text-white" />}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            </>
           )}
         </div>
       </div>
-
-      {/* API Key Required Modal */}
-      {showApiKeyModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-slate-800 border-2 border-yellow-500/50 rounded-xl p-8 max-w-md mx-4 shadow-2xl">
-            <div className="text-center mb-6">
-              <div className="mx-auto w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mb-4">
-                <AlertCircle className="h-10 w-10 text-yellow-400" />
-              </div>
-              <h3 className="text-white text-2xl font-bold mb-2">API Key Required</h3>
-              <p className="text-slate-300">
-                To use the Subject Explorer, please add your Gemini API key in Settings.
-              </p>
-            </div>
-
-            <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-4 mb-6">
-              <h4 className="text-white font-semibold mb-2 flex items-center gap-2">
-                <Lightbulb className="h-4 w-4 text-yellow-400" />
-                How to get a free API key:
-              </h4>
-              <ol className="text-slate-300 text-sm space-y-2 list-decimal list-inside">
-                <li>Visit <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Google AI Studio</a></li>
-                <li>Sign in with your Google account</li>
-                <li>Click "Create API Key"</li>
-                <li>Copy the key and paste it in Settings (⚙️)</li>
-              </ol>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowApiKeyModal(false)}
-                className="flex-1 bg-slate-600 hover:bg-slate-500 text-white px-4 py-3 rounded-lg font-medium transition-all"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  setShowApiKeyModal(false);
-                  onClose();
-                }}
-                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-4 py-3 rounded-lg font-medium transition-all"
-              >
-                Go to Settings
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
