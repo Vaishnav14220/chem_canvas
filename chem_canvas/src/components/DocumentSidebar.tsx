@@ -449,7 +449,7 @@ export const DocumentSidebar: React.FC<DocumentSidebarProps> = ({
               </PdfZoomIn>
             </div>
           </div>
-          <div className="h-[32rem] overflow-hidden bg-slate-950">
+          <div className="h-[36rem] lg:h-[42rem] overflow-hidden bg-slate-950">
             <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
               <Viewer
                 fileUrl={documentFileUrl}

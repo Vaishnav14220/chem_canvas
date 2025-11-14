@@ -44,7 +44,7 @@ const getAvailableModel = async (genAI: GoogleGenerativeAI) => {
     return cachedModelName;
   }
 
-  const models = ['gemini-2.5-pro', 'gemini-flash-latest'];
+  const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest'];
   
   return executeWithRotation(async (apiKey) => {
     // Reinitialize with new key if needed
@@ -306,6 +306,180 @@ export const generateImageDescription = async (imageUrl: string): Promise<string
   } catch (error) {
     console.error('Error generating image description:', error);
     throw error;
+  }
+};
+
+export interface ContextualResourceRecommendation {
+  title: string;
+  url: string;
+  type: 'youtube' | 'article' | 'reference' | 'simulation' | 'tool' | 'other';
+  description: string;
+  reason?: string;
+  author?: string;
+}
+
+interface ResourceRequestParams {
+  topic: string;
+  lessonContent: string;
+  documentContent?: string;
+  academicLevel?: string;
+  maxItems?: number;
+}
+
+export const fetchContextualResources = async ({
+  topic,
+  lessonContent,
+  documentContent,
+  academicLevel = 'university',
+  maxItems = 3,
+}: ResourceRequestParams): Promise<ContextualResourceRecommendation[]> => {
+  const excerpt = lessonContent.slice(0, 2000);
+  const documentExcerpt = documentContent?.slice(0, 1500) ?? '';
+  const prompt = [
+    'You are a study concierge who suggests external resources.',
+    `Provide up to ${maxItems} highly relevant resources for a learner studying the topic.`,
+    'Rules:',
+    '- Always prioritize high quality YouTube videos, official documentation, or interactive web resources.',
+    '- Include at least one YouTube video when possible.',
+    '- Responses must be valid JSON array only, no prose.',
+    '- Each resource object must contain: title, url, type (youtube|article|reference|simulation|tool|other), description (1 sentence), reason (why it helps), and optional author.',
+    '- Do not repeat the same domain more than once unless critical.',
+    '- Prefer resources accessible without paywalls.',
+    '',
+    `Learner academic level: ${academicLevel}`,
+    `Lesson topic: ${topic}`,
+    `Lesson content excerpt:\n${excerpt}`,
+    documentExcerpt ? `Document excerpt:\n${documentExcerpt}` : '',
+  ].join('\n');
+
+  const aiResponse = await generateTextContent(prompt);
+  const jsonPayload = extractJsonBlock(aiResponse);
+
+  try {
+    const parsed = JSON.parse(jsonPayload);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((item) => item && item.title && item.url)
+        .slice(0, maxItems);
+    }
+    return [];
+  } catch (error) {
+    console.error('Failed to parse Gemini contextual resources:', error, jsonPayload);
+    throw new Error('Gemini could not provide structured resource recommendations.');
+  }
+};
+
+export interface MolecularVisualizationPlan {
+  title: string;
+  moleculeName: string;
+  script: string;
+  description: string;
+}
+
+interface MolecularScriptParams {
+  topic: string;
+  candidateMolecules: string[];
+  lessonContent: string;
+}
+
+export const fetchMolecularVisualizationPlan = async ({
+  topic,
+  candidateMolecules,
+  lessonContent,
+}: MolecularScriptParams): Promise<MolecularVisualizationPlan | null> => {
+  if (!candidateMolecules.length) {
+    return null;
+  }
+
+  const prompt = [
+    'You help chemistry students explore molecules via JSmol.',
+    'Choose the single most relevant molecule from the provided list and craft a JSmol script that loads its 3D structure (prefer the PubChem REST SDF endpoint).',
+    'Return ONLY JSON with this shape:',
+    '{',
+    '  "title": "Human-friendly headline for the molecule",',
+    '  "moleculeName": "Name or identifier used for context",',
+    '  "script": "JSmol script that loads and styles the molecule",',
+    '  "description": "Short explanation of why this structure matters to the lesson"',
+    '}',
+    'Rules:',
+    '- script must start by loading the molecule, e.g. load "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/ACETONE/SDF";',
+    '- After load, set an appealing style (wireframe/spacefill/colours) and optionally spin.',
+    '- Do not output markdown fences or commentary.',
+    '',
+    `Topic: ${topic}`,
+    `Lesson excerpt:\n${lessonContent.slice(0, 1600)}`,
+    `Candidate molecules: ${candidateMolecules.join(', ')}`,
+  ].join('\n');
+
+  const aiResponse = await generateTextContent(prompt);
+  const jsonPayload = extractJsonBlock(aiResponse);
+
+  try {
+    const parsed = JSON.parse(jsonPayload);
+    if (parsed?.script && parsed?.title) {
+      return {
+        title: parsed.title,
+        moleculeName: parsed.moleculeName || candidateMolecules[0],
+        script: parsed.script,
+        description: parsed.description || '',
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to parse Gemini molecular plan:', error, jsonPayload);
+    return null;
+  }
+};
+
+interface YouTubeRankingParams {
+  topic: string;
+  lessonContent: string;
+  videos: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    channelTitle?: string;
+  }>;
+  count?: number;
+}
+
+export const selectTopYouTubeVideos = async ({
+  topic,
+  lessonContent,
+  videos,
+  count = 3,
+}: YouTubeRankingParams): Promise<string[] | null> => {
+  if (!videos.length) {
+    return null;
+  }
+
+  const prompt = [
+    'You are ranking existing YouTube videos for a study session.',
+    `Return ONLY JSON array of up to ${count} video ids (from the provided list) that best match the learner's needs.`,
+    'Consider accuracy, modern explanations, and alignment with the lesson topic.',
+    'Example output: ["abc123", "xyz456", "pqr789"]',
+    '',
+    `Topic: ${topic}`,
+    `Lesson excerpt:\n${lessonContent.slice(0, 1600)}`,
+    '',
+    'Candidate videos:',
+    ...videos.map(
+      (video, index) =>
+        `${index + 1}. id=${video.id}, title="${video.title}", channel="${video.channelTitle || 'unknown'}", description="${video.description || ''}"`
+    ),
+  ].join('\n');
+
+  const response = await generateTextContent(prompt);
+  const jsonPayload = extractJsonBlock(response);
+  try {
+    const parsed = JSON.parse(jsonPayload);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+      return parsed.slice(0, count);
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to parse Gemini YouTube ranking response:', error, jsonPayload);
+    return null;
   }
 };
 

@@ -30,6 +30,14 @@ import type { SimulationSchema } from '../types/simulation';
 import { executeSimulation } from '../services/simulationService';
 import type { ReactionResolutionResult } from '../services/reactionResolver';
 
+const LOADING_TIPS = [
+  'Synthesizing key reactions from your document...',
+  'Charting cognitive pathways for your study plan...',
+  'Pairing concepts with challenge prompts...',
+  'Tuning AI mentors for your learning style...',
+  'Polishing flashcards and quiz modules...'
+];
+
 interface SubjectExplorerProps {
   onClose: () => void;
   apiKey: string;
@@ -866,6 +874,7 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   const [isRestoringSession, setIsRestoringSession] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
+  const [loadingTipIndex, setLoadingTipIndex] = useState(0);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [academicLevel, setAcademicLevel] = useState<string>('');
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
@@ -943,6 +952,14 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   useEffect(() => {
     setActiveStructure(immersiveScenario?.structure ?? null);
   }, [immersiveScenario]);
+
+  useEffect(() => {
+    if (!isProcessing) return;
+    const interval = setInterval(() => {
+      setLoadingTipIndex((prev) => (prev + 1) % LOADING_TIPS.length);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   const immersiveSimulationBaseline = useMemo<{
     inputs: Record<string, any>;
@@ -3392,86 +3409,144 @@ Respond with a JSON object:
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-slate-950">
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-purple-900 to-blue-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between z-10">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-bold text-white">
-            <Brain className="h-6 w-6 text-purple-300" />
-            Subject Explorer
-          </h2>
-          <p className="text-slate-300 text-sm mt-1">Adaptive Multi-Agent Tutoring System</p>
-        </div>
-        <button
-          onClick={onClose}
-          className="p-2 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white transition-colors"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 mt-20 overflow-y-auto">
-        <div className="w-full px-4 md:px-8 lg:px-12">
+    <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur flex flex-col">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-6 py-6">
+          {/* Header */}
+          <header className="rounded-[32px] border border-white/10 bg-gradient-to-r from-[#0f172a] via-[#312e81] to-[#581c87] px-6 py-5 shadow-[0_30px_60px_-25px_rgba(15,23,42,0.8)]">
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div>
+              <h2 className="flex items-center gap-3 text-2xl font-semibold text-white">
+                <Brain className="h-7 w-7 text-purple-200" />
+                Subject Explorer
+              </h2>
+              <p className="text-slate-200 text-sm tracking-wide">Adaptive Multi-Agent Tutoring System</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-2xl border border-white/40 bg-white/10 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-white shadow-inner shadow-white/20 transition hover:bg-white/20"
+            >
+              Close
+            </button>
+          </div>
           {/* Progress Indicator */}
-          <div className="mb-8 flex items-center justify-center gap-4">
-            <div className={`flex items-center gap-2 ${stage === 'upload' ? 'text-purple-400' : 'text-green-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'upload' ? 'border-purple-400 bg-purple-400/20' : 'border-green-400 bg-green-400/20'}`}>
-                {stage !== 'upload' ? <CheckCircle className="h-5 w-5" /> : <Upload className="h-5 w-5" />}
+          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-5 py-3">
+            <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-slate-200">
+              <div className={`flex items-center gap-2 ${stage === 'upload' ? 'text-purple-100' : 'text-emerald-200'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'upload' ? 'border-purple-300 bg-purple-500/20' : 'border-emerald-300 bg-emerald-500/20'}`}>
+                  {stage !== 'upload' ? <CheckCircle className="h-5 w-5" /> : <Upload className="h-5 w-5" />}
+                </div>
+                <span className="font-medium">Upload</span>
               </div>
-              <span className="font-medium">Upload</span>
-            </div>
-            
-            <ArrowRight className="h-4 w-4 text-slate-500" />
-            
-            <div className={`flex items-center gap-2 ${stage === 'topic_selection' ? 'text-purple-400' : stage === 'assessment' || stage === 'learning' ? 'text-green-400' : 'text-slate-500'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'topic_selection' ? 'border-purple-400 bg-purple-400/20' : stage === 'assessment' || stage === 'learning' ? 'border-green-400 bg-green-400/20' : 'border-slate-500'}`}>
-                {stage === 'assessment' || stage === 'learning' ? <CheckCircle className="h-5 w-5" /> : <BookOpen className="h-5 w-5" />}
+              
+              <ArrowRight className="h-4 w-4 text-slate-400" />
+              
+              <div className={`flex items-center gap-2 ${stage === 'topic_selection' ? 'text-purple-100' : stage === 'assessment' || stage === 'learning' ? 'text-emerald-200' : 'text-slate-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'topic_selection' ? 'border-purple-300 bg-purple-500/20' : stage === 'assessment' || stage === 'learning' ? 'border-emerald-300 bg-emerald-500/20' : 'border-slate-500'}`}>
+                  {stage === 'assessment' || stage === 'learning' ? <CheckCircle className="h-5 w-5" /> : <BookOpen className="h-5 w-5" />}
+                </div>
+                <span className="font-medium">Topics</span>
               </div>
-              <span className="font-medium">Topics</span>
-            </div>
-            
-            <ArrowRight className="h-4 w-4 text-slate-500" />
-            
-            <div className={`flex items-center gap-2 ${stage === 'assessment' ? 'text-purple-400' : stage === 'learning' ? 'text-green-400' : 'text-slate-500'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'assessment' ? 'border-purple-400 bg-purple-400/20' : stage === 'learning' ? 'border-green-400 bg-green-400/20' : 'border-slate-500'}`}>
-                {stage === 'learning' ? <CheckCircle className="h-5 w-5" /> : <Target className="h-5 w-5" />}
+              
+              <ArrowRight className="h-4 w-4 text-slate-400" />
+              
+              <div className={`flex items-center gap-2 ${stage === 'assessment' ? 'text-purple-100' : stage === 'learning' ? 'text-emerald-200' : 'text-slate-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'assessment' ? 'border-purple-300 bg-purple-500/20' : stage === 'learning' ? 'border-emerald-300 bg-emerald-500/20' : 'border-slate-500'}`}>
+                  {stage === 'learning' ? <CheckCircle className="h-5 w-5" /> : <Target className="h-5 w-5" />}
+                </div>
+                <span className="font-medium">Assess</span>
               </div>
-              <span className="font-medium">Assess</span>
-            </div>
-            
-            <ArrowRight className="h-4 w-4 text-slate-500" />
-            
-            <div className={`flex items-center gap-2 ${stage === 'learning' ? 'text-purple-400' : 'text-slate-500'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'learning' ? 'border-purple-400 bg-purple-400/20' : 'border-slate-500'}`}>
-                <Zap className="h-5 w-5" />
+              
+              <ArrowRight className="h-4 w-4 text-slate-400" />
+              
+              <div className={`flex items-center gap-2 ${stage === 'learning' ? 'text-purple-100' : 'text-slate-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'learning' ? 'border-purple-300 bg-purple-500/20' : 'border-slate-500'}`}>
+                  <Zap className="h-5 w-5" />
+                </div>
+                <span className="font-medium">Learn</span>
               </div>
-              <span className="font-medium">Learn</span>
             </div>
           </div>
+          </header>
+
+          {/* Main Content */}
+          <div className="w-full">
 
           {/* Loading State */}
           {isProcessing && (
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-8 mb-6 text-center">
-              <Loader2 className="h-12 w-12 animate-spin text-purple-400 mx-auto mb-4" />
-              <p className="text-white text-lg font-medium">{processingMessage}</p>
+            <div className="mb-6 rounded-3xl border border-purple-500/30 bg-slate-900/70 p-8 text-center shadow-xl">
+              <div className="flex flex-col items-center gap-5">
+                <div className="relative h-28 w-28">
+                  <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-purple-400 border-r-blue-400 animate-spin" />
+                  <div className="absolute inset-3 rounded-full bg-slate-950/80 border border-white/10 flex items-center justify-center">
+                    <Sparkles className="h-6 w-6 text-purple-200 animate-pulse" />
+                  </div>
+                  <div className="absolute -bottom-6 left-1/2 flex -translate-x-1/2 gap-1">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <span
+                        key={index}
+                        className="h-2.5 w-2.5 rounded-full bg-gradient-to-r from-purple-300 to-blue-300 animate-bounce"
+                        style={{ animationDelay: `${index * 0.18}s` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-white text-xl font-semibold">{processingMessage || 'Mixing knowledge reagents...'}</p>
+                  <p className="mt-2 text-sm text-slate-300">{LOADING_TIPS[loadingTipIndex]}</p>
+                </div>
+              </div>
             </div>
           )}
 
           {/* Feedback Messages */}
-          {showFeedback && feedbackMessage && (
-            <div className={`mb-6 p-4 rounded-lg border ${
-              feedbackMessage.includes('✓') || feedbackMessage.includes('🎉')
-                ? 'bg-green-900/20 border-green-500 text-green-200'
-                : 'bg-red-900/20 border-red-500 text-red-200'
-            }`}>
-              <p className="font-medium">{feedbackMessage}</p>
-            </div>
-          )}
+          {showFeedback && feedbackMessage && (() => {
+            const messageLower = feedbackMessage.toLowerCase();
+            let variant: 'loading' | 'success' | 'error' | 'info' = 'info';
+            if (messageLower.includes('loading') || messageLower.includes('processing')) {
+              variant = 'loading';
+            } else if (messageLower.includes('✅') || messageLower.includes('✓') || messageLower.includes('success')) {
+              variant = 'success';
+            } else if (messageLower.includes('❌') || messageLower.includes('error') || messageLower.includes('failed')) {
+              variant = 'error';
+            }
+
+            const variantStyles = {
+              loading: {
+                container: 'bg-gradient-to-r from-purple-900/60 to-indigo-900/50 border-purple-500/30 text-white',
+                accent: 'bg-purple-500/30 text-white',
+                icon: <Loader2 className="h-5 w-5 animate-spin" />
+              },
+              success: {
+                container: 'bg-emerald-900/20 border-emerald-500/40 text-emerald-100',
+                accent: 'bg-emerald-500/20 text-emerald-200',
+                icon: <CheckCircle className="h-5 w-5" />
+              },
+              error: {
+                container: 'bg-rose-900/20 border-rose-500/40 text-rose-100',
+                accent: 'bg-rose-500/20 text-rose-200',
+                icon: <AlertCircle className="h-5 w-5" />
+              },
+              info: {
+                container: 'bg-slate-800/70 border-slate-600 text-slate-200',
+                accent: 'bg-slate-600 text-slate-200',
+                icon: <Sparkles className="h-5 w-5" />
+              }
+            }[variant];
+
+            return (
+              <div className={`mb-6 flex items-center gap-3 rounded-2xl border px-4 py-3 ${variantStyles.container}`}>
+                <span className={`flex h-9 w-9 items-center justify-center rounded-full ${variantStyles.accent}`}>
+                  {variantStyles.icon}
+                </span>
+                <p className="font-medium">{feedbackMessage}</p>
+              </div>
+            );
+          })()}
 
           {/* Stage 1: Upload Document */}
           {stage === 'upload' && !isProcessing && (
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
+            <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-8 shadow-xl">
               {/* API Key Notice */}
               {!apiKey && (
                 <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/40 rounded-lg">
@@ -3494,7 +3569,7 @@ Respond with a JSON object:
                 <p className="text-slate-400">Upload a document to begin your personalized learning journey</p>
               </div>
               
-              <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-purple-400 hover:bg-slate-700/50 transition-all">
+              <label className="flex flex-col items-center justify-center w-full h-64 rounded-3xl border-2 border-dashed border-slate-600/70 bg-slate-900/50 cursor-pointer transition-all hover:border-purple-400 hover:bg-slate-900/80">
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <Upload className="h-12 w-12 text-slate-400 mb-3" />
                   <p className="mb-2 text-sm text-slate-400">
@@ -3540,7 +3615,7 @@ Respond with a JSON object:
               </div>
 
               {currentUser ? (
-                <div className="mt-6 bg-slate-800 border border-slate-700 rounded-lg p-6">
+                <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/60 p-5">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="text-white text-lg font-semibold flex items-center gap-2">
                       <Clock className="h-5 w-5 text-purple-300" />
@@ -3810,6 +3885,7 @@ Respond with a JSON object:
         </div>
       </div>
     </div>
+  </div>
   );
 };
 

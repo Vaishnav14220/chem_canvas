@@ -32,17 +32,14 @@ type StudyContent =
   | { type: 'mindmap'; centralTopic: string; nodes: MindMapNode[]; rawText?: string }
   | { type: 'audio' | 'video' | 'reports'; text: string; rawText?: string };
 
-type ActiveTab = 'study' | 'documents' | 'notes' | 'designer' | 'chat' | 'tests';
+type ActiveTab = 'notes' | 'chat' | 'tests';
 
 const PRIMARY_TABS: ReadonlyArray<{
-  id: Extract<ActiveTab, 'study' | 'documents' | 'notes' | 'designer'>;
+  id: Extract<ActiveTab, 'notes'>;
   label: string;
   icon: LucideIcon;
 }> = [
-  { id: 'study', label: 'Study Tools', icon: Brain },
-  { id: 'documents', label: 'Documents', icon: FileText },
-  { id: 'notes', label: 'Notes', icon: Edit3 },
-  { id: 'designer', label: 'Designer', icon: Palette }
+  { id: 'notes', label: 'Notes', icon: Edit3 }
 ];
 
 const MAX_CONTEXT_CHARS = 4000;
@@ -509,7 +506,7 @@ const TableMarkdownRenderer: React.FC<TableMarkdownRendererProps> = ({
 };
 
 export default function StudyTools({ isOpen, onClose, sourceContent, sourceName, toolType, embedded = false }: StudyToolsProps) {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('study');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('notes');
   const [isGenerating, setIsGenerating] = useState(false);
   const [studyContent, setStudyContent] = useState<StudyContent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1003,7 +1000,7 @@ startxref
 
   useEffect(() => {
     if (!isOpen) return;
-    setActiveTab('study');
+    setActiveTab('notes');
     setIsGenerating(false);
     setStudyContent(null);
     setError(null);
@@ -1707,279 +1704,6 @@ startxref
 
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          {/* Study Tools Tab */}
-          {activeTab === 'study' && (
-            <div className="flex-1 overflow-hidden flex flex-col">
-              {!studyContent ? (
-                <div className="flex-1 flex items-center justify-center p-8">
-                  <div className="w-full max-w-xl space-y-6">
-                    <div className="flex flex-col items-center text-center space-y-3">
-                      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
-                        <ToolIcon className="h-10 w-10 text-primary" />
-                      </div>
-                      <h3 className="text-xl font-semibold">
-                        Generate {getToolDisplayName(toolType)}
-                      </h3>
-                      <p className="text-sm text-muted-foreground max-w-md">
-                        {hasSourceContent
-                          ? `We will combine your ${displaySourceName.toLowerCase()} materials with Gemini to build personalized ${getToolDisplayName(toolType).toLowerCase()}.`
-                          : 'Add a topic or keywords so Gemini can craft focused study materials for you.'}
-                      </p>
-                    </div>
-
-                    <div className="bg-muted/40 border border-border/60 rounded-lg p-4 text-left space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium">Study focus</label>
-                        <span className="text-xs text-muted-foreground">Optional prompt</span>
-                      </div>
-                      <textarea
-                        value={topicInput}
-                        onChange={(event) => setTopicInput(event.target.value)}
-                        rows={3}
-                        placeholder="e.g. Acid-base titration steps, VSEPR shapes, enthalpy trends..."
-                        className="w-full resize-none rounded-lg border border-border bg-background/80 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {hasSourceContent
-                          ? 'Tip: refine the topic to steer generation. Your uploaded sources remain the primary reference.'
-                          : 'Paste brief notes or a topic title to guide Gemini if you have no sources yet.'}
-                      </p>
-                    </div>
-
-                    {error && (
-                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-left">
-                        <p className="text-destructive text-sm">{error}</p>
-                      </div>
-                    )}
-
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-xs text-muted-foreground">
-                        {hasSourceContent
-                          ? `Context: ${displaySourceName}`
-                          : 'Need inspiration? Start with a concise topic description.'}
-                      </div>
-                      <button
-                        onClick={generateStudyContent}
-                        disabled={isGenerating || !effectivePrompt}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-8 gap-2"
-                      >
-                        {isGenerating ? (
-                          <>
-                            <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin"></div>
-                            Generating...
-                          </>
-                        ) : (
-                          <>
-                            <ToolIcon className="h-4 w-4" />
-                            Generate {getToolDisplayName(toolType)}
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 overflow-hidden flex flex-col">
-                  {/* Toolbar */}
-                  <div className="px-6 py-3 border-b border-border flex items-center justify-between bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-6 w-6 items-center justify-center rounded bg-green-500/20">
-                        <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                      </div>
-                      <span className="text-sm text-green-600 font-medium">Generated Successfully</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={copyStudyContentToClipboard}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 gap-2"
-                      >
-                        <Copy className="h-4 w-4" />
-                        Copy
-                      </button>
-                      <button
-                        onClick={downloadStudyContent}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 gap-2"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Generated Content */}
-                  <div className="flex-1 overflow-y-auto p-6">
-                    <div className="space-y-5">
-                      <div>
-                        <h1 className="text-2xl font-bold">{getToolDisplayName(studyContent.type)}</h1>
-                        <p className="text-sm text-muted-foreground">
-                          {sanitizedTopic
-                            ? `Focus: ${sanitizedTopic}`
-                            : hasSourceContent
-                              ? `Generated from ${displaySourceName}`
-                              : 'Generated using Gemini insights'}
-                        </p>
-                      </div>
-                      {renderStudyContent()}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Documents Tab */}
-          {activeTab === 'documents' && (
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="p-6 space-y-6">
-                <div className="rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),transparent_60%),linear-gradient(135deg,rgba(8,24,68,0.95),rgba(15,23,42,0.95))] p-6 text-white shadow-[0_30px_60px_-40px_rgba(15,23,42,0.8)]">
-                  <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="space-y-2">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-wide text-blue-100/80">
-                        Document Library
-                      </div>
-                      <h4 className="text-2xl font-semibold drop-shadow-sm">Upload, explore, and ask smarter questions</h4>
-                      <p className="text-sm text-blue-100/80 max-w-2xl">
-                        Bring in study materials, then dive straight into the AI chat workspace to summarise chapters, generate outlines, and capture citations without leaving this desk.
-                      </p>
-                    </div>
-                    <div className="flex flex-col-reverse gap-3 sm:flex-row">
-                      <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-blue-100 shadow-sm transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 cursor-pointer">
-                        <Upload className="h-4 w-4" />
-                        {isUploading ? 'Uploading…' : 'Upload Document'}
-                        <input
-                          type="file"
-                          accept=".pdf,.txt,.md,.doc,.docx"
-                          onChange={handleFileUpload}
-                          className="hidden"
-                          disabled={isUploading}
-                        />
-                      </label>
-                      <button
-                        onClick={() => setActiveTab('chat')}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-400 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_18px_30px_-20px_rgba(16,185,129,0.6)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        Open Chat Assistant
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-6 grid gap-4 text-blue-100/75 sm:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-100/60">Step 1</p>
-                      <p className="mt-2 text-sm font-medium text-white">Upload one or more study files</p>
-                      <p className="text-xs text-blue-100/70">PDF, DOCX, TXT, and Markdown up to 10MB each are supported.</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-100/60">Step 2</p>
-                      <p className="mt-2 text-sm font-medium text-white">Launch the AI workspace</p>
-                      <p className="text-xs text-blue-100/70">Ask follow-up questions, customise output sections, and export organised notes.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-                  <section className="rounded-2xl border border-white/12 bg-white/5 p-6 shadow-[0_25px_50px_-35px_rgba(15,23,42,0.65)] backdrop-blur">
-                    <div className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold text-white">Library</h3>
-                        <p className="text-xs text-blue-100/70">{uploadedDocuments.length} document(s) stored</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setActiveTab('chat')}
-                          className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-blue-100 transition hover:bg-white/15"
-                        >
-                          <MessageSquare className="h-3.5 w-3.5" />
-                          Ask Assistant
-                        </button>
-                        <label className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-blue-100 transition hover:bg-white/15 cursor-pointer">
-                          <Upload className="h-3.5 w-3.5" />
-                          Add Files
-                          <input
-                            type="file"
-                            accept=".pdf,.txt,.md,.doc,.docx"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            disabled={isUploading}
-                            multiple
-                          />
-                        </label>
-                      </div>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {uploadedDocuments.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/5 px-6 py-12 text-center text-sm text-blue-100/70">
-                          <FileText className="mb-4 h-12 w-12 text-blue-300/70" />
-                          <p>No documents uploaded yet. Bring in notes, slides, or textbooks to begin.</p>
-                        </div>
-                      ) : (
-                        uploadedDocuments.map((doc) => (
-                          <div
-                            key={doc.id}
-                            className="flex items-center justify-between rounded-xl border border-white/8 bg-white/8 px-4 py-3 text-sm text-white shadow-sm backdrop-blur transition hover:bg-white/12"
-                          >
-                            <div className="flex items-center gap-3">
-                              <FileText className="h-4 w-4 text-blue-200" />
-                              <div>
-                                <p className="font-medium">{doc.name}</p>
-                                <p className="text-xs text-blue-100/70">
-                                  {(doc.size / 1024).toFixed(1)} KB • {doc.uploadedAt.toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="space-y-4 rounded-2xl border border-white/12 bg-white/5 p-6 text-white shadow-[0_25px_50px_-35px_rgba(15,23,42,0.65)] backdrop-blur">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-500 text-white shadow-[0_18px_30px_-20px_rgba(129,140,248,0.7)]">
-                        <Settings className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-lg font-semibold">Assistant Workspace</h4>
-                        <p className="text-xs text-blue-100/70">Customise how responses are structured before you chat.</p>
-                      </div>
-                    </div>
-                    <div className="space-y-3 rounded-xl border border-white/12 bg-white/8 px-4 py-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-100/60">Output Sections</p>
-                      <ul className="space-y-2 text-sm text-blue-100/80">
-                        <li className="flex items-start gap-2">
-                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-300"></span>
-                          Answer — concise summary with key insight.
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-blue-300"></span>
-                          Step-by-Step — numbered walkthroughs and derivations.
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-300"></span>
-                          Extra Info — related facts, comparisons, or mnemonics.
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-300"></span>
-                          Citation — references back to your uploaded material.
-                        </li>
-                      </ul>
-                      <p className="text-xs text-blue-100/60">
-                        You can tweak these sections inside the assistant for every conversation.
-                      </p>
-                      <button
-                        onClick={() => setActiveTab('chat')}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15"
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        Launch Chat Workspace
-                      </button>
-                    </div>
-                  </section>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Notes Tab */}
           {activeTab === 'notes' && (
             <div className="flex-1 overflow-hidden flex">
@@ -2290,29 +2014,17 @@ startxref
             </div>
           )}
 
-          {/* Document Designer Tab */}
-          {activeTab === 'designer' && (
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex-1">
-                <DocumentDesigner 
-                  isOpen={true} 
-                  onClose={() => setActiveTab('study')} 
-                />
-              </div>
-            </div>
-          )}
-
           {/* Chat Assistant Modal */}
           <div>
             <ChatAssistant 
               isOpen={activeTab === 'chat'} 
-              onClose={() => setActiveTab('study')} 
+              onClose={() => setActiveTab('notes')} 
             />
             
             {/* Test Section Modal */}
             <TestSection
               isOpen={activeTab === 'tests'}
-              onClose={() => setActiveTab('study')}
+              onClose={() => setActiveTab('notes')}
             />
 
             {/* Molecule Search Modal */}

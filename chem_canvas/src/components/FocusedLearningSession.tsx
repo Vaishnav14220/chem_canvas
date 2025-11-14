@@ -2,12 +2,13 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   ChevronRight, ChevronLeft, Sparkles, Target, Brain, Zap, 
   CheckCircle, AlertCircle, Play, Atom, Activity, BookOpen,
-  MessageSquare, BarChart3, Microscope, Lightbulb, Eye
+  MessageSquare, BarChart3, Microscope, Lightbulb, Eye, Flame
 } from 'lucide-react';
 import { DocumentSidebar } from './DocumentSidebar';
-import { AutoContentSurface } from './AutoContentSurface';
+import { AutoContentSurface, type ChemistryContextSnapshot } from './AutoContentSurface';
 import QuestionReferencePreview from './QuestionReferencePreview';
 import type { MoleculeData } from '../services/pubchemService';
+import JSmolViewer from './JSmolViewer';
 
 interface LessonBite {
   id: string;
@@ -128,6 +129,7 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
   const [highlightedLines, setHighlightedLines] = useState<number[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Open by default to show PDF
   const [requestedPage, setRequestedPage] = useState<number | null>(null);
+  const [chemistryContext, setChemistryContext] = useState<ChemistryContextSnapshot | null>(null);
 
   const currentBite = useMemo(() => {
     return enrichBiteWithVisuals(lessonBites[currentBiteIndex], currentBiteIndex);
@@ -135,6 +137,10 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
 
   const completedCount = Object.keys(selectedOptions).length + Object.keys(textInput).length;
   const progress = Math.round((completedCount / lessonBites.length) * 100);
+  const activeJsmolPlan = chemistryContext?.jsmolPlan || null;
+  const topReaction = chemistryContext?.reactions?.[0];
+  const topSimulation = chemistryContext?.simulations?.[0];
+  const highlightedMolecules = chemistryContext?.molecules?.slice(0, 3) || [];
 
   const handleOptionSelect = (optionIndex: number) => {
     setSelectedOptions(prev => ({
@@ -288,13 +294,14 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
       <div className="flex-1 flex overflow-hidden">
         {/* LEFT PANEL: Auto Content (Hidden on small screens) */}
         <div className="hidden lg:flex lg:w-80 border-r border-slate-700 bg-slate-900/30 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-0">
             <AutoContentSurface
               lessonContent={currentBite.teach}
               lessonTitle={currentBite.title}
               documentContent={documentContent}
               onHighlightLines={handleHighlightLines}
               academicLevel={academicLevel}
+              onChemistryContextUpdate={setChemistryContext}
             />
           </div>
         </div>
@@ -345,43 +352,83 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
 
                   <div className="min-h-80 rounded-lg border border-slate-600 bg-slate-950 p-6 flex flex-col items-center justify-center text-center">
                     {currentBite.interactiveType === 'molecule-search' && (
-                      <div className="space-y-4 w-full">
-                        <Microscope className="h-12 w-12 text-purple-400 mx-auto" />
-                        <div>
-                          <p className="text-slate-300 font-medium">Molecular Visualization</p>
-                          <p className="text-xs text-slate-500 mt-2">
-                            3D molecular structures will display here
-                          </p>
+                      activeJsmolPlan ? (
+                        <div className="space-y-4 w-full">
+                          <JSmolViewer script={activeJsmolPlan.script} height={260} backgroundColor="#020617" />
+                          <div className="text-left">
+                            <p className="text-slate-300 font-medium">{activeJsmolPlan.title}</p>
+                            <p className="text-xs text-slate-500 mt-2">
+                              {activeJsmolPlan.description || 'Explore the molecular geometry directly in the viewer.'}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="space-y-4 w-full">
+                          <Microscope className="h-12 w-12 text-purple-400 mx-auto" />
+                          <div>
+                            <p className="text-slate-300 font-medium">Molecular Visualization</p>
+                            <p className="text-xs text-slate-500 mt-2">
+                              3D molecular structures will display here
+                            </p>
+                          </div>
+                        </div>
+                      )
                     )}
 
                     {currentBite.interactiveType === 'reaction-svg' && (
-                      <div className="space-y-4 w-full">
-                        <Zap className="h-12 w-12 text-yellow-400 mx-auto" />
-                        <div>
-                          <p className="text-slate-300 font-medium">Reaction Mechanism</p>
-                          <p className="text-xs text-slate-500 mt-2">
-                            Reaction visualization with electron flow
-                          </p>
+                      topReaction ? (
+                        <div className="space-y-3 w-full text-left">
+                          <div className="flex items-center gap-2 text-yellow-300">
+                            <Zap className="h-5 w-5" />
+                            <span className="uppercase text-xs tracking-wide">Key Reaction</span>
+                          </div>
+                          <p className="text-slate-200 font-semibold capitalize">{topReaction.name}</p>
+                          <p className="text-xs text-slate-400 italic">"{topReaction.context || 'Mechanistic insight'}"</p>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="space-y-4 w-full">
+                          <Zap className="h-12 w-12 text-yellow-400 mx-auto" />
+                          <div>
+                            <p className="text-slate-300 font-medium">Reaction Mechanism</p>
+                            <p className="text-xs text-slate-500 mt-2">
+                              Reaction visualization with electron flow
+                            </p>
+                          </div>
+                        </div>
+                      )
                     )}
 
                     {currentBite.interactiveType === 'simulation' && (
-                      <div className="space-y-4 w-full">
-                        <BarChart3 className="h-12 w-12 text-blue-400 mx-auto" />
-                        <div>
-                          <p className="text-slate-300 font-medium">Interactive Simulation</p>
-                          <p className="text-xs text-slate-500 mt-2">
-                            Adjust parameters to explore outcomes
+                      topSimulation ? (
+                        <div className="space-y-3 w-full text-left">
+                          <div className="flex items-center gap-2 text-blue-300">
+                            <BarChart3 className="h-5 w-5" />
+                            <span className="uppercase text-xs tracking-wide">Simulation Idea</span>
+                          </div>
+                          <p className="text-slate-200 font-semibold capitalize">{topSimulation.type}</p>
+                          <p className="text-xs text-slate-400">
+                            Confidence {Math.round(topSimulation.confidence * 100)}% · Adjust parameters to explore the outcome.
                           </p>
+                          <button className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg text-white text-sm font-semibold hover:shadow-lg transition">
+                            <Play className="h-4 w-4 inline mr-2" />
+                            Launch Simulation
+                          </button>
                         </div>
-                        <button className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg text-white text-sm font-semibold hover:shadow-lg transition">
-                          <Play className="h-4 w-4 inline mr-2" />
-                          Launch Simulation
-                        </button>
-                      </div>
+                      ) : (
+                        <div className="space-y-4 w-full">
+                          <BarChart3 className="h-12 w-12 text-blue-400 mx-auto" />
+                          <div>
+                            <p className="text-slate-300 font-medium">Interactive Simulation</p>
+                            <p className="text-xs text-slate-500 mt-2">
+                              Adjust parameters to explore outcomes
+                            </p>
+                          </div>
+                          <button className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg text-white text-sm font-semibold hover:shadow-lg transition">
+                            <Play className="h-4 w-4 inline mr-2" />
+                            Launch Simulation
+                          </button>
+                        </div>
+                      )
                     )}
 
                     {currentBite.interactiveType === 'ar-viewer' && (
@@ -390,7 +437,9 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
                         <div>
                           <p className="text-slate-300 font-medium">3D AR Viewer</p>
                           <p className="text-xs text-slate-500 mt-2">
-                            Augmented reality molecular visualization
+                            {highlightedMolecules.length
+                              ? `Focus on ${highlightedMolecules.map(m => m.name).join(', ')}`
+                              : 'Augmented reality molecular visualization'}
                           </p>
                         </div>
                         <button className="w-full px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-lg text-white text-sm font-semibold hover:shadow-lg transition">
@@ -406,7 +455,9 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
                         <div>
                           <p className="text-slate-300 font-medium">Structure Explorer</p>
                           <p className="text-xs text-slate-500 mt-2">
-                            Examine stereochemistry and geometry
+                            {highlightedMolecules.length
+                              ? `Compare structures: ${highlightedMolecules.map(m => m.name).join(', ')}`
+                              : 'Examine stereochemistry and geometry'}
                           </p>
                         </div>
                         <button className="w-full px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg text-white text-sm font-semibold hover:shadow-lg transition">
@@ -586,6 +637,65 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
                   )}
                 </div>
               </div>
+
+              {chemistryContext && (
+                <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                  {highlightedMolecules.length > 0 && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-5">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-400 mb-3">
+                        <Microscope className="h-4 w-4 text-purple-300" />
+                        Highlighted Molecules
+                      </div>
+                      <ul className="space-y-2">
+                        {highlightedMolecules.map((molecule) => (
+                          <li key={molecule.name} className="flex items-center justify-between text-sm text-slate-200">
+                            <span>{molecule.name}</span>
+                            <span className="text-slate-400">{Math.round(molecule.confidence * 100)}%</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {topReaction && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-5">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-400 mb-3">
+                        <Flame className="h-4 w-4 text-amber-300" />
+                        Reaction Insight
+                      </div>
+                      <p className="text-slate-200 font-semibold capitalize">{topReaction.name}</p>
+                      <p className="text-xs text-slate-400 mt-2">
+                        {topReaction.context || 'Referenced from your document'}
+                      </p>
+                    </div>
+                  )}
+
+                  {chemistryContext.resources.length > 0 && (
+                    <div className="lg:col-span-2 rounded-xl border border-slate-700 bg-slate-900/60 p-5">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-400 mb-3">
+                        <BookOpen className="h-4 w-4 text-emerald-300" />
+                        Suggested Resources
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {chemistryContext.resources.slice(0, 2).map((resource, index) => (
+                          <a
+                            key={`${resource.title}-${index}`}
+                            href={resource.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-lg border border-slate-700/60 bg-slate-900/50 px-3 py-2 text-left hover:border-emerald-400/60 transition-colors"
+                          >
+                            <p className="text-sm font-semibold text-slate-200 truncate">{resource.title}</p>
+                            <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                              {resource.reason || resource.description}
+                            </p>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Navigation */}
               <div className="mt-6 flex gap-3 justify-between">
