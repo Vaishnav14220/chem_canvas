@@ -15,7 +15,6 @@ import type { ReactionComponentDetails } from '../services/reactionResolver';
 import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
 import InlineMoleculeSearch from './InlineMoleculeSearch';
-import InlineBicyclicSearch from './InlineBicyclicSearch';
 import InlineReactionSearch, { type ReactionSearchResult } from './InlineReactionSearch';
 import PDBViewerEmbed from './PDBViewerEmbed';
 import MolstarProteinViewer from './MolstarProteinViewer';
@@ -4658,22 +4657,6 @@ export default function Canvas({
             );
           })}
 
-          <div className="hidden h-8 w-px bg-slate-700/60 md:block" />
-
-          <div className="hidden md:block">
-            <InlineBicyclicSearch
-              className="w-[15.5rem]"
-              onSelectMolecule={(moleculeData) => {
-                void (async () => {
-                  try {
-                    await insertMoleculeToCanvas(moleculeData);
-                  } catch (error) {
-                    console.error('Failed to insert bicyclic compound:', error);
-                  }
-                })();
-              }}
-            />
-          </div>
         </div>
 
         <InlineMoleculeSearch

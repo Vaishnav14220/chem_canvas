@@ -131,6 +131,8 @@ const App: React.FC = () => {
   const [resizeStartX, setResizeStartX] = useState(0);
   const [resizeStartWidth, setResizeStartWidth] = useState(0);
   const [apiKey, setApiKey] = useState('');
+  const pillButtonClasses =
+    'inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground';
 
   // Load API key and check for existing session on component mount
   useEffect(() => {
@@ -556,217 +558,53 @@ Here is the learner's question: ${message}`;
   return (
     <div className="min-h-screen bg-background text-foreground dark">
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 max-w-screen-2xl items-center px-6">
-          {/* Logo and Brand */}
-          <div className="mr-8 flex items-center space-x-4">
-            <div className="flex items-center space-x-3">
-              <div className="flex flex-col">
-                <span className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Studium
+      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 shadow-sm">
+        <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-1 min-w-[220px] items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg">
+                  <Beaker className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-lg font-semibold tracking-tight text-white">Studium</span>
+                  <span className="text-xs text-muted-foreground/80 font-medium">Chemistry Workspace</span>
+                </div>
+              </div>
+
+              <div className="hidden lg:flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
                 </span>
-                <span className="text-xs text-muted-foreground">Chemistry Workspace</span>
+                AI Connected · Gemini 2.0
               </div>
             </div>
 
-            {/* AI Status Badge */}
-            <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">AI Connected</span>
-              <span className="text-xs text-muted-foreground">Gemini 2.0</span>
-            </div>
-
-          </div>
-
-          {/* Main Navigation */}
-          <div className="flex flex-1 items-center justify-between">
-            {/* Primary Actions */}
-            <div className="flex items-center space-x-2">
+            <div className="flex-1 min-w-[220px] max-w-xl">
               <button
                 onClick={() => setCommandPaletteOpen(true)}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
+                className="group inline-flex h-10 w-full items-center justify-between rounded-xl border border-border/50 bg-background/80 px-3.5 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
               >
-                <Search className="mr-2 h-4 w-4" />
-                Search
-                <kbd className="pointer-events-none ml-2 inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium opacity-100">
-                  <span className="text-xs">⌘K</span>
+                <span className="flex items-center gap-2 text-left">
+                  <Search className="h-4 w-4 text-foreground/70 group-hover:text-foreground" />
+                  <span className="text-foreground font-semibold">Quick Search</span>
+                  <span className="hidden sm:inline text-xs text-muted-foreground">docs, tools, AI</span>
+                </span>
+                <kbd className="pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded-lg border border-border/50 bg-muted/50 px-3 font-mono text-[11px] uppercase tracking-wide opacity-80">
+                  ⌘K
                 </kbd>
               </button>
-
-              <div className="hidden md:flex items-center space-x-1">
-                <button
-                  onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md h-9 px-3"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  {documentViewerOpen ? 'Hide Sources' : 'Sources'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowStudyToolsWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-purple-600 text-white hover:bg-purple-700 hover:shadow-md h-9 px-3"
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Study Tools
-                </button>
-              </div>
             </div>
 
-            {/* Flipping Info Display */}
-            <div className="hidden lg:flex items-center">
-              <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
-            </div>
-
-            {/* Secondary Actions & User */}
-            <div className="flex items-center space-x-2">
-              {/* Tool Buttons - Collapsed on mobile */}
-              <div className="hidden lg:flex items-center space-x-1">
-                <button
-                  onClick={() => setIsMolecularMode(!isMolecularMode)}
-                  className={`inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-9 px-3 ${
-                    isMolecularMode
-                      ? 'border border-input bg-background hover:bg-accent hover:text-accent-foreground'
-                      : 'bg-orange-600 text-white hover:bg-orange-700'
-                  } hover:shadow-md`}
-                >
-                  {isMolecularMode ? <Beaker className="mr-2 h-4 w-4" /> : <FlaskConical className="mr-2 h-4 w-4" />}
-                  {isMolecularMode ? 'Simple' : 'Canvas'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowSrlCoachWorkspace(true);
-                    setShowStudyToolsWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <Target className="mr-2 h-4 w-4" />
-                  SRL
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowStudyToolsWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <BookOpen className="mr-2 h-4 w-4" />
-                  Study Tools
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowNmrFullscreen(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowChatPanel(false);
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <LineChart className="mr-2 h-4 w-4" />
-                  NMR
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowDocumentUnderstandingWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-md h-9 px-3"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  Doc Understanding
-                </button>
-
-                <button
-                  onClick={() => openChemistryPanel('explorer')}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-500 hover:to-purple-500 hover:shadow-md h-9 px-3"
-                >
-                  <Layers3 className="mr-2 h-4 w-4" />
-                  3D Explorer
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowSubjectExplorer(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setShowDocumentUnderstandingWorkspace(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white hover:shadow-md h-9 px-3"
-                >
-                  <Target className="mr-2 h-4 w-4" />
-                  Subject Explorer
-                </button>
-
-              </div>
-
-              {/* Mobile Menu Button */}
-              <div className="lg:hidden">
-                <button
-                  onClick={() => setShowMobileMenu(!showMobileMenu)}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 w-9"
-                >
-                  <Menu className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Session Status */}
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {isAuthenticated && (() => {
                 const sessionStatus = getSessionStatus();
                 if (sessionStatus.isValid && sessionStatus.remainingHours) {
                   return (
-                    <div className="hidden sm:flex items-center px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                      <Clock className="mr-1.5 h-3 w-3 text-amber-600" />
-                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                        {sessionStatus.remainingHours}h
-                      </span>
+                    <div className="hidden sm:flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-500">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>{sessionStatus.remainingHours}h active</span>
                       {sessionStatus.remainingHours < 24 && (
                         <button
                           onClick={() => {
@@ -775,7 +613,7 @@ Here is the learner's question: ${message}`;
                               window.location.reload();
                             }
                           }}
-                          className="ml-2 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                          className="text-amber-300 underline-offset-2 hover:underline"
                         >
                           Extend
                         </button>
@@ -786,178 +624,176 @@ Here is the learner's question: ${message}`;
                 return null;
               })()}
 
-              {/* User Menu */}
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-1.5 rounded-2xl border border-border/40 bg-background/60 p-1 shadow-inner">
                 <button
                   onClick={() => setShowProfileUpdate(true)}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 w-9"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                   title="Update Profile"
                 >
                   <User className="h-4 w-4" />
                 </button>
-
                 <button
                   onClick={() => setShowSettings(!showSettings)}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 w-9"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
                   <Settings className="h-4 w-4" />
                 </button>
-
                 <button
                   onClick={handleLogout}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-red-600 text-white hover:bg-red-700 hover:shadow-md h-9 px-3"
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-rose-500/20 transition-transform hover:scale-[1.01]"
                   title={`Logged in as ${user?.username || user?.displayName}`}
                 >
-                  <LogOut className="mr-2 h-4 w-4" />
+                  <LogOut className="h-4 w-4" />
                   <span className="hidden sm:inline">{user?.username || user?.displayName}</span>
                 </button>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Mobile Menu */}
-        <div className="lg:hidden border-t border-border bg-background/95 backdrop-blur">
-          <div className="container py-4 px-6">
-            <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                >
-                  <FileText className="h-4 w-4" />
-                  <span className="text-sm">Sources</span>
-                </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
+                className={`${pillButtonClasses} ${documentViewerOpen ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' : ''}`}
+              >
+                <FileText className="h-4 w-4" />
+                {documentViewerOpen ? 'Hide Sources' : 'Sources'}
+              </button>
 
-                <button
-                  onClick={() => {
-                    setShowStudyToolsWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  <span className="text-sm">Study Tools</span>
-                </button>
+              <button
+                onClick={() => {
+                  setShowStudyToolsWorkspace(true);
+                  setShowSrlCoachWorkspace(false);
+                  setShowChatPanel(false);
+                  setShowNmrFullscreen(false);
+                  setShowRdkitWorkspace(false);
+                  setIsNmrAssistantActive(false);
+                  setShowNmrAssistant(false);
+                  setIsRdkitAssistantActive(false);
+                  setShowRdkitAssistant(false);
+                  setRdkitStatus('idle');
+                }}
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-transform hover:scale-[1.02]"
+              >
+                <Sparkles className="h-4 w-4" />
+                Study Tools
+              </button>
 
-                <button
-                  onClick={() => setIsMolecularMode(!isMolecularMode)}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                >
-                  {isMolecularMode ? <Beaker className="h-4 w-4" /> : <FlaskConical className="h-4 w-4" />}
-                  <span className="text-sm">{isMolecularMode ? 'Simple' : 'Canvas'}</span>
-                </button>
+              <button
+                onClick={() => {
+                  setShowSrlCoachWorkspace(true);
+                  setShowStudyToolsWorkspace(false);
+                  setShowChatPanel(false);
+                  setShowNmrFullscreen(false);
+                  setShowRdkitWorkspace(false);
+                  setIsNmrAssistantActive(false);
+                  setShowNmrAssistant(false);
+                  setIsRdkitAssistantActive(false);
+                  setShowRdkitAssistant(false);
+                  setRdkitStatus('idle');
+                }}
+                className={pillButtonClasses}
+              >
+                <Target className="h-4 w-4" />
+                SRL Coach
+              </button>
 
-                <button
-                  onClick={() => {
-                    setShowSrlCoachWorkspace(true);
-                    setShowStudyToolsWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Target className="h-4 w-4" />
-                  <span className="text-sm">SRL Coach</span>
-                </button>
+              <button
+                onClick={() => {
+                  setShowDocumentUnderstandingWorkspace(true);
+                  setShowSrlCoachWorkspace(false);
+                  setShowStudyToolsWorkspace(false);
+                  setShowNmrFullscreen(false);
+                  setShowChemistryPanel(false);
+                  setShowChatPanel(false);
+                  setIsNmrAssistantActive(false);
+                  setShowNmrAssistant(false);
+                  setIsRdkitAssistantActive(false);
+                  setShowRdkitAssistant(false);
+                  setRdkitStatus('idle');
+                }}
+                className={pillButtonClasses}
+              >
+                <FileText className="h-4 w-4" />
+                Docs AI
+              </button>
 
-                <button
-                  onClick={() => {
-                    setShowStudyToolsWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                >
-                  <BookOpen className="h-4 w-4" />
-                  <span className="text-sm">Study Tools</span>
-                </button>
+              <button
+                onClick={() => openChemistryPanel('explorer')}
+                className={pillButtonClasses}
+              >
+                <Layers3 className="h-4 w-4" />
+                3D Explorer
+              </button>
 
-                <button
-                  onClick={() => {
-                    setShowDocumentUnderstandingWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                >
-                  <FileText className="h-4 w-4" />
-                  <span className="text-sm">Document Understanding</span>
-                </button>
-                <button
-                  onClick={() => openChemistryPanel('explorer')}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-500 hover:to-purple-500"
-                >
-                  <Layers3 className="h-4 w-4" />
-                  <span className="text-sm font-semibold">3D Explorer</span>
-                </button>
+              <button
+                onClick={() => {
+                  setShowSubjectExplorer(true);
+                  setShowSrlCoachWorkspace(false);
+                  setShowStudyToolsWorkspace(false);
+                  setShowDocumentUnderstandingWorkspace(false);
+                  setShowNmrFullscreen(false);
+                  setShowChemistryPanel(false);
+                  setShowChatPanel(false);
+                  setIsNmrAssistantActive(false);
+                  setShowNmrAssistant(false);
+                  setIsRdkitAssistantActive(false);
+                  setShowRdkitAssistant(false);
+                  setRdkitStatus('idle');
+                }}
+                className={pillButtonClasses}
+              >
+                <BookOpen className="h-4 w-4" />
+                Subject Explorer
+              </button>
 
+              <button
+                onClick={() => {
+                  setShowNmrFullscreen(true);
+                  setShowSrlCoachWorkspace(false);
+                  setShowStudyToolsWorkspace(false);
+                  setIsNmrAssistantActive(false);
+                  setShowChatPanel(false);
+                }}
+                className={pillButtonClasses}
+              >
+                <LineChart className="h-4 w-4" />
+                NMR Lab
+              </button>
 
-                <button
-                  onClick={() => {
-                    setShowSubjectExplorer(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setShowDocumentUnderstandingWorkspace(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border-2 border-purple-500 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-500 hover:to-blue-500"
-                >
-                  <Target className="h-4 w-4" />
-                  <span className="text-sm font-semibold">Subject Explorer</span>
-                </button>
+              <button
+                onClick={() => {
+                  setIsMolecularMode(!isMolecularMode);
+                }}
+                className={`${pillButtonClasses} ${!isMolecularMode ? 'border-orange-500/40 bg-orange-500/10 text-orange-100' : ''}`}
+              >
+                {isMolecularMode ? <Beaker className="h-4 w-4" /> : <FlaskConical className="h-4 w-4" />}
+                {isMolecularMode ? 'Simple Mode' : 'Canvas Mode'}
+              </button>
 
-                <button
-                  onClick={() => {
-                    setShowNmrFullscreen(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowChatPanel(false);
-                  }}
-                  className="flex items-center justify-center space-x-2 p-3 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                >
-                  <LineChart className="h-4 w-4" />
-                  <span className="text-sm">NMR Viewer</span>
-                </button>
+              <button
+                onClick={() => {
+                  setShowChemistryPanel(true);
+                  setChemistryPanelInitialView('overview');
+                  setShowChatPanel(false);
+                }}
+                className={pillButtonClasses}
+              >
+                <Beaker className="h-4 w-4" />
+                Chemistry Panel
+              </button>
+            </div>
+
+            <div className="flex w-full flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Welcome back, <span className="text-foreground">{user?.username || user?.displayName || 'Explorer'}</span>
+              </span>
+              <div className="ml-auto flex w-full justify-start sm:w-auto sm:justify-end">
+                <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
               </div>
             </div>
           </div>
+        </div>
       </header>
 
       {/* Command Palette */}
@@ -1702,4 +1538,3 @@ Here is the learner's question: ${message}`;
 };
 
 export default App;
-
