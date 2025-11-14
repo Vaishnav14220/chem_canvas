@@ -1517,6 +1517,7 @@ Here is the learner's question: ${message}`;
             <ChemistryWidgetPanel
               initialView={chemistryPanelInitialView}
               onClose={() => setShowChemistryPanel(false)}
+              startFullscreen
             />
           </div>
         </div>

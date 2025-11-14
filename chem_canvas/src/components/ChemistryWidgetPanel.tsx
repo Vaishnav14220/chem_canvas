@@ -5,14 +5,19 @@ import MolecularVisualizationWorkspace from './MolecularVisualizationWorkspace';
 interface ChemistryWidgetPanelProps {
   onClose?: () => void;
   initialView?: 'overview' | 'nmr' | 'explorer';
+  startFullscreen?: boolean;
 }
 
 const NMR_IFRAME_URL = 'https://nmrium.nmrxiv.org?workspace=default';
 
 type ActiveView = 'overview' | 'nmr' | 'explorer';
 
-const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({ onClose, initialView = 'overview' }) => {
-  const [isFullscreen, setIsFullscreen] = useState(false);
+const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({
+  onClose,
+  initialView = 'overview',
+  startFullscreen = false,
+}) => {
+  const [isFullscreen, setIsFullscreen] = useState(startFullscreen);
   const [activeView, setActiveView] = useState<ActiveView>(initialView);
   const [isLoadingNmr, setIsLoadingNmr] = useState(initialView === 'nmr');
 
