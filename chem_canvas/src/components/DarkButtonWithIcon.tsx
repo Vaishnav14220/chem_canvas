@@ -17,7 +17,7 @@ const DarkButtonWithIcon = ({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`bg-dark dark:bg-dark-2 border-dark dark:border-dark-2 border inline-flex items-center justify-center py-3 px-7 text-center text-base font-medium text-white hover:bg-body-color hover:border-body-color disabled:bg-gray-3 disabled:border-gray-3 disabled:text-dark-5 ${className}`}
+      className={`inline-flex items-center justify-center rounded-full border border-slate-800/80 bg-slate-950/95 px-6 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-slate-900/40 backdrop-blur hover:bg-slate-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:border-slate-600 disabled:bg-slate-800 disabled:text-slate-400 ${className}`}
     >
       {children}
     </button>

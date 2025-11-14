@@ -761,27 +761,27 @@ Here is the learner's question: ${message}`;
                 NMR Lab
               </button>
 
-              <button
-                onClick={() => {
-                  setIsMolecularMode(!isMolecularMode);
-                }}
-                className={`${pillButtonClasses} ${!isMolecularMode ? 'border-orange-500/40 bg-orange-500/10 text-orange-100' : ''}`}
-              >
-                {isMolecularMode ? <Beaker className="h-4 w-4" /> : <FlaskConical className="h-4 w-4" />}
-                {isMolecularMode ? 'Simple Mode' : 'Canvas Mode'}
-              </button>
+              <div className="inline-flex items-center rounded-full border border-border/40 bg-background/80 p-0.5 text-xs font-semibold shadow-sm">
+                <button
+                  onClick={() => setIsMolecularMode(false)}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${
+                    !isMolecularMode ? 'bg-orange-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Canvas Studio
+                </button>
+                <button
+                  onClick={() => setIsMolecularMode(true)}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${
+                    isMolecularMode ? 'bg-blue-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Beaker className="h-4 w-4" />
+                  Molecule Sketcher
+                </button>
+              </div>
 
-              <button
-                onClick={() => {
-                  setShowChemistryPanel(true);
-                  setChemistryPanelInitialView('overview');
-                  setShowChatPanel(false);
-                }}
-                className={pillButtonClasses}
-              >
-                <Beaker className="h-4 w-4" />
-                Chemistry Panel
-              </button>
             </div>
 
             <div className="flex w-full flex-wrap items-center gap-2">

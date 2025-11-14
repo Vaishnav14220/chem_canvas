@@ -5594,9 +5594,18 @@ export default function Canvas({
 
       {/* Chemistry Widget Panel Modal */}
       {showChemistryWidgetPanel && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden">
-            <ChemistryWidgetPanel onClose={() => setShowChemistryWidgetPanel(false)} />
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-slate-950/80 shadow-lg">
+            <h2 className="text-lg font-semibold text-white">Chemistry Toolkit</h2>
+            <button
+              onClick={() => setShowChemistryWidgetPanel(false)}
+              className="flex items-center gap-2 rounded-full border border-white/40 px-4 py-1.5 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ChemistryWidgetPanel onClose={() => setShowChemistryWidgetPanel(false)} initialView="overview" />
           </div>
         </div>
       )}
