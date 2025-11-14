@@ -309,7 +309,7 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
         {/* CENTER: Main Learning Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
-            <div className="px-4 py-8 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+            <div className="w-full px-3 py-8 sm:px-5 lg:px-6">
               
               {/* Teaching Content */}
               <div className="mb-6 rounded-xl border border-blue-500/30 bg-gradient-to-br from-blue-900/20 to-slate-900/50 p-6">

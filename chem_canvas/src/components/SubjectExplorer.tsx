@@ -3411,7 +3411,7 @@ Respond with a JSON object:
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur flex flex-col">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-6 py-6">
+        <div className="flex w-full flex-col gap-6 px-2 py-6 sm:px-4 lg:px-6">
           {/* Header */}
           <header className="rounded-[32px] border border-white/10 bg-gradient-to-r from-[#0f172a] via-[#312e81] to-[#581c87] px-6 py-5 shadow-[0_30px_60px_-25px_rgba(15,23,42,0.8)]">
           <div className="flex flex-wrap items-start justify-between gap-6">

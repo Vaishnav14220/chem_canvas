@@ -264,7 +264,7 @@ const FocusedLearningSession: React.FC<FocusedLearningSessionProps> = ({
         {/* CENTER: Main Learning Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
-            <div className="px-4 py-8 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+            <div className="w-full px-3 py-8 sm:px-5 lg:px-6">
               <div className="space-y-6">
                 
                 {/* Teaching Content */}
