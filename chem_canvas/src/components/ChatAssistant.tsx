@@ -1,4 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { 
   Send, 
   Upload, 
@@ -14,6 +18,7 @@ import {
 } from 'lucide-react';
 import * as geminiService from '../services/geminiService';
 import { generateStreamingContent, isGeminiStreamingInitialized } from '../services/geminiStreaming';
+import 'katex/dist/katex.min.css';
 
 interface UploadedDocument {
   id: string;
@@ -55,6 +60,7 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
     { id: 'extra-info', name: 'Extra Info', required: false, enabled: true },
     { id: 'citation', name: 'Citation', required: true, enabled: true },
   ]);
+  const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
   const [newSectionName, setNewSectionName] = useState('');
   const [isApiKeyConfigured, setIsApiKeyConfigured] = useState(isGeminiStreamingInitialized());
   
@@ -109,6 +115,45 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
 
   const removeDocument = (documentId: string) => {
     setUploadedDocuments(prev => prev.filter(doc => doc.id !== documentId));
+  };
+
+  const reorderSections = (draggedId: string, targetId: string | null) => {
+    setOutputSections((prev) => {
+      const updated = [...prev];
+      const draggedIndex = updated.findIndex((section) => section.id === draggedId);
+      const targetIndex = targetId ? updated.findIndex((section) => section.id === targetId) : updated.length - 1;
+      if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) {
+        return prev;
+      }
+      const [draggedSection] = updated.splice(draggedIndex, 1);
+      const insertionIndex =
+        targetId && draggedIndex < targetIndex
+          ? targetIndex - 1
+          : targetIndex;
+      updated.splice(insertionIndex, 0, draggedSection);
+      return updated;
+    });
+  };
+
+  const handleDragStart = (event: React.DragEvent<HTMLDivElement>, sectionId: string) => {
+    event.dataTransfer.effectAllowed = 'move';
+    setDraggingSectionId(sectionId);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>, targetId: string | null) => {
+    event.preventDefault();
+    if (draggingSectionId) {
+      reorderSections(draggingSectionId, targetId);
+    }
+    setDraggingSectionId(null);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  };
+
+  const handleDragEnd = () => {
+    setDraggingSectionId(null);
   };
 
   const sendMessage = async () => {
@@ -274,14 +319,17 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
     return null;
   }, [messages]);
 
+  const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkMath], []);
+  const markdownRehypePlugins = useMemo(() => [rehypeKatex], []);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-[#020816]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(59,130,246,0.25),transparent_55%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.18),transparent_60%),radial-gradient(circle_at_50%_90%,rgba(45,212,191,0.2),transparent_65%)]" />
-      <div className="relative flex h-full w-full flex-col overflow-hidden px-4 py-6 sm:px-8 lg:px-12">
-        <div className="flex h-full w-full flex-col rounded-[32px] border border-white/10 bg-[#0b1221]/98 shadow-[0_40px_120px_-60px_rgba(2,12,33,0.9)] backdrop-blur">
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="pointer-events-none fixed inset-0 bg-[#020816]" />
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(59,130,246,0.25),transparent_55%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.18),transparent_60%),radial-gradient(circle_at_50%_90%,rgba(45,212,191,0.2),transparent_65%)]" />
+      <div className="relative z-10 flex min-h-screen w-full flex-col px-4 py-6 sm:px-8 lg:px-12">
+        <div className="flex w-full flex-1 flex-col rounded-[32px] border border-white/10 bg-[#0b1221]/98 shadow-[0_40px_120px_-60px_rgba(2,12,33,0.9)] backdrop-blur">
           <header className="border-b border-white/10 px-6 pb-6 pt-8 lg:px-10">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-4">
@@ -400,10 +448,23 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
                                 : 'bg-white/10 border border-white/12 text-blue-100/90'
                             }`}
                           >
-                            <div className="whitespace-pre-wrap">{message.content}</div>
-                            <div className={`mt-2 text-2xs uppercase tracking-wide ${
-                              message.role === 'user' ? 'text-white/70' : 'text-blue-100/60'
-                            }`}>
+                            {message.role === 'assistant' ? (
+                              <div className="prose prose-invert prose-sm max-w-none text-blue-100/90 prose-headings:text-white prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:marker:text-blue-200">
+                                <ReactMarkdown
+                                  remarkPlugins={markdownRemarkPlugins}
+                                  rehypePlugins={markdownRehypePlugins}
+                                >
+                                  {message.content || ''}
+                                </ReactMarkdown>
+                              </div>
+                            ) : (
+                              <div className="whitespace-pre-wrap">{message.content}</div>
+                            )}
+                            <div
+                              className={`mt-2 text-2xs uppercase tracking-wide ${
+                                message.role === 'user' ? 'text-white/70' : 'text-blue-100/60'
+                              }`}
+                            >
                               {message.timestamp.toLocaleTimeString()}
                             </div>
                           </div>
@@ -480,13 +541,22 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
                       <Plus className="h-4 w-4" />
                     </button>
                   </div>
-                  <div className="space-y-2">
+                  <div
+                    className="space-y-2"
+                    onDragOver={handleDragOver}
+                    onDrop={(event) => handleDrop(event, null)}
+                  >
                     {outputSections.map((section) => (
                       <div
                         key={section.id}
-                        className={`flex items-center justify-between rounded-lg border border-white/12 px-3 py-2 ${
+                        draggable
+                        onDragStart={(event) => handleDragStart(event, section.id)}
+                        onDragOver={handleDragOver}
+                        onDrop={(event) => handleDrop(event, section.id)}
+                        onDragEnd={handleDragEnd}
+                        className={`flex items-center justify-between rounded-lg border border-white/12 px-3 py-2 transition ${
                           section.enabled ? 'bg-white/10' : 'bg-white/5 opacity-70'
-                        }`}
+                        } ${draggingSectionId === section.id ? 'border-dashed opacity-80' : ''}`}
                       >
                         <div className="flex items-center gap-3">
                           <GripVertical className="h-4 w-4 text-blue-100/60" />
@@ -525,7 +595,14 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
                   </p>
                   <div className="h-full overflow-y-auto rounded-lg border border-white/10 bg-white/8 px-4 py-3 text-sm text-blue-100/85">
                     {latestAssistantMessage ? (
-                      <div className="whitespace-pre-wrap">{latestAssistantMessage.content}</div>
+                      <div className="prose prose-invert prose-sm max-w-none text-blue-100/90 prose-headings:text-white prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:marker:text-blue-200">
+                        <ReactMarkdown
+                          remarkPlugins={markdownRemarkPlugins}
+                          rehypePlugins={markdownRehypePlugins}
+                        >
+                          {latestAssistantMessage.content}
+                        </ReactMarkdown>
+                      </div>
                     ) : (
                       <div className="text-blue-100/60">Send a prompt to see the structured output here.</div>
                     )}
@@ -541,4 +618,3 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
 };
 
 export default ChatAssistant;
-

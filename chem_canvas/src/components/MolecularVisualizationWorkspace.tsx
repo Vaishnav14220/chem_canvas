@@ -1,10 +1,23 @@
-import React, { useState } from 'react';
-import { Beaker, Layers3, Sparkles, Zap, Gem } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  Beaker,
+  Layers3,
+  Sparkles,
+  Zap,
+  Gem,
+  Compass,
+  RefreshCcw,
+  ChevronRight,
+  Download,
+  Loader2,
+} from 'lucide-react';
 import JSmolViewer from './JSmolViewer';
-import MoleculeLoader from './MoleculeLoader';
-import ReactionPath from './ReactionPath';
 import SymmetryQuiz from './SymmetryQuiz';
 import ReactionMechanismAnimator from './ReactionMechanismAnimator';
+import ResolvedReactionPath from './ResolvedReactionPath';
+import type { ReactionResolutionResult } from '../services/reactionResolver';
+import { fetchCanonicalSmiles } from '../services/pubchemService';
+import { initializeGemini, isGeminiInitialized, resolveMoleculeDescription } from '../services/geminiService';
 
 const PDB_REFERENCE = 'https://files.rcsb.org/download/1CRN.pdb';
 const NACL_CIF_INLINE = `
@@ -277,9 +290,49 @@ END "CIF";
   },
 ];
 
+const QUICK_MOLECULES = [
+  { name: 'Water', detail: 'H₂O', smiles: 'O' },
+  { name: 'Methane', detail: 'CH₄', smiles: 'C' },
+  { name: 'Benzene', detail: 'C₆H₆', smiles: 'c1ccccc1' },
+  { name: 'Caffeine', detail: 'Stimulant', smiles: 'CN1C=NC2=C1C(=O)N(C(=O)N2C)C' },
+];
+
+const SAMPLE_STRUCTURE_URL = 'https://files.rcsb.org/download/1CRN.pdb';
+
+type WorkspaceCategory = 'molecule' | 'protein' | 'crystal' | 'reaction';
+
+const CATEGORY_TABS: Array<{ id: WorkspaceCategory; label: string }> = [
+  { id: 'molecule', label: 'Molecules' },
+  { id: 'protein', label: 'Proteins' },
+  { id: 'crystal', label: 'Crystals' },
+  { id: 'reaction', label: 'Reaction Animator' },
+];
+
+const CATEGORY_HINTS: Record<WorkspaceCategory, string[]> = {
+  molecule: ['Water', 'Benzene', 'Caffeine', 'Aspirin'],
+  protein: ['Sample Protein', 'Crambin', 'Insulin', 'Lysozyme'],
+  crystal: ['Quartz', 'Calcite', 'NaCl', 'Perovskite'],
+  reaction: ['Diels-Alder', 'Suzuki coupling', 'SN1', 'E2 elimination'],
+};
+
 const MolecularVisualizationWorkspace: React.FC = () => {
   const [activeDemo, setActiveDemo] = useState<string>(visualizationDemos[0].id);
   const [script, setScript] = useState<string>(visualizationDemos[0].script);
+  const [structureUrl, setStructureUrl] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [selectedMineral, setSelectedMineral] = useState<string>(mineralStructures[0].id);
+  const [selectedCategory, setSelectedCategory] = useState<WorkspaceCategory>('molecule');
+  const [reactionSearchQuery, setReactionSearchQuery] = useState<string | null>(null);
+  const [reactionSearchSeed, setReactionSearchSeed] = useState(0);
+  const [reactionResolution, setReactionResolution] = useState<ReactionResolutionResult | null>(null);
+  useEffect(() => {
+    if (selectedCategory !== 'reaction') {
+      setReactionResolution(null);
+    }
+  }, [selectedCategory]);
+  const [quizOpen, setQuizOpen] = useState(false);
 
   const handleRunDemo = (demo: VisualizationDemo) => {
     setActiveDemo(demo.id);
@@ -290,124 +343,403 @@ const MolecularVisualizationWorkspace: React.FC = () => {
     setScript(mineral.script);
   };
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="bg-gradient-to-r from-indigo-900/80 via-purple-900/80 to-slate-900 border border-indigo-800/40 rounded-2xl p-6 flex flex-col gap-3">
-        <div className="flex items-center gap-3 text-white">
-          <Layers3 className="w-6 h-6 text-cyan-300" />
-          <div>
-            <h2 className="text-lg font-semibold">3D Chemistry Explorer</h2>
-            <p className="text-sm text-indigo-200/90">
-              Switch between core JSmol visualizations, inject your own structures, and explore symmetry-focused learning activities.
-            </p>
-          </div>
+  const handleResetView = () => {
+    setActiveDemo(visualizationDemos[0].id);
+    setScript(visualizationDemos[0].script);
+    setStructureUrl('');
+  };
+
+  const loadSmilesIntoViewer = (smiles: string, label?: string) => {
+    const sanitized = smiles.replace(/"/g, '').trim();
+    if (!sanitized) {
+      throw new Error('No SMILES string available to load.');
+    }
+    setScript(`load $${sanitized}; wireframe 0.15; spacefill 20%; color cpk; rotate best;`);
+    if (label) {
+      setSearchFeedback(`Loaded ${label}`);
+    }
+  };
+
+  const loadQuickMolecule = (smiles: string) => {
+    loadSmilesIntoViewer(smiles);
+  };
+
+  const loadSampleStructure = () => {
+    setStructureUrl(SAMPLE_STRUCTURE_URL);
+    setScript(`load "${SAMPLE_STRUCTURE_URL}"; spacefill off; wireframe 0.15; select all; color cpk;`);
+  };
+
+  const loadFromUrl = (overrideValue?: string) => {
+    const value = (overrideValue ?? structureUrl).trim();
+    if (!value) {
+      return;
+    }
+    setScript(`load "${value}"; spacefill off; wireframe 0.15; color cpk;`);
+  };
+
+  const searchItems: Array<{
+    id: string;
+    label: string;
+    keywords?: string[];
+    action: () => void | Promise<void>;
+  }> = [
+    {
+      id: 'sample-protein',
+      label: 'Sample Protein (1CRN)',
+      keywords: ['protein', '1crn', 'crambin'],
+      action: () => loadSampleStructure(),
+    },
+    ...QUICK_MOLECULES.map((molecule) => ({
+      id: `molecule-${molecule.name}`,
+      label: molecule.name,
+      keywords: [molecule.detail || '', 'molecule'],
+      action: () => loadQuickMolecule(molecule.smiles),
+    })),
+    ...visualizationDemos.map((demo) => ({
+      id: `demo-${demo.id}`,
+      label: demo.title,
+      keywords: demo.tags,
+      action: () => handleRunDemo(demo),
+    })),
+    ...mineralStructures.map((mineral) => ({
+      id: `mineral-${mineral.id}`,
+      label: mineral.name,
+      keywords: [mineral.system, mineral.formula, 'crystal'],
+      action: () => {
+        setSelectedMineral(mineral.id);
+        handleLoadMineral(mineral);
+      },
+    })),
+  ];
+
+  const handleSearch = async (queryOverride?: string) => {
+    const rawQuery = (queryOverride ?? searchQuery).trim();
+    const query = rawQuery.toLowerCase();
+    if (!query) {
+      setSearchFeedback('Enter a molecule, preset, or URL to load.');
+      return;
+    }
+
+    setIsSearchLoading(true);
+    setSearchFeedback(null);
+
+    try {
+      const match = searchItems.find((item) => {
+        if (item.label.toLowerCase().includes(query)) return true;
+        return item.keywords?.some((keyword) => keyword.toLowerCase().includes(query));
+      });
+
+      if (match) {
+        await Promise.resolve(match.action());
+        setSearchFeedback(`Loaded ${match.label}`);
+        return;
+      }
+
+      if (rawQuery.startsWith('http')) {
+        setStructureUrl(rawQuery);
+        loadFromUrl(rawQuery);
+        setSearchFeedback('Loaded structure from URL');
+        return;
+      }
+
+      if (selectedCategory === 'reaction') {
+        setReactionSearchQuery(rawQuery);
+        setReactionSearchSeed((seed) => seed + 1);
+        setSearchFeedback(`Searching reaction "${rawQuery}"...`);
+        setIsSearchLoading(false);
+        return;
+      }
+
+      const canonical = await fetchCanonicalSmiles(rawQuery);
+      if (canonical) {
+        loadSmilesIntoViewer(canonical, rawQuery);
+        return;
+      }
+
+      try {
+        if (!isGeminiInitialized()) {
+          initializeGemini();
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Gemini API key missing.';
+        setSearchFeedback(message);
+        return;
+      }
+
+      const resolved = await resolveMoleculeDescription(rawQuery);
+      const smilesToLoad = resolved.canonicalSmiles ?? resolved.smiles;
+
+      if (smilesToLoad) {
+        loadSmilesIntoViewer(smilesToLoad, resolved.name ?? rawQuery);
+        return;
+      }
+
+      setSearchFeedback(resolved.notes ? resolved.notes : 'Unable to resolve that molecule.');
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchFeedback(
+        error instanceof Error ? error.message : 'Unable to load that structure. Try a different query.'
+      );
+    } finally {
+      setIsSearchLoading(false);
+    }
+  };
+
+  const renderPresetCard = () => (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-white">Preset scenes</h4>
+          <p className="text-xs text-slate-400">Curated JSmol scripts.</p>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs text-indigo-200/70">
-          <span className="px-2 py-1 rounded-full bg-white/10 border border-white/10">Ball &amp; Stick</span>
-          <span className="px-2 py-1 rounded-full bg-white/10 border border-white/10">Cartoon &amp; Ribbon</span>
-          <span className="px-2 py-1 rounded-full bg-white/10 border border-white/10">Isosurface &amp; Mesh</span>
-          <span className="px-2 py-1 rounded-full bg-white/10 border border-white/10">Crystal Symmetry</span>
-        </div>
+        <Sparkles className="w-5 h-5 text-purple-300" />
       </div>
-
-      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-        <div className="flex flex-col gap-4">
-          <JSmolViewer script={script} />
-
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-white">Visualization library</h3>
-                <p className="text-xs text-slate-400">Tap a demo to push the corresponding JSmol script.</p>
-              </div>
-              <Sparkles className="w-5 h-5 text-purple-300" />
+      <div className="grid gap-3 md:grid-cols-2">
+        {visualizationDemos.map((demo) => (
+          <button
+            key={demo.id}
+            onClick={() => handleRunDemo(demo)}
+            className={`group rounded-2xl border px-4 py-4 text-left transition ${
+              activeDemo === demo.id
+                ? 'border-indigo-400/80 bg-indigo-900/40 text-white'
+                : 'border-slate-800 bg-slate-900/50 hover:border-indigo-500/60 hover:bg-slate-900/80 text-slate-200'
+            }`}
+          >
+            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide">
+              <span>{demo.title}</span>
+              <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-indigo-300" />
             </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              {visualizationDemos.map((demo) => (
-                <button
-                  key={demo.id}
-                  onClick={() => handleRunDemo(demo)}
-                  className={`text-left rounded-xl border px-3 py-3 transition-colors ${
-                    activeDemo === demo.id
-                      ? 'border-purple-400/70 bg-purple-900/40 text-white'
-                      : 'border-slate-700 bg-slate-800 hover:bg-slate-700/70 text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs uppercase tracking-wide">
-                    <span className="font-semibold">{demo.title}</span>
-                    <Zap className="w-4 h-4 text-amber-300" />
-                  </div>
-                  <p className="text-[13px] text-slate-300 mt-2">{demo.description}</p>
-                  <div className="flex flex-wrap gap-1 mt-3">
-                    {demo.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-[10px] px-2 py-0.5 rounded-full bg-slate-900/80 border border-slate-700 text-slate-200"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </button>
+            <p className="mt-2 text-sm text-slate-300">{demo.description}</p>
+            <div className="mt-3 flex flex-wrap gap-1">
+              {demo.tags.map((tag) => (
+                <span key={tag} className="text-[10px] rounded-full border border-slate-700/70 bg-slate-950/70 px-2 py-0.5 uppercase tracking-wide text-slate-400">
+                  {tag}
+                </span>
               ))}
             </div>
-          </div>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-white">Mineral crystal gallery</h3>
-                <p className="text-xs text-slate-400">Load common minerals with inline CIF data for offline viewing.</p>
+  const renderCrystalCard = () => (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-white">Crystal gallery</h4>
+          <p className="text-xs text-slate-400">Inline CIF snippets.</p>
+        </div>
+        <Gem className="w-5 h-5 text-amber-300" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {mineralStructures.map((mineral) => (
+          <button
+            key={mineral.id}
+            onClick={() => {
+              setSelectedMineral(mineral.id);
+              handleLoadMineral(mineral);
+            }}
+            className="rounded-2xl border border-slate-800/70 bg-slate-900/60 px-4 py-4 text-left transition hover:border-emerald-400/70 hover:bg-slate-900/90"
+          >
+            <div className="flex items-center justify-between text-sm font-semibold text-white">
+              <span>{mineral.name}</span>
+              <span className="text-xs text-emerald-300">{mineral.system}</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">{mineral.formula}</p>
+            <p className="mt-2 text-sm text-slate-300">{mineral.description}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+
+  const renderReactionAnimatorCard = () => (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+      <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-purple-300" />
+        AI Reaction Animator
+      </h4>
+      <ReactionMechanismAnimator
+        onScriptChange={setScript}
+        initialQuery={reactionSearchQuery ?? undefined}
+        searchTrigger={reactionSearchSeed}
+        onResolutionChange={setReactionResolution}
+      />
+    </section>
+  );
+
+  const renderCategoryTools = () => {
+    switch (selectedCategory) {
+      case 'molecule':
+        return renderPresetCard();
+      case 'protein':
+        return (
+          <>
+            {renderPresetCard()}
+            <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-3">
+              <h4 className="text-sm font-semibold text-white">Protein shortcuts</h4>
+              <button
+                onClick={loadSampleStructure}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-purple-500/60 bg-purple-600/60 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-600"
+              >
+                <Download className="h-4 w-4" />
+                Load Sample Protein (1CRN)
+              </button>
+            </section>
+          </>
+        );
+      case 'crystal':
+        return renderCrystalCard();
+      case 'reaction':
+        return (
+          <>
+            {renderReactionAnimatorCard()}
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-5 text-slate-100">
+      <section className="rounded-2xl border border-slate-800/70 bg-slate-950/80 p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {CATEGORY_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setSelectedCategory(tab.id)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                selectedCategory === tab.id
+                  ? 'border-indigo-500 bg-indigo-600/70 text-white'
+                  : 'border-slate-700 text-slate-300 hover:border-indigo-400'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <label className="text-xs uppercase tracking-[0.3em] text-slate-500">Search workspace</label>
+        <div className="flex flex-wrap gap-2">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                void handleSearch();
+              }
+            }}
+            placeholder="Search molecules, proteins, crystals, or paste a URL..."
+            className="flex-1 min-w-[240px] rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <button
+            onClick={() => void handleSearch()}
+            disabled={isSearchLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-60"
+          >
+            {isSearchLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading
+              </>
+            ) : (
+              'Load'
+            )}
+          </button>
+        </div>
+        {searchFeedback && (
+          <p className="text-xs text-slate-400">{searchFeedback}</p>
+        )}
+        <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+          {CATEGORY_HINTS[selectedCategory].map((hint) => (
+            <button
+              key={hint}
+              onClick={() => {
+                setSearchQuery(hint);
+                void handleSearch(hint);
+              }}
+              className="rounded-full border border-slate-700/70 px-3 py-1 hover:border-indigo-400 hover:text-white"
+            >
+              {hint}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">Live viewport</p>
+                <h3 className="text-lg font-semibold text-white">JSmol canvas</h3>
+                <p className="text-xs text-slate-400">Scripts run instantly as you load structures.</p>
               </div>
-              <Gem className="w-5 h-5 text-amber-300" />
+              <button
+                onClick={handleResetView}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-indigo-400"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                Reset
+              </button>
             </div>
+            <JSmolViewer script={script} />
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+              <span className="flex items-center gap-2">
+                <Compass className="h-4 w-4 text-emerald-300" />
+                Active preset:&nbsp;
+                <span className="text-white">
+                  {visualizationDemos.find((demo) => demo.id === activeDemo)?.title ?? 'Custom script'}
+                </span>
+              </span>
+              <span className="flex items-center gap-2 text-indigo-300">
+                <Zap className="h-4 w-4" />
+                Scripts run instantly
+              </span>
+            </div>
+            {selectedCategory === 'reaction' && reactionResolution && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+                <ResolvedReactionPath resolution={reactionResolution} onScriptChange={setScript} />
+              </div>
+            )}
+          </section>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              {mineralStructures.map((mineral) => (
-                <button
-                  key={mineral.id}
-                  onClick={() => handleLoadMineral(mineral)}
-                  className="text-left rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700/70 transition-colors px-3 py-3 text-slate-200"
-                >
-                  <div className="flex items-center justify-between text-sm font-semibold text-white">
-                    <span>{mineral.name}</span>
-                    <span className="text-xs text-amber-300">{mineral.system}</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">{mineral.formula}</p>
-                  <p className="text-[13px] text-slate-300 mt-2">{mineral.description}</p>
-                </button>
-              ))}
-            </div>
-          </div>
+          {renderCategoryTools()}
         </div>
 
-        <div className="space-y-4 max-h-[900px] overflow-y-auto pr-1">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Beaker className="w-4 h-4 text-cyan-300" />
-              <h3 className="text-sm font-semibold text-white">Structure inputs</h3>
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <Beaker className="w-5 h-5 text-cyan-300" />
+              <div>
+                <h4 className="text-sm font-semibold text-white">Symmetry quiz</h4>
+                <p className="text-xs text-slate-400">Launch when you want to test recognition.</p>
+              </div>
             </div>
-            <MoleculeLoader onScriptChange={setScript} />
-          </div>
-
-          <ReactionMechanismAnimator onScriptChange={setScript} />
-
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Layers3 className="w-4 h-4 text-emerald-300" />
-              <h3 className="text-sm font-semibold text-white">Reaction coordinate explorer</h3>
-            </div>
-            <ReactionPath onScriptChange={setScript} />
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles className="w-4 h-4 text-pink-300" />
-              <h3 className="text-sm font-semibold text-white">Symmetry quiz mode</h3>
-            </div>
-            <SymmetryQuiz onScriptChange={setScript} />
-          </div>
+            {!quizOpen ? (
+              <button
+                onClick={() => setQuizOpen(true)}
+                className="w-full rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600"
+              >
+                Start Quiz
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setQuizOpen(false)}
+                    className="text-xs text-slate-400 hover:text-white"
+                  >
+                    Close quiz
+                  </button>
+                </div>
+                <SymmetryQuiz onScriptChange={setScript} />
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>

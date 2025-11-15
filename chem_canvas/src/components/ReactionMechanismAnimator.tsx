@@ -1,8 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Search, Sparkles, FlaskConical, Beaker } from 'lucide-react';
 import ReactionMechanismScene from './ReactionMechanismScene';
 import { resolveReactionQuery, type ReactionComponentDetails, type ReactionResolutionResult } from '../services/reactionResolver';
-import ResolvedReactionPath from './ResolvedReactionPath';
 
 const STAGE_INFO: Array<{
   key: ReactionComponentDetails['role'];
@@ -22,6 +21,10 @@ const SAMPLE_PROMPTS = [
 
 interface ReactionMechanismAnimatorProps {
   onScriptChange?: (script: string) => void;
+  className?: string;
+  initialQuery?: string;
+  searchTrigger?: number;
+  onResolutionChange?: (resolution: ReactionResolutionResult | null) => void;
 }
 
 const buildViewerScript = (smiles: string) =>
@@ -31,7 +34,13 @@ spacefill 18%;
 color cpk;
 spin y 3;`;
 
-const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({ onScriptChange }) => {
+const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
+  onScriptChange,
+  className,
+  initialQuery,
+  searchTrigger,
+  onResolutionChange,
+}) => {
   const [query, setQuery] = useState('');
   const [resolution, setResolution] = useState<ReactionResolutionResult | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading'>('idle');
@@ -58,6 +67,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({ o
     }
 
     setStatus('loading');
+    onResolutionChange?.(null);
     setError(null);
     try {
       const result = await resolveReactionQuery(value);
@@ -68,10 +78,12 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({ o
       }
 
       setResolution(result);
+      onResolutionChange?.(result);
       setLastPrompt(value);
     } catch (err) {
       console.error('Failed to resolve reaction:', err);
       setResolution(null);
+      onResolutionChange?.(null);
       setError(err instanceof Error ? err.message : 'Unable to resolve the reaction. Check your Gemini key.');
     } finally {
       setStatus('idle');
@@ -85,8 +97,20 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({ o
     onScriptChange(buildViewerScript(smiles.replace(/"/g, '')));
   };
 
+  const containerClassName = className
+    ? `${className} space-y-4`
+    : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4';
+
+  useEffect(() => {
+    if (!initialQuery) {
+      return;
+    }
+    setQuery(initialQuery);
+    void handleSearch(initialQuery);
+  }, [initialQuery, searchTrigger]);
+
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+    <div className={containerClassName}>
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-600 to-purple-600 text-white">
           <FlaskConical className="h-5 w-5" />
@@ -149,6 +173,8 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({ o
 
       {resolution ? (
         <div className="space-y-3">
+          <ReactionMechanismScene resolution={resolution} />
+
           <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-xs text-slate-200 space-y-1">
             <div className="flex items-center justify-between text-white text-sm font-semibold">
               <span>{resolution.reactionName ?? 'Resolved reaction'}</span>
@@ -169,9 +195,6 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({ o
               </p>
             )}
           </div>
-
-          <ReactionMechanismScene resolution={resolution} />
-          <ResolvedReactionPath resolution={resolution} onScriptChange={onScriptChange} />
 
           <div className="space-y-3">
             {groupedComponents.map(stage => (

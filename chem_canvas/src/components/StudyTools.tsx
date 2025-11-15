@@ -1626,8 +1626,14 @@ startxref
   const HeaderIcon = headerConfig.icon;
 
   const content = (
-    <div>
-      <div className={`${embedded ? 'w-full h-full flex flex-col' : 'bg-card border border-border rounded-lg shadow-lg w-[900px] max-w-[90vw] max-h-[90vh] flex flex-col animate-slide-up'}`}>
+    <div className="w-full">
+      <div
+        className={`${
+          embedded
+            ? 'w-full h-full flex flex-col'
+            : 'bg-card border border-border rounded-lg shadow-lg w-[min(1100px,95vw)] max-h-[92vh] flex flex-col overflow-hidden animate-slide-up'
+        }`}
+      >
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
@@ -1703,10 +1709,10 @@ startxref
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* Notes Tab */}
           {activeTab === 'notes' && (
-            <div className="flex-1 overflow-hidden flex">
+            <div className="flex-1 min-h-0 flex overflow-hidden">
               {/* Notes Sidebar */}
               <div className="w-64 border-r border-border bg-muted/20 flex flex-col">
                 <div className="p-4 border-b border-border">
@@ -1762,7 +1768,7 @@ startxref
               </div>
 
               {/* Note Editor - Full Screen Split Pane */}
-              <div className="flex-1 flex flex-col">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                 {selectedNote ? (
                   <>
                     {/* Header */}
@@ -1905,7 +1911,7 @@ startxref
                     {/* Split Pane: Editor + Preview */}
                     <div className="flex-1 min-h-0 flex overflow-hidden">
                       {/* Left: Editor */}
-                      <div className="flex-1 flex flex-col border-r border-border px-6 py-4">
+                      <div className="flex-1 min-h-0 flex flex-col border-r border-border px-6 py-4">
                         <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
                           Markdown Editor
                         </div>
@@ -1960,7 +1966,7 @@ startxref
                       </div>
 
                       {/* Right: Preview */}
-                      <div className="flex-1 flex flex-col px-6 py-4 overflow-y-auto">
+                      <div className="flex-1 min-h-0 flex flex-col px-6 py-4 overflow-y-auto">
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                             Preview
@@ -2189,8 +2195,10 @@ startxref
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-      {content}
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm animate-fade-in">
+      <div className="flex min-h-full w-full items-start justify-center p-4">
+        {content}
+      </div>
     </div>
   );
 }

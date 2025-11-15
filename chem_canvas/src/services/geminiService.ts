@@ -134,7 +134,7 @@ export const streamTextContent = async (
   }
 };
 
-const extractJsonBlock = (rawText: string): string => {
+export const extractJsonBlock = (rawText: string): string => {
   const trimmed = rawText.trim();
   const fenceMatch = trimmed.match(/```(?:json)?([\s\S]*?)```/i);
   if (fenceMatch) {

@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, FlaskConical, Gem, Scan, ExternalLink, Database, X, Smartphone } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, FlaskConical, Gem, Scan, ExternalLink, Database, FileText, Upload, X, Smartphone, Move } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, analyzeTextContent, extractDrawnText, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
@@ -30,6 +30,12 @@ import 'molstar/build/viewer/molstar.css';
 const MIN_TOOLBAR_WIDTH = 280;
 const MAX_TOOLBAR_WIDTH = 480;
 const DEFAULT_MOLECULE_3D_ROTATION = { x: -25, y: 35 } as const;
+const DEFAULT_PDF_WIDTH = 520;
+const DEFAULT_PDF_HEIGHT = 640;
+const MIN_PDF_WIDTH = 320;
+const MAX_PDF_WIDTH = 1400;
+const MIN_PDF_HEIGHT = 320;
+const MAX_PDF_HEIGHT = 2000;
 const ATOM_COLORS: Record<string, string> = {
   C: '#e2e8f0',
   H: '#94a3b8',
@@ -80,6 +86,25 @@ interface ReactionMetadata {
   notes?: string;
 }
 
+type DroppedDocumentType = 'pdf' | 'text' | 'image';
+
+interface CanvasDroppedDocument {
+  id: string;
+  name: string;
+  type: DroppedDocumentType;
+  content: string;
+  preview?: string;
+  viewerUrl?: string;
+  position: {
+    x: number;
+    y: number;
+  };
+  viewportWidth?: number;
+  viewportHeight?: number;
+  size: number;
+  createdAt: number;
+}
+
 interface CanvasProps {
   currentTool: string;
   strokeWidth: number;
@@ -88,7 +113,16 @@ interface CanvasProps {
   onOpenMolView?: () => void;
   onOpenPeriodicTable?: () => void;
   onMoleculeInserted?: (moleculeData: any) => void;
+  onPdfCaptured?: (payload: { file: File; name: string; documentId: string }) => void;
+  onPdfAddToChat?: (payload: { documentId: string }) => void;
 }
+
+export type CanvasCommand =
+  | { type: 'set-tool'; tool?: string }
+  | { type: 'clear-canvas' }
+  | { type: 'export-canvas' }
+  | { type: 'toggle-grid' }
+  | { type: 'insert-text'; text: string };
 
 export default function Canvas({
   currentTool,
@@ -97,8 +131,11 @@ export default function Canvas({
   onOpenCalculator,
   onOpenMolView,
   onOpenPeriodicTable,
-  onMoleculeInserted
+  onMoleculeInserted,
+  onPdfCaptured,
+  onPdfAddToChat
 }: CanvasProps) {
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastX, setLastX] = useState(0);
@@ -150,6 +187,14 @@ export default function Canvas({
   const [editingTextShapeId, setEditingTextShapeId] = useState<string | null>(null);
   const [reactionSdfLoadingId, setReactionSdfLoadingId] = useState<string | null>(null);
   const [reactionSdfError, setReactionSdfError] = useState<{ id: string; message: string } | null>(null);
+  const [droppedDocuments, setDroppedDocuments] = useState<CanvasDroppedDocument[]>([]);
+  const [isDocumentDragActive, setIsDocumentDragActive] = useState(false);
+  const [documentDropFeedback, setDocumentDropFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+  const dragDepthRef = useRef(0);
+  const dropFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const droppedDocumentsRef = useRef<CanvasDroppedDocument[]>([]);
+  const documentDragStateRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  const documentResizeStateRef = useRef<{ id: string; startWidth: number; startHeight: number; startX: number; startY: number } | null>(null);
 
   const addCustomAnnotationLabel = () => {
     const trimmed = customAnnotationLabel.trim();
@@ -166,6 +211,421 @@ export default function Canvas({
     });
     setCustomAnnotationLabel('');
   };
+
+  const getDroppedDocumentType = (file: File): DroppedDocumentType | null => {
+    const mime = (file.type || '').toLowerCase();
+    const name = file.name.toLowerCase();
+
+    if (mime === 'application/pdf' || name.endsWith('.pdf')) {
+      return 'pdf';
+    }
+
+    if (mime.startsWith('text/') || name.endsWith('.txt') || name.endsWith('.md') || name.endsWith('.markdown')) {
+      return 'text';
+    }
+
+    if (mime.startsWith('image/')) {
+      return 'image';
+    }
+
+    return null;
+  };
+
+  const formatDocumentSize = (bytes: number): string => {
+    if (!bytes) {
+      return '0 B';
+    }
+    const units = ['B', 'KB', 'MB'];
+    const exponent = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    const value = bytes / Math.pow(1024, exponent);
+    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
+  };
+
+  const formatDocumentTimestamp = (timestamp: number): string => {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const clampValue = (value: number, min: number, max: number) => {
+    return Math.min(max, Math.max(min, value));
+  };
+
+  const createDroppedDocumentFromFile = useCallback(
+    async (file: File, position: { x: number; y: number }): Promise<CanvasDroppedDocument | null> => {
+      const documentType = getDroppedDocumentType(file);
+      if (!documentType) {
+        return null;
+      }
+      const timestamp = Date.now();
+      const idSeed = Math.random().toString(36).slice(2, 8);
+      const documentId = `${timestamp}-${idSeed}`;
+
+      if (documentType === 'text') {
+        const text = await file.text();
+        return {
+          id: `${timestamp}-${idSeed}`,
+          name: file.name,
+          type: 'text',
+          content: text,
+          preview: text.slice(0, 1200),
+          position,
+          size: file.size,
+          createdAt: timestamp
+        };
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      if (documentType === 'pdf') {
+        try {
+          onPdfCaptured?.({ file, name: file.name, documentId });
+        } catch (error) {
+          console.warn('Failed to trigger PDF insight handler:', error);
+        }
+      }
+      return {
+        id: documentId,
+        name: file.name,
+        type: documentType,
+        content: objectUrl,
+        viewerUrl: objectUrl,
+        position,
+        size: file.size,
+        createdAt: timestamp,
+        viewportWidth: documentType === 'pdf' ? DEFAULT_PDF_WIDTH : undefined,
+        viewportHeight: documentType === 'pdf' ? DEFAULT_PDF_HEIGHT : undefined
+      };
+    },
+    [onPdfCaptured]
+  );
+
+  const computeDropPosition = useCallback(
+    (index: number, coords?: { clientX?: number; clientY?: number }): { x: number; y: number } => {
+      const offsetStep = 28;
+      const cardWidth = 360;
+      const cardHeight = 300;
+      const container = canvasContainerRef.current;
+      const rect = container?.getBoundingClientRect();
+      const fallbackX = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+      const fallbackY = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+      const clientX = coords?.clientX ?? fallbackX;
+      const clientY = coords?.clientY ?? fallbackY;
+
+      if (!rect) {
+        return {
+          x: clientX - cardWidth / 2 + index * offsetStep,
+          y: clientY - cardHeight / 2 + index * offsetStep
+        };
+      }
+
+      const relativeX = clientX - rect.left - cardWidth / 2;
+      const relativeY = clientY - rect.top - cardHeight / 2;
+      const maxX = Math.max(16, rect.width - cardWidth - 16);
+      const maxY = Math.max(16, rect.height - cardHeight - 16);
+
+      return {
+        x: Math.min(Math.max(16, relativeX + index * offsetStep), maxX),
+        y: Math.min(Math.max(16, relativeY + index * offsetStep), maxY)
+      };
+    },
+    []
+  );
+
+  const showDocumentDropFeedback = (type: 'error' | 'success', message: string) => {
+    if (dropFeedbackTimeoutRef.current) {
+      clearTimeout(dropFeedbackTimeoutRef.current);
+    }
+    setDocumentDropFeedback({ type, message });
+    dropFeedbackTimeoutRef.current = setTimeout(() => {
+      setDocumentDropFeedback(null);
+    }, 3600);
+  };
+
+  const addFilesToCanvas = useCallback(
+    async (incomingFiles: File[], coords?: { clientX?: number; clientY?: number }) => {
+      if (!incomingFiles.length) {
+        return;
+      }
+
+      const supportedFiles = incomingFiles.filter(file => Boolean(getDroppedDocumentType(file)));
+      if (!supportedFiles.length) {
+        showDocumentDropFeedback('error', 'Only PDF, text, or image documents can be embedded right now.');
+        return;
+      }
+
+      try {
+        const parsedDocuments = await Promise.all(
+          supportedFiles.map((file, index) =>
+            createDroppedDocumentFromFile(file, computeDropPosition(index, coords))
+          )
+        );
+
+        const validDocuments = parsedDocuments.filter(
+          (doc): doc is CanvasDroppedDocument => Boolean(doc)
+        );
+
+        if (!validDocuments.length) {
+          showDocumentDropFeedback('error', 'We could not load that file. Please try again.');
+          return;
+        }
+
+        setDroppedDocuments(prev => [...prev, ...validDocuments]);
+        const successMessage =
+          validDocuments.length === 1
+            ? `Added "${validDocuments[0].name}" to the canvas.`
+            : `Added ${validDocuments.length} documents to the canvas.`;
+        showDocumentDropFeedback('success', successMessage);
+      } catch (error) {
+        console.error('Failed to process uploaded files:', error);
+        showDocumentDropFeedback('error', 'Something went wrong while checking that file.');
+      }
+    },
+    [computeDropPosition, createDroppedDocumentFromFile, showDocumentDropFeedback]
+  );
+  const hasFiles = (dataTransfer: DataTransfer | null) => {
+    if (!dataTransfer?.types) {
+      return false;
+    }
+    return Array.from(dataTransfer.types).includes('Files');
+  };
+
+  const getDocumentTypeLabel = (docType: DroppedDocumentType): string => {
+    switch (docType) {
+      case 'pdf':
+        return 'PDF';
+      case 'text':
+        return 'Notes';
+      case 'image':
+        return 'Image';
+      default:
+        return 'Document';
+    }
+  };
+
+  const removeDroppedDocument = (id: string) => {
+    setDroppedDocuments(prev => {
+      const target = prev.find(doc => doc.id === id);
+      if (target?.viewerUrl) {
+        URL.revokeObjectURL(target.viewerUrl);
+      }
+      return prev.filter(doc => doc.id !== id);
+    });
+  };
+
+  const openDroppedDocument = (doc: CanvasDroppedDocument) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (doc.type === 'text') {
+      const blob = new Blob([doc.content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      return;
+    }
+
+    const targetUrl = doc.viewerUrl ?? doc.content;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDocumentDragEnter = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasFiles(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDocumentDragActive(true);
+  };
+
+  const handleDocumentDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasFiles(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    if (!isDocumentDragActive) {
+      setIsDocumentDragActive(true);
+    }
+  };
+
+  const handleDocumentDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasFiles(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDocumentDragActive(false);
+    }
+  };
+
+  const handleDocumentDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasFiles(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDocumentDragActive(false);
+
+    const files = event.dataTransfer?.files;
+    if (!files || files.length === 0) {
+      return;
+    }
+    await addFilesToCanvas(Array.from(files), { clientX: event.clientX, clientY: event.clientY });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (dropFeedbackTimeoutRef.current) {
+        clearTimeout(dropFeedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleDocumentDragMove = useCallback((event: MouseEvent) => {
+    const dragState = documentDragStateRef.current;
+    if (!dragState) {
+      return;
+    }
+
+    const nextX = event.clientX - dragState.offsetX;
+    const nextY = event.clientY - dragState.offsetY;
+
+    setDroppedDocuments(prev =>
+      prev.map(doc =>
+        doc.id === dragState.id
+          ? {
+              ...doc,
+              position: {
+                x: nextX,
+                y: nextY
+              }
+            }
+          : doc
+      )
+    );
+  }, []);
+
+  const handleDocumentDragEnd = useCallback(() => {
+    documentDragStateRef.current = null;
+    window.removeEventListener('mousemove', handleDocumentDragMove as EventListener);
+    window.removeEventListener('mouseup', handleDocumentDragEnd as EventListener);
+  }, [handleDocumentDragMove]);
+
+  const handleDocumentDragStart = useCallback(
+    (event: ReactMouseEvent, docId: string) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const targetDoc = droppedDocumentsRef.current.find(doc => doc.id === docId);
+      if (!targetDoc) {
+        return;
+      }
+
+      documentDragStateRef.current = {
+        id: docId,
+        offsetX: event.clientX - targetDoc.position.x,
+        offsetY: event.clientY - targetDoc.position.y
+      };
+
+      window.addEventListener('mousemove', handleDocumentDragMove as EventListener);
+      window.addEventListener('mouseup', handleDocumentDragEnd as EventListener);
+    },
+    [handleDocumentDragEnd, handleDocumentDragMove]
+  );
+
+  const handleDocumentResizeMove = useCallback((event: MouseEvent) => {
+    const resizeState = documentResizeStateRef.current;
+    if (!resizeState) {
+      return;
+    }
+
+    const deltaX = event.clientX - resizeState.startX;
+    const deltaY = event.clientY - resizeState.startY;
+
+    const nextWidth = clampValue(resizeState.startWidth + deltaX, MIN_PDF_WIDTH, MAX_PDF_WIDTH);
+    const nextHeight = clampValue(resizeState.startHeight + deltaY, MIN_PDF_HEIGHT, MAX_PDF_HEIGHT);
+
+    setDroppedDocuments(prev =>
+      prev.map(doc =>
+        doc.id === resizeState.id
+          ? {
+              ...doc,
+              viewportWidth: nextWidth,
+              viewportHeight: nextHeight
+            }
+          : doc
+      )
+    );
+  }, []);
+
+  const handleDocumentResizeEnd = useCallback(() => {
+    documentResizeStateRef.current = null;
+    window.removeEventListener('mousemove', handleDocumentResizeMove as EventListener);
+    window.removeEventListener('mouseup', handleDocumentResizeEnd as EventListener);
+  }, [handleDocumentResizeMove]);
+
+  const handleDocumentResizeStart = useCallback(
+    (event: ReactMouseEvent, docId: string) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const targetDoc = droppedDocumentsRef.current.find(doc => doc.id === docId);
+      if (!targetDoc) {
+        return;
+      }
+
+      documentResizeStateRef.current = {
+        id: docId,
+        startWidth: targetDoc.viewportWidth ?? DEFAULT_PDF_WIDTH,
+        startHeight: targetDoc.viewportHeight ?? DEFAULT_PDF_HEIGHT,
+        startX: event.clientX,
+        startY: event.clientY
+      };
+
+      window.addEventListener('mousemove', handleDocumentResizeMove as EventListener);
+      window.addEventListener('mouseup', handleDocumentResizeEnd as EventListener);
+    },
+    [handleDocumentResizeEnd, handleDocumentResizeMove]
+  );
+
+  useEffect(() => {
+    const handleExternalUpload = (event: Event) => {
+      const customEvent = event as CustomEvent<{ files?: File[] | FileList }>;
+      const payload = customEvent.detail?.files;
+      if (!payload) {
+        return;
+      }
+      const filesArray = Array.isArray(payload) ? payload : Array.from(payload);
+      if (!filesArray.length) {
+        return;
+      }
+      void addFilesToCanvas(filesArray);
+    };
+
+    window.addEventListener('canvas-upload-files', handleExternalUpload as EventListener);
+    return () => {
+      window.removeEventListener('canvas-upload-files', handleExternalUpload as EventListener);
+    };
+  }, [addFilesToCanvas]);
+
+  useEffect(() => {
+    droppedDocumentsRef.current = droppedDocuments;
+  }, [droppedDocuments]);
+
+  useEffect(() => {
+    return () => {
+      handleDocumentDragEnd();
+      handleDocumentResizeEnd();
+      droppedDocumentsRef.current.forEach(doc => {
+        if (doc.viewerUrl) {
+          URL.revokeObjectURL(doc.viewerUrl);
+        }
+      });
+    };
+  }, [handleDocumentDragEnd, handleDocumentResizeEnd]);
 
   // Arrow drawing state - single resizable arrow
   const [arrowState, setArrowState] = useState<{
@@ -489,6 +949,14 @@ export default function Canvas({
     }
   }, [showChemistryToolbar]);
 
+  const addTextShapeToCanvas = useCallback((textShape: Shape) => {
+    setShapes(prev => {
+      const updated = [...prev, textShape];
+      canvasHistoryRef.current = updated;
+      return updated;
+    });
+  }, []);
+
   const handleTextSubmit = () => {
     if (currentTextInput.trim()) {
       if (!canvasRef.current) return;
@@ -526,10 +994,7 @@ export default function Canvas({
           text: currentTextInput,
           rotation: 0
         };
-
-        const newShapes = [...shapes, textShape];
-        setShapes(newShapes);
-        canvasHistoryRef.current = newShapes;
+        addTextShapeToCanvas(textShape);
       }
     }
     setIsTextInputVisible(false);
@@ -542,6 +1007,34 @@ export default function Canvas({
     setCurrentTextInput('');
     setEditingTextShapeId(null);
   };
+
+  const insertTextBlock = useCallback((text: string) => {
+    if (!text.trim()) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const baseX = canvas ? (canvas.width / zoom) / 2 - 160 : 120;
+    const baseY = canvas ? (canvas.height / zoom) / 2 - 80 : 120;
+
+    const textShape: Shape = {
+      id: `text-${Date.now()}`,
+      type: 'text',
+      startX: baseX,
+      startY: baseY,
+      endX: baseX,
+      endY: baseY,
+      color: chemistryColor,
+      strokeColor: chemistryStrokeColor,
+      size: 22,
+      fillEnabled: chemistryFillEnabled,
+      fillColor: chemistryFillColor,
+      text,
+      rotation: 0
+    };
+
+    addTextShapeToCanvas(textShape);
+  }, [addTextShapeToCanvas, chemistryColor, chemistryFillColor, chemistryFillEnabled, chemistryStrokeColor, zoom]);
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -4054,8 +4547,7 @@ export default function Canvas({
     setIsDrawing(false);
   };
 
-  const clearCanvas = () => {
-    // Ask for confirmation before clearing
+  const clearCanvas = useCallback(() => {
     if (!window.confirm('Are you sure you want to clear the canvas? This will remove all drawings and analysis results.')) {
       return;
     }
@@ -4072,11 +4564,62 @@ export default function Canvas({
       drawGrid(ctx, canvas.width, canvas.height);
     }
 
-    // Clear any existing corrections and analysis results
     setCorrections([]);
     setShowCorrections(false);
     setAnalysisResult(null);
-  };
+  }, [showGrid]);
+
+  const exportCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      alert('Canvas is not ready yet. Please try again.');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png', 1);
+    link.download = `chem-canvas-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+    link.click();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleCanvasCommand = (event: Event) => {
+      const detail = (event as CustomEvent<CanvasCommand>).detail;
+      if (!detail) {
+        return;
+      }
+
+      switch (detail.type) {
+        case 'set-tool':
+          if (detail.tool) {
+            setShowChemistryToolbar(true);
+            setChemistryTool(detail.tool);
+          }
+          break;
+        case 'clear-canvas':
+          clearCanvas();
+          break;
+        case 'export-canvas':
+          exportCanvas();
+          break;
+        case 'toggle-grid':
+          setShowGrid(prev => !prev);
+          break;
+        case 'insert-text':
+          insertTextBlock(detail.text);
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('canvas-command', handleCanvasCommand as EventListener);
+    return () => window.removeEventListener('canvas-command', handleCanvasCommand as EventListener);
+  }, [clearCanvas, exportCanvas]);
 
   const handleZoomIn = () => {
     setZoom(prev => Math.min(prev + 0.1, 3));
@@ -4530,7 +5073,14 @@ export default function Canvas({
   ];
 
   return (
-    <div className="relative w-full h-full bg-slate-900">
+    <div
+      ref={canvasContainerRef}
+      className="relative w-full h-full bg-slate-900"
+      onDragEnter={handleDocumentDragEnter}
+      onDragOver={handleDocumentDragOver}
+      onDragLeave={handleDocumentDragLeave}
+      onDrop={handleDocumentDrop}
+    >
       {/* Chemistry Toolbar Toggle Button */}
       <div className="absolute top-8 left-8 z-10">
         <button
@@ -4539,6 +5089,7 @@ export default function Canvas({
             showChemistryToolbar ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700/50'
           }`}
           title={showChemistryToolbar ? "Hide Chemistry Tools" : "Show Chemistry Tools"}
+          onDoubleClick={() => openDocumentOnCanvas(doc.id)}
         >
           <Atom size={18} />
         </button>
@@ -4602,7 +5153,7 @@ export default function Canvas({
 
       {/* Chemistry Toolbar */}
       {showChemistryToolbar && (
-        <div className="absolute top-24 left-8 z-10">
+        <div className="absolute top-4 left-8 z-10">
           <ChemistryToolbar
             onToolSelect={setChemistryTool}
             currentTool={chemistryTool}
@@ -4632,45 +5183,48 @@ export default function Canvas({
       )}
 
       {/* Canvas Controls - Compact Header Layout */}
-      <div className="absolute top-4 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-4 transform lg:flex-row">
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-700/60 bg-slate-900/90 px-4 py-3 shadow-xl backdrop-blur">
-          {quickActionButtons.map((button) => {
-            const IconComponent = button.icon;
-            const baseClasses = 'group inline-flex items-center gap-2.5 rounded-xl border px-4 py-2 text-sm font-semibold transition-all duration-200';
-            const activeClasses = button.active
-              ? `bg-slate-800/95 text-white border-slate-500/80 shadow-lg ${button.activeClass ?? ''}`
-              : 'bg-slate-900/50 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white';
-            const disabledClasses = button.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '';
+      <div className="absolute top-4 left-1/2 z-10 w-full max-w-4xl -translate-x-1/2 px-3">
+        <div className="flex flex-col gap-3 rounded-2xl border border-slate-700/60 bg-slate-900/90 px-4 py-3 shadow-xl backdrop-blur-lg lg:flex-row lg:items-center lg:gap-4">
+          <div className="flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:overflow-x-auto">
+            {quickActionButtons.map((button) => {
+              const IconComponent = button.icon;
+              const baseClasses = 'group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200';
+              const activeClasses = button.active
+                ? `bg-slate-800/95 text-white border-slate-500/80 shadow-lg ${button.activeClass ?? ''}`
+                : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white';
+              const disabledClasses = button.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '';
 
-            return (
-              <button
-                key={button.id}
-                onClick={button.onClick}
-                title={button.title}
-                className={`${baseClasses} ${activeClasses} ${disabledClasses}`}
-              >
-                <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-sm ${button.badgeClass}`}>
-                  <IconComponent size={14} />
-                </span>
-                <span>{button.label}</span>
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={button.id}
+                  onClick={button.onClick}
+                  title={button.title}
+                  className={`${baseClasses} ${activeClasses} ${disabledClasses}`}
+                >
+                  <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[11px] ${button.badgeClass}`}>
+                    <IconComponent size={14} />
+                  </span>
+                  <span>{button.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
+          <div className="flex-1 min-w-[220px]">
+            <InlineMoleculeSearch
+              className="w-full"
+              onSelectMolecule={(moleculeData) => {
+                void (async () => {
+                  try {
+                    await insertMoleculeToCanvas(moleculeData);
+                  } catch (error) {
+                    console.error('Failed to insert molecule from search:', error);
+                  }
+                })();
+              }}
+            />
+          </div>
         </div>
-
-        <InlineMoleculeSearch
-          className="w-full max-w-md"
-          onSelectMolecule={(moleculeData) => {
-            void (async () => {
-              try {
-                await insertMoleculeToCanvas(moleculeData);
-              } catch (error) {
-                console.error('Failed to insert molecule from search:', error);
-              }
-            })();
-          }}
-        />
       </div>
 
       {/* Reaction Search - Below Header */}
@@ -4844,6 +5398,161 @@ export default function Canvas({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       />
+
+      {/* Dropped document cards */}
+      {droppedDocuments.map(doc => {
+        const pdfWidth = doc.viewportWidth ?? DEFAULT_PDF_WIDTH;
+        const pdfHeight = doc.viewportHeight ?? DEFAULT_PDF_HEIGHT;
+        return (
+        <div
+          key={doc.id}
+          className="absolute z-30"
+          style={{
+            left: `${doc.position.x}px`,
+            top: `${doc.position.y}px`
+          }}
+        >
+          {doc.type === 'pdf' ? (
+            <div
+              className="group relative max-w-[92vw] rounded-xl shadow-xl"
+              style={{ width: pdfWidth, height: pdfHeight }}
+            >
+              <div
+                className="pointer-events-auto absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/80 opacity-0 transition group-hover:opacity-100 cursor-move"
+                onMouseDown={(event) => handleDocumentDragStart(event, doc.id)}
+              >
+                <Move size={12} />
+                Drag
+              </div>
+              <iframe
+                title={doc.name}
+                src={doc.content}
+                className="block h-full w-full rounded-xl border border-slate-700/60 bg-white"
+                onDoubleClick={() => openDroppedDocument(doc)}
+              />
+              <div className="absolute top-2 right-2 flex flex-wrap gap-2 opacity-0 transition group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onPdfAddToChat) {
+                      onPdfAddToChat({ documentId: doc.id });
+                    }
+                  }}
+                  className="rounded-full bg-emerald-600/80 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
+                >
+                  Add to Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openDroppedDocument(doc)}
+                  className="rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white hover:bg-black"
+                >
+                  Open Tab
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeDroppedDocument(doc.id)}
+                  className="rounded-full bg-black/70 p-1 text-white/80 hover:bg-black hover:text-white"
+                  aria-label={`Remove ${doc.name}`}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <button
+                type="button"
+                className="pointer-events-auto absolute bottom-2 right-2 h-4 w-4 cursor-se-resize rounded-full border border-white/70 bg-black/60 opacity-0 transition group-hover:opacity-100"
+                onMouseDown={(event) => handleDocumentResizeStart(event, doc.id)}
+                aria-label="Resize document"
+              />
+            </div>
+          ) : (
+            <div
+              className="w-[420px] max-w-[92vw] rounded-3xl border border-slate-700/80 bg-slate-950/90 text-slate-50 shadow-2xl backdrop-blur"
+              onDoubleClick={() => openDroppedDocument(doc)}
+              title="Double-click to open in a new tab"
+            >
+              <div
+                className="flex items-center justify-between gap-3 border-b border-slate-700/70 px-5 py-3 cursor-move select-none"
+                onMouseDown={(event) => handleDocumentDragStart(event, doc.id)}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800/80 text-blue-200">
+                    <FileText size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{doc.name}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {getDocumentTypeLabel(doc.type)} • {formatDocumentSize(doc.size)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeDroppedDocument(doc.id)}
+                  className="rounded-full p-1 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                  aria-label={`Remove ${doc.name}`}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="space-y-3 px-5 py-4">
+                {doc.type === 'text' && (
+                  <div className="max-h-48 overflow-auto rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4 text-sm text-slate-100">
+                    <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed">
+                      {doc.preview || doc.content || 'Document appears to be empty.'}
+                    </pre>
+                  </div>
+                )}
+
+                {doc.type === 'image' && (
+                  <div className="flex h-64 items-center justify-center rounded-2xl border border-slate-700/70 bg-slate-900/80 p-3">
+                    <img
+                      src={doc.content}
+                      alt={doc.name}
+                      className="max-h-full w-full rounded-xl object-contain"
+                    />
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                  <span className="text-slate-400/90">{formatDocumentTimestamp(doc.createdAt)}</span>
+                  <button
+                    type="button"
+                    onClick={() => openDroppedDocument(doc)}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-600/60 px-3 py-1 font-semibold text-slate-100 transition hover:border-blue-500/80 hover:text-white"
+                  >
+                    <ExternalLink size={12} />
+                    Open in Tab
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        );
+      })}
+
+      {/* Drop overlay */}
+      {isDocumentDragActive && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-blue-400/60 bg-slate-950/80 text-center text-blue-100 backdrop-blur">
+          <Upload className="mb-3 h-10 w-10" />
+          <p className="text-base font-semibold">Drop documents to pin them here</p>
+          <p className="text-xs text-blue-100/80">PDF, image, and text files supported</p>
+        </div>
+      )}
+
+      {documentDropFeedback && (
+        <div
+          className={`pointer-events-none absolute bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-2 text-xs font-semibold shadow-lg ${
+            documentDropFeedback.type === 'success'
+              ? 'bg-emerald-500/90 text-white'
+              : 'bg-rose-500/90 text-white'
+          }`}
+        >
+          {documentDropFeedback.message}
+        </div>
+      )}
 
       {/* Text Input Overlay */}
       {isTextInputVisible && (
@@ -5605,7 +6314,7 @@ export default function Canvas({
             </button>
           </div>
           <div className="flex-1 overflow-hidden">
-            <ChemistryWidgetPanel onClose={() => setShowChemistryWidgetPanel(false)} initialView="overview" />
+            <ChemistryWidgetPanel onClose={() => setShowChemistryWidgetPanel(false)} />
           </div>
         </div>
       )}

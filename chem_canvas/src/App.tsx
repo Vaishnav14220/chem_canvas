@@ -1,7 +1,7 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Plus, File, Video, Globe, Upload, Clipboard, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3 } from 'lucide-react';
-import Canvas from './components/Canvas';
+import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload } from 'lucide-react';
+import Canvas, { type CanvasCommand } from './components/Canvas';
 import AIChat from './components/AIChat';
 import LobeChat from './components/LobeChat';
 import CommandPalette from './components/CommandPalette';
@@ -17,6 +17,10 @@ import { UserProfile, setupAuthStateListener } from './firebase/auth';
 import { checkApiKeysInitialized, displayAllApiKeys } from './firebase/apiKeys';
 import { initializeFirebaseOnStartup } from './utils/initializeFirebase';
 import { loadSession, saveSession, getSessionStatus, extendSession } from './utils/sessionStorage';
+import { extractTextFromPdf } from './utils/pdfTextExtractor';
+import { analyzePdfTextWithGemini } from './services/pdfInsightsService';
+import { fetchYouTubeVideos } from './services/youtubeService';
+import { fetchYouTubeTranscript, extractVideoIdFromUrl } from './services/youtubeTranscriptService';
 import * as geminiService from './services/geminiService';
 import ChemistryWidgetPanel from './components/ChemistryWidgetPanel';
 import DarkButtonWithIcon from './components/DarkButtonWithIcon';
@@ -50,6 +54,24 @@ type StudyToolType =
   | 'designer'
   | 'chat'
   | 'tests';
+
+type SourceEntry = {
+  id: string;
+  type: 'document' | 'youtube' | 'weblink' | 'image' | 'paste';
+  title: string;
+  url?: string;
+  content?: string;
+  description?: string;
+  thumbnail?: string;
+  videoId?: string;
+  channelTitle?: string;
+  channelSubscribers?: number;
+};
+
+const generateSourceId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const App: React.FC = () => {
   const location = useLocation();
@@ -86,18 +108,18 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [documentViewerOpen, setDocumentViewerOpen] = useState(false);
+  const [sourcesNotification, setSourcesNotification] = useState<string | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const processedPdfInsightsRef = useRef<Set<string>>(new Set());
+  const fileUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const pdfTextCacheRef = useRef<Map<string, { name: string; text: string }>>(new Map());
   
   // Sources state
-  const [sources, setSources] = useState<Array<{
-    id: string;
-    type: 'document' | 'youtube' | 'weblink' | 'image' | 'paste';
-    title: string;
-    url?: string;
-    content?: string;
-    description?: string;
-  }>>([]);
-  const [activeSourceType, setActiveSourceType] = useState<'document' | 'youtube' | 'weblink' | 'image' | 'paste'>('document');
+  const [sources, setSources] = useState<SourceEntry[]>([]);
+  const youtubeSources = useMemo(() => sources.filter(source => source.type === 'youtube'), [sources]);
+  const [videoSummaryLoadingId, setVideoSummaryLoadingId] = useState<string | null>(null);
+  const [summarizingAll, setSummarizingAll] = useState(false);
+  const [inlineVideoSourceId, setInlineVideoSourceId] = useState<string | null>(null);
   const [showStudyTools, setShowStudyTools] = useState(false);
   const [selectedStudyTool, setSelectedStudyTool] = useState<StudyToolType>('mindmap');
   const [selectedWorkspaceTool, setSelectedWorkspaceTool] = useState<StudyToolType>('mindmap');
@@ -133,6 +155,10 @@ const App: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
   const pillButtonClasses =
     'inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground';
+  const dispatchCanvasCommand = useCallback((command: CanvasCommand) => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent<CanvasCommand>('canvas-command', { detail: command }));
+  }, []);
 
   // Load API key and check for existing session on component mount
   useEffect(() => {
@@ -302,18 +328,263 @@ const App: React.FC = () => {
   // Sources handlers
   const addSource = (type: 'document' | 'youtube' | 'weblink' | 'image' | 'paste', data: any) => {
     const newSource = {
-      id: Date.now().toString(),
+      id: data.id ?? generateSourceId(),
       type,
       title: data.title || 'Untitled',
       url: data.url,
       content: data.content,
-      description: data.description
+      description: data.description,
+      thumbnail: data.thumbnail,
+      videoId: data.videoId,
+      channelTitle: data.channelTitle,
+      channelSubscribers: data.channelSubscribers
     };
     setSources(prev => [...prev, newSource]);
   };
 
+  const handlePdfInsightsGeneration = useCallback(async ({ file, name, documentId }: { file: File; name: string; documentId: string }) => {
+    const isPdf = file.type.includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      return;
+    }
+
+    const dedupKey = `${file.name}-${file.size}-${file.lastModified}`;
+    if (processedPdfInsightsRef.current.has(dedupKey)) {
+      return;
+    }
+    processedPdfInsightsRef.current.add(dedupKey);
+    let completed = false;
+
+    try {
+      const pdfText = await extractTextFromPdf(file);
+      if (!pdfText.trim()) {
+        throw new Error('PDF text extraction returned no text.');
+      }
+      pdfTextCacheRef.current.set(documentId, { name, text: pdfText });
+
+      const insights = await analyzePdfTextWithGemini(name, pdfText);
+      const baseQueries = insights.videoQueries?.length
+        ? insights.videoQueries
+        : insights.keyTopics.slice(0, 3);
+      const searchQueries = baseQueries.length
+        ? baseQueries
+        : [name.replace(/\.[^.]+$/, '') || 'chemistry lesson'];
+
+      const candidateMap = new Map<string, Awaited<ReturnType<typeof fetchYouTubeVideos>>[number]>();
+      for (const rawQuery of searchQueries) {
+        const query = rawQuery.trim();
+        if (!query) continue;
+        try {
+          const results = await fetchYouTubeVideos({ query, maxResults: 5 });
+          results.forEach((video) => {
+            if (video.id && !candidateMap.has(video.id)) {
+              candidateMap.set(video.id, video);
+            }
+          });
+        } catch (error) {
+          console.warn('YouTube search failed for query:', query, error);
+        }
+        if (candidateMap.size >= 20) {
+          break;
+        }
+      }
+
+      const candidateVideos = Array.from(candidateMap.values());
+      if (!candidateVideos.length) {
+        throw new Error('No YouTube candidates found for extracted queries.');
+      }
+
+      let rankedVideos = candidateVideos;
+      try {
+        const rankedIds = await geminiService.selectTopYouTubeVideos({
+          topic: insights.keyTopics?.[0] || name,
+          lessonContent: `${insights.summary}\n\nKey topics: ${insights.keyTopics.join(', ')}\nConcepts: ${insights.essentialConcepts.join(', ')}`,
+          videos: candidateVideos,
+          count: Math.min(10, Math.max(5, candidateVideos.length))
+        });
+        if (rankedIds && rankedIds.length) {
+          const mapped = rankedIds
+            .map((id) => candidateVideos.find((video) => video.id === id))
+            .filter((video): video is typeof candidateVideos[number] => Boolean(video));
+          if (mapped.length) {
+            rankedVideos = mapped;
+          }
+        }
+      } catch (error) {
+        console.warn('Gemini ranking failed:', error);
+      }
+
+      const selectedVideos = rankedVideos.slice(0, 10);
+      selectedVideos.forEach((video) => {
+        addSource('youtube', {
+          title: video.title,
+          url: video.url,
+          description: `Auto-suggested for ${name} • ${video.channelTitle}`,
+          thumbnail: video.thumbnailUrl,
+          videoId: video.id,
+          channelTitle: video.channelTitle,
+          channelSubscribers: video.subscriberCount
+        });
+      });
+      if (selectedVideos.length) {
+        setDocumentViewerOpen(true);
+        setSourcesNotification(
+          `Added ${selectedVideos.length} recommended YouTube video${selectedVideos.length === 1 ? '' : 's'} to Sources.`
+        );
+      }
+      if (!selectedVideos.length) {
+        throw new Error('Ranking returned no videos.');
+      }
+      completed = true;
+    } catch (error) {
+      console.error('Failed to analyze PDF for video recommendations:', error);
+    } finally {
+      if (!completed) {
+        processedPdfInsightsRef.current.delete(dedupKey);
+      }
+    }
+  }, [addSource, setDocumentViewerOpen, setSourcesNotification]);
+
+  const handleAddPdfToChat = useCallback(({ documentId }: { documentId: string }) => {
+    const entry = pdfTextCacheRef.current.get(documentId);
+    if (!entry) {
+      alert('Still analyzing this PDF. Please try again in a few moments.');
+      return;
+    }
+
+    addSource('document', {
+      title: entry.name,
+      content: entry.text,
+      description: 'Added to chat context'
+    });
+    alert('PDF added to chat context for future prompts.');
+  }, [addSource]);
+
+  const summarizeVideoToCanvas = useCallback(
+    async (
+      source: {
+        id: string;
+        title: string;
+        url?: string;
+        description?: string;
+        videoId?: string;
+        channelTitle?: string;
+      },
+      options: { showSpinner?: boolean } = {}
+    ) => {
+      const showSpinner = options.showSpinner ?? true;
+      const resolvedVideoId = source.videoId ?? (source.url ? extractVideoIdFromUrl(source.url) : null);
+
+      if (!resolvedVideoId) {
+        alert('Could not determine the YouTube video ID for this entry.');
+        return false;
+      }
+
+      if (showSpinner) {
+        setVideoSummaryLoadingId(source.id);
+      }
+
+      try {
+        const transcript = await fetchYouTubeTranscript(resolvedVideoId);
+        const transcriptSnippet = transcript ? transcript.slice(0, 9000) : '';
+        const promptParts = [
+          'You are summarizing a YouTube video for chemistry students working on an infinite canvas.',
+          'Return 3-5 concise bullet points and two concrete actions the learner can attempt next.',
+          'Write in markdown with headings so it can be pasted directly.',
+          '',
+          `Title: ${source.title}`,
+        ];
+        if (source.channelTitle) {
+          promptParts.push(`Channel: ${source.channelTitle}`);
+        }
+        if (source.description) {
+          promptParts.push(`Description: ${source.description}`);
+        }
+        if (source.url) {
+          promptParts.push(`URL: ${source.url}`);
+        }
+        if (transcriptSnippet) {
+          promptParts.push('', 'Transcript excerpt:', transcriptSnippet);
+        } else {
+          promptParts.push('', 'Transcript unavailable – infer summary from metadata only.');
+        }
+
+        const summary = await geminiService.generateTextContent(promptParts.join('\n'));
+        dispatchCanvasCommand({
+          type: 'insert-text',
+          text: `Video Summary — ${source.title}\n\n${summary.trim()}`
+        });
+        return true;
+      } catch (error) {
+        console.error('Failed to summarize YouTube video:', error);
+        if (showSpinner) {
+          alert('Unable to summarize this video right now. Please try again later.');
+        }
+        return false;
+      } finally {
+        if (showSpinner) {
+          setVideoSummaryLoadingId(null);
+        }
+      }
+    },
+    [dispatchCanvasCommand]
+  );
+
+  const handleExportVideoSummary = useCallback(
+    (source: any) => {
+      void summarizeVideoToCanvas(source, { showSpinner: true });
+    },
+    [summarizeVideoToCanvas]
+  );
+
+  const handleSummarizeAllVideos = useCallback(async () => {
+    if (!youtubeSources.length || summarizingAll) {
+      return;
+    }
+    setSummarizingAll(true);
+    try {
+      for (const video of youtubeSources) {
+        await summarizeVideoToCanvas(video, { showSpinner: false });
+      }
+    } finally {
+      setSummarizingAll(false);
+      setVideoSummaryLoadingId(null);
+    }
+  }, [summarizeVideoToCanvas, youtubeSources, summarizingAll]);
+
+
   const removeSource = (id: string) => {
     setSources(prev => prev.filter(source => source.id !== id));
+  };
+
+  const handleToggleInlineVideo = useCallback((source: SourceEntry) => {
+    const resolvedVideoId = source.videoId ?? (source.url ? extractVideoIdFromUrl(source.url) : null);
+    if (!resolvedVideoId) {
+      alert('Unable to play this video inline. Try opening it on YouTube instead.');
+      return;
+    }
+    setDocumentViewerOpen(true);
+    setInlineVideoSourceId((prev) => (prev === source.id ? null : source.id));
+  }, [setDocumentViewerOpen]);
+
+  const requestCanvasFileUpload = useCallback((files: File[]) => {
+    if (typeof window === 'undefined' || !files.length) {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('canvas-upload-files', { detail: { files } }));
+  }, []);
+
+  const handleHeaderFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    if (!files.length) {
+      return;
+    }
+    requestCanvasFileUpload(files);
+    event.target.value = '';
+  };
+
+  const handleHeaderUploadClick = () => {
+    fileUploadInputRef.current?.click();
   };
 
   // Resize handlers
@@ -374,6 +645,18 @@ const App: React.FC = () => {
       document.body.style.userSelect = '';
     };
   }, [isResizing, resizeStartX, resizeStartWidth]);
+
+  useEffect(() => {
+    if (!documentViewerOpen) {
+      setInlineVideoSourceId(null);
+    }
+  }, [documentViewerOpen]);
+
+  useEffect(() => {
+    if (inlineVideoSourceId && !sources.some((source) => source.id === inlineVideoSourceId)) {
+      setInlineVideoSourceId(null);
+    }
+  }, [inlineVideoSourceId, sources]);
 
 
   const handleSaveSettings = () => {
@@ -488,32 +771,58 @@ Here is the learner's question: ${message}`;
     setCommandPaletteOpen(false);
     
     switch (command) {
+      case 'draw':
+        dispatchCanvasCommand({ type: 'set-tool', tool: 'draw' });
+        break;
+      case 'text':
+        dispatchCanvasCommand({ type: 'set-tool', tool: 'textbox' });
+        break;
+      case 'erase':
+        dispatchCanvasCommand({ type: 'set-tool', tool: 'eraser' });
+        break;
+      case 'clear':
+        dispatchCanvasCommand({ type: 'clear-canvas' });
+        break;
+      case 'export':
+        dispatchCanvasCommand({ type: 'export-canvas' });
+        break;
+      case 'grid':
+        dispatchCanvasCommand({ type: 'toggle-grid' });
+        break;
+      case 'document':
       case 'toggle-sources':
         setDocumentViewerOpen(!documentViewerOpen);
         break;
+      case 'settings':
       case 'open-settings':
         setShowSettings(!showSettings);
         break;
+      case 'audio':
       case 'generate-audio-overview':
         setSelectedStudyTool('audio');
         setShowStudyTools(true);
         break;
+      case 'video':
       case 'generate-video-overview':
         setSelectedStudyTool('video');
         setShowStudyTools(true);
         break;
+      case 'mindmap':
       case 'create-mind-map':
         setSelectedStudyTool('mindmap');
         setShowStudyTools(true);
         break;
+      case 'reports':
       case 'generate-reports':
         setSelectedStudyTool('reports');
         setShowStudyTools(true);
         break;
+      case 'flashcards':
       case 'create-flashcards':
         setSelectedStudyTool('flashcards');
         setShowStudyTools(true);
         break;
+      case 'quiz':
       case 'generate-quiz':
         setSelectedStudyTool('quiz');
         setShowStudyTools(true);
@@ -559,6 +868,14 @@ Here is the learner's question: ${message}`;
     <div className="min-h-screen bg-background text-foreground dark">
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 shadow-sm">
+        <input
+          ref={fileUploadInputRef}
+          type="file"
+          multiple
+          accept=".pdf,.txt,.md,.markdown,image/*"
+          className="hidden"
+          onChange={handleHeaderFileChange}
+        />
         <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex flex-1 min-w-[220px] items-center gap-3">
@@ -658,6 +975,15 @@ Here is the learner's question: ${message}`;
               >
                 <FileText className="h-4 w-4" />
                 {documentViewerOpen ? 'Hide Sources' : 'Sources'}
+              </button>
+
+              <button
+                onClick={handleHeaderUploadClick}
+                className={`${pillButtonClasses} border-dashed border-blue-500/50 bg-blue-500/5 text-blue-100 hover:text-white`}
+                title="Upload a PDF, image, or text doc directly to the canvas"
+              >
+                <Upload className="h-4 w-4" />
+                Upload to Canvas
               </button>
 
               <button
@@ -783,6 +1109,19 @@ Here is the learner's question: ${message}`;
               </div>
 
             </div>
+
+            {sourcesNotification && (
+              <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-50">
+                <span>{sourcesNotification}</span>
+                <button
+                  onClick={() => setSourcesNotification(null)}
+                  className="rounded-full p-1 text-emerald-100 transition hover:bg-emerald-500/20"
+                  aria-label="Dismiss sources notification"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
 
             <div className="flex w-full flex-wrap items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">
@@ -981,335 +1320,129 @@ Here is the learner's question: ${message}`;
                 </div>
               </div>
 
-              {/* Source Type Tabs */}
-              <div className="px-6 py-3 border-b border-border">
-                <div className="grid grid-cols-5 gap-1 bg-muted/30 rounded-lg p-1">
-                  {[
-                    { type: 'document', icon: File, label: 'Docs', color: 'text-blue-500' },
-                    { type: 'youtube', icon: Video, label: 'Video', color: 'text-red-500' },
-                    { type: 'weblink', icon: Globe, label: 'Web', color: 'text-green-500' },
-                    { type: 'image', icon: Upload, label: 'Image', color: 'text-purple-500' },
-                    { type: 'paste', icon: Clipboard, label: 'Paste', color: 'text-orange-500' }
-                  ].map(({ type, icon: Icon, label, color }) => (
-                    <button
-                      key={type}
-                      onClick={() => setActiveSourceType(type as any)}
-                      className={`flex flex-col items-center justify-center py-3 px-2 rounded-md text-xs font-medium transition-all duration-200 ${
-                        activeSourceType === type
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                      }`}
-                    >
-                      <Icon className={`h-5 w-5 mb-1 ${activeSourceType === type ? 'text-primary-foreground' : color}`} />
-                      <span className="text-xs">{label}</span>
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-col gap-3 px-6 py-4 border-b border-border bg-muted/20 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                <p className="sm:max-w-xl">
+                  We automatically add new YouTube explainers whenever you upload a PDF (use “Upload to Canvas” in the header). Just hit play and keep sketching on the board.
+                </p>
+                <button
+                  onClick={handleSummarizeAllVideos}
+                  disabled={summarizingAll || youtubeSources.length === 0}
+                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
+                    summarizingAll || youtubeSources.length === 0
+                      ? 'bg-slate-700 text-slate-400'
+                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  }`}
+                >
+                  {summarizingAll ? 'Summarizing all…' : 'Summarize all to canvas'}
+                </button>
               </div>
               
-              {/* Add Source Section */}
-              <div className="p-6 border-b border-border">
-                {activeSourceType === 'document' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <File className="h-5 w-5 text-blue-500" />
-                      <span className="text-sm font-medium">Upload Document</span>
-                    </div>
-                    <label className="w-full cursor-pointer block">
-                      <div className="border-2 border-dashed border-blue-300 hover:border-blue-400 bg-blue-50/10 hover:bg-blue-50/20 rounded-xl p-8 transition-all duration-300">
-                        <div className="flex flex-col items-center space-y-4">
-                          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-blue-500 shadow-lg">
-                            <File className="h-8 w-8 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <p className="text-sm font-semibold text-blue-600">Drop your document here</p>
-                            <p className="text-xs text-muted-foreground mt-1">PDF, TXT, MD files supported</p>
-                          </div>
-                        </div>
-                      </div>
-                      <input
-                        type="file"
-                        accept=".pdf,.txt,.md"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            if (file.type === 'text/plain') {
-                              const text = await file.text();
-                              addSource('document', {
-                                title: file.name,
-                                content: text,
-                                description: `${text.length} characters`
-                              });
-                            } else {
-                              alert('PDF support coming soon! Try uploading a .txt file.');
-                            }
-                          }
-                        }}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-                )}
-
-                {activeSourceType === 'youtube' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Video className="h-5 w-5 text-red-500" />
-                      <span className="text-sm font-medium">Add YouTube Video</span>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Video title"
-                          className="w-full px-4 py-3 bg-muted border border-red-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
-                          id="youtube-title"
-                        />
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="url"
-                          placeholder="YouTube URL (e.g., https://youtube.com/watch?v=...)"
-                          className="w-full px-4 py-3 bg-muted border border-red-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
-                          id="youtube-url"
-                        />
-                      </div>
-                      <button
-                        onClick={() => {
-                          const title = (document.getElementById('youtube-title') as HTMLInputElement)?.value;
-                          const url = (document.getElementById('youtube-url') as HTMLInputElement)?.value;
-                          if (title && url) {
-                            addSource('youtube', { title, url, description: 'YouTube video' });
-                            (document.getElementById('youtube-title') as HTMLInputElement).value = '';
-                            (document.getElementById('youtube-url') as HTMLInputElement).value = '';
-                          }
-                        }}
-                        className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
-                      >
-                        Add Video
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {activeSourceType === 'weblink' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Globe className="h-5 w-5 text-green-500" />
-                      <span className="text-sm font-medium">Add Web Link</span>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Link title"
-                          className="w-full px-4 py-3 bg-muted border border-green-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-                          id="link-title"
-                        />
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="url"
-                          placeholder="Website URL"
-                          className="w-full px-4 py-3 bg-muted border border-green-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-                          id="link-url"
-                        />
-                      </div>
-                      <div className="relative">
-                        <textarea
-                          placeholder="Description (optional)"
-                          className="w-full px-4 py-3 bg-muted border border-green-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none transition-all"
-                          rows={3}
-                          id="link-description"
-                        />
-                      </div>
-                      <button
-                        onClick={() => {
-                          const title = (document.getElementById('link-title') as HTMLInputElement)?.value;
-                          const url = (document.getElementById('link-url') as HTMLInputElement)?.value;
-                          const description = (document.getElementById('link-description') as HTMLTextAreaElement)?.value;
-                          if (title && url) {
-                            addSource('weblink', { title, url, description });
-                            (document.getElementById('link-title') as HTMLInputElement).value = '';
-                            (document.getElementById('link-url') as HTMLInputElement).value = '';
-                            (document.getElementById('link-description') as HTMLTextAreaElement).value = '';
-                          }
-                        }}
-                        className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
-                      >
-                        Add Link
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {activeSourceType === 'image' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Upload className="h-5 w-5 text-purple-500" />
-                      <span className="text-sm font-medium">Add Image</span>
-                    </div>
-                    <label className="w-full cursor-pointer block">
-                      <div className="border-2 border-dashed border-purple-300 hover:border-purple-400 bg-purple-50/10 hover:bg-purple-50/20 rounded-xl p-8 transition-all duration-300">
-                        <div className="flex flex-col items-center space-y-4">
-                          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-purple-500 shadow-lg">
-                            <Upload className="h-8 w-8 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <p className="text-sm font-semibold text-purple-600">Drop your image here</p>
-                            <p className="text-xs text-muted-foreground mt-1">JPG, PNG, GIF files supported</p>
-                          </div>
-                        </div>
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              addSource('image', {
-                                title: file.name,
-                                url: event.target?.result as string,
-                                description: `${file.size} bytes`
-                              });
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-                )}
-
-                {activeSourceType === 'paste' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Clipboard className="h-5 w-5 text-orange-500" />
-                      <span className="text-sm font-medium">Paste Your Material</span>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Material title"
-                          className="w-full px-4 py-3 bg-muted border border-orange-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-                          id="paste-title"
-                        />
-                      </div>
-                      <div className="relative">
-                        <textarea
-                          placeholder="Paste your text content here... (notes, articles, code, etc.)"
-                          className="w-full px-4 py-3 bg-muted border border-orange-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none transition-all"
-                          rows={8}
-                          id="paste-content"
-                        />
-                      </div>
-                      <div className="relative">
-                        <textarea
-                          placeholder="Description (optional)"
-                          className="w-full px-4 py-3 bg-muted border border-orange-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none transition-all"
-                          rows={2}
-                          id="paste-description"
-                        />
-                      </div>
-                      <button
-                        onClick={() => {
-                          const title = (document.getElementById('paste-title') as HTMLInputElement)?.value;
-                          const content = (document.getElementById('paste-content') as HTMLTextAreaElement)?.value;
-                          const description = (document.getElementById('paste-description') as HTMLTextAreaElement)?.value;
-                          if (title && content) {
-                            addSource('paste', { 
-                              title, 
-                              content, 
-                              description: description || `${content.length} characters`
-                            });
-                            (document.getElementById('paste-title') as HTMLInputElement).value = '';
-                            (document.getElementById('paste-content') as HTMLTextAreaElement).value = '';
-                            (document.getElementById('paste-description') as HTMLTextAreaElement).value = '';
-                          }
-                        }}
-                        className="w-full py-3 px-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
-                      >
-                        Add Material
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* Sources List */}
               <div className="flex-1 p-6 overflow-y-auto">
                 <div className="space-y-3">
-                  {sources.length === 0 ? (
-                    <div className="text-center py-8">
+                  {youtubeSources.length === 0 ? (
+                    <div className="text-center py-12">
                       <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted mx-auto mb-3">
-                        <Plus className="h-6 w-6 text-muted-foreground" />
+                        <Video className="h-6 w-6 text-muted-foreground" />
                       </div>
-                      <p className="text-sm text-muted-foreground">No sources added yet</p>
-                      <p className="text-xs text-muted-foreground">Add documents, videos, or links above</p>
+                      <p className="text-sm text-muted-foreground">No video recommendations yet</p>
+                      <p className="text-xs text-muted-foreground">Upload a PDF to see curated explainers.</p>
                     </div>
                   ) : (
-                    sources.map((source) => (
-                      <div key={source.id} className="p-4 bg-gradient-to-r from-muted/30 to-muted/50 border border-border rounded-xl hover:shadow-md transition-all duration-200">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-start space-x-3 flex-1">
-                            <div className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-sm ${
-                              source.type === 'youtube' ? 'bg-red-500' :
-                              source.type === 'weblink' ? 'bg-green-500' :
-                              source.type === 'image' ? 'bg-purple-500' :
-                              source.type === 'document' ? 'bg-blue-500' :
-                              'bg-orange-500'
-                            }`}>
-                              {source.type === 'youtube' && <Video className="h-5 w-5 text-white" />}
-                              {source.type === 'weblink' && <Globe className="h-5 w-5 text-white" />}
-                              {source.type === 'image' && <Upload className="h-5 w-5 text-white" />}
-                              {source.type === 'document' && <File className="h-5 w-5 text-white" />}
-                              {source.type === 'paste' && <Clipboard className="h-5 w-5 text-white" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-sm font-semibold truncate text-foreground">{source.title}</h4>
+                    youtubeSources.map((source) => {
+                      const resolvedVideoId = source.videoId ?? (source.url ? extractVideoIdFromUrl(source.url) : null);
+                      const isInlinePlaying = inlineVideoSourceId === source.id && Boolean(resolvedVideoId);
+                      const embedUrl = resolvedVideoId
+                        ? `https://www.youtube.com/embed/${encodeURIComponent(resolvedVideoId)}?autoplay=1&modestbranding=1`
+                        : null;
+                      return (
+                        <div key={source.id} className="rounded-2xl border border-border bg-card/70 p-4 shadow-sm">
+                          <div className="flex flex-col gap-3 sm:flex-row">
+                            {isInlinePlaying && embedUrl ? (
+                              <div
+                                className="relative w-full overflow-hidden rounded-xl border border-border bg-black sm:h-28 sm:w-44 sm:flex-shrink-0"
+                                style={{ aspectRatio: '16 / 9' }}
+                              >
+                                <iframe
+                                  src={embedUrl}
+                                  title={`${source.title} inline player`}
+                                  className="absolute inset-0 h-full w-full"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                />
+                              </div>
+                            ) : source.thumbnail ? (
+                              <img
+                                src={source.thumbnail}
+                                alt={source.title}
+                                className="h-24 w-full rounded-xl border border-border object-cover sm:h-28 sm:w-44 sm:flex-shrink-0"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground sm:h-28 sm:w-44 sm:flex-shrink-0">
+                                <Video className="h-6 w-6" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-sm font-semibold text-foreground truncate">{source.title}</h4>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {source.channelTitle ? `${source.channelTitle}` : 'YouTube'}
+                                {source.channelSubscribers
+                                  ? ` • ${Intl.NumberFormat('en', { notation: 'compact' }).format(source.channelSubscribers)} subscribers`
+                                  : ''}
+                              </p>
                               {source.description && (
-                                <p className="text-xs text-muted-foreground mt-1">{source.description}</p>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.description}</p>
                               )}
-                              {source.url && source.type !== 'image' && (
+                              {source.url && (
                                 <a
                                   href={source.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-xs text-blue-500 hover:text-blue-400 truncate block mt-1 underline"
+                                  className="mt-2 inline-flex items-center text-xs font-semibold text-blue-400 hover:text-blue-300 underline-offset-2"
                                 >
-                                  {source.url}
+                                  Watch on YouTube
+                                  <ExternalLink className="ml-1 h-3 w-3" />
                                 </a>
                               )}
-                              {source.type === 'image' && source.url && (
-                                <img
-                                  src={source.url}
-                                  alt={source.title}
-                                  className="mt-2 max-w-full h-20 object-cover rounded-lg border border-border"
-                                />
-                              )}
-                              {source.type === 'paste' && source.content && (
-                                <div className="mt-2 p-2 bg-muted/50 rounded-lg border border-border">
-                                  <p className="text-xs text-muted-foreground line-clamp-3">
-                                    {source.content.substring(0, 100)}...
-                                  </p>
-                                </div>
-                              )}
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  onClick={() => handleExportVideoSummary(source)}
+                                  disabled={videoSummaryLoadingId === source.id}
+                                  className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                                    videoSummaryLoadingId === source.id
+                                      ? 'bg-slate-700 text-slate-300'
+                                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                  }`}
+                                >
+                                  {videoSummaryLoadingId === source.id ? 'Summarizing…' : 'Summarize to Canvas'}
+                                </button>
+                                {resolvedVideoId && (
+                                  <button
+                                    onClick={() => handleToggleInlineVideo(source)}
+                                    className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                                      isInlinePlaying
+                                        ? 'bg-emerald-500 text-white hover:bg-emerald-400'
+                                        : 'border border-border text-muted-foreground hover:border-emerald-400 hover:text-emerald-400'
+                                    }`}
+                                  >
+                                    {isInlinePlaying ? 'Close inline player' : 'Play inline'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => removeSource(source.id)}
+                                  className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-red-100 hover:text-red-600 transition"
+                                  title="Remove source"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
                             </div>
                           </div>
-                          <button
-                            onClick={() => removeSource(source.id)}
-                            className="ml-2 p-2 hover:bg-red-100 hover:text-red-600 rounded-lg text-muted-foreground hover:text-foreground transition-all duration-200"
-                            title="Remove source"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1340,6 +1473,8 @@ Here is the learner's question: ${message}`;
                   onOpenCalculator={handleOpenCalculator}
                   onOpenMolView={handleOpenMolView}
                   onOpenPeriodicTable={handleOpenPeriodicTable}
+                  onPdfCaptured={handlePdfInsightsGeneration}
+                  onPdfAddToChat={handleAddPdfToChat}
                 />
               )}
               
@@ -1355,7 +1490,7 @@ Here is the learner's question: ${message}`;
 
             {/* Chat Start Button - Floating */}
             {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && (
-              <div className="absolute top-28 right-8 z-10">
+              <div className="absolute top-4 right-8 z-10">
                 <DarkButtonWithIcon
                   onClick={() => {
                     console.log('Starting chat panel...');
@@ -1515,7 +1650,6 @@ Here is the learner's question: ${message}`;
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden">
             <ChemistryWidgetPanel
-              initialView={chemistryPanelInitialView}
               onClose={() => setShowChemistryPanel(false)}
               startFullscreen
             />
