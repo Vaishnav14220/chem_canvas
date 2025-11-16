@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, X, Loader2, AlertCircle, CheckCircle, Eye, Atom, Database, ExternalLink } from 'lucide-react';
+import { Search, X, Loader2, AlertCircle, CheckCircle, Layers3, Atom, Database, ExternalLink } from 'lucide-react';
 import {
   type PDBProteinData,
   searchPDBProteins,
   getPDBViewerUrl,
   getPDBEntryUrl,
 } from '../services/pdbService';
-import MolstarProteinViewer from './MolstarProteinViewer';
 
 interface ProteinSearchProps {
   onSelectProtein?: (proteinData: PDBProteinData) => void;
@@ -38,8 +37,6 @@ export default function ProteinSearch({
   const [selectedProtein, setSelectedProtein] = useState<PDBProteinData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [viewerProtein, setViewerProtein] = useState<PDBProteinData | null>(null);
-  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
   const handleSearch = useCallback(async (queryOverride?: string) => {
     const term = (queryOverride ?? searchTerm).trim();
@@ -81,8 +78,6 @@ export default function ProteinSearch({
     setSelectedProtein(null);
     setError(null);
     setHasSearched(false);
-    setIsViewerOpen(false);
-    setViewerProtein(null);
     if (onClose) {
       onClose();
     }
@@ -218,17 +213,17 @@ export default function ProteinSearch({
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setViewerProtein(protein);
-                            setIsViewerOpen(true);
+                            handleSelectProtein(protein);
+                            handleClose();
                           }}
-                          className="flex items-center gap-1 px-2 py-1 bg-emerald-600/30 hover:bg-emerald-500/30 text-emerald-200 hover:text-emerald-50 rounded text-xs transition-colors"
+                          className="flex items-center gap-1 px-2 py-1 bg-emerald-600/60 hover:bg-emerald-500/60 text-white rounded text-xs transition-colors"
                         >
-                          <Eye size={12} />
-                          Mol* Preview
+                          <Layers3 size={12} />
+                          Load 3D on Canvas
                         </button>
                         <button
                           onClick={(e) => {
@@ -250,18 +245,6 @@ export default function ProteinSearch({
                           <ExternalLink size={12} />
                           RCSB Viewer
                         </button>
-      {viewerProtein && (
-        <MolstarProteinViewer
-          pdbId={viewerProtein.entryId}
-          isOpen={isViewerOpen}
-          onClose={() => {
-            setIsViewerOpen(false);
-            setViewerProtein(null);
-          }}
-          title={viewerProtein.displayName || `PDB ${viewerProtein.entryId}`}
-          subtitle={viewerProtein.title}
-        />
-      )}
                       </div>
                     </div>
                   ))}

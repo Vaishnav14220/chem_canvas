@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Loader2, Beaker } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Search, Loader2 } from 'lucide-react';
 import { fetchStructuredReaction, type StructuredReactionPayload } from '../services/structuredReactionService';
 import { reactionSmilesToSVGHuggingFace } from '../services/rdkitService';
 import { sanitizeReactionSmilesInput, stripAtomMappings } from '../utils/reactionSanitizer';
@@ -14,12 +14,19 @@ interface InlineReactionSearchProps {
   className?: string;
 }
 
+const STATUS_MESSAGES = [
+  'fetching reaction data…',
+  'reactants resolved — preparing mechanism…',
+  'rendering SVG preview…'
+] as const;
+
 export default function InlineReactionSearch({ onSelectReaction, className = '' }: InlineReactionSearchProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchResult, setSearchResult] = useState<StructuredReactionPayload | null>(null);
+  const [statusIndex, setStatusIndex] = useState<number>(-1);
   const [showResult, setShowResult] = useState(false);
+  const [reactionSummary, setReactionSummary] = useState<string | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const componentRef = useRef<HTMLDivElement>(null);
 
@@ -32,9 +39,7 @@ export default function InlineReactionSearch({ onSelectReaction, className = '' 
     }
 
     if (value.trim().length === 0) {
-      setSearchResult(null);
       setShowResult(false);
-      return;
     }
   }, []);
 
@@ -59,47 +64,44 @@ export default function InlineReactionSearch({ onSelectReaction, className = '' 
     };
   }, []);
 
-  const performSearch = async (query: string) => {
-    if (!query.trim()) return;
-
-    setIsLoading(true);
-    setError(null);
-    setSearchResult(null);
-
-    try {
-      const payload = await fetchStructuredReaction(query.trim(), { mode: 'name' });
-      
-      if (payload) {
-        // Immediately insert to canvas without showing preview
-        await handleInsertReaction(payload);
-      } else {
-        setError('No reaction data found');
+  const summarizeReactants = (payload: StructuredReactionPayload) => {
+    const namesList =
+      payload['reactant names'] ||
+      payload.reactants ||
+      payload['reactantsmiles'] ||
+      payload['reactants'];
+    if (Array.isArray(namesList) && namesList.length > 0) {
+      const names = namesList
+        .map((item) => (typeof item === 'string' ? item : item.name))
+        .filter(Boolean);
+      if (names.length) {
+        return `Reactants: ${names.join(', ')}`;
       }
-    } catch (err) {
-      console.error('Reaction search error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to search reaction');
-    } finally {
-      setIsLoading(false);
     }
+    if (typeof namesList === 'string' && namesList.trim().length > 0) {
+      return `Reactants: ${namesList}`;
+    }
+    if (payload['reaction smiles']) {
+      return `SMILES: ${payload['reaction smiles'].replace(/\s+/g, ' ').slice(0, 80)}`;
+    }
+    return null;
   };
 
   const handleInsertReaction = async (payload: StructuredReactionPayload) => {
     if (!payload['reaction smiles']) return;
 
     setIsLoading(true);
+    setStatusIndex(2);
+    setReactionSummary(summarizeReactants(payload));
+
     try {
       const targetSmiles = payload['reaction smiles'];
       const sanitizedForRender = stripAtomMappings(sanitizeReactionSmilesInput(targetSmiles) ?? targetSmiles);
       const svgData = await reactionSmilesToSVGHuggingFace(sanitizedForRender);
-      
+
       if (svgData && onSelectReaction) {
-        onSelectReaction({
-          payload,
-          svgData
-        });
-        // Clear search after successful insertion
+        onSelectReaction({ payload, svgData });
         setSearchTerm('');
-        setSearchResult(null);
         setShowResult(false);
         setError(null);
       } else {
@@ -110,6 +112,34 @@ export default function InlineReactionSearch({ onSelectReaction, className = '' 
       setError('Failed to generate reaction SVG');
     } finally {
       setIsLoading(false);
+      setStatusIndex(-1);
+    }
+  };
+
+  const performSearch = async (query: string) => {
+    if (!query.trim()) return;
+
+    setIsLoading(true);
+    setStatusIndex(0);
+    setReactionSummary(null);
+    setError(null);
+    setShowResult(true);
+
+    try {
+      const payload = await fetchStructuredReaction(query.trim(), { mode: 'name' });
+      setStatusIndex(1);
+
+      if (payload) {
+        await handleInsertReaction(payload);
+      } else {
+        setError('No reaction data found');
+      }
+    } catch (err) {
+      console.error('Reaction search error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to search reaction');
+    } finally {
+      setIsLoading(false);
+      setStatusIndex(-1);
     }
   };
 
@@ -140,18 +170,17 @@ export default function InlineReactionSearch({ onSelectReaction, className = '' 
         </button>
       </div>
 
-      {error && (
-        <div className="mt-2 rounded-lg border border-red-500/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
-          {error}
+      {isLoading && (
+        <div className="mt-3 reaction-status-card">
+          <p className="reaction-status-label">Searching for reaction… please wait.</p>
+          {statusIndex >= 0 && <p className="reaction-status-msg">{STATUS_MESSAGES[statusIndex]}</p>}
+          {reactionSummary && <p className="reaction-status-detail">{reactionSummary}</p>}
         </div>
       )}
 
-      {isLoading && (
-        <div className="mt-2 rounded-lg border border-purple-500/50 bg-purple-900/20 px-3 py-2 text-sm text-purple-300">
-          <div className="flex items-center gap-2">
-            <Loader2 size={14} className="animate-spin" />
-            <span>Fetching reaction data and generating SVG...</span>
-          </div>
+      {error && (
+        <div className="mt-2 rounded-lg border border-red-500/50 bg-red-900/20 px-3 py-2 text-sm text-red-400">
+          {error}
         </div>
       )}
     </div>

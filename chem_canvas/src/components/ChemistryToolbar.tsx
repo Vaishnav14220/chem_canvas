@@ -181,6 +181,7 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
 
   const containerStyle = width ? { width } : undefined;
   const widthLabel = typeof width === 'number' ? `${Math.round(width)}px` : null;
+  const showShapes = openSections.shapes;
 
 
   return (
@@ -319,12 +320,12 @@ const ChemistryToolbar: React.FC<ChemistryToolbarProps> = ({
               <span>Shape Library</span>
               <ChevronDown
                 size={14}
-                className={`transition-transform ${openSections.shapes ? 'rotate-180' : ''}`}
+                className={`transition-transform ${showShapes ? 'rotate-180' : ''}`}
               />
             </button>
             <div
               className={`grid grid-cols-2 gap-2 px-3 pb-3 transition-[max-height,opacity] duration-200 ${
-                openSections.shapes ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
+                showShapes ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
               }`}
             >
               {shapes.map((shape) => (

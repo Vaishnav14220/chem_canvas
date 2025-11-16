@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Send, Loader2, Sparkles, FileText } from 'lucide-react';
 import type { AIInteraction, InteractionMode } from '../types';
 import { LLMMessage, VerifiedSmilesBlock } from './LLMResponseBlocks';
+import AIToolResponseCard from './AIToolResponseCard';
 
 interface AIChatProps {
   onSendMessage: (message: string, options?: { mode?: InteractionMode }) => Promise<void>;
@@ -137,7 +138,7 @@ const AIChat: React.FC<AIChatProps> = ({
                   </div>
                 </div>
               )}
-              {interaction.response?.trim() && (
+              {(interaction.response?.trim() || interaction.toolResponses?.length) && (
                 <div className="flex justify-start">
                   <div className="bg-gray-800 rounded-2xl rounded-tl-sm p-4 max-w-[75ch] shadow-md border border-gray-700 space-y-3 break-words">
                     <div className="flex items-center gap-2">
@@ -146,13 +147,24 @@ const AIChat: React.FC<AIChatProps> = ({
                       </div>
                       <p className="text-xs font-semibold text-gray-300">AI Assistant</p>
                     </div>
-                    <div className="text-sm text-gray-200">
-                      <LLMMessage
-                        content={interaction.response}
-                        onCitationClick={onOpenDocument}
-                      />
-                    </div>
-                    <VerifiedSmilesBlock sourceText={interaction.response} />
+                    {interaction.toolResponses?.length ? (
+                      <div className="space-y-3">
+                        {interaction.toolResponses.map(tool => (
+                          <AIToolResponseCard key={tool.id} response={tool} />
+                        ))}
+                      </div>
+                    ) : null}
+                    {interaction.response?.trim() && (
+                      <>
+                        <div className="text-sm text-gray-200">
+                          <LLMMessage
+                            content={interaction.response}
+                            onCitationClick={onOpenDocument}
+                          />
+                        </div>
+                        <VerifiedSmilesBlock sourceText={interaction.response} />
+                      </>
+                    )}
                   </div>
                 </div>
               )}

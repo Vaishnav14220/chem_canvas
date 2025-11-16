@@ -3,6 +3,8 @@
 
 const PDB_BASE_URL = 'https://search.rcsb.org/rcsbsearch/v2/query';
 const PDB_DATA_URL = 'https://files.rcsb.org/download';
+const ALPHAFOLD_DATA_URL = 'https://alphafold.ebi.ac.uk/files';
+const PDBE_ENTRY_FILES_BASE = 'https://www.ebi.ac.uk/pdbe/entry-files';
 
 export interface PDBProteinData {
   entryId: string;
@@ -20,6 +22,9 @@ export interface PDBProteinData {
   displayName: string;
   source: 'pdb';
   type: 'protein';
+  jsmolScript?: string;
+  interactionSummary?: string;
+  structureFormat?: 'pdb' | 'cif';
 }
 
 export const searchPDBProteins = async (
@@ -90,11 +95,12 @@ export const searchPDBProteins = async (
           method: detailData.exptl?.[0]?.method || 'Unknown',
           depositionDate: detailData.rcsb_accession_info?.deposit_date || '',
           pdbUrl: `${PDB_DATA_URL}/${entryId}.pdb`,
-          cifUrl: `${PDB_DATA_URL}/${entryId}.cif`,
-          mmcifUrl: `${PDB_DATA_URL}/${entryId}.cif`,
+          cifUrl: `${PDBE_ENTRY_FILES_BASE}/${entryId.toLowerCase()}.cif`,
+          mmcifUrl: `${PDBE_ENTRY_FILES_BASE}/${entryId.toLowerCase()}.cif`,
           displayName: detailData.struct?.title || `PDB ${entryId.toUpperCase()}`,
           source: 'pdb',
-          type: 'protein'
+          type: 'protein',
+          jsmolScript: `load "${PDB_DATA_URL}/${entryId}.pdb"; cartoon only; color structure; spin y 2;`
         };
 
         proteins.push(protein);
@@ -109,11 +115,12 @@ export const searchPDBProteins = async (
           method: 'Unknown',
           depositionDate: '',
           pdbUrl: `${PDB_DATA_URL}/${entryId}.pdb`,
-          cifUrl: `${PDB_DATA_URL}/${entryId}.cif`,
-          mmcifUrl: `${PDB_DATA_URL}/${entryId}.cif`,
+          cifUrl: `${PDBE_ENTRY_FILES_BASE}/${entryId.toLowerCase()}.cif`,
+          mmcifUrl: `${PDBE_ENTRY_FILES_BASE}/${entryId.toLowerCase()}.cif`,
           displayName: `PDB ${entryId.toUpperCase()}`,
           source: 'pdb',
-          type: 'protein'
+          type: 'protein',
+          jsmolScript: `load "${PDB_DATA_URL}/${entryId}.pdb"; cartoon only; color structure; spin y 2;`
         };
         proteins.push(basicProtein);
       }
@@ -126,21 +133,89 @@ export const searchPDBProteins = async (
   }
 };
 
-export const fetchPDBStructure = async (pdbId: string, format: 'pdb' | 'cif' = 'pdb'): Promise<string | null> => {
-  const url = format === 'pdb'
-    ? `${PDB_DATA_URL}/${pdbId}.pdb`
-    : `${PDB_DATA_URL}/${pdbId}.cif`;
+const normalizeAlphaFoldId = (pdbId: string): string => {
+  let normalized = pdbId.trim().toUpperCase();
 
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch PDB structure: ${response.status}`);
+  if (normalized.startsWith('AF_')) {
+    normalized = `AF-${normalized.slice(3)}`;
+  } else if (normalized.startsWith('AF') && normalized[2] !== '-') {
+    normalized = `AF-${normalized.slice(2)}`;
+  }
+
+  const hasIsoformSuffix = /-F\d+$/i.test(normalized);
+  if (!hasIsoformSuffix) {
+    const trailingIsoform = normalized.match(/F\d+$/i)?.[0];
+    if (trailingIsoform) {
+      normalized = `${normalized.slice(0, -trailingIsoform.length)}-${trailingIsoform.toUpperCase()}`;
+    } else {
+      normalized = `${normalized}-F1`;
     }
-    return await response.text();
-  } catch (error) {
-    console.error(`Error fetching PDB structure ${pdbId}:`, error);
+  }
+
+  return normalized.toUpperCase();
+};
+
+const buildAlphaFoldUrl = (pdbId: string, format: 'pdb' | 'cif') => {
+  const normalized = normalizeAlphaFoldId(pdbId);
+  const extension = format === 'pdb' ? 'pdb' : 'cif';
+  return `${ALPHAFOLD_DATA_URL}/${normalized}-model_v4.${extension}`;
+};
+
+export interface FetchedStructureData {
+  data: string;
+  format: 'pdb' | 'cif';
+}
+
+export const fetchPDBStructure = async (
+  pdbId: string,
+  preferredFormat: 'pdb' | 'cif' = 'pdb'
+): Promise<FetchedStructureData | null> => {
+  const trimmedId = pdbId.trim();
+  if (!trimmedId) {
     return null;
   }
+
+  const normalizedId = trimmedId.toUpperCase();
+  const candidateSources: Array<{ url: string; format: 'pdb' | 'cif' }> = [];
+  const lowerId = normalizedId.toLowerCase();
+
+  if (/^AF[-_]?/i.test(normalizedId)) {
+    candidateSources.push({ url: buildAlphaFoldUrl(normalizedId, preferredFormat), format: preferredFormat });
+  }
+
+  if (preferredFormat === 'pdb') {
+    candidateSources.push(
+      { url: `${PDBE_ENTRY_FILES_BASE}/pdb${lowerId}.ent`, format: 'pdb' },
+      { url: `${PDB_DATA_URL}/${normalizedId}.pdb`, format: 'pdb' }
+    );
+    candidateSources.push(
+      { url: `${PDBE_ENTRY_FILES_BASE}/${lowerId}.cif`, format: 'cif' },
+      { url: `${PDB_DATA_URL}/${normalizedId}.cif`, format: 'cif' }
+    );
+  } else {
+    candidateSources.push(
+      { url: `${PDBE_ENTRY_FILES_BASE}/${lowerId}.cif`, format: 'cif' },
+      { url: `${PDB_DATA_URL}/${normalizedId}.cif`, format: 'cif' },
+      { url: `${PDBE_ENTRY_FILES_BASE}/pdb${lowerId}.ent`, format: 'pdb' },
+      { url: `${PDB_DATA_URL}/${normalizedId}.pdb`, format: 'pdb' }
+    );
+  }
+
+  for (const { url, format } of candidateSources) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        const text = await response.text();
+        return { data: text, format };
+      }
+      console.warn(`Failed to fetch PDB structure from ${url}: ${response.status}`);
+    } catch (error) {
+      console.warn(`Error fetching PDB structure from ${url}:`, error);
+    }
+  }
+
+  console.error(`Error fetching PDB structure ${normalizedId}: all sources failed.`);
+  return null;
 };
 
 export const getPDBViewerUrl = (pdbId: string): string => {

@@ -8,6 +8,7 @@ import { convertCanvasToChemistry } from '../services/chemistryConverter';
 import MineralSearch from './MineralSearch';
 import MineralCrystalPreview from './MineralCrystalPreview';
 import ProteinSearch from './ProteinSearch';
+import ProteinCanvasViewer from './ProteinCanvasViewer';
 import { type MoleculeData, type CrystalVisualData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID, getMoleculeBySmiles, getMoleculeByName } from '../services/pubchemService';
 import { buildCrystalVisualFromCif } from '../services/mineralService';
 import { type PDBProteinData, fetchPDBStructure } from '../services/pdbService';
@@ -17,15 +18,10 @@ import ChemistryStructureViewer from './ChemistryStructureViewer';
 import InlineMoleculeSearch from './InlineMoleculeSearch';
 import InlineReactionSearch, { type ReactionSearchResult } from './InlineReactionSearch';
 import PDBViewerEmbed from './PDBViewerEmbed';
-import MolstarProteinViewer from './MolstarProteinViewer';
 import ChemistryWidgetPanel from './ChemistryWidgetPanel';
 import { Diff, Hunk, parseDiff } from 'react-diff-view';
 import { createTwoFilesPatch } from 'diff';
 import 'react-diff-view/style/index.css';
-import { PluginCommands } from 'molstar/lib/mol-plugin/commands';
-import { Color } from 'molstar/lib/mol-util/color';
-import type { Viewer } from 'molstar/build/viewer/molstar';
-import 'molstar/build/viewer/molstar.css';
 
 const MIN_TOOLBAR_WIDTH = 280;
 const MAX_TOOLBAR_WIDTH = 480;
@@ -169,8 +165,6 @@ export default function Canvas({
   const [showProteinSearch, setShowProteinSearch] = useState(false);
   const [forceRedraw, setForceRedraw] = useState(0); // New state for forcing redraw
   const [showChemistryWidgetPanel, setShowChemistryWidgetPanel] = useState(false);
-  const [showPDBViewer, setShowPDBViewer] = useState(false);
-  const [pdbViewerData, setPdbViewerData] = useState<{ pdbId: string; title?: string } | null>(null);
   const [annotationLabelOptions, setAnnotationLabelOptions] = useState<string[]>(() => [...DEFAULT_ANNOTATION_LABELS]);
   const [annotationLabel, setAnnotationLabel] = useState(DEFAULT_ANNOTATION_LABELS[0]);
   const [customAnnotationLabel, setCustomAnnotationLabel] = useState('');
@@ -1510,12 +1504,13 @@ export default function Canvas({
 
     // Fetch the PDB structure data
     try {
-      const pdbStructure = await fetchPDBStructure(proteinData.entryId, 'pdb');
-      if (!pdbStructure) {
+      const structure = await fetchPDBStructure(proteinData.entryId, 'pdb');
+      if (!structure) {
         throw new Error('Failed to fetch PDB structure');
       }
 
-      proteinData.pdbData = pdbStructure;
+      proteinData.pdbData = structure.data;
+      proteinData.structureFormat = structure.format;
     } catch (error) {
       console.warn('Failed to fetch PDB structure, proceeding without it:', error);
     }
@@ -3536,7 +3531,7 @@ export default function Canvas({
     const centerY = shape.startY + height / 2;
 
     // If we have PDB data, render a basic 3D representation
-    if (data.pdbData) {
+    if (data.pdbData && data.structureFormat !== 'cif') {
       try {
         const pdbAtoms = parsePDBAtoms(data.pdbData);
         if (pdbAtoms.length > 0) {
@@ -5831,8 +5826,19 @@ export default function Canvas({
       {/* Selected Protein Display */}
       {selectedShape?.type === 'protein' && selectedShape.proteinData && (
         <div className="absolute top-8 right-8 z-20 flex flex-col gap-3 max-w-xs">
-          <div className="rounded-xl border border-slate-700/70 bg-slate-900/90 backdrop-blur-sm p-4 shadow-xl">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Selected Protein</p>
+          <div className="rounded-3xl border border-slate-700/60 bg-slate-900/90 backdrop-blur-sm p-3 shadow-2xl space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Selected Protein</p>
+            <div className="rounded-2xl border border-white/5 overflow-hidden">
+              <ProteinCanvasViewer
+                pdbId={selectedShape.proteinData.entryId}
+                pdbData={selectedShape.proteinData.pdbData}
+                structureFormat={selectedShape.proteinData.structureFormat}
+                cifUrl={selectedShape.proteinData.cifUrl}
+                height={220}
+                isInteractive
+                title={selectedShape.proteinData.displayName}
+              />
+            </div>
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-500/20 border border-rose-400/40">
                 <Atom className="text-rose-300" size={18} />
@@ -5848,18 +5854,14 @@ export default function Canvas({
               </div>
             </div>
 
-            <div className="mt-3 space-y-3">
+            <div className="space-y-3">
               <button
                 type="button"
                 onClick={() => {
-                  setPdbViewerData({
-                    pdbId: selectedShape.proteinData!.entryId,
-                    title: selectedShape.proteinData!.title
-                  });
-                  setShowPDBViewer(true);
+                  window.open(`https://www.rcsb.org/3d-view/${selectedShape.proteinData!.entryId.toUpperCase()}`, '_blank');
                 }}
                 className="w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 bg-rose-600/90 text-white hover:bg-rose-500"
-                title="Open interactive 3D Mol* viewer"
+                title="Open interactive 3D Mol* viewer on RCSB"
               >
                 <Database size={16} />
                 View 3D Structure (Mol*)
@@ -6319,18 +6321,6 @@ export default function Canvas({
         </div>
       )}
 
-      {/* PDB 3D Viewer Modal */}
-      {showPDBViewer && pdbViewerData && (
-        <MolstarProteinViewer
-          pdbId={pdbViewerData.pdbId}
-          title={pdbViewerData.title}
-          isOpen={showPDBViewer}
-          onClose={() => {
-            setShowPDBViewer(false);
-            setPdbViewerData(null);
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -10,6 +10,11 @@ interface ApiKeyStatus {
   failureCount: number;
 }
 
+const maskExternalKey = (key: string): string => {
+  if (!key) return '';
+  return key.length <= 13 ? key : `${key.substring(0, 10)}...${key.substring(key.length - 3)}`;
+};
+
 class ApiKeyRotationService {
   private apiKeys: ApiKeyStatus[] = [];
   private currentIndex: number = 0;
@@ -173,6 +178,47 @@ const API_KEYS = [
 
 export const apiKeyRotation = new ApiKeyRotationService(API_KEYS);
 
+const USER_KEY_COOLDOWN_MS = 60000;
+let userProvidedApiKey: string | null = null;
+let userApiKeyCooldownUntil: number | null = null;
+let userApiKeyFailureCount = 0;
+
+const isUserKeyAvailable = () => {
+  if (!userProvidedApiKey) return false;
+  if (userApiKeyCooldownUntil && Date.now() < userApiKeyCooldownUntil) {
+    return false;
+  }
+  return true;
+};
+
+const markUserKeyRateLimited = (retrySeconds?: number) => {
+  if (!userProvidedApiKey) {
+    return;
+  }
+  const cooldownMs = retrySeconds ? retrySeconds * 1000 : USER_KEY_COOLDOWN_MS;
+  userApiKeyCooldownUntil = Date.now() + cooldownMs;
+  userApiKeyFailureCount++;
+  const seconds = Math.ceil(cooldownMs / 1000);
+  console.warn(
+    `⚠️ User API key ${maskExternalKey(userProvidedApiKey)} rate limited. Cooldown: ~${seconds}s`
+  );
+};
+
+export const registerUserProvidedApiKey = (apiKey: string | null): void => {
+  if (apiKey) {
+    userProvidedApiKey = apiKey.trim();
+    console.log(`🔑 Registered user Gemini key ${maskExternalKey(userProvidedApiKey)}`);
+  } else {
+    userProvidedApiKey = null;
+  }
+  userApiKeyCooldownUntil = null;
+  userApiKeyFailureCount = 0;
+};
+
+export const clearUserProvidedApiKey = (): void => {
+  registerUserProvidedApiKey(null);
+};
+
 /**
  * Wrapper function to execute a Gemini API call with automatic key rotation
  */
@@ -181,31 +227,48 @@ export async function executeWithRotation<T>(
   maxRetries: number = API_KEYS.length
 ): Promise<T> {
   let lastError: Error | null = null;
+  const totalAttempts = maxRetries + (userProvidedApiKey ? 1 : 0);
+  let userKeyAttempted = false;
   
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const apiKey = apiKeyRotation.getNextKey();
-    
+  for (let attempt = 0; attempt < totalAttempts; attempt++) {
+    let apiKey: string | null = null;
+    let usingUserKey = false;
+
+    if (attempt < maxRetries) {
+      apiKey = apiKeyRotation.getNextKey();
+    }
+
     if (!apiKey) {
-      const stats = apiKeyRotation.getStats();
-      
-      // Check if keys are expired vs rate limited
-      const expiredCount = API_KEYS.filter((_, idx) => {
-        const keyStatus = (apiKeyRotation as any).apiKeys[idx];
-        return !keyStatus.isAvailable && !keyStatus.rateLimitResetTime;
-      }).length;
-      
-      if (expiredCount > 0) {
-        throw new Error(
-          `❌ ${expiredCount} API key(s) have EXPIRED and need to be renewed. ` +
-          `Remaining ${stats.total - expiredCount} keys are rate limited. ` +
-          `Please renew your API keys at: https://aistudio.google.com/app/apikey`
+      if (userProvidedApiKey && !userKeyAttempted) {
+        if (isUserKeyAvailable()) {
+          apiKey = userProvidedApiKey;
+          usingUserKey = true;
+          userKeyAttempted = true;
+          console.log(`✅ Using user-provided Gemini key ${maskExternalKey(userProvidedApiKey)}`);
+        } else {
+          const remainingMs = userApiKeyCooldownUntil ? Math.max(0, userApiKeyCooldownUntil - Date.now()) : USER_KEY_COOLDOWN_MS;
+          const waitSeconds = Math.ceil(remainingMs / 1000);
+          const cooldownError: any = new Error(
+            `Your personal Gemini API key is cooling down for ~${waitSeconds}s due to rate limits. Add a fresh key in Settings or wait before retrying.`
+          );
+          cooldownError.code = 'USER_KEY_RATE_LIMITED';
+          throw cooldownError;
+        }
+      } else {
+        if (userProvidedApiKey) {
+          const requireError: any = new Error(
+            'All shared Gemini API keys are currently rate limited. Your personal key is required to continue. Please add a Gemini API key in Settings.'
+          );
+          requireError.code = 'USER_KEY_REQUIRED';
+          throw requireError;
+        }
+        const stats = apiKeyRotation.getStats();
+        const noKeyError: any = new Error(
+          `All ${stats.total} shared Gemini API keys are currently rate limited. Please add your own Gemini API key in Settings or wait a few minutes and try again.`
         );
+        noKeyError.code = 'USER_KEY_REQUIRED';
+        throw noKeyError;
       }
-      
-      throw new Error(
-        `All ${stats.total} API keys are currently rate limited. ` +
-        `Please wait a few minutes and try again.`
-      );
     }
 
     try {
@@ -213,41 +276,53 @@ export async function executeWithRotation<T>(
       return result;
     } catch (error: any) {
       lastError = error;
-      
-      // Check if it's an expired API key error (400 with API_KEY_INVALID)
-      if (error.message?.includes('400') && 
-          (error.message?.toLowerCase().includes('api key expired') ||
-           error.message?.toLowerCase().includes('api_key_invalid'))) {
-        
-        apiKeyRotation.markAsFailed(apiKey, true); // Mark as expired
-        console.error(`Attempt ${attempt + 1}/${maxRetries}: API key expired, rotating to next key...`);
+      const message = String(error?.message ?? '').toLowerCase();
+      const retryMatch = error?.message?.match(/retry in ([\d.]+)s/i);
+      const retrySeconds = retryMatch ? parseFloat(retryMatch[1]) : undefined;
+
+      if (message.includes('api key expired') || message.includes('api_key_invalid')) {
+        if (usingUserKey) {
+          const invalidError: any = new Error(
+            'Your Gemini API key appears invalid or expired. Please update it in Settings.'
+          );
+          invalidError.code = 'USER_KEY_INVALID';
+          throw invalidError;
+        }
+        apiKeyRotation.markAsFailed(apiKey, true);
+        console.error(`Attempt ${attempt + 1}/${totalAttempts}: API key expired, rotating to next key...`);
         continue;
       }
-      
-      // Check if it's a rate limit error (429)
-      if (error.message?.includes('429') || 
-          error.message?.toLowerCase().includes('quota exceeded') ||
-          error.message?.toLowerCase().includes('rate limit')) {
-        
-        // Extract retry time if available
-        const retryMatch = error.message.match(/retry in ([\d.]+)s/i);
-        const retrySeconds = retryMatch ? parseFloat(retryMatch[1]) : undefined;
-        
+
+      if (message.includes('429') || message.includes('quota exceeded') || message.includes('rate limit')) {
+        if (usingUserKey) {
+          markUserKeyRateLimited(retrySeconds);
+          const stats = apiKeyRotation.getStats();
+          if (stats.available === 0) {
+            const exhaustedError: any = new Error(
+              'Your Gemini API key hit its rate limit. Add another key in Settings or wait before retrying.'
+            );
+            exhaustedError.code = 'USER_KEY_RATE_LIMITED';
+            throw exhaustedError;
+          }
+          console.warn('User-provided key rate limited, falling back to shared pool.');
+          continue;
+        }
         apiKeyRotation.markAsRateLimited(apiKey, retrySeconds);
-        console.log(`Attempt ${attempt + 1}/${maxRetries}: Rate limit hit, rotating to next key...`);
+        console.log(`Attempt ${attempt + 1}/${totalAttempts}: Rate limit hit, rotating to next key...`);
         continue;
       }
-      
-      // For other errors, mark as failed but continue trying
-      if (error.message?.includes('404') || error.message?.includes('not found')) {
-        // Model not found - don't retry with other keys
+
+      if (message.includes('404') || message.includes('not found')) {
         throw error;
       }
-      
+
+      if (usingUserKey) {
+        userApiKeyFailureCount++;
+        throw error;
+      }
+
       apiKeyRotation.markAsFailed(apiKey, false);
-      console.warn(`Attempt ${attempt + 1}/${maxRetries}: API call failed:`, error.message);
-      
-      // Wait a bit before retrying
+      console.warn(`Attempt ${attempt + 1}/${totalAttempts}: API call failed:`, error.message);
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }

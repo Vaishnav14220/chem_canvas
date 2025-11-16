@@ -21,6 +21,7 @@ import type { LucideIcon } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import type { AIInteraction, InteractionMode } from '../types';
 import { LLMMessage, VerifiedSmilesBlock } from './LLMResponseBlocks';
+import AIToolResponseCard from './AIToolResponseCard';
 import PriorKnowledgePanel from './PriorKnowledgePanel';
 import PlanningMindMap from './PlanningMindMap';
 import AdaptivePlan from './AdaptivePlan';
@@ -2648,15 +2649,26 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                         </div>
                       </div>
                     )}
-                    {interaction.response?.trim() && (
+                    {(interaction.response?.trim() || interaction.toolResponses?.length) && (
                       <div className="flex justify-start">
                         <div className="bg-indigo-950/70 border border-indigo-700/50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[70ch] shadow-md space-y-3 text-sm text-indigo-100">
                           <div className="flex items-center gap-2 text-xs font-semibold text-indigo-200 uppercase tracking-wide">
                             <Sparkles size={14} className="text-indigo-300" />
                             Gemini SRL Coach
                           </div>
-                          <LLMMessage content={interaction.response} onCitationClick={onOpenDocument} />
-                          <VerifiedSmilesBlock sourceText={interaction.response} />
+                          {interaction.toolResponses?.length ? (
+                            <div className="space-y-3">
+                              {interaction.toolResponses.map(tool => (
+                                <AIToolResponseCard key={tool.id} response={tool} />
+                              ))}
+                            </div>
+                          ) : null}
+                          {interaction.response?.trim() && (
+                            <>
+                              <LLMMessage content={interaction.response} onCitationClick={onOpenDocument} />
+                              <VerifiedSmilesBlock sourceText={interaction.response} />
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
@@ -2745,7 +2757,5 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
 };
 
 export default SrlCoach;
-
-
 
 

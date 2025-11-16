@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { fetchCanonicalSmiles } from './pubchemService';
 import { setStructuredReactionApiKey } from './structuredReactionService';
-import { apiKeyRotation, executeWithRotation } from './apiKeyRotation';
+import { apiKeyRotation, clearUserProvidedApiKey, executeWithRotation, registerUserProvidedApiKey } from './apiKeyRotation';
 
 // Initialize Gemini API
 let genAI: GoogleGenerativeAI | null = null;
@@ -37,41 +37,48 @@ export const isGeminiInitialized = () => {
   return genAI !== null;
 };
 
+const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest'];
+
+const resolveModelForClient = async (client: GoogleGenerativeAI): Promise<string> => {
+  for (const modelName of MODEL_CANDIDATES) {
+    try {
+      console.log(`Testing model: ${modelName}`);
+      const model = client.getGenerativeModel({ model: modelName });
+      const testResult = await model.generateContent('test');
+      await testResult.response;
+      console.log(`✅ Using model: ${modelName}`);
+      cachedModelName = modelName;
+      return modelName;
+    } catch (error: any) {
+      console.warn(`❌ Model ${modelName} not available:`, error.message);
+      if (MODEL_CANDIDATES.indexOf(modelName) === MODEL_CANDIDATES.length - 1) {
+        throw error;
+      }
+    }
+  }
+  throw new Error('No working Gemini model found');
+};
+
 // Helper function to get the best available model with rotation support
-const getAvailableModel = async (genAI: GoogleGenerativeAI) => {
-  // Return cached model if available
+const getAvailableModel = async (
+  instance: GoogleGenerativeAI,
+  options?: { skipRotation?: boolean }
+) => {
   if (cachedModelName) {
     return cachedModelName;
   }
 
-  const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest'];
-  
+  if (options?.skipRotation) {
+    return resolveModelForClient(instance);
+  }
+
   return executeWithRotation(async (apiKey) => {
-    // Reinitialize with new key if needed
     if (apiKey !== currentApiKey) {
-      genAI = new GoogleGenerativeAI(apiKey);
+      instance = new GoogleGenerativeAI(apiKey);
       currentApiKey = apiKey;
+      cachedModelName = null;
     }
-    
-    for (const modelName of models) {
-      try {
-        console.log(`Testing model: ${modelName}`);
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const testResult = await model.generateContent('test');
-        await testResult.response;
-        console.log(`✅ Using model: ${modelName}`);
-        cachedModelName = modelName;
-        return modelName;
-      } catch (error: any) {
-        console.warn(`❌ Model ${modelName} not available:`, error.message);
-        if (models.indexOf(modelName) === models.length - 1) {
-          throw error; // Throw on last model to trigger rotation
-        }
-        continue;
-      }
-    }
-    
-    throw new Error('No working Gemini model found');
+    return resolveModelForClient(instance);
   });
 };
 
@@ -89,7 +96,7 @@ export const generateTextContent = async (prompt: string): Promise<string> => {
       cachedModelName = null; // Reset model cache with new key
     }
     
-    const modelName = await getAvailableModel(genAI!);
+    const modelName = await getAvailableModel(genAI!, { skipRotation: true });
     const model = genAI!.getGenerativeModel({ model: modelName });
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -99,15 +106,23 @@ export const generateTextContent = async (prompt: string): Promise<string> => {
 
 export const streamTextContent = async (
   prompt: string,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
+  options?: { model?: string }
 ): Promise<string> => {
+  ensureInitialized();
   if (!genAI) {
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
 
-  try {
-    const modelName = await getAvailableModel(genAI);
-    const model = genAI.getGenerativeModel({ model: modelName });
+  return executeWithRotation(async (apiKey) => {
+    if (apiKey !== currentApiKey) {
+      genAI = new GoogleGenerativeAI(apiKey);
+      currentApiKey = apiKey;
+      cachedModelName = null;
+    }
+
+    const modelName = options?.model ?? (await getAvailableModel(genAI!, { skipRotation: true }));
+    const model = genAI!.getGenerativeModel({ model: modelName });
     const result = await model.generateContentStream({
       contents: [
         {
@@ -128,10 +143,7 @@ export const streamTextContent = async (
     }
 
     return fullText;
-  } catch (error) {
-    console.error('Error streaming content:', error);
-    throw error;
-  }
+  });
 };
 
 export const extractJsonBlock = (rawText: string): string => {
@@ -867,9 +879,13 @@ export const getApiKey = (): string | null => {
   return localStorage.getItem('gemini_api_key') || localStorage.getItem('gemini-api-key');
 };
 
-export const setApiKey = (apiKey: string): void => {
-  localStorage.setItem('gemini_api_key', apiKey);
-  localStorage.setItem('gemini-api-key', apiKey);
+export const setApiKey = (apiKey: string, options?: { markAsUser?: boolean }): void => {
+  const shouldPersist = options?.markAsUser !== false;
+  if (shouldPersist) {
+    localStorage.setItem('gemini_api_key', apiKey);
+    localStorage.setItem('gemini-api-key', apiKey);
+    registerUserProvidedApiKey(apiKey);
+  }
   cachedModelName = null; // Clear cached model when new key is set
   initializeGemini(apiKey);
 };
@@ -877,7 +893,7 @@ export const setApiKey = (apiKey: string): void => {
 // Initialize with the provided API key
 export const initializeWithProvidedKey = (): void => {
   const providedApiKey = 'AIzaSyDDYVFDvc3sgJMc_HJ25QycEEDpYyFEomE';
-  setApiKey(providedApiKey);
+  setApiKey(providedApiKey, { markAsUser: false });
 };
 
 export const removeApiKey = (): void => {
@@ -885,11 +901,13 @@ export const removeApiKey = (): void => {
   localStorage.removeItem('gemini-api-key');
   genAI = null;
   cachedModelName = null; // Clear cached model
+  clearUserProvidedApiKey();
 };
 
 // Auto-initialize from localStorage on module load
 const savedApiKey = getApiKey();
 if (savedApiKey) {
+  registerUserProvidedApiKey(savedApiKey);
   initializeGemini(savedApiKey);
   console.log('✅ Gemini API initialized successfully!');
 } else {

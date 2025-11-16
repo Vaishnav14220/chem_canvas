@@ -22,6 +22,7 @@ import { analyzePdfTextWithGemini } from './services/pdfInsightsService';
 import { fetchYouTubeVideos } from './services/youtubeService';
 import { fetchYouTubeTranscript, extractVideoIdFromUrl } from './services/youtubeTranscriptService';
 import * as geminiService from './services/geminiService';
+import { detectToolCalls, executeToolCalls } from './services/aiToolOrchestrator';
 import ChemistryWidgetPanel from './components/ChemistryWidgetPanel';
 import DarkButtonWithIcon from './components/DarkButtonWithIcon';
 import ArMobileView from './components/ArMobileView';
@@ -40,6 +41,14 @@ const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedde
 • Provide SMILES strings whenever asked for structures, together with short safety or usage notes.
 • Suggest best practices for importing JCAMP-DX files, peak picking, assignments, integrations and spectrum overlays.
 • Stay concise and student-friendly, but add detail if the learner asks for deeper explanations.`;
+
+const AI_RESPONSE_STYLE_PROMPT = `You are ChemAssist, a professional chemistry tutor. Respond using clean Markdown and LaTeX. Rules:
+- Start with a one-sentence overview.
+- Use headings (## or ###) for major sections such as "Overview", "Key Concepts", "Equations", "Safety", etc.
+- Prefer bullet or numbered lists for enumerations.
+- Render all mathematical or chemical expressions using LaTeX ($...$ inline, $$...$$ for display). Example: $C_6H_6$, $$\\ce{C6H6 + Cl2 -> C6H5Cl + HCl}$$.
+- Include short context-sensitive notes (e.g., safety, common pitfalls) when useful.
+- Default to concise, information-dense answers unless the user explicitly asks for a long-form explanation.`;
 
 
 type StudyToolType =
@@ -140,7 +149,6 @@ const App: React.FC = () => {
   const CHAT_MAX_WIDTH = 700;
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
-  const [chemistryPanelInitialView, setChemistryPanelInitialView] = useState<'overview' | 'nmr' | 'explorer'>('overview');
   const [showNmrFullscreen, setShowNmrFullscreen] = useState(false);
   const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
   const [showStudyToolsWorkspace, setShowStudyToolsWorkspace] = useState(false);
@@ -309,8 +317,7 @@ const App: React.FC = () => {
     setShowPeriodicTable(false);
   };
 
-  const openChemistryPanel = (view: 'overview' | 'nmr' | 'explorer') => {
-    setChemistryPanelInitialView(view);
+  const openChemistryPanel = () => {
     setShowChemistryPanel(true);
     setShowSrlCoachWorkspace(false);
     setShowStudyToolsWorkspace(false);
@@ -669,6 +676,22 @@ const App: React.FC = () => {
     alert('Settings saved successfully!');
   };
 
+  const shouldPromptForApiKey = (error: any) => {
+    const code = error?.code;
+    const message = typeof error?.message === 'string' ? error.message : '';
+    const lower = message.toLowerCase();
+    if (
+      code === 'USER_KEY_REQUIRED' ||
+      code === 'USER_KEY_INVALID' ||
+      code === 'USER_KEY_RATE_LIMITED' ||
+      lower.includes('add your own gemini api key') ||
+      lower.includes('personal gemini api key')
+    ) {
+      return { shouldPrompt: true, message: message || 'Please add your Gemini API key in Settings.' };
+    }
+    return { shouldPrompt: false, message: '' };
+  };
+
   const handleSendMessage = async (
     message: string,
     options?: { mode?: InteractionMode }
@@ -712,9 +735,26 @@ const App: React.FC = () => {
         contextPrompt += '\n**User Question:** ';
       }
 
-      let assistantGuidance = message;
+      const textSources = sources.filter(source => source.content && source.content.trim().length > 0);
+      const aggregatedDocumentText = textSources
+        .map(source => `Title: ${source.title}\n${source.content}`)
+        .join('\n\n')
+        .slice(0, 20000);
+      const hasDocumentContent = aggregatedDocumentText.length > 0;
+      const documentContext = hasDocumentContent
+        ? {
+            documentText: aggregatedDocumentText,
+            documentName: textSources[0]?.title
+          }
+        : undefined;
+
+      let assistantGuidance = `${AI_RESPONSE_STYLE_PROMPT}
+
+User question: ${message}`;
       if (isNmrAssistantActive) {
         assistantGuidance = `${NMR_ASSISTANT_PROMPT}
+
+${AI_RESPONSE_STYLE_PROMPT}
 
 Here is the learner's question: ${message}`;
       }
@@ -728,8 +768,34 @@ Here is the learner's question: ${message}`;
         response: '',
         timestamp: new Date(),
         mode,
+        toolResponses: [],
       };
       setInteractions(prev => [...prev, assistantInteraction]);
+
+      const runToolRouting = async () => {
+        try {
+          const plans = await detectToolCalls(message, { hasDocumentContent });
+          if (!plans.length) {
+            return;
+          }
+          const toolOutputs = await executeToolCalls(plans, documentContext);
+          if (toolOutputs.length) {
+            setInteractions(prev => prev.map(interaction => {
+              if (interaction.id === assistantId) {
+                return {
+                  ...interaction,
+                  toolResponses: toolOutputs
+                };
+              }
+              return interaction;
+            }));
+          }
+        } catch (toolError) {
+          console.warn('Tool routing failed:', toolError);
+        }
+      };
+
+      void runToolRouting();
 
       const finalResponse = await geminiService.streamTextContent(fullPrompt, (chunk) => {
         if (!chunk) return;
@@ -742,7 +808,7 @@ Here is the learner's question: ${message}`;
           }
           return interaction;
         }));
-      });
+      }, { model: 'gemini-2.5-flash' });
 
       setInteractions(prev => prev.map(interaction =>
         interaction.id === assistantId ? { ...interaction, response: finalResponse } : interaction
@@ -750,6 +816,11 @@ Here is the learner's question: ${message}`;
       
     } catch (error: any) {
       console.error('Gemini API error:', error);
+      const keyPrompt = shouldPromptForApiKey(error);
+      if (keyPrompt.shouldPrompt) {
+        setShowSettings(true);
+        window.alert(keyPrompt.message);
+      }
       const errorResponse = { 
         id: (Date.now() + 1).toString(),
         prompt: '',
@@ -1045,7 +1116,7 @@ Here is the learner's question: ${message}`;
               </button>
 
               <button
-                onClick={() => openChemistryPanel('explorer')}
+                onClick={() => openChemistryPanel()}
                 className={pillButtonClasses}
               >
                 <Layers3 className="h-4 w-4" />
@@ -1540,7 +1611,7 @@ Here is the learner's question: ${message}`;
                   </div>
                   {/* Chat Content */}
                   <div className="flex-1 min-h-[240px]">
-                    <LobeChat />
+                    <LobeChat onRequireApiKey={() => setShowSettings(true)} showHeader={false} />
                   </div>
                 </div>
 
