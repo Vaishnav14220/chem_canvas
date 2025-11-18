@@ -5,8 +5,8 @@ import GeminiLiveMessageList from './GeminiLiveMessageList';
 import GeminiLiveKineticsSimulation from './GeminiLiveKineticsSimulation';
 import GeminiLiveChatInterface from './GeminiLiveChatInterface';
 import { useGeminiLive as GeminiLiveUseGeminiLive } from './hooks/useGeminiLive';
-import { ConnectionState } from './types';
-import { Mic, PhoneOff, Loader2, BrainCircuit, Info, FlaskConical, MessageSquareText, Waves, X } from 'lucide-react';
+import { ConnectionState, SupportedLanguage } from './types';
+import { Mic, PhoneOff, Loader2, BrainCircuit, Info, FlaskConical, MessageSquareText, Waves, X, Globe } from 'lucide-react';
 
 type AppTab = 'VOICE' | 'TEXT';
 
@@ -23,10 +23,26 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
     transcripts,
     analyser,
     simulationState,
-    error
+    error,
+    selectedLanguage,
+    setSelectedLanguage
   } = GeminiLiveUseGeminiLive(apiKey);
 
   const [activeTab, setActiveTab] = useState<AppTab>('VOICE');
+
+  const LANGUAGES: Record<SupportedLanguage, string> = {
+    en: '🇺🇸 English',
+    es: '🇪🇸 Español',
+    fr: '🇫🇷 Français',
+    de: '🇩🇪 Deutsch',
+    it: '🇮🇹 Italiano',
+    pt: '🇵🇹 Português',
+    ja: '🇯🇵 日本語',
+    zh: '🇨🇳 中文',
+    ru: '🇷🇺 Русский',
+    hi: '🇮🇳 हिंदी',
+    ar: '🇸🇦 العربية'
+  };
 
   const isConnected = connectionState === ConnectionState.CONNECTED;
   const isConnecting = connectionState === ConnectionState.CONNECTING;
@@ -46,7 +62,7 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Tab Navigation (Mobile/Desktop) */}
-        <div className="lg:col-span-12 flex justify-center mb-2">
+        <div className="lg:col-span-12 flex justify-between items-center gap-4 mb-2 flex-wrap">
            <div className="bg-slate-900/50 p-1 rounded-full border border-slate-800 inline-flex">
               <button
                 onClick={() => setActiveTab('VOICE')}
@@ -68,6 +84,21 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
               >
                  <MessageSquareText size={16} /> Text & Visuals
               </button>
+           </div>
+
+           {/* Language Selector */}
+           <div className="flex items-center gap-2">
+             <Globe size={18} className="text-molecule-teal" />
+             <select
+               value={selectedLanguage}
+               onChange={(e) => setSelectedLanguage(e.target.value as SupportedLanguage)}
+               disabled={connectionState === ConnectionState.CONNECTED}
+               className="px-4 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-sm font-medium hover:border-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus:border-molecule-teal"
+             >
+               {Object.entries(LANGUAGES).map(([code, label]) => (
+                 <option key={code} value={code}>{label}</option>
+               ))}
+             </select>
            </div>
         </div>
 

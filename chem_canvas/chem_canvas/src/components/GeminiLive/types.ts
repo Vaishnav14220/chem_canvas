@@ -24,6 +24,8 @@ export interface ChatMessage {
 
 export type ChatMode = 'FAST' | 'PRO' | 'SEARCH';
 
+export type SupportedLanguage = 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'ja' | 'zh' | 'ru' | 'hi' | 'ar';
+
 export interface AudioVisualizerProps {
   analyser: AnalyserNode | null;
   isConnected: boolean;
