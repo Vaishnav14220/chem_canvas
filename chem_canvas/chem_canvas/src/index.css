@@ -1,0 +1,979 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Gemini Live Custom Colors */
+@layer utilities {
+  .bg-molecule-teal {
+    background-color: #14b8a6;
+  }
+  .text-molecule-teal {
+    color: #14b8a6;
+  }
+  .bg-molecule-purple {
+    background-color: #a855f7;
+  }
+  .text-molecule-purple {
+    color: #a855f7;
+  }
+  .bg-molecule-600 {
+    background-color: #0ea5e9;
+  }
+  .shadow-molecule-teal\/25 {
+    --tw-shadow-color: rgba(20, 184, 166, 0.25);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+  }
+  .shadow-molecule-purple\/30 {
+    --tw-shadow-color: rgba(168, 85, 247, 0.3);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+  }
+  .bg-science-500 {
+    background-color: #0ea5e9;
+  }
+  .text-science-500 {
+    color: #0ea5e9;
+  }
+  .bg-molecule-rose {
+    background-color: #f43f5e;
+  }
+  .text-molecule-rose {
+    color: #f43f5e;
+  }
+  
+  /* Animation for slow spin */
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  
+  .animate-spin-slow {
+    animation: spin-slow 3s linear infinite;
+  }
+}
+
+/* KaTeX Math Rendering Styles */
+.katex {
+  font-size: 1.1em;
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+.katex-display {
+  margin: 1.5rem 0;
+  text-align: center;
+  background: rgba(30, 41, 59, 0.3);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(71, 85, 105, 0.5);
+}
+
+.katex-display .katex {
+  font-size: 1.3em;
+  color: #93c5fd;
+}
+
+/* Ensure math expressions work well in dark theme */
+.katex .base {
+  color: inherit;
+}
+
+.katex .strut {
+  display: inline-block;
+}
+
+@layer base {
+  :root {
+    /* Professional Color System - Modern Blue Palette */
+    /* Background & Surfaces */
+    --background: 0 0% 100%;
+    --foreground: 224 71% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 14%;
+    
+    /* Primary - Professional Blue */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary - Subtle Gray-Blue */
+    --secondary: 216 33% 97%;
+    --secondary-foreground: 224 71% 14%;
+    
+    /* Muted - Neutral Gray */
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    
+    /* Accent - Teal (complementary) */
+    --accent: 175 85% 50%;
+    --accent-foreground: 0 0% 100%;
+    
+    /* Semantic Colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Border & Input */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Dark Mode - Professional Slate Palette */
+    --background: 224 71% 10%;
+    --foreground: 210 40% 98%;
+    --card: 224 71% 14%;
+    --card-foreground: 210 40% 98%;
+    --popover: 224 71% 14%;
+    --popover-foreground: 210 40% 98%;
+    
+    --primary: 217 91% 60%;
+    --primary-foreground: 224 71% 14%;
+    
+    --secondary: 216 33% 25%;
+    --secondary-foreground: 210 40% 98%;
+    
+    --muted: 216 33% 25%;
+    --muted-foreground: 215 20% 65%;
+    
+    --accent: 175 85% 50%;
+    --accent-foreground: 224 71% 14%;
+    
+    --destructive: 0 85% 45%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 216 33% 25%;
+    --input: 216 33% 25%;
+    --ring: 217 91% 70%;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Modern scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Glassmorphism utilities */
+.glass {
+  background: rgba(30, 41, 59, 0.4);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.glass-strong {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+@layer utilities {
+  .gradient-border {
+    position: relative;
+    background: linear-gradient(white, white) padding-box,
+                linear-gradient(135deg, #667eea 0%, #764ba2 100%) border-box;
+    border: 2px solid transparent;
+  }
+  
+  .glass-effect {
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.8);
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.4s ease-out;
+  }
+
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+  
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .7;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  }
+  to {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.8), 0 0 40px rgba(59, 130, 246, 0.3);
+  }
+}
+
+.edge-glow-path {
+  filter: drop-shadow(0 0 36px rgba(56, 189, 248, 0.45));
+}
+
+.edge-core-path {
+  filter: drop-shadow(0 0 28px rgba(249, 115, 22, 0.6));
+}
+
+.edge-sparkle {
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.45));
+}
+
+@keyframes edgeFlow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -280;
+  }
+}
+
+@keyframes edgeFlowReverse {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 280;
+  }
+}
+
+.edge-animated {
+  animation: edgeFlow 5.5s linear infinite;
+}
+
+.edge-animated-reverse {
+  animation: edgeFlowReverse 7s linear infinite;
+  opacity: 0.65;
+}
+
+@keyframes markerPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 22px rgba(56, 189, 248, 0.65);
+  }
+  50% {
+    transform: scale(1.35);
+    box-shadow: 0 0 32px rgba(251, 191, 36, 0.8);
+  }
+}
+
+.edge-marker {
+  animation: markerPulse 2.8s ease-in-out infinite;
+}
+
+.frappe-chart-container {
+  width: 100%;
+  height: 100%;
+}
+
+.frappe-chart-container svg {
+  width: 100%;
+  height: 100%;
+}
+
+.frappe-chart-container text {
+  fill: rgba(226, 232, 240, 0.75);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 12px;
+}
+
+.frappe-chart-container .chart-legend {
+  display: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+/* Formatted message styles */
+.formatted-content {
+  line-height: 1.7;
+}
+
+.formatted-content .math-inline {
+  display: inline-block;
+  margin: 0 2px;
+}
+
+.formatted-content .math-block {
+  display: block;
+  overflow-x: auto;
+  padding: 1rem;
+  margin: 1rem 0;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  border-radius: 0.75rem;
+  border: 2px solid #e0e7ff;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
+}
+
+.formatted-content .chemical-formula {
+  font-family: 'Times New Roman', serif;
+  font-weight: 500;
+  color: #4f46e5;
+}
+
+.formatted-content .chemical-equation {
+  font-size: 1.05em;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+}
+
+.formatted-content .chemical-equation:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(147, 51, 234, 0.15);
+}
+
+.formatted-content .code-block {
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.formatted-content .inline-code {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+}
+
+.formatted-content ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.formatted-content li {
+  color: #374151;
+  line-height: 1.6;
+}
+
+.formatted-content strong {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.formatted-content em {
+  color: #4b5563;
+}
+
+.formatted-content .citation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%);
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #4f46e5;
+  margin: 0 2px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.formatted-content .citation-badge:hover {
+  background: linear-gradient(135deg, #c7d2fe 0%, #ddd6fe 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
+}
+
+/* KaTeX styles customization */
+.katex {
+  font-size: 1.1em;
+}
+
+.katex-display {
+  margin: 0;
+}
+
+.katex-display > .katex {
+  text-align: center;
+}
+
+/* Canvas cursor styles */
+canvas {
+  cursor: crosshair;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+canvas:active {
+  cursor: crosshair;
+}
+
+.ChemDoodleCanvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Notion-like smooth focus ring */
+input:focus,
+textarea:focus,
+button:focus {
+  outline: none;
+}
+
+/* Smooth transitions for all interactive elements */
+button,
+input[type="range"],
+.tool-button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Range slider custom styling */
+.slider-thumb::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  border: 2px solid hsl(var(--background));
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  cursor: pointer;
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* PDF Viewer Styles */
+.react-pdf__Document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.react-pdf__Page {
+  max-width: 100%;
+  background: white;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  margin: 0;
+}
+
+.react-pdf__Page__canvas {
+  max-width: 100%;
+  height: auto !important;
+}
+
+/* Canvas Analysis Panel Styles */
+.analysis-panel {
+  max-height: 44rem; /* 704px */
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.analysis-panel .analysis-content {
+  height: calc(100% - 90px); /* Account for larger header height */
+  overflow: hidden;
+}
+
+.analysis-panel .analysis-sidebar {
+  overflow-y: auto;
+  max-height: 100%;
+}
+
+.analysis-panel .analysis-sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.analysis-panel .analysis-sidebar::-webkit-scrollbar-track {
+  background: rgba(51, 65, 85, 0.3);
+  border-radius: 4px;
+}
+
+.analysis-panel .analysis-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.6);
+  border-radius: 4px;
+}
+
+.analysis-panel .analysis-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.8);
+}
+
+/* Ensure proper spacing and no overlapping */
+.correction-item, .suggestion-item {
+  margin-bottom: 0.75rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  display: block;
+  position: relative;
+}
+
+.correction-item:last-child, .suggestion-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Fix any potential flex issues */
+.analysis-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Mind Map Styles */
+.react-flow__node-mindmap {
+  background: white;
+  border-radius: 6px;
+  border: none;
+  padding: 8px 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 120px;
+}
+
+.dark .react-flow__node-mindmap {
+  background: #374151;
+  color: #f3f4f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.react-flow__handle.target {
+  top: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-50%);
+}
+
+.react-flow__handle.source {
+  top: 0;
+  left: 0;
+  transform: none;
+  background: #3b82f6;
+  height: 100%;
+  width: 100%;
+  border-radius: 6px;
+  border: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.react-flow__node-mindmap:hover .react-flow__handle.source {
+  opacity: 0.3;
+}
+
+.react-flow__connectionline {
+  z-index: 0;
+}
+
+.inputWrapper {
+  display: flex;
+  height: 24px;
+  z-index: 1;
+  position: relative;
+  pointer-events: none;
+  align-items: center;
+}
+
+.dragHandle {
+  background: transparent;
+  width: 16px;
+  height: 100%;
+  margin-right: 6px;
+  display: flex;
+  align-items: center;
+  pointer-events: all;
+  cursor: grab;
+  color: #6b7280;
+}
+
+.dragHandle:hover {
+  color: #374151;
+}
+
+.dark .dragHandle {
+  color: #9ca3af;
+}
+
+.dark .dragHandle:hover {
+  color: #f3f4f6;
+}
+
+/* Ensure flow builder connectors stay visible and draggable */
+.flow-builder-canvas .react-flow__handle,
+.flow-builder-canvas .react-flow__handle.target,
+.flow-builder-canvas .react-flow__handle.source {
+  opacity: 1 !important;
+  pointer-events: all !important;
+}
+
+/* Flowise-style handle positioning/colors */
+.flow-builder-canvas .react-flow__handle.target {
+  left: -12px !important;
+  right: auto !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle, #f43f5e 0%, #1e1b4b 70%);
+  border: 2px solid #fb7185;
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.65);
+}
+
+.flow-builder-canvas .react-flow__handle.source {
+  right: -12px !important;
+  left: auto !important;
+  top: 50% !important;
+  transform: translate(50%, -50%) !important;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle, #22d3ee 0%, #0f172a 70%);
+  border: 2px solid #67e8f9;
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.65);
+}
+
+.input {
+  border: none;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-weight: 600;
+  background: transparent;
+  height: 100%;
+  color: #111827;
+  pointer-events: none;
+  min-width: 80px;
+  font-size: 14px;
+}
+
+.dark .input {
+  color: #f3f4f6;
+}
+
+.input:focus {
+  border: none;
+  outline: none;
+  background: rgba(59, 130, 246, 0.1);
+  pointer-events: all;
+}
+
+.dark .input:focus {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+/* React Calendar Heatmap Styles */
+.react-calendar-heatmap {
+  font-family: inherit;
+}
+
+.react-calendar-heatmap text {
+  fill: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+}
+
+.react-calendar-heatmap rect:hover {
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 1px;
+}
+
+.react-calendar-heatmap .color-empty {
+  fill: rgba(255, 255, 255, 0.1);
+}
+
+.react-calendar-heatmap .color-scale-1 {
+  fill: rgba(96, 165, 250, 0.4);
+}
+
+.react-calendar-heatmap .color-scale-2 {
+  fill: rgba(59, 130, 246, 0.5);
+}
+
+.react-calendar-heatmap .color-scale-3 {
+  fill: rgba(99, 102, 241, 0.6);
+}
+
+.react-calendar-heatmap .color-scale-4 {
+  fill: rgba(79, 70, 229, 0.7);
+}
+
+/* React Diff View Styles */
+.diff {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.diff .diff-gutter {
+  background: rgba(51, 65, 85, 0.5);
+  color: rgba(226, 232, 240, 0.6);
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.diff .diff-gutter-add {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.diff .diff-gutter-delete {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.diff .diff-code-add {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.diff .diff-code-delete {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.diff .diff-code-add .diff-gutter {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+.diff .diff-code-delete .diff-gutter {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.diff .diff-code {
+  background: rgba(30, 41, 59, 0.3);
+}
+
+.diff .diff-line {
+  padding: 2px 8px;
+  border-left: 3px solid transparent;
+}
+
+.diff .diff-line-add {
+  background: rgba(34, 197, 94, 0.05);
+  border-left-color: rgba(34, 197, 94, 0.5);
+}
+
+.diff .diff-line-delete {
+  background: rgba(239, 68, 68, 0.05);
+  border-left-color: rgba(239, 68, 68, 0.5);
+}
+
+.diff .diff-decoration {
+  background: rgba(51, 65, 85, 0.8);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.diff .diff-decoration-content {
+  color: rgba(226, 232, 240, 0.8);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Inline diff highlighting */
+.diff .diff-code-add .token-addition {
+  background: rgba(34, 197, 94, 0.3);
+  color: rgba(34, 197, 94, 1);
+}
+
+.diff .diff-code-delete .token-deletion {
+  background: rgba(239, 68, 68, 0.3);
+  color: rgba(239, 68, 68, 1);
+}
+
+.diff .diff-code .token-normal {
+  color: rgba(226, 232, 240, 0.9);
+}
+
+/* Loading Animation Delays */
+.delay-100 {
+  animation-delay: 0.1s;
+}
+
+.delay-200 {
+  animation-delay: 0.2s;
+}
+
+.delay-300 {
+  animation-delay: 0.3s;
+}
+
+.delay-400 {
+  animation-delay: 0.4s;
+}
+
+.delay-500 {
+  animation-delay: 0.5s;
+}
+
+.delay-600 {
+  animation-delay: 0.6s;
+}
+
+.delay-700 {
+  animation-delay: 0.7s;
+}
+
+.delay-800 {
+  animation-delay: 0.8s;
+}
+
+/* Shake animation for wrong answers */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.reaction-status-card {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.9);
+  color: #f1f5f9;
+  font-size: 0.9rem;
+  box-shadow: 0 10px 25px rgba(2, 6, 23, 0.45);
+}
+
+.reaction-status-label {
+  margin: 0;
+  font-weight: 600;
+}
+
+.reaction-status-msg {
+  margin: 0.35rem 0 0;
+  color: rgba(248, 250, 252, 0.85);
+}
+
+.reaction-status-detail {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: rgba(148, 163, 184, 0.95);
+}
+/* Molecule summon animation */

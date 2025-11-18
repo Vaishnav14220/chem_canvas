@@ -1,0 +1,298 @@
+[
+  {
+    "rid": 900001,
+    "reactionId": "ord_suzuki_bromobenzene_phenylboronic",
+    "name": "Suzuki-Miyaura Coupling (Bromobenzene + Phenylboronic Acid)",
+    "smiles": "Brc1ccccc1.B(O)B(c1ccccc1)>>c1ccc(cc1)c1ccccc1",
+    "reactants": [
+      "bromobenzene",
+      "phenylboronic acid"
+    ],
+    "products": [
+      "biphenyl"
+    ],
+    "description": "Palladium-catalyzed carbon-carbon bond formation between an aryl halide and a boronic acid.",
+    "conditions": [
+      "Pd(PPh3)4 (2 mol%)",
+      "K2CO3",
+      "DMF",
+      "80 degC"
+    ],
+    "reactionType": "cross-coupling",
+    "category": "Cross-Coupling",
+    "difficulty": "advanced",
+    "yield": 0.86,
+    "tags": [
+      "palladium",
+      "aryl halide",
+      "boronic acid"
+    ],
+    "defaultQuery": "Suzuki coupling of bromobenzene with phenylboronic acid"
+  },
+  {
+    "rid": 900002,
+    "reactionId": "ord_diels_alder_cycloaddition",
+    "name": "Diels-Alder Cycloaddition (Cyclopentadiene + Maleic Anhydride)",
+    "smiles": "C1=CC=CC1.C1=CC(=O)OC(=O)C1>>C1CC2CC(C1)C(=O)OC2=O",
+    "reactants": [
+      "cyclopentadiene",
+      "maleic anhydride"
+    ],
+    "products": [
+      "norbornene dicarboxylic anhydride"
+    ],
+    "description": "Thermal pericyclic reaction forming a bicyclic anhydride via concerted cycloaddition.",
+    "conditions": [
+      "toluene",
+      "reflux",
+      "4 h"
+    ],
+    "reactionType": "pericyclic",
+    "category": "Pericyclic",
+    "difficulty": "intermediate",
+    "yield": 0.78,
+    "tags": [
+      "cycloaddition",
+      "dienophile",
+      "bicyclic"
+    ],
+    "defaultQuery": "Diels-Alder reaction of cyclopentadiene with maleic anhydride"
+  },
+  {
+    "rid": 900003,
+    "reactionId": "ord_aldol_condensation_acetone_benzaldehyde",
+    "name": "Aldol Condensation (Acetone + Benzaldehyde)",
+    "smiles": "CC(=O)C.C1=CC=CC=C1C=O>>CC(=O)C=CC1=CC=CC=C1",
+    "reactants": [
+      "acetone",
+      "benzaldehyde"
+    ],
+    "products": [
+      "benzylideneacetone"
+    ],
+    "description": "Base-promoted carbon-carbon bond formation between enolate and aldehyde followed by dehydration.",
+    "conditions": [
+      "NaOH (1 M)",
+      "ethanol",
+      "0 to 25 degC"
+    ],
+    "reactionType": "condensation",
+    "category": "Carbonyl Chemistry",
+    "difficulty": "intermediate",
+    "yield": 0.74,
+    "tags": [
+      "enolate",
+      "beta-unsaturated carbonyl",
+      "base catalysis"
+    ],
+    "defaultQuery": "Aldol condensation between acetone and benzaldehyde"
+  },
+  {
+    "rid": 900004,
+    "reactionId": "ord_buchwald_hartwig_aniline_chlorobenzene",
+    "name": "Buchwald-Hartwig Amination (Chlorobenzene + Aniline)",
+    "smiles": "Clc1ccccc1.Nc1ccccc1>>c1ccc(cc1)Nc1ccccc1",
+    "reactants": [
+      "chlorobenzene",
+      "aniline"
+    ],
+    "products": [
+      "diphenylamine"
+    ],
+    "description": "Palladium-catalyzed C-N bond formation between aryl halide and amine using biaryl phosphine ligand.",
+    "conditions": [
+      "Pd2(dba)3",
+      "BINAP",
+      "NaOtBu",
+      "toluene",
+      "100 degC"
+    ],
+    "reactionType": "amination",
+    "category": "Cross-Coupling",
+    "difficulty": "advanced",
+    "yield": 0.69,
+    "tags": [
+      "palladium",
+      "c-n bond",
+      "ligand"
+    ],
+    "defaultQuery": "Buchwald-Hartwig amination of chlorobenzene with aniline"
+  },
+  {
+    "rid": 900005,
+    "reactionId": "ord_michael_addition_thiophenol_chalcone",
+    "name": "Michael Addition (Thiophenol + Chalcone)",
+    "smiles": "S=Cc1ccccc1.C1=CC(=O)C=CC1>>SCc1ccccc1C1=CC(=O)C=CC1",
+    "reactants": [
+      "thiophenol",
+      "chalcone"
+    ],
+    "products": [
+      "beta-thioether ketone"
+    ],
+    "description": "Conjugate addition of thiol to alpha,beta-unsaturated carbonyl compound under basic conditions.",
+    "conditions": [
+      "K2CO3",
+      "ethanol",
+      "room temperature"
+    ],
+    "reactionType": "conjugate_addition",
+    "category": "Carbonyl Chemistry",
+    "difficulty": "intermediate",
+    "yield": 0.72,
+    "tags": [
+      "michael addition",
+      "thiol",
+      "enone"
+    ],
+    "defaultQuery": "Michael addition of thiophenol to chalcone"
+  },
+  {
+    "rid": 900006,
+    "reactionId": "ord_fischer_esterification_benzoic_acid_methanol",
+    "name": "Fischer Esterification (Benzoic Acid + Methanol)",
+    "smiles": "OC(=O)c1ccccc1.CO>>COC(=O)c1ccccc1.O",
+    "reactants": [
+      "benzoic acid",
+      "methanol"
+    ],
+    "products": [
+      "methyl benzoate",
+      "water"
+    ],
+    "description": "Acid-catalyzed esterification producing methyl benzoate and water.",
+    "conditions": [
+      "H2SO4 (cat)",
+      "reflux",
+      "Dean-Stark"
+    ],
+    "reactionType": "esterification",
+    "category": "Organic Synthesis",
+    "difficulty": "basic",
+    "yield": 0.65,
+    "tags": [
+      "ester",
+      "acid catalysis",
+      "equilibrium"
+    ],
+    "defaultQuery": "Fischer esterification of benzoic acid with methanol"
+  },
+  {
+    "rid": 900007,
+    "reactionId": "ord_mannich_reaction_dimethylamine_formaldehyde",
+    "name": "Mannich Reaction (Dimethylamine + Formaldehyde + Acetophenone)",
+    "smiles": "CN(C)C.C=O.CC(=O)c1ccccc1>>CN(C)CCH2C(O)C(=O)c1ccccc1",
+    "reactants": [
+      "dimethylamine",
+      "formaldehyde",
+      "acetophenone"
+    ],
+    "products": [
+      "beta-aminoketone"
+    ],
+    "description": "Formation of beta-aminocarbonyl compounds via aminomethylation of activated methylene.",
+    "conditions": [
+      "HCl (aq)",
+      "0 to 40 degC"
+    ],
+    "reactionType": "multicomponent",
+    "category": "Multicomponent",
+    "difficulty": "intermediate",
+    "yield": 0.63,
+    "tags": [
+      "beta-aminoketone",
+      "aminomethylation"
+    ],
+    "defaultQuery": "Mannich reaction of dimethylamine, formaldehyde, and acetophenone"
+  },
+  {
+    "rid": 900008,
+    "reactionId": "ord_sonogashira_coupling_iodobenzene_phenylacetylene",
+    "name": "Sonogashira Coupling (Iodobenzene + Phenylacetylene)",
+    "smiles": "Ic1ccccc1.C#Cc1ccccc1>>c1ccc(cc1)C#Cc1ccccc1",
+    "reactants": [
+      "iodobenzene",
+      "phenylacetylene"
+    ],
+    "products": [
+      "diphenylacetylene"
+    ],
+    "description": "Palladium-copper co-catalyzed coupling forming a carbon-carbon triple bond linkage.",
+    "conditions": [
+      "PdCl2(PPh3)2",
+      "CuI",
+      "Et3N",
+      "room temperature"
+    ],
+    "reactionType": "cross-coupling",
+    "category": "Cross-Coupling",
+    "difficulty": "advanced",
+    "yield": 0.70,
+    "tags": [
+      "alkyne",
+      "palladium",
+      "copper"
+    ],
+    "defaultQuery": "Sonogashira coupling between iodobenzene and phenylacetylene"
+  },
+  {
+    "rid": 900009,
+    "reactionId": "ord_heck_coupling_bromobenzene_acrylate",
+    "name": "Heck Coupling (Bromobenzene + Methyl Acrylate)",
+    "smiles": "Brc1ccccc1.C=CC(=O)OC>>c1ccc(cc1)C=CC(=O)OC",
+    "reactants": [
+      "bromobenzene",
+      "methyl acrylate"
+    ],
+    "products": [
+      "trans-stilbene acrylate"
+    ],
+    "description": "Palladium-catalyzed arylation of activated alkene yielding trans coupled product.",
+    "conditions": [
+      "Pd(OAc)2",
+      "P(o-tol)3",
+      "Et3N",
+      "120 degC"
+    ],
+    "reactionType": "heck_coupling",
+    "category": "Cross-Coupling",
+    "difficulty": "advanced",
+    "yield": 0.62,
+    "tags": [
+      "palladium",
+      "alkene",
+      "c-c bond"
+    ],
+    "defaultQuery": "Heck coupling of bromobenzene with methyl acrylate"
+  },
+  {
+    "rid": 900010,
+    "reactionId": "ord_reductive_amination_benzaldehyde_ammonia",
+    "name": "Reductive Amination (Benzaldehyde + Ammonia + Sodium Cyanoborohydride)",
+    "smiles": "C1=CC=CC=C1C=O.N.NCBH3>>C1=CC=CC=C1CNH2",
+    "reactants": [
+      "benzaldehyde",
+      "ammonia",
+      "sodium cyanoborohydride"
+    ],
+    "products": [
+      "benzylamine"
+    ],
+    "description": "Formation of primary amine via imine formation and in situ reduction.",
+    "conditions": [
+      "MeOH",
+      "pH 6",
+      "room temperature"
+    ],
+    "reactionType": "reductive_amination",
+    "category": "Reductive Chemistry",
+    "difficulty": "intermediate",
+    "yield": 0.68,
+    "tags": [
+      "imine",
+      "reduction",
+      "amine"
+    ],
+    "defaultQuery": "Reductive amination of benzaldehyde to benzylamine"
+  }
+]
