@@ -36,7 +36,7 @@ import FlippingInfo from './components/FlippingInfo';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWorkspace';
 import SubjectExplorer from './components/SubjectExplorer';
-import GeminiLiveWorkspace from './components/geminiLive/GeminiLiveWorkspace';
+import GeminiLiveWorkspace from './components/GeminiLive/GeminiLiveWorkspace';
 import EpoxidationLearningExperience from './components/epoxidation/EpoxidationLearningExperience';
 import type { AIInteraction, InteractionMode } from './types';
 import type { IElement } from '@hufe921/canvas-editor';

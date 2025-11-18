@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { ChatMode } from "../types/geminiLive";
+import { ChatMode } from "../types/geminiLive.ts";
 import { getSharedGeminiApiKey, assignRandomApiKey } from '../firebase/apiKeys';
 
 export async function generateChatResponseStream(
