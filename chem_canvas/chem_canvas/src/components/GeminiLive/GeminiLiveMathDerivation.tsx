@@ -24,7 +24,21 @@ const GeminiLiveMathDerivation: React.FC<GeminiLiveMathDerivationProps> = ({ par
   const containerRef = useRef<HTMLDivElement>(null);
   const latexContainerRef = useRef<HTMLDivElement>(null);
 
-  const currentStep = params.steps[currentStepIndex];
+  // Ensure steps is valid
+  const steps = Array.isArray(params.steps) ? params.steps : [];
+  
+  if (steps.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-slate-900/50 to-slate-950/50 rounded-xl border border-slate-700/50 p-6">
+        <div className="text-center">
+          <p className="text-slate-400 mb-2">No derivation steps provided</p>
+          <p className="text-slate-500 text-sm">{params.title}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const currentStep = steps[currentStepIndex];
 
   // Render LaTeX when step changes
   useEffect(() => {
@@ -55,7 +69,7 @@ const GeminiLiveMathDerivation: React.FC<GeminiLiveMathDerivationProps> = ({ par
   }, [currentStep]);
 
   const goToNextStep = () => {
-    if (currentStepIndex < params.steps.length - 1) {
+    if (currentStepIndex < steps.length - 1) {
       setCurrentStepIndex(currentStepIndex + 1);
     }
   };
@@ -70,7 +84,7 @@ const GeminiLiveMathDerivation: React.FC<GeminiLiveMathDerivationProps> = ({ par
     setCurrentStepIndex(0);
   };
 
-  const progressPercent = ((currentStepIndex + 1) / params.steps.length) * 100;
+  const progressPercent = ((currentStepIndex + 1) / steps.length) * 100;
 
   return (
     <div
@@ -88,7 +102,7 @@ const GeminiLiveMathDerivation: React.FC<GeminiLiveMathDerivationProps> = ({ par
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-molecule-teal">
-              Step {currentStepIndex + 1} of {params.steps.length}
+              Step {currentStepIndex + 1} of {steps.length}
             </p>
           </div>
         </div>
@@ -148,7 +162,7 @@ const GeminiLiveMathDerivation: React.FC<GeminiLiveMathDerivationProps> = ({ par
 
         <button
           onClick={goToNextStep}
-          disabled={currentStepIndex === params.steps.length - 1}
+          disabled={currentStepIndex === steps.length - 1}
           className="p-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           title="Next step"
         >
@@ -158,7 +172,7 @@ const GeminiLiveMathDerivation: React.FC<GeminiLiveMathDerivationProps> = ({ par
 
       {/* Step Indicators */}
       <div className="mt-4 flex gap-1 justify-center flex-wrap">
-        {params.steps.map((_, index) => (
+        {steps.map((_, index) => (
           <button
             key={index}
             onClick={() => setCurrentStepIndex(index)}

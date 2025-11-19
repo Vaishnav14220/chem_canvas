@@ -11,12 +11,33 @@ const SYSTEM_INSTRUCTIONS: Record<SupportedLanguage, string> = {
   en: `You are an expert, patient, and encouraging university-level Chemistry Tutor speaking ONLY in English.
 Always respond in English regardless of the user's input language.
 Your goal is to help students understand complex concepts in Organic, Inorganic, Physical, and Analytical Chemistry.
+
+CORE TEACHING STYLE:
 - Explain concepts clearly using analogies where appropriate.
 - If a student makes a mistake, gently correct them and explain why.
 - Be concise in your spoken responses, as this is a real-time voice conversation.
-- Do not read out long chemical formulas character by character unless asked; describe the molecule's structure or name instead.
+- Do not read out long chemical formulas character by character; describe the structure or name instead.
 - Maintain a professional but approachable academic tone.
-- You have access to an interactive simulation tool. Use 'update_simulation' when the user asks to see or change a simulation.`,
+
+INTERACTIVE VISUALIZATION TOOLS - USE THESE FREQUENTLY TO ENHANCE LEARNING:
+1. 'update_simulation' - For reaction kinetics, collision theory, activation energy, equilibrium demonstration
+   Parameters: temperature (0-100), concentration (0-100), activationEnergy (0-100)
+   When to use: "Let me show you kinetics simulation", "Watch how temperature affects reaction rates"
+   
+2. 'display_molecule_3d' - For molecular structures, geometry, bonds, spatial arrangements
+   Parameters: SMILES notation, molecule name, IUPAC name
+   When to use: "Let me show you the structure", "Here's the 3D visualization of benzene"
+   
+3. 'show_math_derivation' - MOST IMPORTANT: Use this for ALL mathematical content, derivations, and problem-solving
+   When to use THIS tool: ANY time the student asks about steps, derivations, or calculations
+   Provide step-by-step solutions with LaTeX equations.
+   
+MANDATORY: Whenever a student asks "how", "show me", "steps", "derive", or wants to see calculations:
+- IMMEDIATELY call 'show_math_derivation' with clear step-by-step LaTeX equations
+- Include explanations for each step
+- Examples: equilibrium Kc calculations, pH problems, stoichiometry, kinetics equations, thermodynamics
+
+DO NOT skip the visualization tools. Use them proactively and frequently.`,
   
   es: `Eres un tutor EXPERTO de Química universitaria que habla SOLO en español.
 Responde siempre en español sin importar el idioma de entrada del usuario.
@@ -158,25 +179,25 @@ const molecule3DTool: FunctionDeclaration = {
 
 const mathDerivationTool: FunctionDeclaration = {
   name: 'show_math_derivation',
-  description: 'Display step-by-step mathematical derivations or problem-solving steps with LaTeX equations to help students understand the solution process.',
+  description: 'CRITICAL: Display step-by-step mathematical derivations or problem-solving with beautiful LaTeX equations. Use this for ALL math/calculations. The steps array MUST contain objects with: title, latex, and explanation fields. Format steps as a JSON array string.',
   parameters: {
     type: Type.OBJECT,
     properties: {
       isActive: { 
         type: Type.BOOLEAN, 
-        description: 'Set to true to show the mathematical derivation viewer, false to hide it.' 
+        description: 'Set to true to show the mathematical derivation viewer. ALWAYS set to true when explaining any math.' 
       },
       title: { 
         type: Type.STRING, 
-        description: 'Title of the derivation or problem (e.g., "Equilibrium Constant Calculation").' 
+        description: 'Clear title of what is being derived/solved. Examples: "Equilibrium Constant Kc", "pH Calculation from Ka", "Stoichiometry Problem", "Kinetics Rate Law"' 
       },
       topic: { 
         type: Type.STRING, 
-        description: 'Topic or subject area (e.g., "Chemical Equilibrium").' 
+        description: 'Topic area. Examples: "Chemical Equilibrium", "Acid-Base Chemistry", "Reaction Kinetics", "Thermodynamics"' 
       },
       steps: { 
         type: Type.OBJECT,
-        description: 'Array of derivation steps as JSON string. Each step has: title (string), latex (string with LaTeX), explanation (optional string).'
+        description: 'ARRAY of step objects, each with: {title: string, latex: string (MUST be valid LaTeX), explanation: string}. MUST format steps as JSON array string. Each LaTeX equation should be complete and displayable. Example step: {"title": "Write equilibrium expression", "latex": "K_c = \\\\frac{[C]^2[D]}{[A][B]^2}", "explanation": "Products over reactants with stoichiometric coefficients"}' 
       }
     },
     required: ['isActive', 'title', 'steps']
@@ -397,16 +418,26 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
                     } else if (fc.name === 'show_math_derivation') {
                       const { isActive, title, topic, steps } = fc.args as any;
                       
+                      console.log('Math Derivation Called:', { isActive, title, topic, steps });
+                      
                       // Parse steps if it's a string (JSON)
                       let parsedSteps = steps;
                       if (typeof steps === 'string') {
                         try {
                           parsedSteps = JSON.parse(steps);
                         } catch (e) {
-                          console.error('Error parsing steps JSON:', e);
+                          console.error('Error parsing steps JSON:', e, 'Raw steps:', steps);
                           parsedSteps = [];
                         }
                       }
+
+                      // Validate that parsedSteps is an array
+                      if (!Array.isArray(parsedSteps)) {
+                        console.warn('Steps is not an array, converting:', parsedSteps);
+                        parsedSteps = [parsedSteps];
+                      }
+
+                      console.log('Parsed steps:', parsedSteps);
 
                       setSimulationState(prev => ({
                         isActive: isActive,
@@ -414,11 +445,13 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
                         kineticsParams: prev.kineticsParams,
                         molecule3DParams: prev.molecule3DParams,
                         mathDerivationParams: {
-                          title,
-                          topic,
+                          title: title || 'Mathematical Derivation',
+                          topic: topic || 'Mathematics',
                           steps: parsedSteps || []
                         }
                       }));
+
+                      console.log('Math derivation state updated');
 
                       return {
                         id: fc.id,
