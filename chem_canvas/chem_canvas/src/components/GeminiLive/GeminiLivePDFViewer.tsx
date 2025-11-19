@@ -6,11 +6,12 @@ interface GeminiLivePDFViewerProps {
   isOpen: boolean;
   onClose: () => void;
   onPDFLoaded?: (text: string) => void;
+  onPageChange?: (pageText: string, pageNumber: number) => void;
   highlightText?: string;
   embedded?: boolean;
 }
 
-const GeminiLivePDFViewer: React.FC<GeminiLivePDFViewerProps> = ({ isOpen, onClose, onPDFLoaded, highlightText, embedded = false }) => {
+const GeminiLivePDFViewer: React.FC<GeminiLivePDFViewerProps> = ({ isOpen, onClose, onPDFLoaded, onPageChange, highlightText, embedded = false }) => {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfDocument, setPdfDocument] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -82,6 +83,13 @@ const GeminiLivePDFViewer: React.FC<GeminiLivePDFViewerProps> = ({ isOpen, onClo
         canvasContext: context,
         viewport: viewport
       }).promise;
+
+      // Extract page text and notify parent
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      if (onPageChange) {
+        onPageChange(pageText, pageNumber);
+      }
 
       // Apply highlighting if text is selected
       if (highlightedText) {

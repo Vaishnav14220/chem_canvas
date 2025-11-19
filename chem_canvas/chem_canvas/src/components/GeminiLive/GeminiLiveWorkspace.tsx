@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import GeminiLiveHeader from './GeminiLiveHeader';
 import GeminiLiveAudioVisualizer from './GeminiLiveAudioVisualizer';
 import GeminiLiveMessageList from './GeminiLiveMessageList';
@@ -37,6 +37,14 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
 
   const [activeTab, setActiveTab] = useState<AppTab>('VOICE');
   const [isPDFViewerOpen, setIsPDFViewerOpen] = useState(false);
+  const [currentPDFPageText, setCurrentPDFPageText] = useState<string>('');
+
+  // Update PDF context when current page changes
+  useEffect(() => {
+    if (currentPDFPageText && currentPDFPageText.trim().length > 0) {
+      setPdfContent(currentPDFPageText);
+    }
+  }, [currentPDFPageText, setPdfContent]);
 
   const LANGUAGES: Record<SupportedLanguage, string> = {
     en: '🇺🇸 English',
@@ -233,6 +241,10 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                         onPDFLoaded={(pdfContent) => {
                           setPdfContent(pdfContent);
                           console.log('PDF loaded with content:', pdfContent.substring(0, 100) + '...');
+                        }}
+                        onPageChange={(pageText, pageNumber) => {
+                          setCurrentPDFPageText(pageText);
+                          console.log(`PDF page ${pageNumber} loaded, text length: ${pageText.length}`);
                         }}
                         highlightText={highlightedPDFText}
                         embedded={true}
