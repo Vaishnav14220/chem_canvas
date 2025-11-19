@@ -363,6 +363,40 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     }
   }, []);
 
+  // Send PDF content to AI when connection is established
+  const sendPdfContextToAI = useCallback(async () => {
+    if (!pdfContent || pdfContent.trim().length === 0) {
+      console.log('No PDF content to send');
+      return;
+    }
+
+    if (!sessionPromiseRef.current) {
+      console.log('No active session to send PDF content');
+      return;
+    }
+
+    try {
+      const session = await sessionPromiseRef.current;
+      if (session) {
+        const pdfMessage = `I have received a PDF document. Here is the content you should reference when answering my questions:
+
+---START OF DOCUMENT---
+${pdfContent.substring(0, 8000)}
+---END OF DOCUMENT---
+
+Please remember: Only discuss topics that are actually in this PDF document. Do not make up or assume information that is not provided. If I ask about something not in the PDF, let me know it's not in the document.`;
+        
+        console.log('Sending PDF context to AI - content length:', pdfContent.length);
+        
+        session.sendRealtimeInput({
+          text: pdfMessage
+        });
+      }
+    } catch (error) {
+      console.error('Error sending PDF context to AI:', error);
+    }
+  }, [pdfContent]);
+
   const connect = useCallback(async () => {
     if (!apiKey) {
       setError("API Key not available. Please wait for Firebase to load.");
@@ -409,6 +443,13 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
         callbacks: {
           onopen: () => {
             setConnectionState(ConnectionState.CONNECTED);
+            
+            // Send PDF context if available
+            if (pdfContent && pdfContent.trim().length > 0) {
+              setTimeout(() => {
+                sendPdfContextToAI();
+              }, 100);
+            }
             
             // Start Audio Input Streaming
             if (!inputContextRef.current || !streamRef.current) return;
@@ -712,6 +753,13 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
       return () => clearTimeout(reconnectTimer);
     }
   }, [selectedVoice]);
+
+  // Send PDF content when it changes and session is connected
+  useEffect(() => {
+    if (connectionState === ConnectionState.CONNECTED && pdfContent && pdfContent.trim().length > 0) {
+      sendPdfContextToAI();
+    }
+  }, [pdfContent, connectionState, sendPdfContextToAI]);
 
   return {
     connect,
