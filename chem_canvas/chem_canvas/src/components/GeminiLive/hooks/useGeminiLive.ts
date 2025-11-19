@@ -177,6 +177,33 @@ const molecule3DTool: FunctionDeclaration = {
   }
 };
 
+const pdfHighlightTool: FunctionDeclaration = {
+  name: 'highlight_pdf_section',
+  description: 'Highlight specific text or equations from the uploaded PDF document to help students focus on what is being explained.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      isActive: { 
+        type: Type.BOOLEAN, 
+        description: 'Set to true to highlight text in the PDF.' 
+      },
+      text: { 
+        type: Type.STRING, 
+        description: 'The exact text from the PDF to highlight. Should be a portion of the PDF content being explained.' 
+      },
+      context: { 
+        type: Type.STRING, 
+        description: 'Optional explanation of why this text is being highlighted and what it means.' 
+      },
+      page: { 
+        type: Type.NUMBER, 
+        description: 'Optional page number if highlighting a specific page (1-indexed).' 
+      }
+    },
+    required: ['isActive', 'text']
+  }
+};
+
 const mathDerivationTool: FunctionDeclaration = {
   name: 'show_math_derivation',
   description: 'CRITICAL: Display step-by-step mathematical derivations or problem-solving with beautiful LaTeX equations. Use this for ALL math/calculations. The steps array MUST contain objects with: title, latex, and explanation fields. Format steps as a JSON array string.',
@@ -216,6 +243,10 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     kineticsParams: { temperature: 50, concentration: 50, activationEnergy: 50 },
     molecule3DParams: {}
   });
+  
+  // PDF state
+  const [pdfContent, setPdfContent] = useState<string>('');
+  const [highlightedPDFText, setHighlightedPDFText] = useState<string>('');
   
   // Audio Contexts and Nodes
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -335,7 +366,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
           systemInstruction: getSystemInstruction(selectedLanguage),
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          tools: [{ functionDeclarations: [simulationTool, molecule3DTool, mathDerivationTool] }]
+          tools: [{ functionDeclarations: [simulationTool, molecule3DTool, mathDerivationTool, pdfHighlightTool] }]
         },
         callbacks: {
           onopen: () => {
@@ -457,6 +488,20 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
                         id: fc.id,
                         name: fc.name,
                         response: { result: 'Mathematical derivation displayed successfully' }
+                      };
+                    } else if (fc.name === 'highlight_pdf_section') {
+                      const { isActive, text, context, page } = fc.args as any;
+                      
+                      console.log('PDF Highlight Called:', { isActive, text, context, page });
+                      
+                      if (isActive && text) {
+                        setHighlightedPDFText(text);
+                      }
+
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: `PDF section highlighted: "${text.substring(0, 50)}..."` }
                       };
                     }
                     return {
@@ -641,6 +686,10 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     selectedLanguage,
     setSelectedLanguage,
     selectedVoice,
-    setSelectedVoice
+    setSelectedVoice,
+    pdfContent,
+    setPdfContent,
+    highlightedPDFText,
+    setHighlightedPDFText
   };
 };

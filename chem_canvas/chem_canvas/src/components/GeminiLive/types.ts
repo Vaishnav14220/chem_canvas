@@ -73,3 +73,9 @@ export interface SimulationState extends VisualizationState {
   type: 'KINETICS';
   params: KineticsParams;
 }
+
+export interface PDFHighlightParams {
+  text: string;
+  page?: number;
+  context?: string;
+}

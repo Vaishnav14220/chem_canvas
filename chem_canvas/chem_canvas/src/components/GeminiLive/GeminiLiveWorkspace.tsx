@@ -4,9 +4,10 @@ import GeminiLiveAudioVisualizer from './GeminiLiveAudioVisualizer';
 import GeminiLiveMessageList from './GeminiLiveMessageList';
 import GeminiLiveVisualization from './GeminiLiveVisualization';
 import GeminiLiveChatInterface from './GeminiLiveChatInterface';
+import GeminiLivePDFViewer from './GeminiLivePDFViewer';
 import { useGeminiLive as GeminiLiveUseGeminiLive } from './hooks/useGeminiLive';
 import { ConnectionState, SupportedLanguage, VoiceType } from './types';
-import { Mic, PhoneOff, Loader2, BrainCircuit, Info, FlaskConical, MessageSquareText, Waves, X, Globe, Volume2 } from 'lucide-react';
+import { Mic, PhoneOff, Loader2, BrainCircuit, Info, FlaskConical, MessageSquareText, Waves, X, Globe, Volume2, FileText } from 'lucide-react';
 
 type AppTab = 'VOICE' | 'TEXT';
 
@@ -27,10 +28,15 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
     selectedLanguage,
     setSelectedLanguage,
     selectedVoice,
-    setSelectedVoice
+    setSelectedVoice,
+    pdfContent,
+    setPdfContent,
+    highlightedPDFText,
+    setHighlightedPDFText
   } = GeminiLiveUseGeminiLive(apiKey);
 
   const [activeTab, setActiveTab] = useState<AppTab>('VOICE');
+  const [isPDFViewerOpen, setIsPDFViewerOpen] = useState(false);
 
   const LANGUAGES: Record<SupportedLanguage, string> = {
     en: '🇺🇸 English',
@@ -128,6 +134,16 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                ))}
              </select>
            </div>
+
+           {/* PDF Upload Button */}
+           <button
+             onClick={() => setIsPDFViewerOpen(true)}
+             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-sm font-medium hover:border-slate-600 hover:bg-slate-700 transition-all focus:outline-none focus:border-molecule-teal"
+             title="Upload PDF for AI-guided explanation"
+           >
+             <FileText size={18} className="text-molecule-teal" />
+             PDF
+           </button>
         </div>
 
         {activeTab === 'VOICE' ? (
@@ -252,6 +268,17 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
         )}
 
       </main>
+
+      {/* PDF Viewer Modal */}
+      <GeminiLivePDFViewer
+        isOpen={isPDFViewerOpen}
+        onClose={() => setIsPDFViewerOpen(false)}
+        onPDFLoaded={(pdfContent) => {
+          setPdfContent(pdfContent);
+          console.log('PDF loaded with content:', pdfContent.substring(0, 100) + '...');
+        }}
+        highlightText={highlightedPDFText}
+      />
 
       <footer className="p-6 text-center text-slate-600 text-xs font-mono border-t border-slate-900">
          Powered by Google Gemini 2.5 & 3.0 • Web Audio API • React
