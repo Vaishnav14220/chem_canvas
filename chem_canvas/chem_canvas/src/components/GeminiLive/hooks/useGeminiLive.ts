@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from '@google/genai';
-import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLanguage, VoiceType } from '../types';
+import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLanguage, VoiceType, VisualizationState } from '../types';
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -125,16 +125,48 @@ const simulationTool: FunctionDeclaration = {
   }
 };
 
+const molecule3DTool: FunctionDeclaration = {
+  name: 'display_molecule_3d',
+  description: 'Display a 3D molecular structure visualization to help students understand molecular geometry and structure.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      isActive: { 
+        type: Type.BOOLEAN, 
+        description: 'Set to true to show the 3D molecule viewer, false to hide it.' 
+      },
+      smiles: { 
+        type: Type.STRING, 
+        description: 'SMILES notation of the molecule to display.' 
+      },
+      name: { 
+        type: Type.STRING, 
+        description: 'Common name of the molecule.' 
+      },
+      iupacName: { 
+        type: Type.STRING, 
+        description: 'IUPAC name of the molecule.' 
+      },
+      structure: { 
+        type: Type.STRING, 
+        description: 'JSON structure of the molecule or other molecular data format.' 
+      }
+    },
+    required: ['isActive']
+  }
+};
+
 export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en') => {
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [transcripts, setTranscripts] = useState<TranscriptionMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<SupportedLanguage>(language);
   const [selectedVoice, setSelectedVoice] = useState<VoiceType>('Zephyr');
-  const [simulationState, setSimulationState] = useState<SimulationState>({
+  const [simulationState, setSimulationState] = useState<VisualizationState>({
     isActive: false,
-    type: 'KINETICS',
-    params: { temperature: 50, concentration: 50, activationEnergy: 50 }
+    type: 'NONE',
+    kineticsParams: { temperature: 50, concentration: 50, activationEnergy: 50 },
+    molecule3DParams: {}
   });
   
   // Audio Contexts and Nodes
@@ -255,7 +287,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
           systemInstruction: getSystemInstruction(selectedLanguage),
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          tools: [{ functionDeclarations: [simulationTool] }]
+          tools: [{ functionDeclarations: [simulationTool, molecule3DTool] }]
         },
         callbacks: {
           onopen: () => {
@@ -299,18 +331,39 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
                       
                       setSimulationState(prev => ({
                         isActive: isActive,
-                        type: 'KINETICS',
-                        params: {
-                          temperature: temperature ?? prev.params.temperature,
-                          concentration: concentration ?? prev.params.concentration,
-                          activationEnergy: activationEnergy ?? prev.params.activationEnergy
-                        }
+                        type: isActive ? 'KINETICS' : 'NONE',
+                        kineticsParams: {
+                          temperature: temperature ?? prev.kineticsParams?.temperature ?? 50,
+                          concentration: concentration ?? prev.kineticsParams?.concentration ?? 50,
+                          activationEnergy: activationEnergy ?? prev.kineticsParams?.activationEnergy ?? 50
+                        },
+                        molecule3DParams: prev.molecule3DParams
                       }));
 
                       return {
                         id: fc.id,
                         name: fc.name,
                         response: { result: 'Simulation updated successfully' }
+                      };
+                    } else if (fc.name === 'display_molecule_3d') {
+                      const { isActive, smiles, name, iupacName, structure } = fc.args as any;
+                      
+                      setSimulationState(prev => ({
+                        isActive: isActive,
+                        type: isActive ? 'MOLECULE_3D' : 'NONE',
+                        kineticsParams: prev.kineticsParams,
+                        molecule3DParams: {
+                          smiles,
+                          name,
+                          iupacName,
+                          structure
+                        }
+                      }));
+
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: 'Molecule display updated successfully' }
                       };
                     }
                     return {

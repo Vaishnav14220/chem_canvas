@@ -28,6 +28,22 @@ export type SupportedLanguage = 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'ja' |
 
 export type VoiceType = 'Fenrir' | 'Puck' | 'Charon' | 'Kore' | 'Orion' | 'Genie' | 'Juniper' | 'Zephyr';
 
+export interface Molecule3DParams {
+  smiles?: string;
+  name?: string;
+  iupacName?: string;
+  structure?: string;
+}
+
+export type VisualizationType = 'KINETICS' | 'MOLECULE_3D' | 'NONE';
+
+export interface VisualizationState {
+  isActive: boolean;
+  type: VisualizationType;
+  kineticsParams?: KineticsParams;
+  molecule3DParams?: Molecule3DParams;
+}
+
 export interface AudioVisualizerProps {
   analyser: AnalyserNode | null;
   isConnected: boolean;
@@ -40,8 +56,7 @@ export interface KineticsParams {
   activationEnergy: number; // 0-100
 }
 
-export interface SimulationState {
-  isActive: boolean;
+export interface SimulationState extends VisualizationState {
   type: 'KINETICS';
   params: KineticsParams;
 }

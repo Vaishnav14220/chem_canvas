@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import GeminiLiveHeader from './GeminiLiveHeader';
 import GeminiLiveAudioVisualizer from './GeminiLiveAudioVisualizer';
 import GeminiLiveMessageList from './GeminiLiveMessageList';
-import GeminiLiveKineticsSimulation from './GeminiLiveKineticsSimulation';
+import GeminiLiveVisualization from './GeminiLiveVisualization';
 import GeminiLiveChatInterface from './GeminiLiveChatInterface';
 import { useGeminiLive as GeminiLiveUseGeminiLive } from './hooks/useGeminiLive';
 import { ConnectionState, SupportedLanguage, VoiceType } from './types';
@@ -202,7 +202,7 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                 </div>
 
                 {simulationState.isActive ? (
-                  <GeminiLiveKineticsSimulation params={simulationState.params} />
+                  <GeminiLiveVisualization visualizationState={simulationState} />
                 ) : (
                   <GeminiLiveAudioVisualizer analyser={analyser} isConnected={isConnected} isSpeaking={false} />
                 )}
