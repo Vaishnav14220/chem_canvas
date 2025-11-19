@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from '@google/genai';
-import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLanguage } from '../types';
+import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLanguage, VoiceType } from '../types';
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -130,6 +130,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const [transcripts, setTranscripts] = useState<TranscriptionMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<SupportedLanguage>(language);
+  const [selectedVoice, setSelectedVoice] = useState<VoiceType>('Zephyr');
   const [simulationState, setSimulationState] = useState<SimulationState>({
     isActive: false,
     type: 'KINETICS',
@@ -249,7 +250,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Fenrir' } }
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } }
           },
           systemInstruction: getSystemInstruction(selectedLanguage),
           inputAudioTranscription: {},
@@ -471,6 +472,18 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     }
   }, [selectedLanguage]);
 
+  // Handle voice changes - reconnect if already connected
+  useEffect(() => {
+    if (connectionState === ConnectionState.CONNECTED) {
+      disconnect();
+      // Auto-reconnect with new voice after a brief delay
+      const reconnectTimer = setTimeout(() => {
+        connect();
+      }, 500);
+      return () => clearTimeout(reconnectTimer);
+    }
+  }, [selectedVoice]);
+
   return {
     connect,
     disconnect,
@@ -480,6 +493,8 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     simulationState,
     error,
     selectedLanguage,
-    setSelectedLanguage
+    setSelectedLanguage,
+    selectedVoice,
+    setSelectedVoice
   };
 };

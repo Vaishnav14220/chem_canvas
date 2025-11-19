@@ -5,8 +5,8 @@ import GeminiLiveMessageList from './GeminiLiveMessageList';
 import GeminiLiveKineticsSimulation from './GeminiLiveKineticsSimulation';
 import GeminiLiveChatInterface from './GeminiLiveChatInterface';
 import { useGeminiLive as GeminiLiveUseGeminiLive } from './hooks/useGeminiLive';
-import { ConnectionState, SupportedLanguage } from './types';
-import { Mic, PhoneOff, Loader2, BrainCircuit, Info, FlaskConical, MessageSquareText, Waves, X, Globe } from 'lucide-react';
+import { ConnectionState, SupportedLanguage, VoiceType } from './types';
+import { Mic, PhoneOff, Loader2, BrainCircuit, Info, FlaskConical, MessageSquareText, Waves, X, Globe, Volume2 } from 'lucide-react';
 
 type AppTab = 'VOICE' | 'TEXT';
 
@@ -25,7 +25,9 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
     simulationState,
     error,
     selectedLanguage,
-    setSelectedLanguage
+    setSelectedLanguage,
+    selectedVoice,
+    setSelectedVoice
   } = GeminiLiveUseGeminiLive(apiKey);
 
   const [activeTab, setActiveTab] = useState<AppTab>('VOICE');
@@ -42,6 +44,17 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
     ru: '🇷🇺 Русский',
     hi: '🇮🇳 हिंदी',
     ar: '🇸🇦 العربية'
+  };
+
+  const VOICES: Record<VoiceType, string> = {
+    'Fenrir': '🐺 Fenrir (Deep)',
+    'Puck': '✨ Puck (Bright)',
+    'Charon': '⚡ Charon (Warm)',
+    'Kore': '🌸 Kore (Soft)',
+    'Orion': '🌟 Orion (Bold)',
+    'Genie': '🧞 Genie (Mystical)',
+    'Juniper': '🌿 Juniper (Natural)',
+    'Zephyr': '🌬️ Zephyr (Gentle)'
   };
 
   const isConnected = connectionState === ConnectionState.CONNECTED;
@@ -97,6 +110,21 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
              >
                {Object.entries(LANGUAGES).map(([code, label]) => (
                  <option key={code} value={code}>{label}</option>
+               ))}
+             </select>
+           </div>
+
+           {/* Voice Selector */}
+           <div className="flex items-center gap-2">
+             <Volume2 size={18} className="text-molecule-purple" />
+             <select
+               value={selectedVoice}
+               onChange={(e) => setSelectedVoice(e.target.value as VoiceType)}
+               disabled={connectionState === ConnectionState.CONNECTED}
+               className="px-4 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-sm font-medium hover:border-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus:border-molecule-purple"
+             >
+               {Object.entries(VOICES).map(([voice, label]) => (
+                 <option key={voice} value={voice}>{label}</option>
                ))}
              </select>
            </div>

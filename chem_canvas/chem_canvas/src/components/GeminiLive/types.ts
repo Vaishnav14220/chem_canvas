@@ -26,6 +26,8 @@ export type ChatMode = 'FAST' | 'PRO' | 'SEARCH';
 
 export type SupportedLanguage = 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'ja' | 'zh' | 'ru' | 'hi' | 'ar';
 
+export type VoiceType = 'Fenrir' | 'Puck' | 'Charon' | 'Kore' | 'Orion' | 'Genie' | 'Juniper' | 'Zephyr';
+
 export interface AudioVisualizerProps {
   analyser: AnalyserNode | null;
   isConnected: boolean;
