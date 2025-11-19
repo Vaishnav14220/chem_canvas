@@ -35,13 +35,26 @@ export interface Molecule3DParams {
   structure?: string;
 }
 
-export type VisualizationType = 'KINETICS' | 'MOLECULE_3D' | 'NONE';
+export interface DerivationStep {
+  title: string;
+  latex: string;
+  explanation?: string;
+}
+
+export interface MathematicalDerivationParams {
+  title: string;
+  steps: DerivationStep[];
+  topic?: string;
+}
+
+export type VisualizationType = 'KINETICS' | 'MOLECULE_3D' | 'MATH_DERIVATION' | 'NONE';
 
 export interface VisualizationState {
   isActive: boolean;
   type: VisualizationType;
   kineticsParams?: KineticsParams;
   molecule3DParams?: Molecule3DParams;
+  mathDerivationParams?: MathematicalDerivationParams;
 }
 
 export interface AudioVisualizerProps {

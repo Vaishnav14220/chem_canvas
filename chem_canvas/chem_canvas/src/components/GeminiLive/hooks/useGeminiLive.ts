@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from '@google/genai';
-import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLanguage, VoiceType, VisualizationState } from '../types';
+import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLanguage, VoiceType, VisualizationState, MathematicalDerivationParams } from '../types';
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -156,6 +156,33 @@ const molecule3DTool: FunctionDeclaration = {
   }
 };
 
+const mathDerivationTool: FunctionDeclaration = {
+  name: 'show_math_derivation',
+  description: 'Display step-by-step mathematical derivations or problem-solving steps with LaTeX equations to help students understand the solution process.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      isActive: { 
+        type: Type.BOOLEAN, 
+        description: 'Set to true to show the mathematical derivation viewer, false to hide it.' 
+      },
+      title: { 
+        type: Type.STRING, 
+        description: 'Title of the derivation or problem (e.g., "Equilibrium Constant Calculation").' 
+      },
+      topic: { 
+        type: Type.STRING, 
+        description: 'Topic or subject area (e.g., "Chemical Equilibrium").' 
+      },
+      steps: { 
+        type: Type.OBJECT,
+        description: 'Array of derivation steps as JSON string. Each step has: title (string), latex (string with LaTeX), explanation (optional string).'
+      }
+    },
+    required: ['isActive', 'title', 'steps']
+  }
+};
+
 export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en') => {
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [transcripts, setTranscripts] = useState<TranscriptionMessage[]>([]);
@@ -287,7 +314,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
           systemInstruction: getSystemInstruction(selectedLanguage),
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          tools: [{ functionDeclarations: [simulationTool, molecule3DTool] }]
+          tools: [{ functionDeclarations: [simulationTool, molecule3DTool, mathDerivationTool] }]
         },
         callbacks: {
           onopen: () => {
@@ -337,7 +364,8 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
                           concentration: concentration ?? prev.kineticsParams?.concentration ?? 50,
                           activationEnergy: activationEnergy ?? prev.kineticsParams?.activationEnergy ?? 50
                         },
-                        molecule3DParams: prev.molecule3DParams
+                        molecule3DParams: prev.molecule3DParams,
+                        mathDerivationParams: prev.mathDerivationParams
                       }));
 
                       return {
@@ -357,13 +385,45 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
                           name,
                           iupacName,
                           structure
-                        }
+                        },
+                        mathDerivationParams: prev.mathDerivationParams
                       }));
 
                       return {
                         id: fc.id,
                         name: fc.name,
                         response: { result: 'Molecule display updated successfully' }
+                      };
+                    } else if (fc.name === 'show_math_derivation') {
+                      const { isActive, title, topic, steps } = fc.args as any;
+                      
+                      // Parse steps if it's a string (JSON)
+                      let parsedSteps = steps;
+                      if (typeof steps === 'string') {
+                        try {
+                          parsedSteps = JSON.parse(steps);
+                        } catch (e) {
+                          console.error('Error parsing steps JSON:', e);
+                          parsedSteps = [];
+                        }
+                      }
+
+                      setSimulationState(prev => ({
+                        isActive: isActive,
+                        type: isActive ? 'MATH_DERIVATION' : 'NONE',
+                        kineticsParams: prev.kineticsParams,
+                        molecule3DParams: prev.molecule3DParams,
+                        mathDerivationParams: {
+                          title,
+                          topic,
+                          steps: parsedSteps || []
+                        }
+                      }));
+
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: 'Mathematical derivation displayed successfully' }
                       };
                     }
                     return {

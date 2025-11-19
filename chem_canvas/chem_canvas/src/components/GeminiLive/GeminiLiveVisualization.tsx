@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { VisualizationState, KineticsParams, Molecule3DParams } from './types';
 import GeminiLiveKineticsSimulation from './GeminiLiveKineticsSimulation';
+import GeminiLiveMathDerivation from './GeminiLiveMathDerivation';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 
 interface GeminiLiveVisualizationProps {
@@ -98,6 +99,25 @@ const GeminiLiveVisualization: React.FC<GeminiLiveVisualizationProps> = ({ visua
             )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (visualizationState.type === 'MATH_DERIVATION') {
+    if (!visualizationState.mathDerivationParams) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-slate-900/30 rounded-xl border border-slate-700/50">
+          <div className="text-center text-amber-400 flex flex-col items-center gap-2">
+            <AlertTriangle size={24} />
+            <p className="text-sm">No derivation data provided</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-full h-full rounded-xl overflow-hidden">
+        <GeminiLiveMathDerivation params={visualizationState.mathDerivationParams} />
       </div>
     );
   }
