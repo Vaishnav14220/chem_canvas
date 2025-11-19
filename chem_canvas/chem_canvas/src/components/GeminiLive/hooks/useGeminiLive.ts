@@ -757,9 +757,28 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
   // Send PDF content when it changes and session is connected
   useEffect(() => {
     if (connectionState === ConnectionState.CONNECTED && pdfContent && pdfContent.trim().length > 0) {
-      sendPdfContextToAI();
+      // Inline the PDF sending logic to avoid circular dependencies
+      sessionPromiseRef.current?.then(session => {
+        if (session) {
+          const pdfMessage = `I have received a PDF document. Here is the content you should reference when answering my questions:
+
+---START OF DOCUMENT---
+${pdfContent.substring(0, 8000)}
+---END OF DOCUMENT---
+
+Please remember: Only discuss topics that are actually in this PDF document. Do not make up or assume information that is not provided. If I ask about something not in the PDF, let me know it's not in the document.`;
+          
+          console.log('Sending PDF context to AI via effect - content length:', pdfContent.length);
+          
+          session.sendRealtimeInput({ text: pdfMessage }).catch((error: any) => {
+            console.error('Error sending PDF content to AI:', error);
+          });
+        }
+      }).catch(error => {
+        console.error('Session not available for PDF context:', error);
+      });
     }
-  }, [pdfContent, connectionState, sendPdfContextToAI]);
+  }, [pdfContent, connectionState]);
 
   return {
     connect,
