@@ -125,8 +125,28 @@ Seu objetivo é ajudar os alunos a entender conceitos complexos em Química Org�
 - إذا ارتكب الطالب خطأ، صححه برفق واشرح السبب.`
 };
 
-const getSystemInstruction = (language: SupportedLanguage): string => {
-  return SYSTEM_INSTRUCTIONS[language] || SYSTEM_INSTRUCTIONS.en;
+const getSystemInstruction = (language: SupportedLanguage, pdfContext?: string): string => {
+  let baseInstruction = SYSTEM_INSTRUCTIONS[language] || SYSTEM_INSTRUCTIONS.en;
+  
+  // If PDF content is available, add it to the context
+  if (pdfContext && pdfContext.trim().length > 0) {
+    baseInstruction += `
+
+UPLOADED DOCUMENT CONTEXT:
+The student has uploaded a PDF document with the following content:
+---START OF DOCUMENT---
+${pdfContext.substring(0, 5000)}
+---END OF DOCUMENT---
+
+IMPORTANT: When discussing this document:
+1. Reference specific sections, equations, or concepts FROM THIS DOCUMENT
+2. Call 'highlight_pdf_section' with exact text from the document
+3. Make your explanations directly relevant to what the student is asking about in relation to this PDF
+4. If the student asks about the PDF, ONLY discuss content that is in the document above
+5. Correct the student if they misunderstand something in the PDF`;
+  }
+  
+  return baseInstruction;
 };
 
 const simulationTool: FunctionDeclaration = {
@@ -373,7 +393,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } }
           },
-          systemInstruction: getSystemInstruction(selectedLanguage),
+          systemInstruction: getSystemInstruction(selectedLanguage, pdfContent),
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           tools: [{ functionDeclarations: [simulationTool, molecule3DTool, mathDerivationTool, pdfHighlightTool] }]

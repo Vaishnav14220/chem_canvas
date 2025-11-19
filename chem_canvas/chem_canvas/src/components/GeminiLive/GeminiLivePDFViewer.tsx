@@ -7,9 +7,10 @@ interface GeminiLivePDFViewerProps {
   onClose: () => void;
   onPDFLoaded?: (text: string) => void;
   highlightText?: string;
+  embedded?: boolean;
 }
 
-const GeminiLivePDFViewer: React.FC<GeminiLivePDFViewerProps> = ({ isOpen, onClose, onPDFLoaded, highlightText }) => {
+const GeminiLivePDFViewer: React.FC<GeminiLivePDFViewerProps> = ({ isOpen, onClose, onPDFLoaded, highlightText, embedded = false }) => {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfDocument, setPdfDocument] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -144,6 +145,91 @@ const GeminiLivePDFViewer: React.FC<GeminiLivePDFViewerProps> = ({ isOpen, onClo
 
   if (!isOpen) return null;
 
+  // Embedded view - no modal, just the content
+  if (embedded) {
+    return (
+      <div className="w-full h-full bg-slate-900 rounded-lg flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-3 border-b border-slate-700">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <h3 className="text-sm font-bold text-white truncate">PDF Viewer</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {pdfDocument && (
+              <>
+                <button
+                  onClick={goToPreviousPage}
+                  disabled={currentPage === 1}
+                  className="p-1 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-slate-300 text-xs font-medium min-w-[4rem] text-center">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                  className="p-1 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 transition-all"
+            >
+              <Upload size={16} />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 transition-all"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* PDF Display */}
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-auto bg-slate-950 p-3 flex items-center justify-center"
+          onMouseUp={handleTextSelection}
+        >
+          {pdfDocument ? (
+            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+              <canvas
+                ref={canvasRef}
+                className="max-w-full max-h-full"
+                style={{ display: 'block' }}
+              />
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center p-8 cursor-pointer hover:bg-slate-900/50 rounded-lg transition-all">
+              <Upload size={32} className="text-slate-500 mb-2" />
+              <span className="text-slate-400 text-sm font-medium">Click or drag PDF here</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </label>
+          )}
+        </div>
+
+        {highlightedText && (
+          <div className="p-2 bg-yellow-500/10 border-t border-yellow-500/30 text-yellow-300 text-xs">
+            Highlighted: {highlightedText.substring(0, 50)}...
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Modal view
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
       <div className="w-full max-w-5xl h-[90vh] bg-slate-900 rounded-xl border border-slate-700 flex flex-col">

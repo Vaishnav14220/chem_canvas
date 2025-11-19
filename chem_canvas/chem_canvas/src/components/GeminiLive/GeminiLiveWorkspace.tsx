@@ -223,6 +223,24 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                   <GeminiLiveAudioVisualizer analyser={analyser} isConnected={isConnected} isSpeaking={false} />
                 )}
 
+                {/* PDF Viewer Display - Show below voice frequency analysis */}
+                {isPDFViewerOpen && (
+                  <div className="mt-6 bg-slate-900/50 rounded-2xl p-6 border border-slate-800 backdrop-blur">
+                    <div className="h-96 bg-slate-950 rounded-lg overflow-hidden border border-slate-700">
+                      <GeminiLivePDFViewer
+                        isOpen={isPDFViewerOpen}
+                        onClose={() => setIsPDFViewerOpen(false)}
+                        onPDFLoaded={(pdfContent) => {
+                          setPdfContent(pdfContent);
+                          console.log('PDF loaded with content:', pdfContent.substring(0, 100) + '...');
+                        }}
+                        highlightText={highlightedPDFText}
+                        embedded={true}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Tips Section */}
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
@@ -269,16 +287,18 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
 
       </main>
 
-      {/* PDF Viewer Modal */}
-      <GeminiLivePDFViewer
-        isOpen={isPDFViewerOpen}
-        onClose={() => setIsPDFViewerOpen(false)}
-        onPDFLoaded={(pdfContent) => {
-          setPdfContent(pdfContent);
-          console.log('PDF loaded with content:', pdfContent.substring(0, 100) + '...');
-        }}
-        highlightText={highlightedPDFText}
-      />
+      {/* PDF Modal Viewer - Only show if not embedded (fallback) */}
+      {!isPDFViewerOpen && (
+        <GeminiLivePDFViewer
+          isOpen={false}
+          onClose={() => setIsPDFViewerOpen(false)}
+          onPDFLoaded={(pdfContent) => {
+            setPdfContent(pdfContent);
+          }}
+          highlightText={highlightedPDFText}
+          embedded={false}
+        />
+      )}
 
       <footer className="p-6 text-center text-slate-600 text-xs font-mono border-t border-slate-900">
          Powered by Google Gemini 2.5 & 3.0 • Web Audio API • React
