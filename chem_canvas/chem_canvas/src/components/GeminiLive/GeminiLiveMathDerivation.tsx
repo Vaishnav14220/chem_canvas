@@ -1,6 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ChevronUp, ChevronDown, RotateCcw } from 'lucide-react';
-import katex from 'katex';
+import React, { useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { Sparkles } from 'lucide-react';
 import 'katex/dist/katex.min.css';
 
 interface DerivationStep {
@@ -20,184 +23,140 @@ interface GeminiLiveMathDerivationProps {
 }
 
 const GeminiLiveMathDerivation: React.FC<GeminiLiveMathDerivationProps> = ({ params }) => {
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const latexContainerRef = useRef<HTMLDivElement>(null);
-
-  // Ensure steps is valid
   const steps = Array.isArray(params.steps) ? params.steps : [];
-  
-  // Ensure currentStepIndex is within bounds
-  const safeStepIndex = Math.min(currentStepIndex, Math.max(0, steps.length - 1));
-  
-  if (steps.length === 0) {
+  const [visibleCount, setVisibleCount] = useState(0);
+
+  // Reveal steps sequentially to mimic real-time writing on the canvas
+  useEffect(() => {
+    if (!steps.length) {
+      setVisibleCount(0);
+      return;
+    }
+
+    let isCancelled = false;
+    const timers: number[] = [];
+    setVisibleCount(0);
+
+    const reveal = (index: number) => {
+      if (isCancelled) return;
+      setVisibleCount(prev => Math.max(prev, index + 1));
+      if (index + 1 < steps.length) {
+        const timerId = window.setTimeout(() => reveal(index + 1), 900);
+        timers.push(timerId);
+      }
+    };
+
+    const startTimer = window.setTimeout(() => reveal(0), 350);
+    timers.push(startTimer);
+
+    return () => {
+      isCancelled = true;
+      timers.forEach(id => window.clearTimeout(id));
+    };
+  }, [steps]);
+
+  const visibleSteps = useMemo(() => steps.slice(0, visibleCount), [steps, visibleCount]);
+  const progress = steps.length ? (visibleCount / steps.length) * 100 : 0;
+
+  if (!steps.length) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-slate-900/50 to-slate-950/50 rounded-xl border border-slate-700/50 p-6">
-        <div className="text-center">
-          <p className="text-slate-400 mb-2">No derivation steps provided</p>
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-slate-900/50 to-slate-950/70 rounded-2xl border border-slate-800/50 p-6">
+        <div className="text-center space-y-2">
+          <Sparkles className="mx-auto text-slate-500" size={28} />
+          <p className="text-slate-400">Waiting for math derivation…</p>
           <p className="text-slate-500 text-sm">{params.title}</p>
         </div>
       </div>
     );
   }
 
-  const currentStep = steps[safeStepIndex];
-
-  if (!currentStep) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-slate-900/50 to-slate-950/50 rounded-xl border border-slate-700/50 p-6">
-        <div className="text-center">
-          <p className="text-slate-400 mb-2">Error: Step not found</p>
-          <p className="text-slate-500 text-sm">Step {safeStepIndex + 1} of {steps.length}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Render LaTeX when step changes
-  useEffect(() => {
-    if (!latexContainerRef.current || !currentStep) return;
-
-    try {
-      // Clear previous content
-      latexContainerRef.current.innerHTML = '';
-
-      // Render LaTeX using KaTeX
-      const html = katex.renderToString(currentStep.latex, {
-        throwOnError: false,
-        displayMode: true,
-        macros: {
-          '\\f': '#1f(#2)',
-          '\\derive': '\\frac{d}{d#1}',
-          '\\partial': '\\frac{\\partial}{\\partial #1}'
-        }
-      });
-
-      latexContainerRef.current.innerHTML = html;
-    } catch (error) {
-      console.error('Error rendering LaTeX:', error);
-      if (latexContainerRef.current) {
-        latexContainerRef.current.textContent = currentStep.latex;
-      }
-    }
-  }, [currentStep]);
-
-  const goToNextStep = () => {
-    if (safeStepIndex < steps.length - 1) {
-      setCurrentStepIndex(safeStepIndex + 1);
-    }
+  const renderStepMarkdown = (step: DerivationStep, index: number) => {
+    const heading = step.title ? `### ${step.title}` : `### Step ${index + 1}`;
+    const explanation = step.explanation ?? '';
+    const equation = step.latex ? `\n\n$$${step.latex}$$` : '';
+    return `${heading}\n\n${explanation}${equation}`.trim();
   };
-
-  const goToPreviousStep = () => {
-    if (safeStepIndex > 0) {
-      setCurrentStepIndex(safeStepIndex - 1);
-    }
-  };
-
-  const resetSteps = () => {
-    setCurrentStepIndex(0);
-  };
-
-  const progressPercent = ((safeStepIndex + 1) / steps.length) * 100;
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full flex flex-col bg-gradient-to-b from-slate-900/50 to-slate-950/50 rounded-xl border border-slate-700/50 p-6 overflow-hidden"
-    >
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-start justify-between mb-2">
-          <div>
-            <h3 className="text-lg font-bold text-white mb-1">{params.title}</h3>
-            {params.topic && (
-              <p className="text-xs text-slate-400">{params.topic}</p>
-            )}
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-semibold text-molecule-teal">
-              Step {safeStepIndex + 1} of {steps.length}
-            </p>
-          </div>
+    <div className="w-full h-full flex flex-col bg-gradient-to-b from-slate-950/40 via-slate-900/20 to-slate-950/80 rounded-3xl border border-slate-800/60 overflow-hidden">
+      <div className="px-6 pt-6 pb-4 border-b border-slate-800/60 bg-slate-950/40 flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-cyan-400/80 mb-1">Live Math Canvas</p>
+          <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+            <Sparkles size={18} className="text-cyan-300" />
+            {params.title}
+          </h3>
+          {params.topic && <p className="text-xs text-slate-400">{params.topic}</p>}
         </div>
-
-        {/* Progress Bar */}
-        <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-molecule-teal to-molecule-purple transition-all duration-300"
-            style={{ width: `${progressPercent}%` }}
-          />
+        <div className="text-right">
+          <p className="text-sm text-slate-300 font-semibold">{visibleCount}/{steps.length} steps streaming</p>
+          <div className="mt-2 w-40 h-1.5 bg-slate-900 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
         </div>
       </div>
 
-      {/* LaTeX Display Area */}
-      <div className="flex-1 flex items-center justify-center bg-slate-900/30 rounded-lg border border-slate-700/30 p-6 overflow-auto mb-6">
-        <div
-          ref={latexContainerRef}
-          className="text-white text-center max-w-full"
-          style={{
-            fontSize: '1.5rem',
-            lineHeight: '1.8'
-          }}
-        />
-      </div>
+      <div className="relative flex-1 overflow-auto">
+        <div className="absolute left-10 top-0 bottom-0 w-px bg-gradient-to-b from-cyan-500/40 via-transparent to-blue-500/30 pointer-events-none" />
+        <div className="space-y-6 py-8 pr-6 pl-16">
+          {visibleSteps.map((step, index) => (
+            <div key={`${step.title}-${index}`} className="relative group">
+              <div className="absolute -left-10 top-5 w-3 h-3 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 shadow-[0_0_15px_3px_rgba(14,165,233,0.35)]" />
+              <div className="absolute -left-10 top-8 bottom-[-1.5rem] w-px bg-slate-800/40" aria-hidden />
+              <div
+                className="bg-slate-900/70 border border-slate-700/60 rounded-2xl shadow-xl shadow-cyan-950/20 p-5 backdrop-blur-sm animate-flow-fade"
+                style={{ animationDelay: `${index * 0.12}s` }}
+              >
+                <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400 mb-4">
+                  <span>Step {index + 1}</span>
+                  <span>{params.topic ?? 'Mathematics'}</span>
+                </div>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    h3: ({ node: _node, ...props }) => (
+                      <h3 className="text-lg font-semibold text-white mb-3" {...props} />
+                    ),
+                    p: ({ node: _node, ...props }) => (
+                      <p className="text-sm text-slate-300 leading-relaxed mb-3" {...props} />
+                    ),
+                    strong: ({ node: _node, ...props }) => (
+                      <strong className="text-white font-semibold" {...props} />
+                    ),
+                    em: ({ node: _node, ...props }) => (
+                      <em className="text-slate-200" {...props} />
+                    ),
+                    ul: ({ node: _node, ...props }) => (
+                      <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1 mb-3" {...props} />
+                    ),
+                    ol: ({ node: _node, ...props }) => (
+                      <ol className="list-decimal pl-5 text-sm text-slate-300 space-y-1 mb-3" {...props} />
+                    ),
+                    li: ({ node: _node, ...props }) => (
+                      <li className="leading-relaxed" {...props} />
+                    ),
+                    code: ({ node: _node, inline, ...props }: any) => (
+                      <code
+                        className={`px-1.5 py-0.5 rounded bg-slate-800/60 text-cyan-300 text-xs ${inline ? '' : 'block mt-2'}`}
+                        {...props}
+                      />
+                    ),
+                  }}
+                >
+                  {renderStepMarkdown(step, index)}
+                </ReactMarkdown>
+              </div>
+            </div>
+          ))}
 
-      {/* Step Title and Explanation */}
-      <div className="mb-6 bg-slate-900/50 rounded-lg border border-slate-700/30 p-4">
-        <p className="text-sm font-semibold text-slate-300 mb-2">
-          {currentStep.title}
-        </p>
-        {currentStep.explanation && (
-          <p className="text-sm text-slate-400 leading-relaxed">
-            {currentStep.explanation}
-          </p>
-        )}
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center justify-between gap-3">
-        <button
-          onClick={goToPreviousStep}
-          disabled={safeStepIndex === 0}
-          className="p-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          title="Previous step"
-        >
-          <ChevronUp size={20} />
-        </button>
-
-        <button
-          onClick={resetSteps}
-          disabled={safeStepIndex === 0}
-          className="px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-medium flex items-center gap-2"
-        >
-          <RotateCcw size={16} />
-          Reset
-        </button>
-
-        <button
-          onClick={goToNextStep}
-          disabled={safeStepIndex === steps.length - 1}
-          className="p-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          title="Next step"
-        >
-          <ChevronDown size={20} />
-        </button>
-      </div>
-
-      {/* Step Indicators */}
-      <div className="mt-4 flex gap-1 justify-center flex-wrap">
-        {steps.map((_, index) => (
-          <button
-            key={index}
-            onClick={() => setCurrentStepIndex(index)}
-            className={`h-2 rounded-full transition-all ${
-              index === safeStepIndex
-                ? 'w-8 bg-molecule-teal'
-                : 'w-2 bg-slate-700 hover:bg-slate-600'
-            }`}
-            title={`Go to step ${index + 1}`}
-          />
-        ))}
+          {visibleCount < steps.length && (
+            <div className="pl-6 text-slate-500 text-sm italic animate-pulse">…listening for the next mathematical insight</div>
+          )}
+        </div>
       </div>
     </div>
   );

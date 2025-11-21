@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
 import { Mic, PhoneOff, Loader2, BrainCircuit, Info, FlaskConical, MessageSquareText, Waves, X } from 'lucide-react';
-import AudioVisualizer from './GeminiLive/AudioVisualizer';
-import MessageList from './GeminiLive/MessageList';
-import KineticsSimulation from './GeminiLive/KineticsSimulation';
-import ChatInterface from './GeminiLive/ChatInterface';
-import { useGeminiLive } from '../hooks/useGeminiLive';
-import { ConnectionState } from '../types/geminiLive';
+import GeminiLiveAudioVisualizer from './GeminiLive/GeminiLiveAudioVisualizer';
+import GeminiLiveMessageList from './GeminiLive/GeminiLiveMessageList';
+import GeminiLiveKineticsSimulation from './GeminiLive/GeminiLiveKineticsSimulation';
+import GeminiLiveChatInterface from './GeminiLive/GeminiLiveChatInterface';
+import GeminiLiveVisualization from './GeminiLive/GeminiLiveVisualization';
+import { useGeminiLive as useGeminiLiveHook } from './GeminiLive/hooks/useGeminiLive';
+import { ConnectionState } from './GeminiLive/types';
 
 type AppTab = 'VOICE' | 'TEXT';
 
 interface GeminiLiveWorkspaceProps {
     onClose: () => void;
+    apiKey: string;
 }
 
-const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose }) => {
+const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiKey }) => {
     const {
         connect,
         disconnect,
@@ -22,7 +24,7 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose }) =>
         analyser,
         simulationState,
         error
-    } = useGeminiLive();
+    } = useGeminiLiveHook(apiKey);
 
     const [activeTab, setActiveTab] = useState<AppTab>('VOICE');
 
@@ -58,8 +60,8 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose }) =>
                 </button>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-4 md:p-6">
-                <div className="mx-auto max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <main className="flex-1 overflow-hidden">
+                <div className="w-full h-full grid grid-cols-1 lg:grid-cols-12 gap-0">
 
                     {/* Tab Navigation */}
                     <div className="lg:col-span-12 flex justify-center mb-2">
@@ -157,9 +159,9 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose }) =>
                                     </div>
 
                                     {simulationState.isActive ? (
-                                        <KineticsSimulation params={simulationState.params} />
+                                        <GeminiLiveKineticsSimulation params={simulationState.params} />
                                     ) : (
-                                        <AudioVisualizer analyser={analyser} isConnected={isConnected} isSpeaking={false} />
+                                        <GeminiLiveAudioVisualizer analyser={analyser} isConnected={isConnected} isSpeaking={false} />
                                     )}
 
                                     {/* Tips Section */}
@@ -195,14 +197,14 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose }) =>
                                 </div>
                                 <div className="flex-1 relative">
                                     <div className="absolute inset-0">
-                                        <MessageList transcripts={transcripts} />
+                                        <GeminiLiveMessageList transcripts={transcripts} />
                                     </div>
                                 </div>
                             </div>
                         </>
                     ) : (
                         <div className="col-span-12 h-[80vh]">
-                            <ChatInterface />
+                            <GeminiLiveVisualization />
                         </div>
                     )}
                 </div>

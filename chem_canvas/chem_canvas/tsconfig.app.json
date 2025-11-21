@@ -16,6 +16,7 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
+      "@/*": ["src/*"],
       "react-mol": ["src/types/react-mol"]
     },
 

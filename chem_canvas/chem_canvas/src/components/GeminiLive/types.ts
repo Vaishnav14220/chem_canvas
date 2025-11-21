@@ -37,24 +37,53 @@ export interface Molecule3DParams {
 
 export interface DerivationStep {
   title: string;
-  latex: string;
+  latex?: string;
   explanation?: string;
 }
 
-export interface MathematicalDerivationParams {
+export type LearningCanvasImageStatus = 'idle' | 'loading' | 'complete' | 'error';
+
+export interface LearningCanvasImage {
+  status: LearningCanvasImageStatus;
+  url?: string;
+  prompt?: string;
+  topic?: string;
+  concept?: string;
+  style?: string;
+  focus?: string;
+  mood?: string;
+  colorPalette?: string;
+  medium?: string;
+  importantElements?: string;
+  message?: string;
+  requestId?: string;
+  alt?: string;
+  updatedAt?: number;
+}
+
+export interface LearningCanvasParams {
   title: string;
   steps: DerivationStep[];
   topic?: string;
+  image?: LearningCanvasImage;
 }
 
-export type VisualizationType = 'KINETICS' | 'MOLECULE_3D' | 'MATH_DERIVATION' | 'NONE';
+export interface ConceptImageRecord extends LearningCanvasImage {
+  id: string;
+  title: string;
+  createdAt: number;
+  sourceTopic?: string;
+  displayPrompt?: string;
+}
+
+export type VisualizationType = 'KINETICS' | 'MOLECULE_3D' | 'LEARNING_CANVAS' | 'NONE';
 
 export interface VisualizationState {
   isActive: boolean;
   type: VisualizationType;
   kineticsParams?: KineticsParams;
   molecule3DParams?: Molecule3DParams;
-  mathDerivationParams?: MathematicalDerivationParams;
+  learningCanvasParams?: LearningCanvasParams;
 }
 
 export interface AudioVisualizerProps {

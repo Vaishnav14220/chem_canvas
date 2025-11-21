@@ -104,7 +104,7 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({ apiKe
 
       let fullText = '';
 
-      for await (const chunk of stream.stream) {
+      for await (const chunk of stream as AsyncIterable<any>) {
           const text = chunk.text || '';
           fullText += text;
           const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;

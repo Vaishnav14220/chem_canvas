@@ -195,73 +195,74 @@ const MarkdownRenderer = ReactMarkdown as unknown as (props: any) => JSX.Element
 const renderMarkdown = (text: string) => {
   try {
     return (
-      <MarkdownRenderer
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={{
-          a: ({ node, ...linkProps }: any) => (
-            <a
-              {...linkProps}
-              className="text-blue-400 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            />
-          ),
-          code: ({ inline, className, children, ...codeProps }: any) => {
-            const { node, ...rest } = codeProps;
-            const match = /language-(\w+)/.exec(className || '');
-            if (!inline && match) {
+      <div className="prose prose-sm prose-invert max-w-none space-y-3">
+        <MarkdownRenderer
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+          components={{
+            a: ({ node, ...linkProps }: any) => (
+              <a
+                {...linkProps}
+                className="text-blue-400 hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            ),
+            code: ({ inline, className, children, ...codeProps }: any) => {
+              const { node, ...rest } = codeProps;
+              const match = /language-(\w+)/.exec(className || '');
+              if (!inline && match) {
+                return (
+                  <pre
+                    className="bg-gray-900 border border-gray-700 rounded-lg p-3 overflow-x-auto text-xs"
+                    {...rest}
+                  >
+                    <code className={className}>{children}</code>
+                  </pre>
+                );
+              }
               return (
-                <pre
-                  className="bg-gray-900 border border-gray-700 rounded-lg p-3 overflow-x-auto text-xs"
+                <code
+                  className="bg-gray-800/80 border border-gray-700 rounded px-1.5 py-0.5 text-xs"
                   {...rest}
                 >
-                  <code className={className}>{children}</code>
-                </pre>
+                  {children}
+                </code>
               );
-            }
-            return (
-              <code
-                className="bg-gray-800/80 border border-gray-700 rounded px-1.5 py-0.5 text-xs"
-                {...rest}
+            },
+            table: ({ node, children, ...tableProps }: any) => (
+              <div className="overflow-x-auto">
+                <table
+                  className="w-full text-left border-collapse border border-gray-700"
+                  {...tableProps}
+                >
+                  {children}
+                </table>
+              </div>
+            ),
+            th: ({ node, children, ...thProps }: any) => (
+              <th
+                className="border border-gray-700 px-3 py-2 bg-gray-800 font-semibold text-sm"
+                {...thProps}
               >
                 {children}
-              </code>
-            );
-          },
-          table: ({ node, children, ...tableProps }: any) => (
-            <div className="overflow-x-auto">
-              <table
-                className="w-full text-left border-collapse border border-gray-700"
-                {...tableProps}
-              >
+              </th>
+            ),
+            td: ({ node, children, ...tdProps }: any) => (
+              <td className="border border-gray-700 px-3 py-2 text-sm" {...tdProps}>
                 {children}
-              </table>
-            </div>
-          ),
-          th: ({ node, children, ...thProps }: any) => (
-            <th
-              className="border border-gray-700 px-3 py-2 bg-gray-800 font-semibold text-sm"
-              {...thProps}
-            >
-              {children}
-            </th>
-          ),
-          td: ({ node, children, ...tdProps }: any) => (
-            <td className="border border-gray-700 px-3 py-2 text-sm" {...tdProps}>
-              {children}
-            </td>
-          ),
-          li: ({ node, children, ...liProps }: any) => (
-            <li className="mb-1" {...liProps}>
-              {children}
-            </li>
-          ),
-        }}
-        className="prose prose-sm prose-invert max-w-none space-y-3"
-      >
-        {text}
-      </MarkdownRenderer>
+              </td>
+            ),
+            li: ({ node, children, ...liProps }: any) => (
+              <li className="mb-1" {...liProps}>
+                {children}
+              </li>
+            ),
+          }}
+        >
+          {text}
+        </MarkdownRenderer>
+      </div>
     );
   } catch (markdownError) {
     console.warn('Error rendering markdown:', markdownError);

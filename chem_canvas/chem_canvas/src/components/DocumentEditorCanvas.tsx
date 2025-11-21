@@ -15,7 +15,10 @@ import Editor, {
   ControlType,
   BlockType,
   IContextMenuContext,
-  splitText
+  splitText,
+  IEditorOption,
+  IEditorResult,
+  WordBreak
 } from '@hufe921/canvas-editor';
 import './DocumentEditorStyles.css';
 import {
@@ -106,7 +109,7 @@ const DocumentEditorCanvas: React.FC<DocumentEditorCanvasProps> = ({
     ];
 
     // Editor configuration with English text only
-    const options = {
+    const options: IEditorOption = {
       mode: currentMode,
       locale: 'en',
       defaultType: 'A4' as const,
@@ -117,7 +120,7 @@ const DocumentEditorCanvas: React.FC<DocumentEditorCanvasProps> = ({
       maxSize: 72,
       defaultRowMargin: 1.5,
       defaultTabWidth: 32,
-      wordBreak: 'BREAK_WORD' as const,
+      wordBreak: WordBreak.BREAK_WORD,
       watermark: {
         data: 'DRAFT',
         color: '#AEB5C0',
@@ -133,20 +136,6 @@ const DocumentEditorCanvas: React.FC<DocumentEditorCanvasProps> = ({
       margins: [120, 120, 120, 120], // Top, Right, Bottom, Left
       paperDirection: PaperDirection.VERTICAL,
       pageMode: PageMode.PAGING,
-      pageNumber: {
-        display: true,
-        format: 'Page {pageNo}/{pageCount}',
-        color: '#666666',
-        size: 12,
-      },
-      header: {
-        disabled: false,
-        maxHeight: 50,
-      },
-      footer: {
-        disabled: false,
-        maxHeight: 50,
-      },
     };
 
     try {
@@ -161,11 +150,24 @@ const DocumentEditorCanvas: React.FC<DocumentEditorCanvasProps> = ({
       );
 
       editorRef.current = editor;
+      const editorAny = editor as typeof editor & {
+        register?: {
+          contextMenuList?: (items: any[]) => void;
+        };
+        override?: {
+          contextMenu?: (items: any[]) => any[];
+        };
+        getContextMenu?: () => any;
+        listener?: {
+          contentChange?: () => void;
+        };
+      };
+
       editor.command.executePageMode(PageMode.PAGING);
 
       // Register custom context menu with AI features
-      if (editor.register) {
-        editor.register.contextMenuList([
+      if (editorAny.register?.contextMenuList) {
+        editorAny.register.contextMenuList([
           {
             name: '──────────',
             when: (payload: IContextMenuContext) => {
@@ -323,10 +325,10 @@ const DocumentEditorCanvas: React.FC<DocumentEditorCanvasProps> = ({
       }
 
       // Override default context menu to ensure English
-      if (editor.override) {
-        const originalContextMenu = editor.getContextMenu?.bind(editor);
+      if (editorAny.override) {
+        const originalContextMenu = editorAny.getContextMenu?.bind(editorAny);
         if (originalContextMenu) {
-          editor.override.contextMenu = function(contextMenuList: any[]) {
+          editorAny.override.contextMenu = function(contextMenuList: any[]) {
             // Replace Chinese text with English using the translation helper
             return contextMenuList.map(item => {
               if (typeof item.name === 'string') {
@@ -352,11 +354,12 @@ const DocumentEditorCanvas: React.FC<DocumentEditorCanvasProps> = ({
       }
 
       // Set up event listeners
-      if (editor.listener) {
-        editor.listener.contentChange = () => {
+      if (editorAny.listener) {
+        editorAny.listener.contentChange = () => {
           if (onContentChange) {
-            const content = editor.command.getValue();
-            onContentChange(content.main);
+            const content = editor.command.getValue() as IEditorResult & { main?: IElement[] };
+            const nextMain = Array.isArray(content?.main) ? content.main : [];
+            onContentChange(nextMain);
           }
         };
       }

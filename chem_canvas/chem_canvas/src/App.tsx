@@ -1498,7 +1498,9 @@ Here is the learner's question: ${message}`;
             <div className="flex h-full gap-4">
               <div className="flex-1 min-h-0">
                 <DocumentEditorCanvas
-                  onContentChange={setDocEditorContent}
+                  onContentChange={content =>
+                    setDocEditorContent(Array.isArray(content) ? content : [])
+                  }
                 />
               </div>
               {showDocumentAssistant && (

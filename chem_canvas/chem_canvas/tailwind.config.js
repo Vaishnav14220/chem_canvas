@@ -46,11 +46,16 @@ export default {
       animation: {
         'spin-slow': 'spin 3s linear infinite',
         'spin-reverse': 'spin-reverse 3s linear infinite',
+        'flow-fade': 'flowFade 0.8s ease forwards',
       },
       keyframes: {
         'spin-reverse': {
           from: { transform: 'rotate(360deg)' },
           to: { transform: 'rotate(0deg)' },
+        },
+        flowFade: {
+          '0%': { opacity: 0, transform: 'translateY(16px) scale(0.98)' },
+          '100%': { opacity: 1, transform: 'translateY(0) scale(1)' },
         },
       },
     },

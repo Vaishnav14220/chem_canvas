@@ -1,14 +1,15 @@
 import React, { useEffect, useRef } from 'react';
-import { VisualizationState, KineticsParams, Molecule3DParams } from './types';
+import { VisualizationState, KineticsParams, Molecule3DParams, LearningCanvasImage } from './types';
 import GeminiLiveKineticsSimulation from './GeminiLiveKineticsSimulation';
-import GeminiLiveMathDerivation from './GeminiLiveMathDerivation';
+import GeminiLiveLearningCanvas from './GeminiLiveLearningCanvas';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 
 interface GeminiLiveVisualizationProps {
   visualizationState: VisualizationState;
+  onExpandImage?: (image: LearningCanvasImage) => void;
 }
 
-const GeminiLiveVisualization: React.FC<GeminiLiveVisualizationProps> = ({ visualizationState }) => {
+const GeminiLiveVisualization: React.FC<GeminiLiveVisualizationProps> = ({ visualizationState, onExpandImage }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Build MolView embed URL from SMILES or molecule name
@@ -103,13 +104,13 @@ const GeminiLiveVisualization: React.FC<GeminiLiveVisualizationProps> = ({ visua
     );
   }
 
-  if (visualizationState.type === 'MATH_DERIVATION') {
-    if (!visualizationState.mathDerivationParams) {
+  if (visualizationState.type === 'LEARNING_CANVAS') {
+    if (!visualizationState.learningCanvasParams) {
       return (
         <div className="w-full h-full flex items-center justify-center bg-slate-900/30 rounded-xl border border-slate-700/50">
           <div className="text-center text-amber-400 flex flex-col items-center gap-2">
             <AlertTriangle size={24} />
-            <p className="text-sm">No derivation data provided</p>
+            <p className="text-sm">No explanation data provided</p>
           </div>
         </div>
       );
@@ -117,7 +118,7 @@ const GeminiLiveVisualization: React.FC<GeminiLiveVisualizationProps> = ({ visua
 
     return (
       <div className="w-full h-full rounded-xl overflow-hidden">
-        <GeminiLiveMathDerivation params={visualizationState.mathDerivationParams} />
+        <GeminiLiveLearningCanvas params={visualizationState.learningCanvasParams} onExpandImage={onExpandImage} />
       </div>
     );
   }

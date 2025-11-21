@@ -1,7 +1,0 @@
-{
-  "name": "ChemTutor AI",
-  "description": "A real-time voice-enabled chemistry tutor for university students using Gemini 2.5 Live API.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
-}

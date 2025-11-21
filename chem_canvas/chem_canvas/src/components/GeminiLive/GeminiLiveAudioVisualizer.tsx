@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { AudioVisualizerProps } from './types';
 
-const GeminiLiveAudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isConnected }) => {
+const GeminiLiveAudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isConnected, isSpeaking }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
 
@@ -24,12 +24,12 @@ const GeminiLiveAudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, i
       ctx.fillStyle = 'rgba(15, 23, 42, 0.2)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      ctx.lineWidth = 3;
+      ctx.lineWidth = isSpeaking ? 4 : 3;
       // Create gradient
       const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
-      gradient.addColorStop(0, '#14b8a6'); // Teal
-      gradient.addColorStop(0.5, '#a855f7'); // Purple
-      gradient.addColorStop(1, '#0ea5e9'); // Blue
+      gradient.addColorStop(0, isSpeaking ? '#f87171' : '#14b8a6');
+      gradient.addColorStop(0.5, '#a855f7');
+      gradient.addColorStop(1, '#0ea5e9');
 
       ctx.strokeStyle = gradient;
       ctx.beginPath();
@@ -75,7 +75,7 @@ const GeminiLiveAudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, i
   }, []);
 
   return (
-    <div className="relative w-full h-64 bg-slate-900/50 rounded-2xl overflow-hidden border border-slate-700 shadow-inner shadow-black/50">
+    <div className="relative w-full h-full min-h-[10rem] bg-slate-900/50 rounded-2xl overflow-hidden border border-slate-700 shadow-inner shadow-black/50">
       {!isConnected && (
         <div className="absolute inset-0 flex items-center justify-center text-slate-500 font-mono text-sm">
           Start session to visualize audio
