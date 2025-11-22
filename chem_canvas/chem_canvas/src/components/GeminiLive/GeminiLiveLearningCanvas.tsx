@@ -13,12 +13,58 @@ import { LearningCanvasImage, LearningCanvasParams } from './types';
 interface GeminiLiveLearningCanvasProps {
   params: LearningCanvasParams;
   onExpandImage?: (image: LearningCanvasImage) => void;
+  onRequestSimplification?: (stepIndex: number) => void;
 }
 
 const mergeClassNames = (...classes: (string | undefined)[]) => classes.filter(Boolean).join(' ');
 
-const GeminiLiveLearningCanvas: React.FC<GeminiLiveLearningCanvasProps> = ({ params, onExpandImage }) => {
-  const steps = Array.isArray(params.steps) ? params.steps : [];
+// Helper to render text mixed with LaTeX
+const renderTextWithLatex = (text: string) => {
+  if (!text) return null;
+
+  // Split by LaTeX delimiters $...$
+  const parts = text.split(/(\$[^\$]+\$)/g);
+
+  return (
+    <span>
+      {parts.map((part, index) => {
+        if (part.startsWith('$') && part.endsWith('$')) {
+          // Remove delimiters
+          const latex = part.slice(1, -1);
+          try {
+            return (
+              <span
+                key={index}
+                dangerouslySetInnerHTML={{
+                  __html: katex.renderToString(latex, {
+                    throwOnError: false,
+                    displayMode: false
+                  })
+                }}
+              />
+            );
+          } catch (e) {
+            return <span key={index}>{part}</span>;
+          }
+        }
+        return <span key={index}>{part}</span>;
+      })}
+    </span>
+  );
+};
+
+const GeminiLiveLearningCanvas: React.FC<GeminiLiveLearningCanvasProps> = ({ params, onExpandImage, onRequestSimplification }) => {
+  // ... (existing hooks)
+  const steps = useMemo(() => {
+    const rawSteps = Array.isArray(params.steps) ? params.steps : [];
+    return rawSteps.filter(step => {
+      const title = (step.title || '').trim().toLowerCase();
+      // Filter out "preparing image" and "insight X" steps as requested by user
+      if (title.includes('preparing image')) return false;
+      if (title.startsWith('insight')) return false;
+      return true;
+    });
+  }, [params.steps]);
   const conceptImage = params.image;
   const [visibleCount, setVisibleCount] = useState(0);
   const [stepConfirmations, setStepConfirmations] = useState<boolean[]>([]);
@@ -131,24 +177,23 @@ const GeminiLiveLearningCanvas: React.FC<GeminiLiveLearningCanvasProps> = ({ par
     if (conceptImage.status === 'complete' && conceptImage.url) {
       const interactiveProps = onExpandImage
         ? {
-            role: 'button' as const,
-            tabIndex: 0,
-            onClick: () => onExpandImage(conceptImage),
-            onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                onExpandImage(conceptImage);
-              }
-            },
-            'aria-label': 'Expand concept image'
-          }
+          role: 'button' as const,
+          tabIndex: 0,
+          onClick: () => onExpandImage(conceptImage),
+          onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onExpandImage(conceptImage);
+            }
+          },
+          'aria-label': 'Expand concept image'
+        }
         : {};
 
       return (
         <div
-          className={`overflow-hidden rounded-3xl border border-slate-800/60 bg-slate-900/40 shadow-2xl shadow-cyan-950/40 ${
-            onExpandImage ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950' : ''
-          }`}
+          className={`overflow-hidden rounded-3xl border border-slate-800/60 bg-slate-900/40 shadow-2xl shadow-cyan-950/40 ${onExpandImage ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950' : ''
+            }`}
           {...interactiveProps}
         >
           <div className="w-full aspect-video">
@@ -182,7 +227,7 @@ const GeminiLiveLearningCanvas: React.FC<GeminiLiveLearningCanvasProps> = ({ par
         <div className="text-center space-y-2">
           <Sparkles className="mx-auto text-slate-500" size={28} />
           <p className="text-slate-400">Waiting for explanation…</p>
-          <p className="text-slate-500 text-sm">{params.title}</p>
+          <p className="text-slate-500 text-sm">{renderTextWithLatex(params.title || '')}</p>
         </div>
       </div>
     );
@@ -208,7 +253,9 @@ const GeminiLiveLearningCanvas: React.FC<GeminiLiveLearningCanvasProps> = ({ par
       <div className="rounded-3xl border border-slate-800/60 bg-gradient-to-b from-slate-950/60 via-slate-950/30 to-slate-950/60 shadow-2xl shadow-cyan-950/40">
         <div className="flex flex-col gap-2 border-b border-slate-800/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-300">{params.title || 'Live Learning Canvas'}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-300">
+              {renderTextWithLatex(params.title || 'Live Learning Canvas')}
+            </p>
             {params.topic && <p className="text-[0.7rem] text-slate-400">{params.topic}</p>}
           </div>
           {progressMeta}
@@ -224,7 +271,7 @@ const GeminiLiveLearningCanvas: React.FC<GeminiLiveLearningCanvasProps> = ({ par
                 <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <span className="text-[0.65rem] uppercase tracking-[0.35em] text-slate-500">Step {index + 1}</span>
-                    <h3 className="text-lg font-semibold text-white mt-1">{step.title || `Step ${index + 1}`}</h3>
+                    <h3 className="text-lg font-semibold text-white mt-1">{renderTextWithLatex(step.title || `Step ${index + 1}`)}</h3>
                   </div>
                   <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-cyan-200">
                     <Sparkles size={14} />
@@ -268,17 +315,28 @@ const GeminiLiveLearningCanvas: React.FC<GeminiLiveLearningCanvasProps> = ({ par
                       <p className="text-[0.7rem] text-slate-500">{params.topic ?? 'Learning module'}</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleConfirmation(index)}
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[0.7rem] font-semibold transition ${
-                      isConfirmed
+
+                  <div className="flex items-center gap-2">
+                    {onRequestSimplification && (
+                      <button
+                        type="button"
+                        onClick={() => onRequestSimplification(index)}
+                        className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[0.7rem] font-semibold text-amber-200 transition hover:bg-amber-500/20 hover:border-amber-500/50"
+                      >
+                        Break down
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleConfirmation(index)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[0.7rem] font-semibold transition ${isConfirmed
                         ? 'border-emerald-400/50 bg-emerald-500/10 text-emerald-200'
                         : 'border-slate-700/70 text-slate-300 hover:border-cyan-400/50 hover:text-cyan-200'
-                    }`}
-                  >
-                    {isConfirmed ? 'Mark as pending' : 'Mark confirmed'}
-                  </button>
+                        }`}
+                    >
+                      {isConfirmed ? 'Mark as pending' : 'Mark confirmed'}
+                    </button>
+                  </div>
                 </footer>
               </section>
             );

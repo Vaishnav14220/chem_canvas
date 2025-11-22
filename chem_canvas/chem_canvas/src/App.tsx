@@ -41,7 +41,9 @@ import FlippingInfo from './components/FlippingInfo';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWorkspace';
 import SubjectExplorer from './components/SubjectExplorer';
-import GeminiLiveWorkspace from './components/GeminiLive/GeminiLiveWorkspace';
+import GeminiLiveOverlay from './components/GeminiLive/GeminiLiveOverlay';
+import GeminiLiveImageLightbox from './components/GeminiLive/GeminiLiveImageLightbox';
+import { ConceptImageRecord, LearningCanvasImage } from './components/GeminiLive/types';
 import EpoxidationLearningExperience from './components/epoxidation/EpoxidationLearningExperience';
 import MessageDockPage from './components/MessageDockPage';
 import { MessageDock, type Character } from './components/ui/message-dock';
@@ -174,16 +176,16 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [showProfileUpdate, setShowProfileUpdate] = useState(false);
-  
+
   // Calculator state
   const [showCalculator, setShowCalculator] = useState(false);
-  
+
   // MolView state
   const [showMolView, setShowMolView] = useState(false);
-  
+
   // Periodic Table state
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
-  
+
   // Canvas and UI state
   const [currentTool] = useState('pen');
   const [strokeWidth] = useState(2);
@@ -200,7 +202,7 @@ const App: React.FC = () => {
   const streamingQueueRef = useRef<string[]>([]);
   const streamingMessageIdRef = useRef<string | null>(null);
   const streamingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Sources state
   const [sources, setSources] = useState<SourceEntry[]>([]);
   const youtubeSources = useMemo(() => sources.filter(source => source.type === 'youtube'), [sources]);
@@ -224,8 +226,8 @@ const App: React.FC = () => {
         const base = typeof element.value === 'string' ? element.value : '';
         const listText = Array.isArray((element as any).valueList)
           ? (element as any).valueList
-              .map((item: any) => (typeof item.value === 'string' ? item.value : ''))
-              .join('')
+            .map((item: any) => (typeof item.value === 'string' ? item.value : ''))
+            .join('')
           : '';
         return `${base}${listText}`;
       })
@@ -239,7 +241,7 @@ const App: React.FC = () => {
   const [showRdkitAssistant, setShowRdkitAssistant] = useState(false);
   const [rdkitStatus, setRdkitStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
   const [isFetchingVideoRecommendations, setIsFetchingVideoRecommendations] = useState(false);
-  
+
   // Panel sizes and visibility
   const [sourcesWidth, setSourcesWidth] = useState(384);
   const [chatWidth, setChatWidth] = useState(480);
@@ -254,19 +256,10 @@ const App: React.FC = () => {
   const [showDocumentUnderstandingWorkspace, setShowDocumentUnderstandingWorkspace] = useState(false);
   const [showSubjectExplorer, setShowSubjectExplorer] = useState(false);
   const [showDocumentEditorCanvas, setShowDocumentEditorCanvas] = useState(false);
-  const [showGeminiLiveWorkspace, setShowGeminiLiveWorkspace] = useState(false);
-  const [canvasWorkspaces, setCanvasWorkspaces] = useState<CanvasWorkspace[]>(() => [{ id: INITIAL_WORKSPACE_ID, title: 'Workspace 1' }]);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(INITIAL_WORKSPACE_ID);
-  const workspaceHandlersRef = useRef<Record<string, CanvasWorkspaceHandlers>>({});
-  const currentFeatureRef = useRef<{ id: string; start: number } | null>(null);
-  const sessionStartRef = useRef<number>(Date.now());
-  
-  // Resize states
-  const [isResizing, setIsResizing] = useState<'sources' | 'chat' | null>(null);
-  const [resizeStartX, setResizeStartX] = useState(0);
-  const [resizeStartWidth, setResizeStartWidth] = useState(0);
+  const [showGeminiLiveWorkspace, setShowGeminiLiveWorkspace] = useState(false); // Kept for compatibility if needed, or remove
+  const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
-  
+
   // Initialize global Gemini Live state
   const geminiLiveState = useGeminiLive(apiKey);
   const {
@@ -278,6 +271,52 @@ const App: React.FC = () => {
     setCanvasReactionInsertionHandler,
     setCanvasSurfaceActive
   } = geminiLiveState;
+
+  const handleCanvasImageExpand = useCallback(
+    (image: LearningCanvasImage) => {
+      if (!image || image.status !== 'complete' || !image.url) {
+        return;
+      }
+      setExpandedImage({
+        id: image.requestId || `canvas-${Date.now()}`,
+        title: geminiLiveState.simulationState.learningCanvasParams?.title || image.concept || 'Concept Snapshot',
+        createdAt: image.updatedAt || Date.now(),
+        updatedAt: image.updatedAt || Date.now(),
+        status: image.status,
+        url: image.url,
+        prompt: image.prompt,
+        displayPrompt: image.prompt,
+        concept: image.concept || geminiLiveState.simulationState.learningCanvasParams?.title,
+        topic: image.topic || geminiLiveState.simulationState.learningCanvasParams?.topic,
+        sourceTopic: geminiLiveState.simulationState.learningCanvasParams?.topic || image.topic,
+        style: image.style,
+        focus: image.focus,
+        mood: image.mood,
+        colorPalette: image.colorPalette,
+        medium: image.medium,
+        importantElements: image.importantElements,
+        requestId: image.requestId || 'canvas-preview'
+      });
+    },
+    [geminiLiveState.simulationState.learningCanvasParams]
+  );
+
+  const handleCloseLightbox = useCallback(() => {
+    setExpandedImage(null);
+  }, []);
+  const [canvasWorkspaces, setCanvasWorkspaces] = useState<CanvasWorkspace[]>(() => [{ id: INITIAL_WORKSPACE_ID, title: 'Workspace 1' }]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(INITIAL_WORKSPACE_ID);
+  const workspaceHandlersRef = useRef<Record<string, CanvasWorkspaceHandlers>>({});
+  const currentFeatureRef = useRef<{ id: string; start: number } | null>(null);
+  const sessionStartRef = useRef<number>(Date.now());
+
+  // Resize states
+  const [isResizing, setIsResizing] = useState<'sources' | 'chat' | null>(null);
+  const [resizeStartX, setResizeStartX] = useState(0);
+  const [resizeStartWidth, setResizeStartWidth] = useState(0);
+
+
+
   const isMainCanvasSurfaceActive =
     !isMolecularMode &&
     !showSrlCoachWorkspace &&
@@ -293,8 +332,8 @@ const App: React.FC = () => {
   }, [setCanvasSurfaceActive, isMainCanvasSurfaceActive]);
 
   const noopSnapshotHandler = useCallback(async () => null, []);
-  const noopTextHandler = useCallback(() => {}, []);
-  const noopMarkdownHandler = useCallback(() => {}, []);
+  const noopTextHandler = useCallback(() => { }, []);
+  const noopMarkdownHandler = useCallback(() => { }, []);
   const noopMoleculeHandler = useCallback(async () => false, []);
   const noopProteinHandler = useCallback(async () => false, []);
   const noopReactionHandler = useCallback(async () => false, []);
@@ -383,7 +422,7 @@ const App: React.FC = () => {
   const handleSelectWorkspace = useCallback((workspaceId: string) => {
     setActiveWorkspaceId(workspaceId);
   }, []);
-  
+
   const pillButtonClasses =
     'inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground';
   const dispatchCanvasCommand = useCallback((command: CanvasCommand) => {
@@ -411,7 +450,7 @@ const App: React.FC = () => {
       try {
         // Initialize Firebase first
         await initializeFirebaseOnStartup();
-        
+
         // Initialize API key rotation from Firestore
         console.log('🔑 Initializing API key rotation from Firestore...');
         await initializeApiKeyRotation();
@@ -427,9 +466,9 @@ const App: React.FC = () => {
         console.error('❌ Failed to initialize shared Gemini API key:', error);
       }
     };
-    
+
     initializeApp();
-    
+
     // Check for existing session
     const checkExistingSession = () => {
       const session = loadSession();
@@ -444,7 +483,7 @@ const App: React.FC = () => {
         }
       }
     };
-    
+
     // Set up Firebase auth state listener
     const unsubscribe = setupAuthStateListener((userProfile) => {
       if (userProfile) {
@@ -455,10 +494,10 @@ const App: React.FC = () => {
         setIsAuthenticated(false);
       }
     });
-    
+
     // Check for existing session first
     checkExistingSession();
-    
+
     // Initialize API keys in Firebase on app start
     const initApiKeys = async () => {
       try {
@@ -468,16 +507,16 @@ const App: React.FC = () => {
         } else {
           console.log('API keys initialized in Firebase');
         }
-        
+
         // Display all API keys in console
         await displayAllApiKeys();
       } catch (error) {
         console.error('Error initializing API keys:', error);
       }
     };
-    
+
     initApiKeys();
-    
+
     // Cleanup function
     return () => {
       unsubscribe();
@@ -512,10 +551,10 @@ const App: React.FC = () => {
   const handleLogin = (userProfile: UserProfile) => {
     setUser(userProfile);
     setIsAuthenticated(true);
-    
+
     // Save session for 2 days
     saveSession(userProfile);
-    
+
     console.log('User logged in and session saved for 2 days');
   };
 
@@ -910,18 +949,18 @@ const App: React.FC = () => {
     setResizeStartX(e.clientX);
     setResizeStartWidth(
       panel === 'sources' ? sourcesWidth :
-      chatWidth
+        chatWidth
     );
   };
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!isResizing) return;
-    
+
     const deltaX = e.clientX - resizeStartX;
     let newWidth;
-    
+
     console.log('Mouse move, resizing:', isResizing, 'deltaX:', deltaX); // Debug log
-    
+
     if (isResizing === 'sources') {
       newWidth = Math.max(250, Math.min(800, resizeStartWidth + deltaX));
       setSourcesWidth(newWidth);
@@ -999,8 +1038,8 @@ const App: React.FC = () => {
     streamingIntervalRef.current = setInterval(() => {
       if (streamingQueueRef.current.length > 0) {
         const char = streamingQueueRef.current.shift()!;
-        setInteractions(prev => prev.map(interaction => 
-          interaction.id === messageId 
+        setInteractions(prev => prev.map(interaction =>
+          interaction.id === messageId
             ? { ...interaction, response: (interaction.response || '') + char }
             : interaction
         ));
@@ -1029,10 +1068,10 @@ const App: React.FC = () => {
       mode === 'coach'
         ? setCoachLoading
         : mode === 'document'
-        ? setDocChatLoading
-        : setChatLoading;
+          ? setDocChatLoading
+          : setChatLoading;
     setLoading(true);
-    
+
     // Add user message immediately
     const userInteraction: AIInteraction = {
       id: Date.now().toString(),
@@ -1042,11 +1081,11 @@ const App: React.FC = () => {
       mode,
     };
     setInteractions(prev => [...prev, userInteraction]);
-    
+
     try {
       // Check if Gemini API is configured
       if (!geminiService.isGeminiInitialized()) {
-        const errorResponse = { 
+        const errorResponse = {
           id: (Date.now() + 1).toString(),
           prompt: '',
           response: `🔑 **API Key Required**\n\nTo use the chat assistant, please configure your Gemini API key first.\n\n1. Click the Settings button (⚙️) in the toolbar\n2. Enter your Google Gemini API key\n3. Save the configuration\n\nGet your free API key at: https://makersuite.google.com/app/apikey`,
@@ -1054,9 +1093,9 @@ const App: React.FC = () => {
           mode,
         };
         setInteractions(prev => [...prev, errorResponse]);
-          setLoading(false);
-          return;
-        }
+        setLoading(false);
+        return;
+      }
 
       // Build context from sources if available
       let contextPrompt = '';
@@ -1076,9 +1115,9 @@ const App: React.FC = () => {
       const hasDocumentContent = aggregatedDocumentText.length > 0;
       const documentContext = hasDocumentContent
         ? {
-            documentText: aggregatedDocumentText,
-            documentName: textSources[0]?.title
-          }
+          documentText: aggregatedDocumentText,
+          documentName: textSources[0]?.title
+        }
         : undefined;
 
       const contextInstruction = options?.context ? `${options.context.trim()}\n\n` : '';
@@ -1153,7 +1192,7 @@ Here is the learner's question: ${message}`;
         setShowSettings(true);
         window.alert(keyPrompt.message);
       }
-      const errorResponse = { 
+      const errorResponse = {
         id: (Date.now() + 1).toString(),
         prompt: '',
         response: `❌ **Error**: ${error.message || 'Failed to generate response'}\n\nPlease check:\n• Your API key is correct\n• You have internet connection\n• You haven't exceeded API quota`,
@@ -1164,7 +1203,7 @@ Here is the learner's question: ${message}`;
     } finally {
       setLoading(false);
     }
-    
+
     if (sources.length > 0 && message.toLowerCase().includes('source')) {
       setDocumentViewerOpen(true);
     }
@@ -1186,7 +1225,7 @@ Here is the learner's question: ${message}`;
 
   const handleCommand = (command: string) => {
     setCommandPaletteOpen(false);
-    
+
     switch (command) {
       case 'draw':
         dispatchCanvasCommand({ type: 'set-tool', tool: 'draw' });
@@ -1309,334 +1348,332 @@ Here is the learner's question: ${message}`;
     <div className="min-h-screen bg-background text-foreground dark">
       {/* Header */}
       {!showDocumentEditorCanvas && (
-      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 shadow-sm">
-        <input
-          ref={fileUploadInputRef}
-          type="file"
-          multiple
-          accept={UNIVERSAL_FILE_ACCEPT}
-          className="hidden"
-          onChange={handleHeaderFileChange}
-        />
-        <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex flex-1 min-w-[220px] items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg">
-                  <Beaker className="h-5 w-5 text-white" />
+        <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 shadow-sm">
+          <input
+            ref={fileUploadInputRef}
+            type="file"
+            multiple
+            accept={UNIVERSAL_FILE_ACCEPT}
+            className="hidden"
+            onChange={handleHeaderFileChange}
+          />
+          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-1 min-w-[220px] items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg">
+                    <Beaker className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-lg font-semibold tracking-tight text-white">Studium</span>
+                    <span className="text-xs text-muted-foreground/80 font-medium">Chemistry Workspace</span>
+                  </div>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-lg font-semibold tracking-tight text-white">Studium</span>
-                  <span className="text-xs text-muted-foreground/80 font-medium">Chemistry Workspace</span>
+
+                <div className="hidden lg:flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
+                  </span>
+                  AI Connected · Gemini 2.0
                 </div>
               </div>
 
-              <div className="hidden lg:flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
-                </span>
-                AI Connected · Gemini 2.0
+              <div className="flex-1 min-w-[220px] max-w-xl">
+                <button
+                  onClick={() => setCommandPaletteOpen(true)}
+                  className="group inline-flex h-10 w-full items-center justify-between rounded-xl border border-border/50 bg-background/80 px-3.5 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <span className="flex items-center gap-2 text-left">
+                    <Search className="h-4 w-4 text-foreground/70 group-hover:text-foreground" />
+                    <span className="text-foreground font-semibold">Quick Search</span>
+                    <span className="hidden sm:inline text-xs text-muted-foreground">docs, tools, AI</span>
+                  </span>
+                  <kbd className="pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded-lg border border-border/50 bg-muted/50 px-3 font-mono text-[11px] uppercase tracking-wide opacity-80">
+                    ⌘K
+                  </kbd>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {isAuthenticated && (() => {
+                  const sessionStatus = getSessionStatus();
+                  if (sessionStatus.isValid && sessionStatus.remainingHours) {
+                    return (
+                      <div className="hidden sm:flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-500">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>{sessionStatus.remainingHours}h active</span>
+                        {sessionStatus.remainingHours < 24 && (
+                          <button
+                            onClick={() => {
+                              if (extendSession(2)) {
+                                console.log('Session extended by 2 days');
+                                window.location.reload();
+                              }
+                            }}
+                            className="text-amber-300 underline-offset-2 hover:underline"
+                          >
+                            Extend
+                          </button>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                <div className="flex items-center gap-1.5 rounded-2xl border border-border/40 bg-background/60 p-1 shadow-inner">
+                  <button
+                    onClick={() => setShowProfileUpdate(true)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    title="Update Profile"
+                  >
+                    <User className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-rose-500/20 transition-transform hover:scale-[1.01]"
+                    title={`Logged in as ${user?.username || user?.displayName}`}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span className="hidden sm:inline">{user?.username || user?.displayName}</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="flex-1 min-w-[220px] max-w-xl">
-              <button
-                onClick={() => setCommandPaletteOpen(true)}
-                className="group inline-flex h-10 w-full items-center justify-between rounded-xl border border-border/50 bg-background/80 px-3.5 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                <span className="flex items-center gap-2 text-left">
-                  <Search className="h-4 w-4 text-foreground/70 group-hover:text-foreground" />
-                  <span className="text-foreground font-semibold">Quick Search</span>
-                  <span className="hidden sm:inline text-xs text-muted-foreground">docs, tools, AI</span>
-                </span>
-                <kbd className="pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded-lg border border-border/50 bg-muted/50 px-3 font-mono text-[11px] uppercase tracking-wide opacity-80">
-                  ⌘K
-                </kbd>
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {isAuthenticated && (() => {
-                const sessionStatus = getSessionStatus();
-                if (sessionStatus.isValid && sessionStatus.remainingHours) {
-                  return (
-                    <div className="hidden sm:flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-500">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span>{sessionStatus.remainingHours}h active</span>
-                      {sessionStatus.remainingHours < 24 && (
-                        <button
-                          onClick={() => {
-                            if (extendSession(2)) {
-                              console.log('Session extended by 2 days');
-                              window.location.reload();
-                            }
-                          }}
-                          className="text-amber-300 underline-offset-2 hover:underline"
-                        >
-                          Extend
-                        </button>
-                      )}
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              <div className="flex items-center gap-1.5 rounded-2xl border border-border/40 bg-background/60 p-1 shadow-inner">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
-                  onClick={() => setShowProfileUpdate(true)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                  title="Update Profile"
+                  onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
+                  className={`${pillButtonClasses} ${documentViewerOpen ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' : ''}`}
                 >
-                  <User className="h-4 w-4" />
+                  <FileText className="h-4 w-4" />
+                  {documentViewerOpen ? 'Hide Sources' : 'Sources'}
                 </button>
+
                 <button
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                  onClick={handleHeaderUploadClick}
+                  className={`${pillButtonClasses} border-dashed border-blue-500/50 bg-blue-500/5 text-blue-100 hover:text-white`}
+                  title="Upload a PDF, image, or text doc directly to the canvas"
                 >
-                  <Settings className="h-4 w-4" />
+                  <Upload className="h-4 w-4" />
+                  Upload to Canvas
                 </button>
+
                 <button
-                  onClick={handleLogout}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-rose-500/20 transition-transform hover:scale-[1.01]"
-                  title={`Logged in as ${user?.username || user?.displayName}`}
+                  onClick={() => {
+                    setShowStudyToolsWorkspace(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowChatPanel(false);
+                    setShowNmrFullscreen(false);
+                    setShowRdkitWorkspace(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    startFeature('study_tools');
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-transform hover:scale-[1.02]"
                 >
-                  <LogOut className="h-4 w-4" />
-                  <span className="hidden sm:inline">{user?.username || user?.displayName}</span>
+                  <Sparkles className="h-4 w-4" />
+                  Study Tools
                 </button>
-              </div>
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
-                className={`${pillButtonClasses} ${documentViewerOpen ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' : ''}`}
-              >
-                <FileText className="h-4 w-4" />
-                {documentViewerOpen ? 'Hide Sources' : 'Sources'}
-              </button>
-
-              <button
-                onClick={handleHeaderUploadClick}
-                className={`${pillButtonClasses} border-dashed border-blue-500/50 bg-blue-500/5 text-blue-100 hover:text-white`}
-                title="Upload a PDF, image, or text doc directly to the canvas"
-              >
-                <Upload className="h-4 w-4" />
-                Upload to Canvas
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowStudyToolsWorkspace(true);
-                  setShowSrlCoachWorkspace(false);
-                  setShowChatPanel(false);
-                  setShowNmrFullscreen(false);
-                  setShowRdkitWorkspace(false);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                  setIsRdkitAssistantActive(false);
-                  setShowRdkitAssistant(false);
-                  setRdkitStatus('idle');
-                  startFeature('study_tools');
-                }}
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-transform hover:scale-[1.02]"
-              >
-                <Sparkles className="h-4 w-4" />
-                Study Tools
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowSrlCoachWorkspace(true);
-                  setShowStudyToolsWorkspace(false);
-                  setShowChatPanel(false);
-                  setShowNmrFullscreen(false);
-                  setShowRdkitWorkspace(false);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                  setIsRdkitAssistantActive(false);
-                  setShowRdkitAssistant(false);
-                  setRdkitStatus('idle');
-                  startFeature('srl_coach');
-                }}
-                className={pillButtonClasses}
-              >
-                <Target className="h-4 w-4" />
-                SRL Coach
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowDocumentUnderstandingWorkspace(true);
-                  setShowSrlCoachWorkspace(false);
-                  setShowStudyToolsWorkspace(false);
-                  setShowDocumentEditorCanvas(false);
-                  setShowNmrFullscreen(false);
-                  setShowChemistryPanel(false);
-                  setShowChatPanel(false);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                  setIsRdkitAssistantActive(false);
-                  setShowRdkitAssistant(false);
-                  setRdkitStatus('idle');
-                  void captureToolClick('docs_ai');
-                  startFeature('docs_ai');
-                }}
-                className={pillButtonClasses}
-              >
-                <FileText className="h-4 w-4" />
-                Docs AI
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowDocumentEditorCanvas(true);
-                  setShowDocumentUnderstandingWorkspace(false);
-                  setShowSrlCoachWorkspace(false);
-                  setShowStudyToolsWorkspace(false);
-                  setShowNmrFullscreen(false);
-                  setShowChemistryPanel(false);
-                  setShowChatPanel(false);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                  setIsRdkitAssistantActive(false);
-                  setShowRdkitAssistant(false);
-                  setRdkitStatus('idle');
-                  void captureToolClick('doc_canvas');
-                  startFeature('doc_canvas');
-                }}
-                className={pillButtonClasses}
-              >
-                <Edit3 className="h-4 w-4" />
-                Doc Canvas
-              </button>
-
-              <button
-                onClick={() => {
-                  startFeature('3d_explorer');
-                  openChemistryPanel();
-                }}
-                className={pillButtonClasses}
-              >
-                <Layers3 className="h-4 w-4" />
-                3D Explorer
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowSubjectExplorer(true);
-                  setShowSrlCoachWorkspace(false);
-                  setShowStudyToolsWorkspace(false);
-                  setShowDocumentUnderstandingWorkspace(false);
-                  setShowNmrFullscreen(false);
-                  setShowChemistryPanel(false);
-                  setShowChatPanel(false);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                  setIsRdkitAssistantActive(false);
-                  setShowRdkitAssistant(false);
-                  setRdkitStatus('idle');
-                  void captureToolClick('subject_explorer');
-                  startFeature('subject_explorer');
-                }}
-                className={pillButtonClasses}
-              >
-                <BookOpen className="h-4 w-4" />
-                Subject Explorer
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowNmrFullscreen(true);
-                  setShowSrlCoachWorkspace(false);
-                  setShowStudyToolsWorkspace(false);
-                  setIsNmrAssistantActive(false);
-                  setShowChatPanel(false);
-                  startFeature('nmr_lab');
-                }}
-                className={pillButtonClasses}
-              >
-                <LineChart className="h-4 w-4" />
-                NMR Lab
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowGeminiLiveWorkspace(true);
-                  setShowSrlCoachWorkspace(false);
-                  setShowStudyToolsWorkspace(false);
-                  setShowDocumentUnderstandingWorkspace(false);
-                  setShowDocumentEditorCanvas(false);
-                  setShowNmrFullscreen(false);
-                  setShowChemistryPanel(false);
-                  setShowChatPanel(false);
-                  setIsNmrAssistantActive(false);
-                  setShowNmrAssistant(false);
-                  setIsRdkitAssistantActive(false);
-                  setShowRdkitAssistant(false);
-                  setRdkitStatus('idle');
-                  setShowSubjectExplorer(false);
-                  void captureToolClick('gemini_live');
-                  startFeature('gemini_live');
-                }}
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-green-600 to-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-green-500/25 transition-transform hover:scale-[1.02]"
-              >
-                <Mic className="h-4 w-4" />
-                Gemini Live
-              </button>
-
-              <div className="inline-flex items-center rounded-full border border-border/40 bg-background/80 p-0.5 text-xs font-semibold shadow-sm">
                 <button
-                  onClick={() => setIsMolecularMode(false)}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${
-                    !isMolecularMode ? 'bg-orange-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                  onClick={() => {
+                    setShowSrlCoachWorkspace(true);
+                    setShowStudyToolsWorkspace(false);
+                    setShowChatPanel(false);
+                    setShowNmrFullscreen(false);
+                    setShowRdkitWorkspace(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    startFeature('srl_coach');
+                  }}
+                  className={pillButtonClasses}
+                >
+                  <Target className="h-4 w-4" />
+                  SRL Coach
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowDocumentUnderstandingWorkspace(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentEditorCanvas(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('docs_ai');
+                    startFeature('docs_ai');
+                  }}
+                  className={pillButtonClasses}
+                >
+                  <FileText className="h-4 w-4" />
+                  Docs AI
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowDocumentEditorCanvas(true);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('doc_canvas');
+                    startFeature('doc_canvas');
+                  }}
+                  className={pillButtonClasses}
                 >
                   <Edit3 className="h-4 w-4" />
-                  Canvas Studio
+                  Doc Canvas
                 </button>
+
                 <button
-                  onClick={() => setIsMolecularMode(true)}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${
-                    isMolecularMode ? 'bg-blue-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                  onClick={() => {
+                    startFeature('3d_explorer');
+                    openChemistryPanel();
+                  }}
+                  className={pillButtonClasses}
                 >
-                  <Beaker className="h-4 w-4" />
-                  Molecule Sketcher
+                  <Layers3 className="h-4 w-4" />
+                  3D Explorer
                 </button>
+
+                <button
+                  onClick={() => {
+                    setShowSubjectExplorer(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('subject_explorer');
+                    startFeature('subject_explorer');
+                  }}
+                  className={pillButtonClasses}
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Subject Explorer
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowNmrFullscreen(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setIsNmrAssistantActive(false);
+                    setShowChatPanel(false);
+                    startFeature('nmr_lab');
+                  }}
+                  className={pillButtonClasses}
+                >
+                  <LineChart className="h-4 w-4" />
+                  NMR Lab
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowGeminiLiveWorkspace(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowDocumentEditorCanvas(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    setShowSubjectExplorer(false);
+                    void captureToolClick('gemini_live');
+                    startFeature('gemini_live');
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-green-600 to-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-green-500/25 transition-transform hover:scale-[1.02]"
+                >
+                  <Mic className="h-4 w-4" />
+                  Gemini Live
+                </button>
+
+                <div className="inline-flex items-center rounded-full border border-border/40 bg-background/80 p-0.5 text-xs font-semibold shadow-sm">
+                  <button
+                    onClick={() => setIsMolecularMode(false)}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${!isMolecularMode ? 'bg-orange-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Canvas Studio
+                  </button>
+                  <button
+                    onClick={() => setIsMolecularMode(true)}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${isMolecularMode ? 'bg-blue-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                  >
+                    <Beaker className="h-4 w-4" />
+                    Molecule Sketcher
+                  </button>
+                </div>
+
               </div>
 
-            </div>
+              {sourcesNotification && (
+                <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-50">
+                  <span>{sourcesNotification}</span>
+                  <button
+                    onClick={() => setSourcesNotification(null)}
+                    className="rounded-full p-1 text-emerald-100 transition hover:bg-emerald-500/20"
+                    aria-label="Dismiss sources notification"
+                  >
+                    <X className="h-3.5 w-3.5" />
 
-            {sourcesNotification && (
-              <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-50">
-                <span>{sourcesNotification}</span>
-                <button
-                  onClick={() => setSourcesNotification(null)}
-                  className="rounded-full p-1 text-emerald-100 transition hover:bg-emerald-500/20"
-                  aria-label="Dismiss sources notification"
-                >
-                  <X className="h-3.5 w-3.5" />
-      
 
-                </button>
-              </div>
-            )}
+                  </button>
+                </div>
+              )}
 
-            <div className="flex w-full flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Welcome back, <span className="text-foreground">{user?.username || user?.displayName || 'Explorer'}</span>
-              </span>
-              <div className="ml-auto flex w-full justify-start sm:w-auto sm:justify-end">
-                <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
+              <div className="flex w-full flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Welcome back, <span className="text-foreground">{user?.username || user?.displayName || 'Explorer'}</span>
+                </span>
+                <div className="ml-auto flex w-full justify-start sm:w-auto sm:justify-end">
+                  <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
       )}
 
       {/* Command Palette */}
@@ -1732,15 +1769,15 @@ Here is the learner's question: ${message}`;
           documentName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
           onOpenDocument={() => setDocumentViewerOpen(true)}
           user={user}
-        onClose={() => {
-          setShowSrlCoachWorkspace(false);
-          setShowChatPanel(false);
-          setIsNmrAssistantActive(false);
-          setShowNmrAssistant(false);
-          setIsRdkitAssistantActive(false);
-          setShowRdkitAssistant(false);
-        }}
-      />
+          onClose={() => {
+            setShowSrlCoachWorkspace(false);
+            setShowChatPanel(false);
+            setIsNmrAssistantActive(false);
+            setShowNmrAssistant(false);
+            setIsRdkitAssistantActive(false);
+            setShowRdkitAssistant(false);
+          }}
+        />
       ) : showStudyToolsWorkspace ? (
         <StudyToolsWorkspace
           interactions={interactions}
@@ -1752,15 +1789,15 @@ Here is the learner's question: ${message}`;
           sourceContent={sources.filter(s => s.content).map(s => s.content).join('\n\n')}
           sourceName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
           selectedTool={selectedWorkspaceTool}
-        onClose={() => {
-          setShowStudyToolsWorkspace(false);
-          setShowChatPanel(false);
-          setIsNmrAssistantActive(false);
-          setShowNmrAssistant(false);
-          setIsRdkitAssistantActive(false);
-          setShowRdkitAssistant(false);
-        }}
-      />
+          onClose={() => {
+            setShowStudyToolsWorkspace(false);
+            setShowChatPanel(false);
+            setIsNmrAssistantActive(false);
+            setShowNmrAssistant(false);
+            setIsRdkitAssistantActive(false);
+            setShowRdkitAssistant(false);
+          }}
+        />
       ) : showDocumentUnderstandingWorkspace ? (
         <DocumentUnderstandingWorkspace
           onClose={() => {
@@ -1868,340 +1905,336 @@ Here is the learner's question: ${message}`;
           geminiLiveState={geminiLiveState}
         />
       ) : (
-      <div className="flex h-[calc(100vh-5rem)]">
-        {/* Sources Panel */}
-        {documentViewerOpen && (
-          <>
-            <div 
-              className="border-r-2 border-border bg-card flex flex-col shadow-lg"
-              style={{ width: sourcesWidth }}
-            >
-              {/* Sources Header */}
-              <div className="px-6 py-4 border-b border-border bg-muted/50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                      <FileText className="h-4 w-4 text-primary-foreground" />
+        <div className="flex h-[calc(100vh-5rem)]">
+          {/* Sources Panel */}
+          {documentViewerOpen && (
+            <>
+              <div
+                className="border-r-2 border-border bg-card flex flex-col shadow-lg"
+                style={{ width: sourcesWidth }}
+              >
+                {/* Sources Header */}
+                <div className="px-6 py-4 border-b border-border bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                        <FileText className="h-4 w-4 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold">Sources</h3>
+                        <p className="text-xs text-muted-foreground">Add documents, videos & links</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-semibold">Sources</h3>
-                      <p className="text-xs text-muted-foreground">Add documents, videos & links</p>
-                    </div>
+                    <button
+                      onClick={() => setDocumentViewerOpen(false)}
+                      className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setDocumentViewerOpen(false)}
-                    className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-3 px-6 py-4 border-b border-border bg-muted/20 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                <p className="sm:max-w-xl">
-                  We automatically add new YouTube explainers whenever you upload a PDF (use “Upload to Canvas” in the header). Just hit play and keep sketching on the board.
-                </p>
-                <button
-                  onClick={handleSummarizeAllVideos}
-                  disabled={summarizingAll || youtubeSources.length === 0}
-                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
-                    summarizingAll || youtubeSources.length === 0
+                <div className="flex flex-col gap-3 px-6 py-4 border-b border-border bg-muted/20 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                  <p className="sm:max-w-xl">
+                    We automatically add new YouTube explainers whenever you upload a PDF (use “Upload to Canvas” in the header). Just hit play and keep sketching on the board.
+                  </p>
+                  <button
+                    onClick={handleSummarizeAllVideos}
+                    disabled={summarizingAll || youtubeSources.length === 0}
+                    className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${summarizingAll || youtubeSources.length === 0
                       ? 'bg-slate-700 text-slate-400'
                       : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                  }`}
-                >
-                  {summarizingAll ? 'Summarizing all…' : 'Summarize all to canvas'}
-                </button>
-              </div>
-              
+                      }`}
+                  >
+                    {summarizingAll ? 'Summarizing all…' : 'Summarize all to canvas'}
+                  </button>
+                </div>
 
-              {/* Sources List */}
-              <div className="flex-1 p-6 overflow-y-auto">
-                <div className="space-y-3">
-                  {youtubeSources.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted mx-auto mb-3">
-                        <Video className="h-6 w-6 text-muted-foreground" />
+
+                {/* Sources List */}
+                <div className="flex-1 p-6 overflow-y-auto">
+                  <div className="space-y-3">
+                    {youtubeSources.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted mx-auto mb-3">
+                          <Video className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm text-muted-foreground">No video recommendations yet</p>
+                        <p className="text-xs text-muted-foreground">Upload a PDF to see curated explainers.</p>
                       </div>
-                      <p className="text-sm text-muted-foreground">No video recommendations yet</p>
-                      <p className="text-xs text-muted-foreground">Upload a PDF to see curated explainers.</p>
-                    </div>
-                  ) : (
-                    youtubeSources.map((source) => {
-                      const resolvedVideoId = source.videoId ?? (source.url ? extractVideoIdFromUrl(source.url) : null);
-                      const isInlinePlaying = inlineVideoSourceId === source.id && Boolean(resolvedVideoId);
-                      const embedUrl = resolvedVideoId
-                        ? `https://www.youtube.com/embed/${encodeURIComponent(resolvedVideoId)}?autoplay=1&modestbranding=1`
-                        : null;
-                      return (
-                        <div key={source.id} className="rounded-2xl border border-border bg-card/70 p-4 shadow-sm">
-                          <div className="flex flex-col gap-3 sm:flex-row">
-                            {isInlinePlaying && embedUrl ? (
-                              <div
-                                className="relative w-full overflow-hidden rounded-xl border border-border bg-black sm:h-28 sm:w-44 sm:flex-shrink-0"
-                                style={{ aspectRatio: '16 / 9' }}
-                              >
-                                <iframe
-                                  src={embedUrl}
-                                  title={`${source.title} inline player`}
-                                  className="absolute inset-0 h-full w-full"
-                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                  allowFullScreen
-                                />
-                              </div>
-                            ) : source.thumbnail ? (
-                              <img
-                                src={source.thumbnail}
-                                alt={source.title}
-                                className="h-24 w-full rounded-xl border border-border object-cover sm:h-28 sm:w-44 sm:flex-shrink-0"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground sm:h-28 sm:w-44 sm:flex-shrink-0">
-                                <Video className="h-6 w-6" />
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-sm font-semibold text-foreground truncate">{source.title}</h4>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {source.channelTitle ? `${source.channelTitle}` : 'YouTube'}
-                                {source.channelSubscribers
-                                  ? ` • ${Intl.NumberFormat('en', { notation: 'compact' }).format(source.channelSubscribers)} subscribers`
-                                  : ''}
-                              </p>
-                              {source.description && (
-                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.description}</p>
-                              )}
-                              {source.url && (
-                                <a
-                                  href={source.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="mt-2 inline-flex items-center text-xs font-semibold text-blue-400 hover:text-blue-300 underline-offset-2"
+                    ) : (
+                      youtubeSources.map((source) => {
+                        const resolvedVideoId = source.videoId ?? (source.url ? extractVideoIdFromUrl(source.url) : null);
+                        const isInlinePlaying = inlineVideoSourceId === source.id && Boolean(resolvedVideoId);
+                        const embedUrl = resolvedVideoId
+                          ? `https://www.youtube.com/embed/${encodeURIComponent(resolvedVideoId)}?autoplay=1&modestbranding=1`
+                          : null;
+                        return (
+                          <div key={source.id} className="rounded-2xl border border-border bg-card/70 p-4 shadow-sm">
+                            <div className="flex flex-col gap-3 sm:flex-row">
+                              {isInlinePlaying && embedUrl ? (
+                                <div
+                                  className="relative w-full overflow-hidden rounded-xl border border-border bg-black sm:h-28 sm:w-44 sm:flex-shrink-0"
+                                  style={{ aspectRatio: '16 / 9' }}
                                 >
-                                  Watch on YouTube
-                                  <ExternalLink className="ml-1 h-3 w-3" />
-                                </a>
+                                  <iframe
+                                    src={embedUrl}
+                                    title={`${source.title} inline player`}
+                                    className="absolute inset-0 h-full w-full"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                                </div>
+                              ) : source.thumbnail ? (
+                                <img
+                                  src={source.thumbnail}
+                                  alt={source.title}
+                                  className="h-24 w-full rounded-xl border border-border object-cover sm:h-28 sm:w-44 sm:flex-shrink-0"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground sm:h-28 sm:w-44 sm:flex-shrink-0">
+                                  <Video className="h-6 w-6" />
+                                </div>
                               )}
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <button
-                                  onClick={() => handleExportVideoSummary(source)}
-                                  disabled={videoSummaryLoadingId === source.id}
-                                  className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
-                                    videoSummaryLoadingId === source.id
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-sm font-semibold text-foreground truncate">{source.title}</h4>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {source.channelTitle ? `${source.channelTitle}` : 'YouTube'}
+                                  {source.channelSubscribers
+                                    ? ` • ${Intl.NumberFormat('en', { notation: 'compact' }).format(source.channelSubscribers)} subscribers`
+                                    : ''}
+                                </p>
+                                {source.description && (
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.description}</p>
+                                )}
+                                {source.url && (
+                                  <a
+                                    href={source.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mt-2 inline-flex items-center text-xs font-semibold text-blue-400 hover:text-blue-300 underline-offset-2"
+                                  >
+                                    Watch on YouTube
+                                    <ExternalLink className="ml-1 h-3 w-3" />
+                                  </a>
+                                )}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    onClick={() => handleExportVideoSummary(source)}
+                                    disabled={videoSummaryLoadingId === source.id}
+                                    className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${videoSummaryLoadingId === source.id
                                       ? 'bg-slate-700 text-slate-300'
                                       : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                  }`}
-                                >
-                                  {videoSummaryLoadingId === source.id ? 'Summarizing…' : 'Summarize to Canvas'}
-                                </button>
-                                {resolvedVideoId && (
-                                  <button
-                                    onClick={() => handleToggleInlineVideo(source)}
-                                    className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
-                                      isInlinePlaying
+                                      }`}
+                                  >
+                                    {videoSummaryLoadingId === source.id ? 'Summarizing…' : 'Summarize to Canvas'}
+                                  </button>
+                                  {resolvedVideoId && (
+                                    <button
+                                      onClick={() => handleToggleInlineVideo(source)}
+                                      className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${isInlinePlaying
                                         ? 'bg-emerald-500 text-white hover:bg-emerald-400'
                                         : 'border border-border text-muted-foreground hover:border-emerald-400 hover:text-emerald-400'
-                                    }`}
+                                        }`}
+                                    >
+                                      {isInlinePlaying ? 'Close inline player' : 'Play inline'}
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => removeSource(source.id)}
+                                    className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-red-100 hover:text-red-600 transition"
+                                    title="Remove source"
                                   >
-                                    {isInlinePlaying ? 'Close inline player' : 'Play inline'}
+                                    <X className="h-4 w-4" />
                                   </button>
-                                )}
-                                <button
-                                  onClick={() => removeSource(source.id)}
-                                  className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-red-100 hover:text-red-600 transition"
-                                  title="Remove source"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })
-                  )}
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
+
               </div>
 
-            </div>
-            
-            {/* Resize Handle */}
-            <div
-              className="w-2 bg-muted hover:bg-primary/50 cursor-col-resize transition-colors border-r border-border"
-              onMouseDown={(e) => handleMouseDown('sources', e)}
-            />
-          </>
-        )}
+              {/* Resize Handle */}
+              <div
+                className="w-2 bg-muted hover:bg-primary/50 cursor-col-resize transition-colors border-r border-border"
+                onMouseDown={(e) => handleMouseDown('sources', e)}
+              />
+            </>
+          )}
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col bg-background/50">
-          {/* Canvas, Chat, and Study Tools */}
-          <div className="flex-1 flex relative">
-            {/* Canvas */}
-            <div className="flex-1 relative flex flex-col">
-              {isMolecularMode ? (
-                <MoldrawEmbed />
-              ) : (
-                <>
-                  <div className="flex items-center gap-2 border-b border-slate-800/60 bg-slate-900/60 px-4 py-2 text-sm">
-                    {canvasWorkspaces.map(workspace => {
-                      const isActive = workspace.id === activeWorkspaceId;
-                      return (
-                        <button
-                          key={workspace.id}
-                          onClick={() => handleSelectWorkspace(workspace.id)}
-                          className={`inline-flex items-center gap-2 rounded-2xl px-3 py-1.5 transition ${
-                            isActive
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col bg-background/50">
+            {/* Canvas, Chat, and Study Tools */}
+            <div className="flex-1 flex relative">
+              {/* Canvas */}
+              <div className="flex-1 relative flex flex-col">
+                {isMolecularMode ? (
+                  <MoldrawEmbed />
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 border-b border-slate-800/60 bg-slate-900/60 px-4 py-2 text-sm">
+                      {canvasWorkspaces.map(workspace => {
+                        const isActive = workspace.id === activeWorkspaceId;
+                        return (
+                          <button
+                            key={workspace.id}
+                            onClick={() => handleSelectWorkspace(workspace.id)}
+                            className={`inline-flex items-center gap-2 rounded-2xl px-3 py-1.5 transition ${isActive
                               ? 'bg-slate-800 text-slate-100 border border-slate-700 shadow-sm'
                               : 'text-slate-400 border border-transparent hover:border-slate-700 hover:text-slate-100'
-                          }`}
-                        >
-                          <span className="font-medium">{workspace.title}</span>
-                          {canvasWorkspaces.length > 1 && (
-                            <span
-                              role="button"
-                              tabIndex={-1}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleCloseWorkspace(workspace.id);
-                              }}
-                              className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-slate-700/70"
-                            >
-                              <X size={12} />
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                    <button
-                      onClick={handleAddWorkspace}
-                      className="inline-flex items-center justify-center rounded-2xl border border-dashed border-slate-700 px-2.5 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
-                      title="Add workspace tab"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                  <div className="flex-1 relative">
-                    {canvasWorkspaces.map(workspace => (
-                      <div
-                        key={workspace.id}
-                        className={`${workspace.id === activeWorkspaceId ? 'block' : 'hidden'} h-full w-full`}
+                              }`}
+                          >
+                            <span className="font-medium">{workspace.title}</span>
+                            {canvasWorkspaces.length > 1 && (
+                              <span
+                                role="button"
+                                tabIndex={-1}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleCloseWorkspace(workspace.id);
+                                }}
+                                className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-slate-700/70"
+                              >
+                                <X size={12} />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={handleAddWorkspace}
+                        className="inline-flex items-center justify-center rounded-2xl border border-dashed border-slate-700 px-2.5 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
+                        title="Add workspace tab"
                       >
-                        <Canvas
-                          currentTool={currentTool}
-                          strokeWidth={strokeWidth}
-                          strokeColor={strokeColor}
-                          onOpenCalculator={handleOpenCalculator}
-                          onOpenMolView={handleOpenMolView}
-                          onOpenPeriodicTable={handleOpenPeriodicTable}
-                          onDocumentCaptured={handleDocumentInsightsGeneration}
-                          onDocumentAddToChat={handleAddDocumentToChat}
-                          onRegisterSnapshotHandler={(handler) => registerWorkspaceHandler(workspace.id, 'snapshot', handler)}
-                          onRegisterTextInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'text', handler)}
-                          onRegisterMarkdownInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'markdown', handler)}
-                          onRegisterMoleculeInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'molecule', handler)}
-                          onRegisterProteinInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'protein', handler)}
-                          onRegisterReactionInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'reaction', handler)}
-                        />
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                    <div className="flex-1 relative">
+                      {canvasWorkspaces.map(workspace => (
+                        <div
+                          key={workspace.id}
+                          className={`${workspace.id === activeWorkspaceId ? 'block' : 'hidden'} h-full w-full`}
+                        >
+                          <Canvas
+                            currentTool={currentTool}
+                            strokeWidth={strokeWidth}
+                            strokeColor={strokeColor}
+                            onOpenCalculator={handleOpenCalculator}
+                            onOpenMolView={handleOpenMolView}
+                            onOpenPeriodicTable={handleOpenPeriodicTable}
+                            onDocumentCaptured={handleDocumentInsightsGeneration}
+                            onDocumentAddToChat={handleAddDocumentToChat}
+                            onRegisterSnapshotHandler={(handler) => registerWorkspaceHandler(workspace.id, 'snapshot', handler)}
+                            onRegisterTextInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'text', handler)}
+                            onRegisterMarkdownInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'markdown', handler)}
+                            onRegisterMoleculeInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'molecule', handler)}
+                            onRegisterProteinInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'protein', handler)}
+                            onRegisterReactionInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'reaction', handler)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+
+
+
+              {/* Study Tools Panel */}
+              {/* Study Tools Panel handled via full-screen workspace */}
+
+              {/* Chat Start Button - Floating */}
+              {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
+                <div className="absolute top-4 right-8 z-10 flex flex-col gap-3 items-end">
+                  {/* Gemini Live Share Canvas Button */}
+                  {geminiLiveState.connectionState === ConnectionState.CONNECTED && (
+                    <DarkButtonWithIcon
+                      onClick={() => geminiLiveState.captureAndSendSnapshot()}
+                      className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 bg-blue-600 hover:bg-blue-500 border-blue-500"
+                    >
+                      <span className='mr-[10px]'>
+                        <Video className="h-5 w-5" />
+                      </span>
+                      Share Canvas
+                    </DarkButtonWithIcon>
+                  )}
+
+                  <DarkButtonWithIcon
+                    onClick={() => {
+                      console.log('Starting chat panel...');
+                      setIsNmrAssistantActive(false);
+                      setShowChatPanel(true);
+                    }}
+                    className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                  >
+                    <span className='mr-[10px]'>
+                      <MessageSquare className="h-5 w-5" />
+                    </span>
+                    Start Chat
+                  </DarkButtonWithIcon>
+                </div>
+              )}
+
+              {/* Chat Panel */}
+              {showChatPanel && (
+                <>
+                  <div
+                    className="border-l-2 border-border bg-card flex flex-col shadow-lg"
+                    style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: chatWidth, zIndex: 10 }}
+                  >
+                    {/* Chat Header */}
+                    <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                          <MessageSquare className="h-4 w-4 text-primary-foreground" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-semibold">AI Chat</h3>
+                          <p className="text-xs text-muted-foreground">Reference answers while you work</p>
+                        </div>
                       </div>
-                    ))}
+                      <div className="flex items-center gap-2">
+                        <span className="hidden sm:inline text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded">
+                          {Math.round(chatWidth)}px
+                        </span>
+                        <button
+                          onClick={() => setShowChatPanel(false)}
+                          className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
+                          aria-label="Close chat"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Chat Content */}
+                    <div className="flex-1 min-h-[240px]">
+                      <LobeChat onRequireApiKey={() => setShowSettings(true)} showHeader={false} />
+                    </div>
+                  </div>
+
+                  {/* Resize Handle */}
+                  <div
+                    className="bg-gradient-to-b from-primary/30 to-primary/10 hover:bg-gradient-to-b hover:from-primary/70 hover:to-primary/50 cursor-col-resize transition-all border-l border-primary/30 hover:border-primary/70 group"
+                    style={{ position: 'absolute', right: chatWidth, top: 0, bottom: 0, width: '6px', zIndex: 11 }}
+                    onMouseDown={(e) => handleMouseDown('chat', e)}
+                    title="Drag to resize chat panel"
+                  >
+                    <div className="h-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="text-primary/70 text-xs font-semibold">⋮⋮</div>
+                    </div>
                   </div>
                 </>
               )}
             </div>
-
-
-
-
-            {/* Study Tools Panel */}
-            {/* Study Tools Panel handled via full-screen workspace */}
-
-            {/* Chat Start Button - Floating */}
-            {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
-              <div className="absolute top-4 right-8 z-10 flex flex-col gap-3 items-end">
-                {/* Gemini Live Share Canvas Button */}
-                {geminiLiveState.connectionState === ConnectionState.CONNECTED && (
-                  <DarkButtonWithIcon
-                    onClick={() => geminiLiveState.captureAndSendSnapshot()}
-                    className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 bg-blue-600 hover:bg-blue-500 border-blue-500"
-                  >
-                    <span className='mr-[10px]'>
-                      <Video className="h-5 w-5" />
-                    </span>
-                    Share Canvas
-                  </DarkButtonWithIcon>
-                )}
-
-                <DarkButtonWithIcon
-                  onClick={() => {
-                    console.log('Starting chat panel...');
-                    setIsNmrAssistantActive(false);
-                    setShowChatPanel(true);
-                  }}
-                  className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                >
-                  <span className='mr-[10px]'>
-                    <MessageSquare className="h-5 w-5" />
-                  </span>
-                  Start Chat
-                </DarkButtonWithIcon>
-              </div>
-            )}
-
-            {/* Chat Panel */}
-            {showChatPanel && (
-              <>
-                <div
-                  className="border-l-2 border-border bg-card flex flex-col shadow-lg"
-                  style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: chatWidth, zIndex: 10 }}
-                >
-                  {/* Chat Header */}
-                  <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                        <MessageSquare className="h-4 w-4 text-primary-foreground" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold">AI Chat</h3>
-                        <p className="text-xs text-muted-foreground">Reference answers while you work</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="hidden sm:inline text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded">
-                        {Math.round(chatWidth)}px
-                      </span>
-                      <button
-                        onClick={() => setShowChatPanel(false)}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
-                        aria-label="Close chat"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  {/* Chat Content */}
-                  <div className="flex-1 min-h-[240px]">
-                    <LobeChat onRequireApiKey={() => setShowSettings(true)} showHeader={false} />
-                  </div>
-                </div>
-
-                {/* Resize Handle */}
-                <div
-                  className="bg-gradient-to-b from-primary/30 to-primary/10 hover:bg-gradient-to-b hover:from-primary/70 hover:to-primary/50 cursor-col-resize transition-all border-l border-primary/30 hover:border-primary/70 group"
-                  style={{ position: 'absolute', right: chatWidth, top: 0, bottom: 0, width: '6px', zIndex: 11 }}
-                  onMouseDown={(e) => handleMouseDown('chat', e)}
-                  title="Drag to resize chat panel"
-                >
-                  <div className="h-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="text-primary/70 text-xs font-semibold">⋮⋮</div>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </div>
-      </div>
       )}
 
       {/* Settings Modal */}
@@ -2317,6 +2350,15 @@ Here is the learner's question: ${message}`;
         placeholder={(name) => `Send a message to ${name}...`}
         theme="light"
       />
+      {/* Gemini Live Overlay */}
+      <GeminiLiveOverlay
+        geminiLiveState={geminiLiveState}
+        activeWorkspaceId={activeWorkspaceId}
+        onExpandImage={handleCanvasImageExpand}
+      />
+
+      {/* Image Lightbox */}
+      <GeminiLiveImageLightbox image={expandedImage} onClose={handleCloseLightbox} />
     </div>
   );
 };

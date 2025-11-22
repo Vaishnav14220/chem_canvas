@@ -154,6 +154,22 @@ export interface CanvasReactionPlacementRequest {
   title?: string;
   description?: string;
   includeSdf?: boolean;
+}
+
+export interface CanvasConceptImagePayload {
+  url: string;
+  title: string;
+  concept?: string;
+  topic?: string;
+  prompt?: string;
+  alt?: string;
+}
+
+export interface CanvasReactionPlacementRequest {
+  reactionSmiles: string;
+  title?: string;
+  description?: string;
+  includeSdf?: boolean;
   metadata?: ReactionMetadata;
 }
 
@@ -362,7 +378,7 @@ const mapDocumentTypeToResourceKind = (docType: DroppedDocumentType): string => 
 // Custom node components for different types
 const FlowInputTextNode = ({ data, id }: any) => {
   const [value, setValue] = useState(data.value || '');
-  
+
   return (
     <div className="min-w-[200px] rounded-2xl border border-blue-500/40 bg-blue-900/30 px-4 py-3 shadow-lg">
       <Handle
@@ -388,12 +404,12 @@ const FlowInputTextNode = ({ data, id }: any) => {
 
 const FlowInputFileNode = ({ data, id }: any) => {
   const [file, setFile] = useState<File | null>(null);
-  
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
     setFile(selectedFile);
   };
-  
+
   return (
     <div className="min-w-[200px] rounded-2xl border border-green-500/40 bg-green-900/30 px-4 py-3 shadow-lg">
       <Handle
@@ -426,7 +442,7 @@ const FlowInputFileNode = ({ data, id }: any) => {
 
 const FlowInputUrlNode = ({ data, id }: any) => {
   const [value, setValue] = useState(data.value || '');
-  
+
   return (
     <div className="min-w-[200px] rounded-2xl border border-purple-500/40 bg-purple-900/30 px-4 py-3 shadow-lg">
       <Handle
@@ -592,7 +608,7 @@ export default function Canvas({
   }, [onRegisterSnapshotHandler]);
 
 
-const [isDrawing, setIsDrawing] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
   const [lastX, setLastX] = useState(0);
   const [lastY, setLastY] = useState(0);
   const [showGrid, setShowGrid] = useState(true);
@@ -627,12 +643,12 @@ const [isDrawing, setIsDrawing] = useState(false);
   const [corrections, setCorrections] = useState<Correction[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<CanvasAnalysisResult | null>(null);
-const [showChemistryToolbar, setShowChemistryToolbar] = useState(false);
+  const [showChemistryToolbar, setShowChemistryToolbar] = useState(false);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [arQrCid, setArQrCid] = useState<string | null>(null);
   const [arQrLabel, setArQrLabel] = useState('');
   const [activeMineralPreview, setActiveMineralPreview] = useState<{ codId: string; name?: string } | null>(null);
-const [toolbarWidth, setToolbarWidth] = useState(260);
+  const [toolbarWidth, setToolbarWidth] = useState(260);
   const [isResizingToolbar, setIsResizingToolbar] = useState(false);
   const toolbarResizeStateRef = useRef<{ startX: number; startWidth: number }>({ startX: 0, startWidth: 360 });
   const [chemistryTool, setChemistryTool] = useState('draw');
@@ -1209,12 +1225,12 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       prev.map(doc =>
         doc.id === dragState.id
           ? {
-              ...doc,
-              position: {
-                x: nextX,
-                y: nextY
-              }
+            ...doc,
+            position: {
+              x: nextX,
+              y: nextY
             }
+          }
           : doc
       )
     );
@@ -1263,10 +1279,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       prev.map(doc =>
         doc.id === resizeState.id
           ? {
-              ...doc,
-              viewportWidth: nextWidth,
-              viewportHeight: nextHeight
-            }
+            ...doc,
+            viewportWidth: nextWidth,
+            viewportHeight: nextHeight
+          }
           : doc
       )
     );
@@ -1570,7 +1586,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
   // Shape tracking for repositioning
   interface Shape {
     id: string;
-  type: 'arrow' | 'circle' | 'square' | 'triangle' | 'hexagon' | 'plus' | 'minus' | 'molecule' | 'protein' | 'text' | 'reaction' | 'path';
+    type: 'arrow' | 'circle' | 'square' | 'triangle' | 'hexagon' | 'plus' | 'minus' | 'molecule' | 'protein' | 'text' | 'reaction' | 'path';
     startX: number;
     startY: number;
     endX: number;
@@ -1619,8 +1635,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
   const selectedShape = selectedShapeId ? shapes.find(shape => shape.id === selectedShapeId) ?? null : null;
   const has3DStructure = Boolean(
     selectedShape &&
-      selectedShape.type === 'molecule' &&
-      selectedShape.moleculeData?.sdf3DData
+    selectedShape.type === 'molecule' &&
+    selectedShape.moleculeData?.sdf3DData
   );
   const selectedMoleculeCid = (() => {
     if (!selectedShape || selectedShape.type !== 'molecule' || !selectedShape.moleculeData) {
@@ -2109,22 +2125,22 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     // Adjust grid color based on canvas background
     ctx.strokeStyle = canvasBackground === 'dark' ? '#1e293b' : '#e5e7eb';
     ctx.lineWidth = 0.5;
-    
+
     const gridSize = 20;
-    
+
     for (let x = 0; x <= width; x += gridSize) {
-        ctx.beginPath();
+      ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
     }
-    
+
     for (let y = 0; y <= height; y += gridSize) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
-        ctx.stroke();
-      }
+      ctx.stroke();
+    }
   };
 
   const getShapeBounds = (shape: Shape) => {
@@ -2271,11 +2287,11 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       { x: number; y: number },
       { x: number; y: number }
     ][] = [
-      [rectCorners[0], rectCorners[1]],
-      [rectCorners[1], rectCorners[2]],
-      [rectCorners[2], rectCorners[3]],
-      [rectCorners[3], rectCorners[0]]
-    ];
+        [rectCorners[0], rectCorners[1]],
+        [rectCorners[1], rectCorners[2]],
+        [rectCorners[2], rectCorners[3]],
+        [rectCorners[3], rectCorners[0]]
+      ];
 
     for (let i = 0; i < polygon.length; i++) {
       const p1 = polygon[i];
@@ -2312,7 +2328,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       }
     }
 
-  return 1;
+    return 1;
   };
 
   const ensureCompleteMoleculeData = async (data: MoleculeData): Promise<MoleculeData> => {
@@ -2408,8 +2424,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
 
     const displayName =
       moleculeData.role === 'reagent' &&
-      baseDisplayName &&
-      !baseDisplayName.toLowerCase().includes('reagent')
+        baseDisplayName &&
+        !baseDisplayName.toLowerCase().includes('reagent')
         ? `${baseDisplayName} (Reagent)`
         : baseDisplayName;
 
@@ -2698,7 +2714,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     const endY = centerY + baseHeight / 2;
 
     const reactionId = `reaction-${Date.now()}`;
-    
+
     // Handle new ReactionSearchResult structure with payload and svgData
     const processedReactionData = reactionData.payload && reactionData.svgData ? {
       type: 'reaction',
@@ -2992,14 +3008,14 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     if (points.length < 2) return;
 
     ctx.save();
-    
+
     // Draw lasso path line
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 2;
     ctx.setLineDash([8, 4]);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    
+
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i++) {
@@ -3260,10 +3276,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     if (shapeTools.includes(activeTool)) {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      
+
       // Save current canvas state for redrawing
       imageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
+
       setArrowState({
         startX: x,
         startY: y,
@@ -3340,8 +3356,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
 
     const activeTool = showChemistryToolbar ? chemistryTool : currentTool;
     const activeStrokeColor = showChemistryToolbar ? chemistryStrokeColor : strokeColor;
-  const activeFillColor = showChemistryToolbar ? chemistryFillColor : activeStrokeColor;
-  const activeFillEnabled = showChemistryToolbar ? chemistryFillEnabled : true;
+    const activeFillColor = showChemistryToolbar ? chemistryFillColor : activeStrokeColor;
+    const activeFillEnabled = showChemistryToolbar ? chemistryFillEnabled : true;
     const activeSize = showChemistryToolbar ? chemistrySize : strokeWidth;
     const fillConfig = {
       fillColor: activeFillColor,
@@ -3357,7 +3373,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
           const newCenterY = y - dragOffset.y;
           const dx = shape.endX - shape.startX;
           const dy = shape.endY - shape.startY;
-          
+
           return {
             ...shape,
             startX: newCenterX - dx / 2,
@@ -3368,7 +3384,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
         }
         return shape;
       });
-      
+
       setShapes(updatedShapes);
       canvasHistoryRef.current = updatedShapes;
       return;
@@ -3386,7 +3402,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
 
         // Calculate angle from center to current mouse position
         const angle = Math.atan2(y - centerY, x - centerX) * (180 / Math.PI);
-        
+
         // Update shape rotation
         const updatedShapes = canvasHistoryRef.current.map(s => {
           if (s.id === selectedShapeId) {
@@ -3397,7 +3413,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
           }
           return s;
         });
-        
+
         setShapes(updatedShapes);
         canvasHistoryRef.current = updatedShapes;
       }
@@ -3522,26 +3538,26 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     if (shapeTools.includes(activeTool) && arrowState && arrowState.isDrawing && imageDataRef.current) {
       // Restore previous canvas state
       ctx.putImageData(imageDataRef.current, 0, 0);
-      
+
       // Redraw grid if needed
       if (showGrid) {
         drawGrid(ctx, canvas.width, canvas.height);
       }
-      
+
       // Update shape end position
       setArrowState({
         ...arrowState,
         endX: x,
         endY: y
       });
-      
+
       // Calculate size based on distance from start to end
       const dx = x - arrowState.startX;
       const dy = y - arrowState.startY;
       const distance = Math.sqrt(dx * dx + dy * dy);
       const centerX = arrowState.startX + dx / 2;
       const centerY = arrowState.startY + dy / 2;
-      
+
       // Draw preview based on active tool
       if (activeTool === 'arrow') {
         drawArrow(ctx, arrowState.startX, arrowState.startY, x, y, activeSize, activeStrokeColor);
@@ -3576,8 +3592,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     if (activeToolNormal === 'pen' || activeToolNormal === 'draw') {
       ctx.strokeStyle = activeColorNormal;
       ctx.lineWidth = activeSizeNormal;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
       ctx.lineTo(x, y);
       ctx.stroke();
@@ -3585,10 +3601,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       ctx.globalCompositeOperation = 'destination-out';
       ctx.lineWidth = activeSizeNormal * 2;
       ctx.lineCap = 'round';
-      
+
       ctx.lineTo(x, y);
       ctx.stroke();
-      
+
       ctx.globalCompositeOperation = 'source-over';
     } else if (activeToolNormal === 'atom') {
       drawAtom(ctx, x, y, activeSizeNormal, activeColorNormal);
@@ -3637,19 +3653,19 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
   const drawArrow = (ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, size: number, color: string) => {
     const headlen = Math.max(size * 8, 15); // Proportional arrowhead
     const angle = Math.atan2(y2 - y1, x2 - x1);
-    
+
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    
+
     // Draw arrow line
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
-    
+
     // Draw filled arrowhead (triangle)
     ctx.beginPath();
     ctx.moveTo(x2, y2);
@@ -3701,7 +3717,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.rect(x - size/2, y - size/2, size, size);
+    ctx.rect(x - size / 2, y - size / 2, size, size);
     if (options?.fillEnabled !== false) {
       ctx.fillStyle = options?.fillColor ?? color;
       ctx.fill();
@@ -3722,9 +3738,9 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(x, y - size/2);
-    ctx.lineTo(x - size/2, y + size/2);
-    ctx.lineTo(x + size/2, y + size/2);
+    ctx.moveTo(x, y - size / 2);
+    ctx.lineTo(x - size / 2, y + size / 2);
+    ctx.lineTo(x + size / 2, y + size / 2);
     ctx.closePath();
     if (options?.fillEnabled !== false) {
       ctx.fillStyle = options?.fillColor ?? color;
@@ -4196,10 +4212,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       ctx.stroke();
 
       // Rotation based on shape.rotation3D
-  const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
-  const rx = (rot.x * Math.PI) / 180;
-  const ry = (rot.y * Math.PI) / 180;
-  const rz = ((rot.z ?? 0) * Math.PI) / 180;
+      const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
+      const rx = (rot.x * Math.PI) / 180;
+      const ry = (rot.y * Math.PI) / 180;
+      const rz = ((rot.z ?? 0) * Math.PI) / 180;
 
       const cosx = Math.cos(rx), sinx = Math.sin(rx);
       const cosy = Math.cos(ry), siny = Math.sin(ry);
@@ -4320,10 +4336,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       ctx.stroke();
 
       // Simple orthographic projection using rotation3D
-  const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
-  const rx = (rot.x * Math.PI) / 180;
-  const ry = (rot.y * Math.PI) / 180;
-  const rz = ((rot.z ?? 0) * Math.PI) / 180;
+      const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
+      const rx = (rot.x * Math.PI) / 180;
+      const ry = (rot.y * Math.PI) / 180;
+      const rz = ((rot.z ?? 0) * Math.PI) / 180;
 
       const cosx = Math.cos(rx), sinx = Math.sin(rx);
       const cosy = Math.cos(ry), siny = Math.sin(ry);
@@ -4444,10 +4460,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
         const sx = maxX - minX || 1;
         const sy = maxY - minY || 1;
         const sz = maxZ - minZ || 1;
-  const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
-  const rx = (rot.x * Math.PI) / 180;
-  const ry = (rot.y * Math.PI) / 180;
-  const rz = ((rot.z ?? 0) * Math.PI) / 180;
+        const rot = (shape.rotation3D ?? { x: 25, y: 35, z: 0 }) as { x: number; y: number; z?: number };
+        const rx = (rot.x * Math.PI) / 180;
+        const ry = (rot.y * Math.PI) / 180;
+        const rz = ((rot.z ?? 0) * Math.PI) / 180;
         const cosx = Math.cos(rx), sinx = Math.sin(rx);
         const cosy = Math.cos(ry), siny = Math.sin(ry);
         const cosz = Math.cos(rz), sinz = Math.sin(rz);
@@ -4581,7 +4597,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     if (!cid) return;
 
     const cache = moleculeImageCacheRef.current;
-    
+
     // Check cache first
     if (cache.has(cid)) {
       const img = cache.get(cid);
@@ -4606,12 +4622,12 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       ctx.rotate((shape.rotation * Math.PI) / 180);
       ctx.drawImage(img, -width / 2, -height / 2, width, height);
       ctx.restore();
-      
+
       // Trigger redraw to ensure canvas updates
       setForceRedraw(prev => prev + 1);
     };
     img.onerror = () => {
-  console.warn('Failed to load molecule PNG:', shape.moleculeData?.displayName ?? shape.moleculeData?.name ?? 'Unknown');
+      console.warn('Failed to load molecule PNG:', shape.moleculeData?.displayName ?? shape.moleculeData?.name ?? 'Unknown');
       // Draw placeholder
       ctx.save();
       ctx.fillStyle = '#3b82f6';
@@ -4622,7 +4638,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.globalAlpha = 1;
-  ctx.fillText(shape.moleculeData?.molecularFormula || 'Molecule', centerX, centerY);
+      ctx.fillText(shape.moleculeData?.molecularFormula || 'Molecule', centerX, centerY);
       ctx.restore();
     };
     img.src = pngUrl;
@@ -4685,7 +4701,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       'Chemical Reaction';
 
     const description = data.description || '';
-    
+
     // Helper to wrap text for canvas
     const wrapText = (text: string, maxWidth: number): string[] => {
       const words = text.split(' ');
@@ -4695,7 +4711,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       words.forEach(word => {
         const testLine = currentLine ? `${currentLine} ${word}` : word;
         const metrics = ctx.measureText(testLine);
-        
+
         if (metrics.width > maxWidth && currentLine) {
           lines.push(currentLine);
           currentLine = word;
@@ -4703,25 +4719,25 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
           currentLine = testLine;
         }
       });
-      
+
       if (currentLine) {
         lines.push(currentLine);
       }
-      
+
       return lines;
     };
 
     const renderLabelAndDescription = (svgHeight: number) => {
       ctx.save();
-      
+
       // Draw reaction name/title
       ctx.fillStyle = '#a855f7'; // Purple color for reaction name
       ctx.font = 'bold 16px Arial';
       ctx.textAlign = 'center';
       ctx.fillText(labelText, centerX, shape.startY - 25);
-      
+
       // Description rendering disabled - only show SVG
-      
+
       ctx.restore();
     };
 
@@ -4750,7 +4766,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
 
       // No space reserved for description (description disabled)
       const descHeight = 0;
-      
+
       // Calculate available space for SVG
       const maxWidth = width * 0.95; // Increased from 0.92 for better zoom
       const maxSvgHeight = (height * 0.85) - descHeight; // Reserve space for description
@@ -4774,12 +4790,12 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
 
         const baseStartY = shape.startY + 40; // Start below the title
         const baseX = centerX - baseDrawWidth / 2;
-        
+
         // Draw with smooth rendering
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(baseImage, baseX, baseStartY, baseDrawWidth, baseDrawHeight);
-        
+
         ctx.restore();
         renderLabelAndDescription(baseDrawHeight + 40);
         return;
@@ -4803,11 +4819,11 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       const startY = shape.startY + 40;
 
       const baseX = centerX - baseDrawWidth / 2;
-      
+
       // Enable high quality rendering
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      
+
       ctx.drawImage(baseImage, baseX, startY, baseDrawWidth, baseDrawHeight);
 
       const highlightX = centerX - highlightDrawWidth / 2;
@@ -5251,7 +5267,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       imageDataRef.current = null;
       return;
     }
-    
+
     setIsDrawing(false);
   };
 
@@ -5500,14 +5516,14 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
         ctx.lineWidth = 3;
         ctx.setLineDash([5, 5]);  // Dashed line
         ctx.globalAlpha = 0.8;
-        
+
         const tolerance = Math.max(distance / 2 + 15, 25);
         ctx.beginPath();
         ctx.arc(centerX, centerY, tolerance, 0, 2 * Math.PI);
         ctx.stroke();
-        
+
         ctx.setLineDash([]);  // Reset to solid
-        
+
         // Draw resize handles (corners and edges)
         const handleSize = 12;
         const handlePositions = [
@@ -5522,7 +5538,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
           { x: (shape.startX + shape.endX) / 2, y: shape.endY },
           { x: shape.startX, y: (shape.startY + shape.endY) / 2 },
         ];
-        
+
         // Draw each handle
         handlePositions.forEach((pos) => {
           ctx.fillStyle = '#0ea5e9';  // Cyan handles
@@ -5532,7 +5548,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
             handleSize,
             handleSize
           );
-          
+
           // White border for contrast
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 2;
@@ -5543,9 +5559,9 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
             handleSize
           );
         });
-        
+
         ctx.globalAlpha = 1;
-        
+
         // Draw label
         ctx.fillStyle = '#0ea5e9';
         ctx.font = '12px Arial';
@@ -5620,10 +5636,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       ctx.globalCompositeOperation = 'destination-out';
       ctx.lineWidth = activeSize * 2;
       ctx.lineCap = 'round';
-      
+
       ctx.lineTo(x, y);
       ctx.stroke();
-      
+
       ctx.globalCompositeOperation = 'source-over';
     } else if (activeTool === 'atom') {
       drawAtom(ctx, x, y, activeSize, activeStrokeColor);
@@ -5664,7 +5680,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     if (showGrid) {
       drawGrid(ctx, canvas.width, canvas.height);
     }
@@ -5863,7 +5879,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     } finally {
       setIsAnalyzing(false);
     }
-  };  const clearCorrections = () => {
+  }; const clearCorrections = () => {
     setCorrections([]);
     setShowCorrections(false);
     setAnalysisResult(null);
@@ -5885,10 +5901,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     try {
       // Convert canvas to base64
       const canvasData = canvas.toDataURL('image/png', 0.8);
-      
+
       // Convert to chemistry structure
       const result = await convertCanvasToChemistry(canvasData, apiKey);
-      
+
       if (result.success && result.structure) {
         setChemistryStructure(result.structure);
         setShowChemistryViewer(true);
@@ -6042,8 +6058,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
         const highlightClass = correction.type === 'error'
           ? 'bg-red-500/20 text-red-200 border-b border-red-500/60'
           : correction.type === 'warning'
-          ? 'bg-yellow-500/20 text-yellow-200 border-b border-yellow-500/60'
-          : 'bg-blue-500/20 text-blue-200 border-b border-blue-500/60';
+            ? 'bg-yellow-500/20 text-yellow-200 border-b border-yellow-500/60'
+            : 'bg-blue-500/20 text-blue-200 border-b border-blue-500/60';
 
         const highlightedText = originalText.slice(start, end) || correction.replacementText || '';
 
@@ -6191,9 +6207,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       <div className="absolute top-8 left-8 z-10">
         <button
           onClick={() => setShowChemistryToolbar(!showChemistryToolbar)}
-          className={`p-2 bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-lg transition-all ${
-            showChemistryToolbar ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700/50'
-          }`}
+          className={`p-2 bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-lg transition-all ${showChemistryToolbar ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700/50'
+            }`}
           title={showChemistryToolbar ? "Hide Chemistry Tools" : "Show Chemistry Tools"}
           onDoubleClick={() => openDocumentOnCanvas(doc.id)}
         >
@@ -6353,18 +6368,17 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
         </div>
       )}
 
-        {/* Right-side Controls - Consolidated */}
-        <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
-          <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3 shadow-lg space-y-3">
+      {/* Right-side Controls - Consolidated */}
+      <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
+        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3 shadow-lg space-y-3">
 
           {/* Grid Toggle */}
           <button
             onClick={() => setShowGrid(!showGrid)}
-            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center ${
-              showGrid
+            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center ${showGrid
                 ? 'bg-blue-600 text-white'
                 : 'text-slate-400 hover:bg-slate-700/50'
-            }`}
+              }`}
             title="Toggle Grid"
           >
             <Grid3x3 size={16} />
@@ -6374,22 +6388,20 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
           <div className="flex flex-col gap-1">
             <button
               onClick={() => setCanvasBackground('dark')}
-              className={`p-2 rounded-lg transition-all ${
-                canvasBackground === 'dark'
+              className={`p-2 rounded-lg transition-all ${canvasBackground === 'dark'
                   ? 'bg-slate-600 text-white'
                   : 'text-slate-400 hover:bg-slate-700/50'
-              }`}
+                }`}
               title="Dark Canvas"
             >
               <Moon size={14} />
             </button>
             <button
               onClick={() => setCanvasBackground('white')}
-              className={`p-2 rounded-lg transition-all ${
-                canvasBackground === 'white'
+              className={`p-2 rounded-lg transition-all ${canvasBackground === 'white'
                   ? 'bg-slate-600 text-white'
                   : 'text-slate-400 hover:bg-slate-700/50'
-              }`}
+                }`}
               title="Light Canvas"
             >
               <Sun size={14} />
@@ -6439,11 +6451,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
           <button
             onClick={convertToChemistry}
             disabled={isConverting}
-            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center gap-2 ${
-              isConverting
+            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center gap-2 ${isConverting
                 ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
                 : 'bg-primary text-primary-foreground hover:bg-primary/90'
-            }`}
+              }`}
             title={isConverting ? "Converting..." : "Convert to Chemistry Structure"}
           >
             {isConverting ? (
@@ -6457,13 +6468,12 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
           <button
             onClick={showCorrections ? clearCorrections : analyzeCanvas}
             disabled={isAnalyzing}
-            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center gap-2 ${
-              isAnalyzing
+            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center gap-2 ${isAnalyzing
                 ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
                 : showCorrections
-                ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90'
-            }`}
+                  ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
+              }`}
             title={isAnalyzing ? "Analyzing..." : showCorrections ? "Clear Corrections" : "Check My Work"}
           >
             {isAnalyzing ? (
@@ -6511,221 +6521,219 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
         const pdfHeight = doc.viewportHeight ?? DEFAULT_PDF_HEIGHT;
         const isExpanded = expandedDocuments.has(doc.id);
         return (
-        <div
-          key={doc.id}
-          className="absolute z-30"
-          style={{
-            left: `${doc.position.x}px`,
-            top: `${doc.position.y}px`
-          }}
-        >
-          {doc.type === 'pdf' ? (
-            <div
-              className="group relative max-w-[92vw] rounded-xl shadow-xl"
-              style={{ width: pdfWidth, height: pdfHeight }}
-            >
+          <div
+            key={doc.id}
+            className="absolute z-30"
+            style={{
+              left: `${doc.position.x}px`,
+              top: `${doc.position.y}px`
+            }}
+          >
+            {doc.type === 'pdf' ? (
               <div
-                className="pointer-events-auto absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/80 opacity-0 transition group-hover:opacity-100 cursor-move"
-                onMouseDown={(event) => handleDocumentDragStart(event, doc.id)}
+                className="group relative max-w-[92vw] rounded-xl shadow-xl"
+                style={{ width: pdfWidth, height: pdfHeight }}
               >
-                <Move size={12} />
-                Drag
-              </div>
-              <iframe
-                title={doc.name}
-                src={doc.content}
-                className="block h-full w-full rounded-xl border border-slate-700/60 bg-white"
-                onDoubleClick={() => openDroppedDocument(doc)}
-              />
-              <div className="absolute top-2 right-2 flex flex-wrap gap-2 opacity-0 transition group-hover:opacity-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onDocumentAddToChat) {
-                      onDocumentAddToChat({ documentId: doc.id });
-                    }
-                  }}
-                  className="rounded-full bg-emerald-600/80 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
+                <div
+                  className="pointer-events-auto absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/80 opacity-0 transition group-hover:opacity-100 cursor-move"
+                  onMouseDown={(event) => handleDocumentDragStart(event, doc.id)}
                 >
-                  Add to Chat
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openDroppedDocument(doc)}
-                  className="rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white hover:bg-black"
-                >
-                  Open Tab
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeDroppedDocument(doc.id)}
-                  className="rounded-full bg-black/70 p-1 text-white/80 hover:bg-black hover:text-white"
-                  aria-label={`Remove ${doc.name}`}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <button
-                type="button"
-                className="pointer-events-auto absolute bottom-2 right-2 h-4 w-4 cursor-se-resize rounded-full border border-white/70 bg-black/60 opacity-0 transition group-hover:opacity-100"
-                onMouseDown={(event) => handleDocumentResizeStart(event, doc.id)}
-                aria-label="Resize document"
-              />
-            </div>
-          ) : (
-            <div
-              className="w-[420px] max-w-[92vw] rounded-3xl border border-slate-700/80 bg-slate-950/90 text-slate-50 shadow-2xl backdrop-blur"
-              onDoubleClick={() => openDroppedDocument(doc)}
-              title="Double-click to open in a new tab"
-            >
-              <div
-                className="flex items-center justify-between gap-3 border-b border-slate-700/70 px-5 py-3 cursor-move select-none"
-                onMouseDown={(event) => handleDocumentDragStart(event, doc.id)}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800/80 text-blue-200">
-                    <FileText size={16} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{doc.name}</p>
-                    <p className="text-[11px] text-slate-400">
-                      {getDocumentTypeLabel(doc.type)} • {formatDocumentSize(doc.size)}
-                    </p>
-                  </div>
+                  <Move size={12} />
+                  Drag
                 </div>
-                <button
-                  type="button"
-                  onClick={() => removeDroppedDocument(doc.id)}
-                  className="rounded-full p-1 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-                  aria-label={`Remove ${doc.name}`}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
-              <div className="space-y-3 px-5 py-4">
-                {doc.type === 'text' && (
-                  <div
-                    className={`overflow-auto rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4 text-sm text-slate-100 ${
-                      isExpanded ? 'max-h-[26rem]' : 'max-h-48'
-                    }`}
+                <iframe
+                  title={doc.name}
+                  src={doc.content}
+                  className="block h-full w-full rounded-xl border border-slate-700/60 bg-white"
+                  onDoubleClick={() => openDroppedDocument(doc)}
+                />
+                <div className="absolute top-2 right-2 flex flex-wrap gap-2 opacity-0 transition group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onDocumentAddToChat) {
+                        onDocumentAddToChat({ documentId: doc.id });
+                      }
+                    }}
+                    className="rounded-full bg-emerald-600/80 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
                   >
-                    <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed">
-                      {doc.preview || doc.content || 'Document appears to be empty.'}
-                    </pre>
-                  </div>
-                )}
-
-                {doc.type === 'image' && (
-                  <div className="flex h-64 items-center justify-center rounded-2xl border border-slate-700/70 bg-slate-900/80 p-3">
-                    <img
-                      src={doc.content}
-                      alt={doc.name}
-                      className="max-h-full w-full rounded-xl object-contain"
-                    />
-                  </div>
-                )}
-
-                {doc.type === 'spreadsheet' && (
-                  <div className="space-y-2">
-                    {doc.sheetPreviews?.length ? (
-                      <div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2">
-                          <span>
-                            Sheet: <span className="font-semibold text-slate-200">{doc.sheetPreviews[0].name}</span>
-                          </span>
-                          <span>
-                            Showing first {doc.sheetPreviews[0].rows.length}{' '}
-                            {doc.sheetPreviews[0].rows.length === 1 ? 'row' : 'rows'}
-                          </span>
-                        </div>
-                        <div
-                          className={`overflow-auto rounded-2xl border border-slate-700/70 bg-slate-900/80 ${
-                            isExpanded ? 'max-h-[28rem]' : 'max-h-60'
-                          }`}
-                        >
-                          <table className="w-full text-xs text-left text-slate-200">
-                            <thead className="sticky top-0 bg-slate-800/90">
-                              <tr>
-                                {doc.sheetPreviews[0].headers.map((header, idx) => (
-                                  <th key={idx} className="px-3 py-2 font-semibold border-b border-slate-700/60">
-                                    {header || `Col ${idx + 1}`}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {doc.sheetPreviews[0].rows.map((row, rowIndex) => (
-                                <tr key={rowIndex} className="even:bg-slate-800/40">
-                                  {row.map((cell, cellIdx) => (
-                                    <td key={cellIdx} className="px-3 py-2 border-b border-slate-800/60 text-[11px]">
-                                      {cell}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4 text-xs text-slate-300">
-                        Could not generate a table preview for this spreadsheet.
-                      </div>
-                    )}
-                    {doc.preview && (
-                      <p className="text-[11px] text-slate-400">
-                        Summary excerpt:{' '}
-                        <span className="text-slate-200">{doc.preview.slice(0, 160)}{doc.preview.length > 160 ? '…' : ''}</span>
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {doc.type === 'audio' && (
-                  <div className="rounded-2xl border border-slate-700/70 bg-slate-900/80 p-4">
-                    <audio controls className="w-full" src={doc.viewerUrl ?? doc.content}>
-                      Your browser does not support the audio element.
-                    </audio>
-                    <p className="mt-2 text-xs text-slate-400">Audio preview</p>
-                  </div>
-                )}
-
-                {doc.type === 'video' && (
-                  <div className="rounded-2xl border border-slate-700/70 bg-slate-900/80 p-3">
-                    <video
-                      controls
-                      className="max-h-[320px] w-full rounded-xl bg-black object-contain"
-                      src={doc.viewerUrl ?? doc.content}
-                    >
-                      Your browser does not support the video tag.
-                    </video>
-                    <p className="mt-2 text-xs text-slate-400">Video preview</p>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
-                  <span className="text-slate-400/90">{formatDocumentTimestamp(doc.createdAt)}</span>
+                    Add to Chat
+                  </button>
                   <button
                     type="button"
                     onClick={() => openDroppedDocument(doc)}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-600/60 px-3 py-1 font-semibold text-slate-100 transition hover:border-blue-500/80 hover:text-white"
+                    className="rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white hover:bg-black"
                   >
-                    <ExternalLink size={12} />
-                    Open in Tab
+                    Open Tab
                   </button>
                   <button
                     type="button"
-                    onClick={() => toggleDocumentExpansion(doc.id)}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-600/60 px-3 py-1 font-semibold text-slate-100 transition hover:border-blue-500/80 hover:text-white"
+                    onClick={() => removeDroppedDocument(doc.id)}
+                    className="rounded-full bg-black/70 p-1 text-white/80 hover:bg-black hover:text-white"
+                    aria-label={`Remove ${doc.name}`}
                   >
-                    {isExpanded ? 'Collapse' : 'Expand'}
+                    <X size={14} />
                   </button>
                 </div>
+                <button
+                  type="button"
+                  className="pointer-events-auto absolute bottom-2 right-2 h-4 w-4 cursor-se-resize rounded-full border border-white/70 bg-black/60 opacity-0 transition group-hover:opacity-100"
+                  onMouseDown={(event) => handleDocumentResizeStart(event, doc.id)}
+                  aria-label="Resize document"
+                />
               </div>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div
+                className="w-[420px] max-w-[92vw] rounded-3xl border border-slate-700/80 bg-slate-950/90 text-slate-50 shadow-2xl backdrop-blur"
+                onDoubleClick={() => openDroppedDocument(doc)}
+                title="Double-click to open in a new tab"
+              >
+                <div
+                  className="flex items-center justify-between gap-3 border-b border-slate-700/70 px-5 py-3 cursor-move select-none"
+                  onMouseDown={(event) => handleDocumentDragStart(event, doc.id)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800/80 text-blue-200">
+                      <FileText size={16} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{doc.name}</p>
+                      <p className="text-[11px] text-slate-400">
+                        {getDocumentTypeLabel(doc.type)} • {formatDocumentSize(doc.size)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeDroppedDocument(doc.id)}
+                    className="rounded-full p-1 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                    aria-label={`Remove ${doc.name}`}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="space-y-3 px-5 py-4">
+                  {doc.type === 'text' && (
+                    <div
+                      className={`overflow-auto rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4 text-sm text-slate-100 ${isExpanded ? 'max-h-[26rem]' : 'max-h-48'
+                        }`}
+                    >
+                      <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed">
+                        {doc.preview || doc.content || 'Document appears to be empty.'}
+                      </pre>
+                    </div>
+                  )}
+
+                  {doc.type === 'image' && (
+                    <div className="flex h-64 items-center justify-center rounded-2xl border border-slate-700/70 bg-slate-900/80 p-3">
+                      <img
+                        src={doc.content}
+                        alt={doc.name}
+                        className="max-h-full w-full rounded-xl object-contain"
+                      />
+                    </div>
+                  )}
+
+                  {doc.type === 'spreadsheet' && (
+                    <div className="space-y-2">
+                      {doc.sheetPreviews?.length ? (
+                        <div>
+                          <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2">
+                            <span>
+                              Sheet: <span className="font-semibold text-slate-200">{doc.sheetPreviews[0].name}</span>
+                            </span>
+                            <span>
+                              Showing first {doc.sheetPreviews[0].rows.length}{' '}
+                              {doc.sheetPreviews[0].rows.length === 1 ? 'row' : 'rows'}
+                            </span>
+                          </div>
+                          <div
+                            className={`overflow-auto rounded-2xl border border-slate-700/70 bg-slate-900/80 ${isExpanded ? 'max-h-[28rem]' : 'max-h-60'
+                              }`}
+                          >
+                            <table className="w-full text-xs text-left text-slate-200">
+                              <thead className="sticky top-0 bg-slate-800/90">
+                                <tr>
+                                  {doc.sheetPreviews[0].headers.map((header, idx) => (
+                                    <th key={idx} className="px-3 py-2 font-semibold border-b border-slate-700/60">
+                                      {header || `Col ${idx + 1}`}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {doc.sheetPreviews[0].rows.map((row, rowIndex) => (
+                                  <tr key={rowIndex} className="even:bg-slate-800/40">
+                                    {row.map((cell, cellIdx) => (
+                                      <td key={cellIdx} className="px-3 py-2 border-b border-slate-800/60 text-[11px]">
+                                        {cell}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4 text-xs text-slate-300">
+                          Could not generate a table preview for this spreadsheet.
+                        </div>
+                      )}
+                      {doc.preview && (
+                        <p className="text-[11px] text-slate-400">
+                          Summary excerpt:{' '}
+                          <span className="text-slate-200">{doc.preview.slice(0, 160)}{doc.preview.length > 160 ? '…' : ''}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {doc.type === 'audio' && (
+                    <div className="rounded-2xl border border-slate-700/70 bg-slate-900/80 p-4">
+                      <audio controls className="w-full" src={doc.viewerUrl ?? doc.content}>
+                        Your browser does not support the audio element.
+                      </audio>
+                      <p className="mt-2 text-xs text-slate-400">Audio preview</p>
+                    </div>
+                  )}
+
+                  {doc.type === 'video' && (
+                    <div className="rounded-2xl border border-slate-700/70 bg-slate-900/80 p-3">
+                      <video
+                        controls
+                        className="max-h-[320px] w-full rounded-xl bg-black object-contain"
+                        src={doc.viewerUrl ?? doc.content}
+                      >
+                        Your browser does not support the video tag.
+                      </video>
+                      <p className="mt-2 text-xs text-slate-400">Video preview</p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                    <span className="text-slate-400/90">{formatDocumentTimestamp(doc.createdAt)}</span>
+                    <button
+                      type="button"
+                      onClick={() => openDroppedDocument(doc)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-600/60 px-3 py-1 font-semibold text-slate-100 transition hover:border-blue-500/80 hover:text-white"
+                    >
+                      <ExternalLink size={12} />
+                      Open in Tab
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleDocumentExpansion(doc.id)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-600/60 px-3 py-1 font-semibold text-slate-100 transition hover:border-blue-500/80 hover:text-white"
+                    >
+                      {isExpanded ? 'Collapse' : 'Expand'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         );
       })}
 
@@ -6740,11 +6748,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
 
       {documentDropFeedback && (
         <div
-          className={`pointer-events-none absolute bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-2 text-xs font-semibold shadow-lg ${
-            documentDropFeedback.type === 'success'
+          className={`pointer-events-none absolute bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-2 text-xs font-semibold shadow-lg ${documentDropFeedback.type === 'success'
               ? 'bg-emerald-500/90 text-white'
               : 'bg-rose-500/90 text-white'
-          }`}
+            }`}
         >
           {documentDropFeedback.message}
         </div>
@@ -6791,9 +6798,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
                   type="button"
                   onClick={clearMarkdownEntries}
                   disabled={!markdownEntries.length}
-                  className={`rounded-full border border-slate-700/70 bg-slate-900/80 p-1 text-slate-300 transition ${
-                    markdownEntries.length ? 'hover:border-rose-400 hover:text-rose-200' : 'opacity-40 cursor-not-allowed'
-                  }`}
+                  className={`rounded-full border border-slate-700/70 bg-slate-900/80 p-1 text-slate-300 transition ${markdownEntries.length ? 'hover:border-rose-400 hover:text-rose-200' : 'opacity-40 cursor-not-allowed'
+                    }`}
                   aria-label="Clear explanation cards"
                 >
                   <Trash2 size={14} />
@@ -6946,11 +6952,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
                 <button
                   type="button"
                   onClick={() => toggleSelectedMolecule3D(!selectedShape.use3D)}
-                  className={`w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
-                    selectedShape.use3D
+                  className={`w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${selectedShape.use3D
                       ? 'bg-cyan-500/90 text-slate-900 hover:bg-cyan-400'
                       : 'bg-slate-800/80 text-slate-200 border border-slate-700/60 hover:bg-slate-800'
-                  }`}
+                    }`}
                   title={selectedShape.use3D ? 'Disable 3D orbit mode' : 'Enable 3D orbit mode'}
                 >
                   <RotateCcw size={16} />
@@ -7006,11 +7011,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
                               key={option}
                               type="button"
                               onClick={() => setAnnotationLabel(option)}
-                              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                                annotationLabel.toLowerCase() === option.toLowerCase()
+                              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${annotationLabel.toLowerCase() === option.toLowerCase()
                                   ? 'bg-cyan-500/90 text-slate-900 border-cyan-400 hover:bg-cyan-400'
                                   : 'bg-slate-900/60 text-slate-200 border-slate-700/60 hover:bg-slate-800'
-                              }`}
+                                }`}
                             >
                               {option}
                             </button>
@@ -7069,11 +7073,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
                             });
                             setAnnotationHint('Click on the atom you want to highlight.');
                           }}
-                          className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                            annotationMode?.shapeId === selectedShapeId
+                          className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${annotationMode?.shapeId === selectedShapeId
                               ? 'bg-cyan-500 text-slate-900 hover:bg-cyan-400'
                               : 'bg-slate-900/80 text-slate-200 border border-slate-700/60 hover:bg-slate-800'
-                          }`}
+                            }`}
                         >
                           {annotationMode?.shapeId === selectedShapeId ? 'Annotation Mode Active' : 'Mark Active Centre'}
                         </button>
@@ -7251,11 +7254,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
                 type="button"
                 onClick={() => handleAddSdfModelsToReaction(selectedShape.id)}
                 disabled={reactionSdfLoadingId === selectedShape.id}
-                className={`w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 border ${
-                  selectedShape.reactionData?.sdfShapeIds?.length
+                className={`w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2 border ${selectedShape.reactionData?.sdfShapeIds?.length
                     ? 'border-blue-500/70 bg-blue-600 text-white hover:bg-blue-500'
                     : 'border-emerald-500/70 bg-emerald-600 text-white hover:bg-emerald-500'
-                } ${reactionSdfLoadingId === selectedShape.id ? 'opacity-80 cursor-wait' : ''}`}
+                  } ${reactionSdfLoadingId === selectedShape.id ? 'opacity-80 cursor-wait' : ''}`}
                 title={selectedShape.reactionData?.sdfShapeIds?.length
                   ? 'Rebuild 3D SDF tiles beneath the reaction'
                   : 'Generate 3D SDF tiles for this reaction'}
@@ -7300,22 +7302,21 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       {showCorrections && corrections
         .filter(correction => !correction.textShapeId)
         .map((correction) => (
-        <div
-          key={correction.id}
-          className="absolute z-20 pointer-events-none"
-          style={{
-            left: correction.x * zoom,
-            top: correction.y * zoom,
-          }}
-        >
-          {/* Simple Marker */}
-          <div className={`w-3 h-3 rounded-full border-2 ${
-            correction.type === 'error' ? 'bg-red-500 border-red-600' :
-            correction.type === 'warning' ? 'bg-yellow-500 border-yellow-600' :
-            'bg-blue-500 border-blue-600'
-          } shadow-lg animate-pulse`} />
-        </div>
-      ))}
+          <div
+            key={correction.id}
+            className="absolute z-20 pointer-events-none"
+            style={{
+              left: correction.x * zoom,
+              top: correction.y * zoom,
+            }}
+          >
+            {/* Simple Marker */}
+            <div className={`w-3 h-3 rounded-full border-2 ${correction.type === 'error' ? 'bg-red-500 border-red-600' :
+                correction.type === 'warning' ? 'bg-yellow-500 border-yellow-600' :
+                  'bg-blue-500 border-blue-600'
+              } shadow-lg animate-pulse`} />
+          </div>
+        ))}
 
       {/* Text Correction Suggestions */}
       {showCorrections && textCorrectionOverlays.map((overlay) => (
@@ -7346,11 +7347,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
                 Canvas Analysis Results
               </h4>
               <div className="flex items-center gap-4">
-                <div className={`px-4 py-2 rounded-lg text-sm font-bold ${
-                  analysisResult.overallScore >= 80 ? 'bg-green-600 text-green-100' :
-                  analysisResult.overallScore >= 60 ? 'bg-yellow-600 text-yellow-100' :
-                  'bg-red-600 text-red-100'
-                }`}>
+                <div className={`px-4 py-2 rounded-lg text-sm font-bold ${analysisResult.overallScore >= 80 ? 'bg-green-600 text-green-100' :
+                    analysisResult.overallScore >= 60 ? 'bg-yellow-600 text-yellow-100' :
+                      'bg-red-600 text-red-100'
+                  }`}>
                   {analysisResult.overallScore}%
                 </div>
                 <button
@@ -7361,8 +7361,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
                   ✕ Close
                 </button>
                 <div className="text-xs text-slate-400 mt-2">
-                  Analysis Status: {isAnalyzing ? 'Analyzing...' : 'Complete'} | 
-                  Corrections: {corrections.length} | 
+                  Analysis Status: {isAnalyzing ? 'Analyzing...' : 'Complete'} |
+                  Corrections: {corrections.length} |
                   Score: {analysisResult?.overallScore || 0}%
                 </div>
               </div>
@@ -7431,27 +7431,24 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
                           {[...textCorrections, ...nonTextCorrections].map((correction) => (
                             <div key={correction.id} className="correction-item p-4 bg-slate-700/30 rounded-lg border border-slate-600/30 hover:bg-slate-700/40 transition-colors">
                               <div className="flex items-center gap-3 mb-3">
-                                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                                  correction.type === 'error' ? 'bg-red-500' :
-                                  correction.type === 'warning' ? 'bg-yellow-500' :
-                                  'bg-blue-500'
-                                }`}>
+                                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${correction.type === 'error' ? 'bg-red-500' :
+                                    correction.type === 'warning' ? 'bg-yellow-500' :
+                                      'bg-blue-500'
+                                  }`}>
                                   <span className="text-white text-xs font-bold">
                                     {correction.type === 'error' ? '!' : correction.type === 'warning' ? '⚠' : 'i'}
                                   </span>
                                 </div>
-                                <span className={`text-sm font-medium px-3 py-1 rounded ${
-                                  correction.type === 'error' ? 'bg-red-600 text-red-100' :
-                                  correction.type === 'warning' ? 'bg-yellow-600 text-yellow-100' :
-                                  'bg-blue-600 text-blue-100'
-                                }`}>
+                                <span className={`text-sm font-medium px-3 py-1 rounded ${correction.type === 'error' ? 'bg-red-600 text-red-100' :
+                                    correction.type === 'warning' ? 'bg-yellow-600 text-yellow-100' :
+                                      'bg-blue-600 text-blue-100'
+                                  }`}>
                                   {correction.type.toUpperCase()}
                                 </span>
-                                <span className={`text-sm px-3 py-1 rounded ${
-                                  correction.severity === 'high' ? 'bg-red-500/20 text-red-300' :
-                                  correction.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
-                                  'bg-blue-500/20 text-blue-300'
-                                }`}>
+                                <span className={`text-sm px-3 py-1 rounded ${correction.severity === 'high' ? 'bg-red-500/20 text-red-300' :
+                                    correction.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
+                                      'bg-blue-500/20 text-blue-300'
+                                  }`}>
                                   {correction.severity.toUpperCase()}
                                 </span>
                               </div>

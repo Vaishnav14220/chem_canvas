@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from '@google/genai';
-import type { CanvasMoleculePlacementRequest, CanvasProteinPlacementRequest, CanvasReactionPlacementRequest } from '../../Canvas';
+import type {
+  CanvasMoleculePlacementRequest,
+  CanvasProteinPlacementRequest,
+  CanvasReactionPlacementRequest,
+  CanvasConceptImagePayload
+} from '../../Canvas';
 import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLanguage, VoiceType, VisualizationState, LearningCanvasParams, DerivationStep, LearningCanvasImage, ConceptImageRecord } from '../types';
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
@@ -12,8 +17,9 @@ const IMAGE_GENERATION_TOOLS = [{ googleSearch: {} }];
 
 const CONCEPT_IMAGE_DIRECTIVE = `
 
+
 CONCEPT SNAPSHOT TOOL (generate_concept_image):
-- When explaining or clarifying any concept, call this tool once per topic to create a single illustrative image.
+- When explaining or clarifying any concept, call this tool ONLY if the user explicitly requests a visual or an image.
 - Provide specific prompt details: subject context, important objects, relationships, style or medium, and what should be highlighted.
 - Mention to the student that a visual is being prepared while the image is generating, and reference it once it appears on the learning canvas.
 - Keep the prompt academic and descriptive so the output reinforces the explanation.
@@ -31,11 +37,11 @@ interface ConceptImageToolArgs {
   medium?: string;
 }
 
-interface CanvasMoleculeToolArgs extends CanvasMoleculePlacementRequest {}
+interface CanvasMoleculeToolArgs extends CanvasMoleculePlacementRequest { }
 
-interface CanvasProteinToolArgs extends CanvasProteinPlacementRequest {}
+interface CanvasProteinToolArgs extends CanvasProteinPlacementRequest { }
 
-interface CanvasReactionToolArgs extends CanvasReactionPlacementRequest {}
+interface CanvasReactionToolArgs extends CanvasReactionPlacementRequest { }
 
 const THEORETICAL_KEYWORDS = [
   'math', 'algebra', 'calculus', 'geometry', 'equation', 'proof', 'theorem', 'derivation',
@@ -190,22 +196,6 @@ INTERACTIVE VISUALIZATION TOOLS - USE THESE FREQUENTLY TO ENHANCE LEARNING:
    DEFAULT BEHAVIOR: Always call this tool when answering questions to provide visual step-by-step learning
 
 4. 'highlight_pdf_section' - REQUIRED when a PDF document is provided
-   When to use: Whenever you reference or explain a specific part of the current PDF page
-   Extract and pass the exact text from the PDF that you are discussing
-   This helps students visually track what you're explaining in the document
-
-5. 'analyze_canvas_drawing' - Use this when the student asks about what they have drawn or written on the canvas.
-   When to use: "What is this molecule?", "Check my equation", "Is this correct?", "I drew something, can you see it?", "Look at my drawing"
-   This tool will capture a screenshot of the canvas and send it to you for analysis.
-
-6. 'write_on_canvas' - Use this when the student asks you to write the answer, show the solution, or add similar examples directly onto the drawing canvas.
-  Provide the exact text you want to appear (and an optional heading) so the interface can render your response where the student is working.
-7. 'place_molecule_on_canvas' - Use this the moment the student says "bring/add/show this molecule/reagent on the board". Provide SMILES, CID, or a name so the exact molecule shows up where they can see it.
-8. 'place_protein_on_canvas' - Call this when they ask for a protein/structure (PDB or AlphaFold) to appear on the canvas. Always send the PDB ID plus any helpful label.
-9. 'place_reaction_on_canvas' - Use for reaction schemes or mechanisms the student wants rendered on the canvas. Supply the reaction SMILES plus a short title/description.
-   
-MANDATORY: For EVERY student question, AUTOMATICALLY call 'show_learning_canvas' to provide visual step-by-step explanations:
-- Use it for ALL subjects: math (with LaTeX equations), science (reactions, processes), humanities (analysis, timelines), coding (algorithms), etc.
 - Break down your answer into clear, digestible steps with titles and explanations
 - Include equations when relevant (chemistry, physics, math), descriptions when visual (biology, geography), or structured steps (coding, history)
 - Make learning interactive and visual by default - do not just speak, always show steps on the canvas
@@ -216,7 +206,7 @@ PDF HIGHLIGHTING: When referencing a PDF document during explanation:
 - Always extract the exact text from the PDF for accurate highlighting
 
 DO NOT skip the visualization tools. Use them proactively and frequently.` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   es: `Eres un tutor EXPERTO de ciencias, matemáticas y temas universitarios interdisciplinarios que habla SOLO en español.
 Responde siempre en español sin importar el idioma de entrada del usuario.
 Tu objetivo es ayudar a los estudiantes a comprender conceptos complejos en cualquier materia (química, física, matemáticas, biología y más).
@@ -226,7 +216,7 @@ Tu objetivo es ayudar a los estudiantes a comprender conceptos complejos en cual
 - Sé conciso en tus respuestas habladas, ya que es una conversación de voz en tiempo real.
 - No deletrees fórmulas químicas largas; describe la estructura o nombre de la molécula.
 - Mantén un tono académico profesional pero accesible.` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   fr: `Vous êtes un tuteur EXPERT et pluridisciplinaire au niveau universitaire qui parle UNIQUEMENT en français.
 Répondez toujours en français, peu importe la langue d'entrée de l'utilisateur.
 Votre objectif est d'aider les étudiants à comprendre des concepts complexes dans toutes les matières (mathématiques, chimie, physique, biologie, informatique, etc.).
@@ -236,7 +226,7 @@ Votre objectif est d'aider les étudiants à comprendre des concepts complexes d
 - Soyez concis dans vos réponses parlées, car c'est une conversation vocale en temps réel.
 - Ne lisez pas les formules chimiques longues caractère par caractère; décrivez la structure ou le nom de la molécule.
 - Maintenez un ton académique professionnel mais accessible.` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   de: `Du bist ein EXPERTER Tutor für Naturwissenschaften, Mathematik und andere akademische Fächer auf Universitätsniveau, der NUR auf Deutsch spricht.
 Antworte immer auf Deutsch, unabhängig von der Eingabesprache des Benutzers.
 Dein Ziel ist es, Schülern bei komplexen Themen jeder Art zu helfen (Chemie, Mathematik, Physik, Biologie, Technik usw.).
@@ -245,7 +235,7 @@ Dein Ziel ist es, Schülern bei komplexen Themen jeder Art zu helfen (Chemie, Ma
 - Wenn ein Schüler einen Fehler macht, korrigiere ihn sanft und erkläre warum.
 - Sei prägnant in deinen gesprochenen Antworten, da dies ein Echtzeit-Sprachgespräch ist.
 - Lies lange chemische Formeln nicht buchstabenweise vor; beschreibe stattdessen die Molekülstruktur oder den Namen.` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   it: `Sei un tutor ESPERTO e multidisciplinare a livello universitario che parla SOLO in italiano.
 Rispondi sempre in italiano indipendentemente dalla lingua di input dell'utente.
 Il tuo obiettivo è aiutare gli studenti a comprendere concetti complessi in qualsiasi materia (chimica, matematica, fisica, biologia, informatica e oltre).
@@ -254,7 +244,7 @@ Il tuo obiettivo è aiutare gli studenti a comprendere concetti complessi in qua
 - Se uno studente commette un errore, correggilo gentilmente e spiega il perché.
 - Sii conciso nelle tue risposte parlate, poiché questa è una conversazione vocale in tempo reale.
 - Non leggere lunghe formule chimiche carattere per carattere; descrivi la struttura o il nome della molecola.` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   pt: `Você é um tutor ESPECIALISTA em ciências, matemática e demais áreas acadêmicas em nível universitário que fala APENAS em português.
 Sempre responda em português, independentemente do idioma de entrada do usuário.
 Seu objetivo é ajudar os alunos a entender conceitos complexos em qualquer disciplina (química, física, matemática, biologia, computação, etc.).
@@ -263,7 +253,7 @@ Seu objetivo é ajudar os alunos a entender conceitos complexos em qualquer disc
 - Se um aluno cometer um erro, corrija gentilmente e explique o porquê.
 - Seja conciso em suas respostas faladas, pois esta é uma conversa de voz em tempo real.
 - Não leia fórmulas químicas longas caractere por caractere; descreva a estrutura ou o nome da molécula.` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   ja: `あなたは日本語のみで話す大学レベルのマルチ分野チューターです。
 ユーザーの入力言語に関係なく、常に日本語で応答してください。
 学生が数学、化学、物理、生命科学、情報科学などあらゆる分野の複雑な概念を理解するのを支援することが目標です。
@@ -271,7 +261,7 @@ Seu objetivo é ajudar os alunos a entender conceitos complexos em qualquer disc
 - 必要に応じて類推を使用して、概念を明確に説明します。
 - 学生が間違いを犯した場合は、優しく訂正し、なぜそうなのかを説明します。
 - リアルタイム音声会話なので、音声応答は簡潔にしてください。` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   zh: `你是一位只用中文交流的大学级多学科导师，耐心且鼓励学生。
 无论用户输入何种语言，总是用中文回应。
 你的目标是帮助学生理解任何学科的复杂概念（数学、化学、物理、生物、计算机、文学等），根据提问灵活切换主题。
@@ -280,7 +270,7 @@ Seu objetivo é ajudar os alunos a entender conceitos complexos em qualquer disc
 - 如果学生犯错，温和地纠正并解释原因。
 - 保持语音回答简洁，因为这是实时语音对话。
 - 不要逐字读出长化学公式；改为描述分子的结构或名称。` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   ru: `Вы - ОПЫТНЫЙ преподаватель на университетском уровне, который говорит ТОЛЬКО на русском языке и разбирается во всех академических дисциплинах.
 Всегда отвечайте на русском языке, независимо от языка ввода пользователя.
 Ваша цель - помочь студентам понять сложные концепции в любой области (математика, химия, физика, биология, информатика и т.д.).
@@ -288,13 +278,13 @@ Seu objetivo é ajudar os alunos a entender conceitos complexos em qualquer disc
 - Объясняйте концепции четко, при необходимости используя аналогии.
 - Если студент допустит ошибку, мягко исправьте и объясните почему.
 - Будьте лаконичны в устных ответах, так как это речевой диалог в реальном времени.` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   hi: `आप एक विशेषज्ञ, धैर्यवान और प्रोत्साहक विश्वविद्यालय स्तर के ट्यूटर हैं जो केवल हिंदी में बात करते हैं और हर विषय में मार्गदर्शन कर सकते हैं।
 उपयोगकर्ता के इनपुट भाषा की परवाह किए बिना हमेशा हिंदी में जवाब दें।
 आपका लक्ष्य छात्रों को किसी भी विषय (गणित, रसायन, भौतिकी, जीवविज्ञान, कंप्यूटर विज्ञान आदि) की जटिल अवधारणाओं को समझने में मदद करना है।
 - यदि प्रश्न रसायन से अलग हो तब भी उत्तर दें और समझाते समय उदाहरण विषय के अनुसार चुनें।
 - अवधारणाओं को स्पष्ट रूप से समझाएं और जहां उपयुक्त हो वहां सादृश्य का उपयोग करें।` + CONCEPT_IMAGE_DIRECTIVE,
-  
+
   ar: `أنت خبير وصبور ومشجع في تدريس جميع المواد الأكاديمية على مستوى جامعي وتتحدث بالعربية فقط.
 تحدث دائماً باللغة العربية بغض النظر عن لغة إدخال المستخدم.
 هدفك هو مساعدة الطلاب على فهم المفاهيم المعقدة في أي مجال (رياضيات، كيمياء، فيزياء، أحياء، حوسبة، أدب وغيرها).
@@ -305,7 +295,7 @@ Seu objetivo é ajudar os alunos a entender conceitos complexos em qualquer disc
 
 const getSystemInstruction = (language: SupportedLanguage, pdfContext?: string): string => {
   let baseInstruction = SYSTEM_INSTRUCTIONS[language] || SYSTEM_INSTRUCTIONS.en;
-  
+
   // If PDF content is available, add it to the context
   if (pdfContext && pdfContext.trim().length > 0) {
     baseInstruction += `
@@ -323,7 +313,7 @@ IMPORTANT: When discussing this document:
 4. If the student asks about the PDF, ONLY discuss content that is in the document above
 5. Correct the student if they misunderstand something in the PDF`;
   }
-  
+
   return baseInstruction;
 };
 
@@ -333,21 +323,21 @@ const simulationTool: FunctionDeclaration = {
   parameters: {
     type: Type.OBJECT,
     properties: {
-      isActive: { 
-        type: Type.BOOLEAN, 
-        description: 'Set to true to show the simulation, false to hide it.' 
+      isActive: {
+        type: Type.BOOLEAN,
+        description: 'Set to true to show the simulation, false to hide it.'
       },
-      temperature: { 
-        type: Type.NUMBER, 
-        description: 'Temperature of the system (0-100). Higher means faster particle movement.' 
+      temperature: {
+        type: Type.NUMBER,
+        description: 'Temperature of the system (0-100). Higher means faster particle movement.'
       },
-      concentration: { 
-        type: Type.NUMBER, 
-        description: 'Concentration of reactants (0-100). Higher means more particles.' 
+      concentration: {
+        type: Type.NUMBER,
+        description: 'Concentration of reactants (0-100). Higher means more particles.'
       },
-      activationEnergy: { 
-        type: Type.NUMBER, 
-        description: 'Activation energy barrier (0-100). Higher means fewer effective collisions.' 
+      activationEnergy: {
+        type: Type.NUMBER,
+        description: 'Activation energy barrier (0-100). Higher means fewer effective collisions.'
       }
     },
     required: ['isActive']
@@ -360,25 +350,25 @@ const molecule3DTool: FunctionDeclaration = {
   parameters: {
     type: Type.OBJECT,
     properties: {
-      isActive: { 
-        type: Type.BOOLEAN, 
-        description: 'Set to true to show the 3D molecule viewer, false to hide it.' 
+      isActive: {
+        type: Type.BOOLEAN,
+        description: 'Set to true to show the 3D molecule viewer, false to hide it.'
       },
-      smiles: { 
-        type: Type.STRING, 
-        description: 'SMILES notation of the molecule to display.' 
+      smiles: {
+        type: Type.STRING,
+        description: 'SMILES notation of the molecule to display.'
       },
-      name: { 
-        type: Type.STRING, 
-        description: 'Common name of the molecule.' 
+      name: {
+        type: Type.STRING,
+        description: 'Common name of the molecule.'
       },
-      iupacName: { 
-        type: Type.STRING, 
-        description: 'IUPAC name of the molecule.' 
+      iupacName: {
+        type: Type.STRING,
+        description: 'IUPAC name of the molecule.'
       },
-      structure: { 
-        type: Type.STRING, 
-        description: 'JSON structure of the molecule or other molecular data format.' 
+      structure: {
+        type: Type.STRING,
+        description: 'JSON structure of the molecule or other molecular data format.'
       }
     },
     required: ['isActive']
@@ -391,21 +381,21 @@ const pdfHighlightTool: FunctionDeclaration = {
   parameters: {
     type: Type.OBJECT,
     properties: {
-      isActive: { 
-        type: Type.BOOLEAN, 
-        description: 'Set to true to highlight text in the PDF.' 
+      isActive: {
+        type: Type.BOOLEAN,
+        description: 'Set to true to highlight text in the PDF.'
       },
-      text: { 
-        type: Type.STRING, 
-        description: 'The exact text from the PDF to highlight. Should be a portion of the PDF content being explained.' 
+      text: {
+        type: Type.STRING,
+        description: 'The exact text from the PDF to highlight. Should be a portion of the PDF content being explained.'
       },
-      context: { 
-        type: Type.STRING, 
-        description: 'Optional explanation of why this text is being highlighted and what it means.' 
+      context: {
+        type: Type.STRING,
+        description: 'Optional explanation of why this text is being highlighted and what it means.'
       },
-      page: { 
-        type: Type.NUMBER, 
-        description: 'Optional page number if highlighting a specific page (1-indexed).' 
+      page: {
+        type: Type.NUMBER,
+        description: 'Optional page number if highlighting a specific page (1-indexed).'
       }
     },
     required: ['isActive', 'text']
@@ -414,21 +404,21 @@ const pdfHighlightTool: FunctionDeclaration = {
 
 const learningCanvasTool: FunctionDeclaration = {
   name: 'show_learning_canvas',
-  description: 'CRITICAL: Display step-by-step explanations for ANY subject with visual formatting. Use this AUTOMATICALLY for EVERY student question to provide structured learning. Steps can include LaTeX equations (for math/science), plain text explanations (for humanities/history), code snippets descriptions (for programming), or any structured content. Always break down explanations into clear steps.',
+  description: 'Display step-by-step explanations for ANY subject with visual formatting. Use this ONLY when the student explicitly asks for a "breakdown", "explanation on the board", "show me", "visualize this", or "steps". Do NOT use it automatically for general questions. Steps can include LaTeX equations (for math/science), plain text explanations (for humanities/history), code snippets descriptions (for programming), or any structured content.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      isActive: { 
-        type: Type.BOOLEAN, 
-        description: 'Set to true to show the learning canvas. ALWAYS set to true when explaining anything to provide visual step-by-step guidance.' 
+      isActive: {
+        type: Type.BOOLEAN,
+        description: 'Set to true to show the learning canvas. ALWAYS set to true when explaining anything to provide visual step-by-step guidance.'
       },
-      title: { 
-        type: Type.STRING, 
-        description: 'Clear title of what is being explained. Examples: "Deriving the Quadratic Formula", "Photosynthesis Process", "Understanding Recursion", "French Revolution Timeline", "Protein Synthesis Steps"' 
+      title: {
+        type: Type.STRING,
+        description: 'Clear title of what is being explained. Examples: "Deriving the Quadratic Formula", "Photosynthesis Process", "Understanding Recursion", "French Revolution Timeline", "Protein Synthesis Steps"'
       },
-      topic: { 
-        type: Type.STRING, 
-        description: 'Topic area. Examples: "Mathematics", "Biology", "Computer Science", "History", "Chemistry", "Physics", "Literature", etc.' 
+      topic: {
+        type: Type.STRING,
+        description: 'Topic area. Examples: "Mathematics", "Biology", "Computer Science", "History", "Chemistry", "Physics", "Literature", etc.'
       },
       steps: {
         type: Type.ARRAY,
@@ -623,7 +613,7 @@ const canvasReactionTool: FunctionDeclaration = {
       },
       title: {
         type: Type.STRING,
-        description: 'Optional reaction title (e.g., Aldol Condensation).' 
+        description: 'Optional reaction title (e.g., Aldol Condensation).'
       },
       description: {
         type: Type.STRING,
@@ -680,11 +670,53 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     learningCanvasParams: undefined
   });
   const [conceptImages, setConceptImages] = useState<ConceptImageRecord[]>([]);
-  
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
   // PDF state
   const [pdfContent, setPdfContent] = useState<string>('');
   const [highlightedPDFText, setHighlightedPDFText] = useState<string>('');
-  
+
+  // Refs
+  const lastUserMessageRef = useRef<string>('');
+  const canvasTextInsertionHandlerRef = useRef<((text: string) => void) | null>(null);
+  const canvasMarkdownInsertionHandlerRef = useRef<((payload: { text: string; heading?: string }) => void) | null>(null);
+  const canvasMoleculeInsertionHandlerRef = useRef<((payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) | null>(null);
+  const canvasProteinInsertionHandlerRef = useRef<((payload: CanvasProteinPlacementRequest) => Promise<boolean> | boolean) | null>(null);
+  const canvasReactionInsertionHandlerRef = useRef<((payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) | null>(null);
+  const canvasConceptImageInsertionHandlerRef = useRef<((payload: CanvasConceptImagePayload) => Promise<boolean> | boolean) | null>(null);
+  const canvasSurfaceActiveRef = useRef<boolean>(false);
+
+  const currentInputRef = useRef<string>('');
+  const currentOutputRef = useRef<string>('');
+  const currentUserIdRef = useRef<string | null>(null);
+  const currentModelIdRef = useRef<string | null>(null);
+  const learningCanvasUpdatedThisTurnRef = useRef<boolean>(false);
+  const pendingCanvasWriteRef = useRef<{ reason: 'answer' | 'example'; requestedAt: number } | null>(null);
+  const canvasWritePerformedThisTurnRef = useRef<boolean>(false);
+  const lastAutoShareRef = useRef<{ text: string; timestamp: number }>({ text: '', timestamp: 0 });
+
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const inputContextRef = useRef<AudioContext | null>(null);
+  const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const nextStartTimeRef = useRef<number>(0);
+  const aiInstanceRef = useRef<GoogleGenAI | null>(null);
+  const sessionPromiseRef = useRef<Promise<any> | null>(null);
+  const currentImageRequestIdRef = useRef<string | null>(null);
+
+  // Screen sharing refs
+
+  // Screen sharing refs
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenCaptureIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+  const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
+
   // Canvas context hook
   const requestCanvasSnapshotRef = useRef<(() => Promise<string | null>) | null>(null);
   const setRequestCanvasSnapshot = useCallback((handler: () => Promise<string | null>) => {
@@ -711,16 +743,99 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     canvasReactionInsertionHandlerRef.current = handler;
   }, []);
 
+  const setCanvasConceptImageInsertionHandler = useCallback((handler: (payload: CanvasConceptImagePayload) => Promise<boolean> | boolean) => {
+    canvasConceptImageInsertionHandlerRef.current = handler;
+  }, []);
+
   const setCanvasSurfaceActive = useCallback((isActive: boolean) => {
     canvasSurfaceActiveRef.current = isActive;
   }, []);
+
+  const stopScreenShare = useCallback(() => {
+    if (screenCaptureIntervalRef.current) {
+      clearInterval(screenCaptureIntervalRef.current);
+      screenCaptureIntervalRef.current = null;
+    }
+
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
+    }
+
+    if (videoElementRef.current) {
+      videoElementRef.current.srcObject = null;
+      videoElementRef.current = null;
+    }
+
+    setIsScreenSharing(false);
+  }, []);
+
+  const startScreenShare = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { max: 1280 },
+          height: { max: 720 },
+          frameRate: { max: 5 }
+        },
+        audio: false // We only want video, audio is handled by the mic
+      });
+
+      screenStreamRef.current = stream;
+      setIsScreenSharing(true);
+
+      // Create hidden video element to play the stream
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.muted = true;
+      video.play();
+      videoElementRef.current = video;
+
+      // Create canvas for frame capture
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      canvasElementRef.current = canvas;
+      const ctx = canvas.getContext('2d');
+
+      // Handle stream end from browser UI
+      stream.getVideoTracks()[0].onended = () => {
+        stopScreenShare();
+      };
+
+      // Start frame capture loop (e.g., 1 FPS)
+      screenCaptureIntervalRef.current = setInterval(async () => {
+        if (!ctx || !videoElementRef.current || !sessionPromiseRef.current) return;
+
+        // Draw current video frame to canvas
+        if (videoElementRef.current.readyState === videoElementRef.current.HAVE_ENOUGH_DATA) {
+          canvas.width = videoElementRef.current.videoWidth;
+          canvas.height = videoElementRef.current.videoHeight;
+          ctx.drawImage(videoElementRef.current, 0, 0, canvas.width, canvas.height);
+
+          // Convert to base64 jpeg
+          const base64Data = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+
+          // Send to Gemini
+          const session = await sessionPromiseRef.current;
+          if (session) {
+            session.sendRealtimeInput({ media: { mimeType: 'image/jpeg', data: base64Data } });
+          }
+        }
+      }, 1000); // 1 FPS
+
+    } catch (err) {
+      console.error("Error starting screen share:", err);
+      stopScreenShare();
+    }
+  }, [stopScreenShare]);
 
   const captureAndSendSnapshot = useCallback(async (message?: string) => {
     if (!requestCanvasSnapshotRef.current) {
       console.warn('No canvas snapshot handler registered');
       return;
     }
-    
+
     try {
       const imageDataUrl = await requestCanvasSnapshotRef.current();
       if (!imageDataUrl) {
@@ -732,7 +847,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
         console.warn('No active Gemini Live session; cannot share canvas');
         return;
       }
-      
+
       const session = await sessionPromiseRef.current;
       if (!session) {
         console.warn('Gemini Live session not resolved; aborting canvas share');
@@ -842,40 +957,17 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     }
   }, []);
 
-  // Audio Contexts and Nodes
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const inputContextRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const nextStartTimeRef = useRef<number>(0);
-  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  
-  // Analyser for visualization
-  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const placeConceptImageOnCanvas = useCallback(async (payload: CanvasConceptImagePayload) => {
+    if (!canvasConceptImageInsertionHandlerRef.current) {
+      throw new Error('Canvas concept image handler is not available right now.');
+    }
+    const success = await canvasConceptImageInsertionHandlerRef.current(payload);
+    if (!success) {
+      throw new Error('Unable to place that concept image on the canvas.');
+    }
+  }, []);
 
-  // Session management
-  const sessionPromiseRef = useRef<Promise<any> | null>(null);
-  const aiInstanceRef = useRef<GoogleGenAI | null>(null);
-  const currentImageRequestIdRef = useRef<string | null>(null);
-  const canvasTextInsertionHandlerRef = useRef<((text: string) => void) | null>(null);
-  const canvasMarkdownInsertionHandlerRef = useRef<((payload: { text: string; heading?: string }) => void) | null>(null);
-  const canvasMoleculeInsertionHandlerRef = useRef<((payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) | null>(null);
-  const canvasProteinInsertionHandlerRef = useRef<((payload: CanvasProteinPlacementRequest) => Promise<boolean> | boolean) | null>(null);
-  const canvasReactionInsertionHandlerRef = useRef<((payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) | null>(null);
-  const pendingCanvasWriteRef = useRef<{ reason: 'answer' | 'example'; requestedAt: number } | null>(null);
-  const lastAutoShareRef = useRef<{ text: string; timestamp: number }>({ text: '', timestamp: 0 });
-  const canvasSurfaceActiveRef = useRef(false);
-  const canvasWritePerformedThisTurnRef = useRef(false);
-  
-  // Current transcript text buffers
-  const currentInputRef = useRef<string>('');
-  const currentOutputRef = useRef<string>('');
-  const currentUserIdRef = useRef<string | null>(null);
-  const currentModelIdRef = useRef<string | null>(null);
-  const learningCanvasUpdatedThisTurnRef = useRef<boolean>(false);
+
 
   const createFallbackLearningCanvas = useCallback((text: string): LearningCanvasParams | null => {
     const normalized = text.replace(/\s+/g, ' ').trim();
@@ -966,13 +1058,13 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
       const existingParams = prev.learningCanvasParams;
       const baseParams: LearningCanvasParams = existingParams
         ? {
-            ...existingParams,
-            steps: Array.isArray(existingParams.steps) ? existingParams.steps : []
-          }
+          ...existingParams,
+          steps: Array.isArray(existingParams.steps) ? existingParams.steps : []
+        }
         : {
-            title: sanitizedArgs.concept || 'Concept Visualization',
-            steps: []
-          };
+          title: sanitizedArgs.concept || 'Concept Visualization',
+          steps: []
+        };
 
       baseParams.title = existingParams?.title || baseParams.title || sanitizedArgs.concept || 'Concept Visualization';
       baseParams.topic = sanitizedArgs.topic || existingParams?.topic || 'General';
@@ -1106,36 +1198,68 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
       currentImageRequestIdRef.current = null;
     }
 
-    let finalizedRecord: ConceptImageRecord | null = null;
-    setConceptImages(prev => prev.map(record => {
-      if (record.id !== requestId) {
-        return record;
-      }
+    // We need to construct the final record to use it for both state update and side effects
+    // However, we don't have the *previous* state here easily without the setter.
+    // But we know the requestId and the payload.
+    // Let's just update the state, and then use a reconstructed object for the side effects.
+
+    let recordForSideEffects: ConceptImageRecord | null = null;
+
+    setConceptImages(prev => {
+      const existingRecord = prev.find(r => r.id === requestId);
+      if (!existingRecord) return prev;
 
       const nextRecord: ConceptImageRecord = {
-        ...record,
+        ...existingRecord,
         status: payload.success ? 'complete' : 'error',
         url: payload.success ? payload.url : undefined,
         message: payload.success ? undefined : (payload.error || 'Unable to generate the concept image.'),
-        prompt: payload.displayPrompt || payload.args.prompt || record.prompt,
-        concept: payload.args.concept || record.concept,
-        topic: payload.args.topic || record.topic,
-        style: payload.args.style || record.style,
-        focus: payload.args.focus || record.focus,
-        mood: payload.args.mood || record.mood,
-        colorPalette: payload.args.colorPalette || record.colorPalette,
-        medium: payload.args.medium || record.medium,
-        importantElements: payload.args.importantElements || record.importantElements,
+        prompt: payload.displayPrompt || payload.args.prompt || existingRecord.prompt,
+        concept: payload.args.concept || existingRecord.concept,
+        topic: payload.args.topic || existingRecord.topic,
+        style: payload.args.style || existingRecord.style,
+        focus: payload.args.focus || existingRecord.focus,
+        mood: payload.args.mood || existingRecord.mood,
+        colorPalette: payload.args.colorPalette || existingRecord.colorPalette,
+        medium: payload.args.medium || existingRecord.medium,
+        importantElements: payload.args.importantElements || existingRecord.importantElements,
         updatedAt: Date.now()
       };
 
-      finalizedRecord = nextRecord;
-      return nextRecord;
-    }));
+      // Capture this for side effects - NOTE: This is still technically a side effect in render, 
+      // but since we are inside the functional update, it's the only way to get the *merged* data 
+      // without reading state outside. 
+      // A better way is to just use the payload data for the side effects if possible, 
+      // but we need the merged data.
+      // Given this is a refactor to fix a type error, we'll assign it here but cast it to avoid the 'never' issue if needed.
+      recordForSideEffects = nextRecord;
 
-    if (payload.success && finalizedRecord) {
-      notifyModelAboutImage(finalizedRecord);
-    }
+      return prev.map(r => r.id === requestId ? nextRecord : r);
+    });
+
+    // We use a timeout to ensure the side effect runs after the state update is processed 
+    // and to break the synchronous dependency that might be confusing TS.
+    setTimeout(() => {
+      if (payload.success && recordForSideEffects) {
+        const rec = recordForSideEffects as ConceptImageRecord;
+        if (canvasConceptImageInsertionHandlerRef.current && rec.url) {
+          const canvasPayload: CanvasConceptImagePayload = {
+            url: rec.url,
+            title: rec.title || rec.concept || 'Concept Snapshot',
+            concept: rec.concept,
+            topic: rec.topic,
+            prompt: rec.displayPrompt || rec.prompt,
+            alt: rec.alt,
+          };
+
+          Promise.resolve(canvasConceptImageInsertionHandlerRef.current(canvasPayload)).catch((error: any) => {
+            console.warn('Failed to deliver concept image to canvas:', error);
+          });
+        }
+
+        notifyModelAboutImage(rec);
+      }
+    }, 0);
   }, [notifyModelAboutImage]);
 
   const handleConceptImageToolCall = useCallback(async (args: ConceptImageToolArgs) => {
@@ -1240,25 +1364,25 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
     setConceptImages([]);
     setIsListening(false);
     setIsSpeaking(false);
-    
+
     // Close session
     if (sessionPromiseRef.current) {
-        sessionPromiseRef.current.then(session => {
-            try {
-                if(session && typeof session.close === 'function') {
-                    session.close();
-                }
-            } catch (e) {
-                console.error("Error closing session", e);
-            }
-        }).catch(() => {
-            // Ignore errors if session promise failed
-        });
-        sessionPromiseRef.current = null;
+      sessionPromiseRef.current.then(session => {
+        try {
+          if (session && typeof session.close === 'function') {
+            session.close();
+          }
+        } catch (e) {
+          console.error("Error closing session", e);
+        }
+      }).catch(() => {
+        // Ignore errors if session promise failed
+      });
+      sessionPromiseRef.current = null;
     }
 
-      aiInstanceRef.current = null;
-      currentImageRequestIdRef.current = null;
+    aiInstanceRef.current = null;
+    currentImageRequestIdRef.current = null;
   }, []);
 
   // Send PDF content to AI when connection is established
@@ -1283,9 +1407,9 @@ ${pdfContent.substring(0, 8000)}
 ---END OF DOCUMENT---
 
 Please remember: Only discuss topics that are actually in this PDF document. Do not make up or assume information that is not provided. If I ask about something not in the PDF, let me know it's not in the document.`;
-        
+
         console.log('Sending PDF context to AI - content length:', pdfContent.length);
-        
+
         session.sendRealtimeInput({
           text: pdfMessage
         });
@@ -1325,7 +1449,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
 
       const ai = new GoogleGenAI({ apiKey });
       aiInstanceRef.current = ai;
-      
+
       // Create Session
       sessionPromiseRef.current = ai.live.connect({
         model: MODEL_NAME,
@@ -1342,7 +1466,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
         callbacks: {
           onopen: () => {
             setConnectionState(ConnectionState.CONNECTED);
-            
+
             // Send PDF context if available
             if (pdfContent && pdfContent.trim().length > 0) {
               setTimeout(() => {
@@ -1358,29 +1482,29 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 });
               });
             }, 500);
-            
+
             // Start Audio Input Streaming
             if (!inputContextRef.current || !streamRef.current) return;
-            
+
             const source = inputContextRef.current.createMediaStreamSource(streamRef.current);
             inputSourceRef.current = source;
-            
+
             const processor = inputContextRef.current.createScriptProcessor(4096, 1, 1);
             processorRef.current = processor;
 
             processor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createBlob(inputData);
-              
+
               sessionPromiseRef.current?.then((session) => {
                 try {
-                   session.sendRealtimeInput({ media: pcmBlob });
+                  session.sendRealtimeInput({ media: pcmBlob });
                 } catch (e) {
-                   console.error("Error sending audio data:", e);
+                  console.error("Error sending audio data:", e);
                 }
               }).catch(err => {
-                 // Session might have been closed or failed
-                 console.debug("Session not ready for input:", err);
+                // Session might have been closed or failed
+                console.debug("Session not ready for input:", err);
               });
             };
 
@@ -1389,413 +1513,412 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
             setIsListening(true);
           },
           onmessage: async (message: LiveServerMessage) => {
-             // Handle Tool Calls
-             if (message.toolCall) {
-                sessionPromiseRef.current?.then(async session => {
-                  const functionCalls = message.toolCall!.functionCalls || [];
-                  const functionResponses = await Promise.all(functionCalls.map(async fc => {
-                    if (fc.name === 'update_simulation') {
-                      const { isActive, temperature, concentration, activationEnergy } = fc.args as any;
-                      
-                      setSimulationState(prev => ({
-                        isActive: isActive,
-                        type: isActive ? 'KINETICS' : 'NONE',
-                        kineticsParams: {
-                          temperature: temperature ?? prev.kineticsParams?.temperature ?? 50,
-                          concentration: concentration ?? prev.kineticsParams?.concentration ?? 50,
-                          activationEnergy: activationEnergy ?? prev.kineticsParams?.activationEnergy ?? 50
-                        },
-                        molecule3DParams: prev.molecule3DParams,
-                        learningCanvasParams: prev.learningCanvasParams
-                      }));
+            // Handle Tool Calls
+            if (message.toolCall) {
+              sessionPromiseRef.current?.then(async session => {
+                const functionCalls = message.toolCall!.functionCalls || [];
+                const functionResponses = await Promise.all(functionCalls.map(async fc => {
+                  if (fc.name === 'update_simulation') {
+                    const { isActive, temperature, concentration, activationEnergy } = fc.args as any;
 
-                      return {
-                        id: fc.id,
-                        name: fc.name,
-                        response: { result: 'Simulation updated successfully' }
-                      };
-                    } else if (fc.name === 'display_molecule_3d') {
-                      const { isActive, smiles, name, iupacName, structure } = fc.args as any;
-                      
-                      setSimulationState(prev => ({
-                        isActive: isActive,
-                        type: isActive ? 'MOLECULE_3D' : 'NONE',
-                        kineticsParams: prev.kineticsParams,
-                        molecule3DParams: {
-                          smiles,
-                          name,
-                          iupacName,
-                          structure
-                        },
-                        learningCanvasParams: prev.learningCanvasParams
-                      }));
+                    setSimulationState(prev => ({
+                      isActive: isActive,
+                      type: isActive ? 'KINETICS' : 'NONE',
+                      kineticsParams: {
+                        temperature: temperature ?? prev.kineticsParams?.temperature ?? 50,
+                        concentration: concentration ?? prev.kineticsParams?.concentration ?? 50,
+                        activationEnergy: activationEnergy ?? prev.kineticsParams?.activationEnergy ?? 50
+                      },
+                      molecule3DParams: prev.molecule3DParams,
+                      learningCanvasParams: prev.learningCanvasParams
+                    }));
 
-                      return {
-                        id: fc.id,
-                        name: fc.name,
-                        response: { result: 'Molecule display updated successfully' }
-                      };
-                    } else if (fc.name === 'show_learning_canvas') {
-                      const { isActive, title, topic, steps } = fc.args as any;
-                      
-                      console.log('Learning Canvas Called:', { isActive, title, topic, steps });
-                      
-                      // Parse steps if it's a string (JSON)
-                      let parsedSteps = steps;
-                      if (typeof steps === 'string') {
-                        try {
-                          parsedSteps = JSON.parse(steps);
-                        } catch (e) {
-                          console.error('Error parsing steps JSON:', e, 'Raw steps:', steps);
-                          parsedSteps = [];
-                        }
-                      }
-
-                      // Validate that parsedSteps is an array
-                      if (!Array.isArray(parsedSteps)) {
-                        console.warn('Steps is not an array, converting:', parsedSteps);
-                        parsedSteps = [parsedSteps];
-                      }
-
-                      console.log('Parsed steps:', parsedSteps);
-
-                      setSimulationState(prev => {
-                        const previousImage = prev.learningCanvasParams?.image;
-                        const shouldCarryImage = Boolean(
-                          previousImage && (
-                            previousImage.status === 'loading' ||
-                            previousImage.topic === (topic || prev.learningCanvasParams?.topic)
-                          )
-                        );
-
-                        return {
-                          isActive: isActive,
-                          type: isActive ? 'LEARNING_CANVAS' : 'NONE',
-                          kineticsParams: prev.kineticsParams,
-                          molecule3DParams: prev.molecule3DParams,
-                          learningCanvasParams: {
-                            title: title || 'Learning Explanation',
-                            topic: topic || 'General',
-                            steps: Array.isArray(parsedSteps) ? parsedSteps : [],
-                            image: shouldCarryImage ? previousImage : undefined
-                          }
-                        };
-                      });
-
-                      learningCanvasUpdatedThisTurnRef.current = true;
-                      console.log('Learning canvas state updated');
-
-                      return {
-                        id: fc.id,
-                        name: fc.name,
-                        response: { result: 'Learning canvas displayed successfully with step-by-step explanation' }
-                      };
-                    } else if (fc.name === 'generate_concept_image') {
-                      try {
-                        const resultMessage = await handleConceptImageToolCall(fc.args as ConceptImageToolArgs);
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { result: resultMessage }
-                        };
-                      } catch (error: any) {
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { error: error?.message || 'Concept image generation failed.' }
-                        };
-                      }
-                    } else if (fc.name === 'highlight_pdf_section') {
-                      const { isActive, text, context, page } = fc.args as any;
-                      
-                      console.log('PDF Highlight Called:', { isActive, text, context, page });
-                      
-                      if (isActive && text) {
-                        setHighlightedPDFText(text);
-                      }
-
-                      return {
-                        id: fc.id,
-                        name: fc.name,
-                        response: { result: `PDF section highlighted: "${text.substring(0, 50)}..."` }
-                      };
-                    } else if (fc.name === 'analyze_canvas_drawing') {
-                      const { question } = fc.args as any;
-                      
-                      try {
-                        if (!requestCanvasSnapshotRef.current) {
-                          throw new Error('Canvas snapshot capability not available.');
-                        }
-                        
-                        const imageDataUrl = await requestCanvasSnapshotRef.current();
-                        if (!imageDataUrl) {
-                          throw new Error('Failed to capture canvas image.');
-                        }
-                        
-                        console.log('Tool: analyze_canvas_drawing - Image captured, length:', imageDataUrl.length);
-
-                        // Send the image as a user message with context
-                        // Note: We send this as a separate input to ensure the model processes the image
-                        // The tool response just confirms we did it.
-                        setTimeout(() => {
-                          const base64Data = imageDataUrl.split(',')[1];
-                          const textPrompt = `Here is the snapshot of my canvas drawing. ${question || 'Please analyze it.'}`;
-                          console.log('Tool: Sending image to Live API...');
-                          session.sendRealtimeInput({ media: { mimeType: 'image/jpeg', data: base64Data } })
-                            .then(() => session.sendRealtimeInput({ text: textPrompt }))
-                            .catch(err => console.error('Failed to send canvas snapshot via tool call', err));
-                        }, 200);
-
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { result: 'Canvas snapshot captured and sent. Please analyze the image I just sent.' }
-                        };
-                      } catch (err: any) {
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { error: err.message || 'Failed to analyze canvas.' }
-                        };
-                      }
-                    } else if (fc.name === 'write_on_canvas') {
-                      const { text, heading } = fc.args as any;
-                      if (!text || typeof text !== 'string') {
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { error: 'Text content is required to write on the canvas.' }
-                        };
-                      }
-
-                      const inserted = pushTextToCanvas(text, heading || undefined);
-                      pendingCanvasWriteRef.current = null;
-
-                      if (inserted) {
-                        canvasWritePerformedThisTurnRef.current = true;
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { result: 'Content written on the canvas successfully.' }
-                        };
-                      }
-
-                      return {
-                        id: fc.id,
-                        name: fc.name,
-                        response: { error: 'Canvas writing is unavailable right now.' }
-                      };
-                    } else if (fc.name === 'place_molecule_on_canvas') {
-                      try {
-                        await placeMoleculeOnCanvas(fc.args as CanvasMoleculeToolArgs);
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { result: 'Molecule placed on the canvas.' }
-                        };
-                      } catch (error: any) {
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { error: error?.message || 'Failed to place molecule on the canvas.' }
-                        };
-                      }
-                    } else if (fc.name === 'place_protein_on_canvas') {
-                      try {
-                        await placeProteinOnCanvas(fc.args as CanvasProteinToolArgs);
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { result: 'Protein placed on the canvas.' }
-                        };
-                      } catch (error: any) {
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { error: error?.message || 'Failed to place protein on the canvas.' }
-                        };
-                      }
-                    } else if (fc.name === 'place_reaction_on_canvas') {
-                      try {
-                        await placeReactionOnCanvas(fc.args as CanvasReactionToolArgs);
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { result: 'Reaction rendered on the canvas.' }
-                        };
-                      } catch (error: any) {
-                        return {
-                          id: fc.id,
-                          name: fc.name,
-                          response: { error: error?.message || 'Failed to render reaction on the canvas.' }
-                        };
-                      }
-                    }
                     return {
                       id: fc.id,
                       name: fc.name,
-                      response: { result: 'Unknown function' }
+                      response: { result: 'Simulation updated successfully' }
                     };
-                  }));
-                  
-                  session.sendToolResponse({ functionResponses });
-                });
-             }
+                  } else if (fc.name === 'display_molecule_3d') {
+                    const { isActive, smiles, name, iupacName, structure } = fc.args as any;
 
-             // Handle Transcription
-             if (message.serverContent?.outputTranscription) {
-                const text = message.serverContent.outputTranscription.text;
-                  if (!currentModelIdRef.current) {
-                    learningCanvasUpdatedThisTurnRef.current = false;
-                  }
-                  currentOutputRef.current += text;
-                
-                setTranscripts(prev => {
-                    const id = currentModelIdRef.current || uuidv4();
-                    currentModelIdRef.current = id;
-                    
-                    const existing = prev.find(m => m.id === id);
-                    if (existing) {
-                        return prev.map(m => m.id === id ? { ...m, text: currentOutputRef.current } : m);
-                    } else {
-                        return [...prev, {
-                            id,
-                            text: currentOutputRef.current,
-                            sender: 'model',
-                            timestamp: new Date(),
-                            isComplete: false
-                        }];
-                    }
-                });
-             } else if (message.serverContent?.inputTranscription) {
-                const text = message.serverContent.inputTranscription.text;
-                currentInputRef.current += text;
+                    setSimulationState(prev => ({
+                      isActive: isActive,
+                      type: isActive ? 'MOLECULE_3D' : 'NONE',
+                      kineticsParams: prev.kineticsParams,
+                      molecule3DParams: {
+                        smiles,
+                        name,
+                        iupacName,
+                        structure
+                      },
+                      learningCanvasParams: prev.learningCanvasParams
+                    }));
 
-                setTranscripts(prev => {
-                    const id = currentUserIdRef.current || uuidv4();
-                    currentUserIdRef.current = id;
-                    
-                    const existing = prev.find(m => m.id === id);
-                    if (existing) {
-                        return prev.map(m => m.id === id ? { ...m, text: currentInputRef.current } : m);
-                    } else {
-                        return [...prev, {
-                            id,
-                            text: currentInputRef.current,
-                            sender: 'user',
-                            timestamp: new Date(),
-                            isComplete: false
-                        }];
-                    }
-                });
-             }
+                    return {
+                      id: fc.id,
+                      name: fc.name,
+                      response: { result: 'Molecule display updated successfully' }
+                    };
+                  } else if (fc.name === 'show_learning_canvas') {
+                    const { isActive, title, topic, steps } = fc.args as any;
 
-             if (message.serverContent?.turnComplete) {
-                // Mark current messages as complete
-                if (currentUserIdRef.current) {
-                    const id = currentUserIdRef.current;
-                    const userTurnText = currentInputRef.current;
-                    setTranscripts(prev => prev.map(m => m.id === id ? { ...m, isComplete: true } : m));
-                    if (userTurnText) {
-                      triggerAutoShareCanvas(userTurnText);
-                      scheduleCanvasWriteFromUser(userTurnText);
-                    }
-                    currentUserIdRef.current = null;
-                }
-                if (currentModelIdRef.current) {
-                  const id = currentModelIdRef.current;
-                  const completedText = currentOutputRef.current;
-                  setTranscripts(prev => prev.map(m => m.id === id ? { ...m, isComplete: true } : m));
-                  currentModelIdRef.current = null;
-                  currentOutputRef.current = '';
+                    console.log('Learning Canvas Called:', { isActive, title, topic, steps });
 
-                  if (!learningCanvasUpdatedThisTurnRef.current && completedText.trim().length > 0) {
-                    pushFallbackLearningCanvas(completedText);
-                    learningCanvasUpdatedThisTurnRef.current = true;
-                  }
-
-                  learningCanvasUpdatedThisTurnRef.current = false;
-
-                  const trimmedResponse = completedText.trim();
-                  const pendingWrite = pendingCanvasWriteRef.current;
-                  if (pendingWrite && trimmedResponse.length > 0) {
-                    const heading = pendingWrite.reason === 'answer' ? 'Solution' : 'Similar Example';
-                    const inserted = pushTextToCanvas(trimmedResponse, heading);
-                    if (inserted) {
-                      canvasWritePerformedThisTurnRef.current = true;
-                    } else {
-                      console.warn('Failed to push assistant response to canvas despite user request');
-                    }
-                    pendingCanvasWriteRef.current = null;
-                  } else if (
-                    trimmedResponse.length > 0 &&
-                    canvasSurfaceActiveRef.current &&
-                    !canvasWritePerformedThisTurnRef.current
-                  ) {
-                    const inserted = pushTextToCanvas(trimmedResponse, DEFAULT_AUTO_CANVAS_HEADING);
-                    if (inserted) {
-                      canvasWritePerformedThisTurnRef.current = true;
-                    } else {
-                      console.warn('Failed to push assistant response to canvas by default');
-                    }
-                  }
-                }
-
-                currentInputRef.current = '';
-                currentOutputRef.current = '';
-                canvasWritePerformedThisTurnRef.current = false;
-             }
-
-             // Handle Audio Output
-             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-             if (base64Audio && audioContextRef.current) {
-                const ctx = audioContextRef.current;
-                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
-                
-                try {
-                    const audioBuffer = await decodeAudioData(
-                        decode(base64Audio),
-                        ctx,
-                        24000,
-                        1
-                    );
-                    
-                    const source = ctx.createBufferSource();
-                    source.buffer = audioBuffer;
-                    
-                    // Connect to analyser and destination
-                    if (newAnalyser) {
-                        source.connect(newAnalyser);
-                        newAnalyser.connect(ctx.destination);
-                    } else {
-                        source.connect(ctx.destination);
-                    }
-
-                    source.addEventListener('ended', () => {
-                        sourcesRef.current.delete(source);
-                      if (sourcesRef.current.size === 0) {
-                        setIsSpeaking(false);
+                    // Parse steps if it's a string (JSON)
+                    let parsedSteps = steps;
+                    if (typeof steps === 'string') {
+                      try {
+                        parsedSteps = JSON.parse(steps);
+                      } catch (e) {
+                        console.error('Error parsing steps JSON:', e, 'Raw steps:', steps);
+                        parsedSteps = [];
                       }
-                    });
-                    
-                    source.start(nextStartTimeRef.current);
-                    sourcesRef.current.add(source);
-                    setIsSpeaking(true);
-                    
-                    nextStartTimeRef.current += audioBuffer.duration;
-                } catch (err) {
-                    console.error("Error decoding audio chunk", err);
-                }
-             }
+                    }
 
-             // Handle Interruption
-             if (message.serverContent?.interrupted) {
-                sourcesRef.current.forEach(source => source.stop());
-                sourcesRef.current.clear();
-                nextStartTimeRef.current = 0;
-               currentOutputRef.current = ''; 
-               setIsSpeaking(false);
-             }
+                    // Validate that parsedSteps is an array
+                    if (!Array.isArray(parsedSteps)) {
+                      console.warn('Steps is not an array, converting:', parsedSteps);
+                      parsedSteps = [parsedSteps];
+                    }
+
+                    console.log('Parsed steps:', parsedSteps);
+
+                    setSimulationState(prev => {
+                      const previousImage = prev.learningCanvasParams?.image;
+                      const shouldCarryImage = Boolean(
+                        previousImage && (
+                          previousImage.status === 'loading' ||
+                          previousImage.topic === (topic || prev.learningCanvasParams?.topic)
+                        )
+                      );
+
+                      return {
+                        isActive: isActive,
+                        type: isActive ? 'LEARNING_CANVAS' : 'NONE',
+                        kineticsParams: prev.kineticsParams,
+                        molecule3DParams: prev.molecule3DParams,
+                        learningCanvasParams: {
+                          title: title || 'Learning Explanation',
+                          topic: topic || 'General',
+                          steps: Array.isArray(parsedSteps) ? parsedSteps : [],
+                          image: shouldCarryImage ? previousImage : undefined
+                        }
+                      };
+                    });
+
+                    learningCanvasUpdatedThisTurnRef.current = true;
+                    console.log('Learning canvas state updated');
+
+                    return {
+                      id: fc.id,
+                      name: fc.name,
+                      response: { result: 'Learning canvas displayed successfully with step-by-step explanation' }
+                    };
+                  } else if (fc.name === 'generate_concept_image') {
+                    try {
+                      const resultMessage = await handleConceptImageToolCall(fc.args as ConceptImageToolArgs);
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: resultMessage }
+                      };
+                    } catch (error: any) {
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { error: error?.message || 'Concept image generation failed.' }
+                      };
+                    }
+                  } else if (fc.name === 'highlight_pdf_section') {
+                    const { isActive, text, context, page } = fc.args as any;
+
+                    console.log('PDF Highlight Called:', { isActive, text, context, page });
+
+                    if (isActive && text) {
+                      setHighlightedPDFText(text);
+                    }
+
+                    return {
+                      id: fc.id,
+                      name: fc.name,
+                      response: { result: `PDF section highlighted: "${text.substring(0, 50)}..."` }
+                    };
+                  } else if (fc.name === 'analyze_canvas_drawing') {
+                    const { question } = fc.args as any;
+
+                    try {
+                      if (!requestCanvasSnapshotRef.current) {
+                        throw new Error('Canvas snapshot capability not available.');
+                      }
+
+                      const imageDataUrl = await requestCanvasSnapshotRef.current();
+                      if (!imageDataUrl) {
+                        throw new Error('Failed to capture canvas image.');
+                      }
+
+                      console.log('Tool: analyze_canvas_drawing - Image captured, length:', imageDataUrl.length);
+
+                      // Send the image as a user message with context
+                      // Note: We send this as a separate input to ensure the model processes the image
+                      // The tool response just confirms we did it.
+                      setTimeout(() => {
+                        const base64Data = imageDataUrl.split(',')[1];
+                        const textPrompt = `Here is the snapshot of my canvas drawing. ${question || 'Please analyze it.'}`;
+                        console.log('Tool: Sending image to Live API...');
+                        session.sendRealtimeInput({ media: { mimeType: 'image/jpeg', data: base64Data } })
+                          .then(() => session.sendRealtimeInput({ text: textPrompt }))
+                          .catch((err: any) => console.error('Failed to send canvas snapshot via tool call', err));
+                      }, 200);
+
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: 'Canvas snapshot captured and sent. Please analyze the image I just sent.' }
+                      };
+                    } catch (err: any) {
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { error: err.message || 'Failed to analyze canvas.' }
+                      };
+                    }
+                  } else if (fc.name === 'write_on_canvas') {
+                    const { text, heading } = fc.args as any;
+                    if (!text || typeof text !== 'string') {
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { error: 'Text content is required to write on the canvas.' }
+                      };
+                    }
+
+                    const inserted = pushTextToCanvas(text, heading || undefined);
+                    pendingCanvasWriteRef.current = null;
+
+                    if (inserted) {
+                      canvasWritePerformedThisTurnRef.current = true;
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: 'Content written on the canvas successfully.' }
+                      };
+                    }
+
+                    return {
+                      id: fc.id,
+                      name: fc.name,
+                      response: { error: 'Canvas writing is unavailable right now.' }
+                    };
+                  } else if (fc.name === 'place_molecule_on_canvas') {
+                    try {
+                      await placeMoleculeOnCanvas(fc.args as unknown as CanvasMoleculeToolArgs);
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: 'Molecule placed on the canvas.' }
+                      };
+                    } catch (error: any) {
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { error: error?.message || 'Failed to place molecule on the canvas.' }
+                      };
+                    }
+                  } else if (fc.name === 'place_protein_on_canvas') {
+                    try {
+                      await placeProteinOnCanvas(fc.args as unknown as CanvasProteinToolArgs);
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: 'Protein placed on the canvas.' }
+                      };
+                    } catch (error: any) {
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { error: error?.message || 'Failed to place protein on the canvas.' }
+                      };
+                    }
+                  } else if (fc.name === 'place_reaction_on_canvas') {
+                    try {
+                      await placeReactionOnCanvas(fc.args as unknown as CanvasReactionToolArgs);
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: 'Reaction rendered on the canvas.' }
+                      };
+                    } catch (error: any) {
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { error: error?.message || 'Failed to render reaction on the canvas.' }
+                      };
+                    }
+                  }
+                  return {
+                    id: fc.id,
+                    name: fc.name,
+                    response: { result: 'Unknown function' }
+                  };
+                }));
+
+                session.sendToolResponse({ functionResponses });
+              });
+            }
+
+            // Handle Transcription
+            if (message.serverContent?.outputTranscription) {
+              const text = message.serverContent.outputTranscription.text;
+              if (!currentModelIdRef.current) {
+                learningCanvasUpdatedThisTurnRef.current = false;
+              }
+              currentOutputRef.current += text;
+
+              setTranscripts(prev => {
+                const id = currentModelIdRef.current || uuidv4();
+                currentModelIdRef.current = id;
+
+                const existing = prev.find(m => m.id === id);
+                if (existing) {
+                  return prev.map(m => m.id === id ? { ...m, text: currentOutputRef.current } : m);
+                } else {
+                  return [...prev, {
+                    id,
+                    text: currentOutputRef.current,
+                    sender: 'model',
+                    timestamp: new Date(),
+                    isComplete: false
+                  }];
+                }
+              });
+            } else if (message.serverContent?.inputTranscription) {
+              const text = message.serverContent.inputTranscription.text;
+              currentInputRef.current += text;
+
+              setTranscripts(prev => {
+                const id = currentUserIdRef.current || uuidv4();
+                currentUserIdRef.current = id;
+                return [...prev, {
+                  id,
+                  text: currentInputRef.current,
+                  sender: 'user',
+                  timestamp: new Date(),
+                  isComplete: false
+                }];
+              });
+            }
+            // Syntax fix verified
+
+
+            if (message.serverContent?.turnComplete) {
+              // Mark current messages as complete
+              if (currentUserIdRef.current) {
+                const id = currentUserIdRef.current;
+                const userTurnText = currentInputRef.current;
+                setTranscripts(prev => prev.map(m => m.id === id ? { ...m, isComplete: true } : m));
+                if (userTurnText) {
+                  triggerAutoShareCanvas(userTurnText);
+                  scheduleCanvasWriteFromUser(userTurnText);
+                }
+                currentUserIdRef.current = null;
+              }
+              if (currentModelIdRef.current) {
+                const id = currentModelIdRef.current;
+                const completedText = currentOutputRef.current;
+                setTranscripts(prev => prev.map(m => m.id === id ? { ...m, isComplete: true } : m));
+                currentModelIdRef.current = null;
+                currentOutputRef.current = '';
+
+                const userLastMsg = lastUserMessageRef.current || '';
+                const shouldTrigger = /explain|show|break down|visualize|steps|how to|derive|mechanism/i.test(userLastMsg);
+
+                if (!learningCanvasUpdatedThisTurnRef.current && completedText.trim().length > 0 && shouldTrigger) {
+                  pushFallbackLearningCanvas(completedText);
+                  learningCanvasUpdatedThisTurnRef.current = true;
+                }
+
+                learningCanvasUpdatedThisTurnRef.current = false;
+
+                const trimmedResponse = completedText.trim();
+                const pendingWrite = pendingCanvasWriteRef.current;
+                if (pendingWrite && trimmedResponse.length > 0) {
+                  const heading = pendingWrite.reason === 'answer' ? 'Solution' : 'Similar Example';
+                  const inserted = pushTextToCanvas(trimmedResponse, heading);
+                  if (inserted) {
+                    canvasWritePerformedThisTurnRef.current = true;
+                  } else {
+                    console.warn('Failed to push assistant response to canvas despite user request');
+                  }
+                  pendingCanvasWriteRef.current = null;
+                } else if (
+                  trimmedResponse.length > 0 &&
+                  canvasSurfaceActiveRef.current &&
+                  !canvasWritePerformedThisTurnRef.current
+                ) {
+                  const inserted = pushTextToCanvas(trimmedResponse, DEFAULT_AUTO_CANVAS_HEADING);
+                  if (inserted) {
+                    canvasWritePerformedThisTurnRef.current = true;
+                  } else {
+                    console.warn('Failed to push assistant response to canvas by default');
+                  }
+                }
+              }
+
+              currentInputRef.current = '';
+              currentOutputRef.current = '';
+              canvasWritePerformedThisTurnRef.current = false;
+            }
+
+            // Handle Audio Output
+            const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+            if (base64Audio && audioContextRef.current) {
+              const ctx = audioContextRef.current;
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
+
+              try {
+                const audioBuffer = await decodeAudioData(
+                  decode(base64Audio),
+                  ctx,
+                  24000,
+                  1
+                );
+
+                const source = ctx.createBufferSource();
+                source.buffer = audioBuffer;
+
+                // Connect to analyser and destination
+                if (newAnalyser) {
+                  source.connect(newAnalyser);
+                  newAnalyser.connect(ctx.destination);
+                } else {
+                  source.connect(ctx.destination);
+                }
+
+                source.addEventListener('ended', () => {
+                  sourcesRef.current.delete(source);
+                  if (sourcesRef.current.size === 0) {
+                    setIsSpeaking(false);
+                  }
+                });
+
+                source.start(nextStartTimeRef.current);
+                sourcesRef.current.add(source);
+                setIsSpeaking(true);
+
+                nextStartTimeRef.current += audioBuffer.duration;
+              } catch (err) {
+                console.error("Error decoding audio chunk", err);
+              }
+            }
+
+            // Handle Interruption
+            if (message.serverContent?.interrupted) {
+              sourcesRef.current.forEach(source => source.stop());
+              sourcesRef.current.clear();
+              nextStartTimeRef.current = 0;
+              currentOutputRef.current = '';
+              setIsSpeaking(false);
+            }
           },
           onerror: (err) => {
             console.error("Gemini Live Error:", err);
@@ -1855,16 +1978,16 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
       // Inline the PDF sending logic to avoid circular dependencies
       sessionPromiseRef.current?.then(session => {
         if (session) {
-          const pdfMessage = `I have received a PDF document. Here is the content you should reference when answering my questions:
+          const pdfMessage = `I have received a PDF document.Here is the content you should reference when answering my questions:
 
----START OF DOCUMENT---
-${pdfContent.substring(0, 8000)}
----END OF DOCUMENT---
+                --- START OF DOCUMENT-- -
+                  ${pdfContent.substring(0, 8000)}
+                --- END OF DOCUMENT-- -
 
-Please remember: Only discuss topics that are actually in this PDF document. Do not make up or assume information that is not provided. If I ask about something not in the PDF, let me know it's not in the document.`;
-          
+                  Please remember: Only discuss topics that are actually in this PDF document.Do not make up or assume information that is not provided.If I ask about something not in the PDF, let me know it's not in the document.`;
+
           console.log('Sending PDF context to AI via effect - content length:', pdfContent.length);
-          
+
           session.sendRealtimeInput({ text: pdfMessage }).catch((error: any) => {
             console.error('Error sending PDF content to AI:', error);
           });
@@ -1875,6 +1998,12 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     }
   }, [pdfContent, connectionState]);
 
+  const simplifyStep = useCallback(async (stepText: string) => {
+    if (!sessionPromiseRef.current) return;
+    const session = await sessionPromiseRef.current;
+    session.sendRealtimeInput({ text: `Please simplify this step for me: "${stepText}"` });
+  }, []);
+
   return {
     connect,
     disconnect,
@@ -1884,23 +2013,33 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     simulationState,
     conceptImages,
     error,
+    lastUserMessageRef,
+    isListening,
+    isSpeaking,
     selectedLanguage,
     setSelectedLanguage,
     selectedVoice,
     setSelectedVoice,
-    pdfContent,
-    setPdfContent,
-    highlightedPDFText,
-    setHighlightedPDFText,
-    setRequestCanvasSnapshot,
     setCanvasTextInsertionHandler,
     setCanvasMarkdownInsertionHandler,
     setCanvasMoleculeInsertionHandler,
     setCanvasProteinInsertionHandler,
     setCanvasReactionInsertionHandler,
+    setCanvasConceptImageInsertionHandler,
     setCanvasSurfaceActive,
+    setRequestCanvasSnapshot,
+    pushTextToCanvas,
+    placeMoleculeOnCanvas,
+    placeProteinOnCanvas,
+    placeReactionOnCanvas,
+    placeConceptImageOnCanvas,
     captureAndSendSnapshot,
-    isListening,
-    isSpeaking
+    setPdfContent,
+    setHighlightedPDFText,
+    triggerAutoShareCanvas,
+    startScreenShare,
+    stopScreenShare,
+    isScreenSharing,
+    simplifyStep
   };
 };
