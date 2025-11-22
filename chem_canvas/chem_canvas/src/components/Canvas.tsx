@@ -1,8 +1,14 @@
 // @ts-nocheck
 import { useRef, useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, FlaskConical, Gem, Scan, ExternalLink, Database, FileText, Upload, X, Smartphone, Move } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3x3, RotateCcw, CheckCircle, AlertCircle, Loader2, Trash2, Brain, Sparkles, Atom, Beaker, Moon, Sun, FlaskConical, Gem, Scan, ExternalLink, Database, FileText, Upload, X, Smartphone, Move, ListOrdered, Minimize2, Maximize2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { analyzeCanvasWithLLM, getStoredAPIKey, analyzeTextContent, extractDrawnText, type Correction, type CanvasAnalysisResult } from '../services/canvasAnalyzer';
 import { convertCanvasToChemistry } from '../services/chemistryConverter';
@@ -13,6 +19,9 @@ import ProteinCanvasViewer from './ProteinCanvasViewer';
 import { type MoleculeData, type CrystalVisualData, parseSDF, type ParsedSDF, getMolViewUrl, getMolViewUrlFromSmiles, getMoleculeByCID, getMoleculeBySmiles, getMoleculeByName } from '../services/pubchemService';
 import { buildCrystalVisualFromCif } from '../services/mineralService';
 import { type PDBProteinData, fetchPDBStructure } from '../services/pdbService';
+import { reactionSmilesToSVGHuggingFace } from '../services/rdkitService';
+import { sanitizeReactionSmilesInput, stripAtomMappings } from '../utils/reactionSanitizer';
+import type { StructuredReactionPayload } from '../services/structuredReactionService';
 import type { ReactionComponentDetails } from '../services/reactionResolver';
 import ChemistryToolbar from './ChemistryToolbar';
 import ChemistryStructureViewer from './ChemistryStructureViewer';
@@ -58,6 +67,12 @@ const MIN_PDF_WIDTH = 320;
 const MAX_PDF_WIDTH = 1400;
 const MIN_PDF_HEIGHT = 320;
 const MAX_PDF_HEIGHT = 2000;
+const MARKDOWN_MIN_WIDTH = 320;
+const MARKDOWN_MAX_WIDTH = 720;
+const MARKDOWN_MIN_HEIGHT = 220;
+const MARKDOWN_MAX_HEIGHT = 840;
+const DEFAULT_PDB_DOWNLOAD_URL = 'https://files.rcsb.org/download';
+const DEFAULT_PDB_ENTRY_FILES_URL = 'https://www.ebi.ac.uk/pdbe/entry-files';
 const ATOM_COLORS: Record<string, string> = {
   C: '#e2e8f0',
   H: '#94a3b8',
@@ -107,6 +122,44 @@ interface ReactionMetadata {
   confidence?: number;
   notes?: string;
 }
+
+interface MarkdownEntry {
+  id: string;
+  title: string;
+  steps: string[];
+  createdAt: number;
+}
+
+export interface CanvasMoleculePlacementRequest {
+  name?: string;
+  smiles?: string;
+  cid?: number | string;
+  displayLabel?: string;
+  role?: string;
+  notes?: string;
+}
+
+export interface CanvasProteinPlacementRequest {
+  entryId: string;
+  title?: string;
+  description?: string;
+  organism?: string;
+  method?: string;
+  depositionDate?: string;
+  displayName?: string;
+}
+
+export interface CanvasReactionPlacementRequest {
+  reactionSmiles: string;
+  title?: string;
+  description?: string;
+  includeSdf?: boolean;
+  metadata?: ReactionMetadata;
+}
+
+export type CanvasMoleculeInsertionHandler = (request: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean;
+export type CanvasProteinInsertionHandler = (request: CanvasProteinPlacementRequest) => Promise<boolean> | boolean;
+export type CanvasReactionInsertionHandler = (request: CanvasReactionPlacementRequest) => Promise<boolean> | boolean;
 
 type DroppedDocumentType = 'pdf' | 'text' | 'image' | 'audio' | 'video' | 'spreadsheet';
 
@@ -484,6 +537,12 @@ interface CanvasProps {
   onMoleculeInserted?: (moleculeData: any) => void;
   onDocumentCaptured?: (payload: { file: File; name: string; documentId: string }) => void;
   onDocumentAddToChat?: (payload: { documentId: string }) => void;
+  onRegisterSnapshotHandler?: (handler: () => Promise<string | null>) => void;
+  onRegisterTextInjectionHandler?: (handler: (text: string) => void) => void;
+  onRegisterMoleculeInjectionHandler?: (handler: CanvasMoleculeInsertionHandler) => void;
+  onRegisterProteinInjectionHandler?: (handler: CanvasProteinInsertionHandler) => void;
+  onRegisterReactionInjectionHandler?: (handler: CanvasReactionInsertionHandler) => void;
+  onRegisterMarkdownInjectionHandler?: (handler: (payload: { text: string; heading?: string }) => void) => void;
   isFullscreen?: boolean;
 }
 
@@ -504,10 +563,35 @@ export default function Canvas({
   onMoleculeInserted,
   onDocumentCaptured,
   onDocumentAddToChat,
+  onRegisterSnapshotHandler,
+  onRegisterTextInjectionHandler,
+  onRegisterMoleculeInjectionHandler,
+  onRegisterProteinInjectionHandler,
+  onRegisterReactionInjectionHandler,
+  onRegisterMarkdownInjectionHandler,
   isFullscreen = false
 }: CanvasProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (onRegisterSnapshotHandler) {
+      onRegisterSnapshotHandler(async () => {
+        if (!canvasRef.current) return null;
+        try {
+          // Simple data URL export.
+          // If transparent, composite with white background?
+          // Creating a temp canvas to composite if needed, but raw capture is usually okay for AI.
+          return canvasRef.current.toDataURL('image/jpeg', 0.8);
+        } catch (e) {
+          console.error('Failed to capture canvas snapshot', e);
+          return null;
+        }
+      });
+    }
+  }, [onRegisterSnapshotHandler]);
+
+
 const [isDrawing, setIsDrawing] = useState(false);
   const [lastX, setLastX] = useState(0);
   const [lastY, setLastY] = useState(0);
@@ -590,6 +674,84 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
   const droppedDocumentsRef = useRef<CanvasDroppedDocument[]>([]);
   const documentDragStateRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const documentResizeStateRef = useRef<{ id: string; startWidth: number; startHeight: number; startX: number; startY: number } | null>(null);
+  const [markdownEntries, setMarkdownEntries] = useState<MarkdownEntry[]>([]);
+  const [isMarkdownVisible, setIsMarkdownVisible] = useState(false);
+  const [isMarkdownCollapsed, setIsMarkdownCollapsed] = useState(false);
+  const [markdownPanePosition, setMarkdownPanePosition] = useState({ x: 96, y: 160 });
+  const [markdownPaneSize, setMarkdownPaneSize] = useState({ width: 420, height: 360 });
+  const markdownDragStateRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
+  const markdownResizeStateRef = useRef<{ startWidth: number; startHeight: number; startX: number; startY: number } | null>(null);
+  const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkMath], []);
+  const markdownRehypePlugins = useMemo(() => [rehypeKatex], []);
+  const markdownComponents = useMemo<Components>(() => ({
+    a: (props) => (
+      <a
+        {...props}
+        target="_blank"
+        rel="noreferrer"
+        className="text-sky-300 underline-offset-2 hover:text-sky-200 hover:underline"
+      />
+    ),
+    p: (props) => (
+      <p
+        {...props}
+        className="mb-2 text-sm leading-relaxed text-slate-100 last:mb-0"
+      />
+    ),
+    ul: (props) => (
+      <ul
+        {...props}
+        className="mb-2 list-disc pl-5 text-sm text-slate-100 last:mb-0"
+      />
+    ),
+    ol: (props) => (
+      <ol
+        {...props}
+        className="mb-2 list-decimal pl-5 text-sm text-slate-100 last:mb-0"
+      />
+    ),
+    li: (props) => (
+      <li
+        {...props}
+        className="mb-1 text-sm leading-relaxed text-slate-100 last:mb-0"
+      />
+    ),
+    code: ({ inline, children, ...props }) => {
+      if (inline) {
+        return (
+          <code
+            {...props}
+            className="rounded bg-slate-900/70 px-1 py-0.5 font-mono text-[12px] text-emerald-200"
+          >
+            {children}
+          </code>
+        );
+      }
+      return (
+        <pre
+          {...props}
+          className="mb-2 overflow-auto rounded-2xl border border-slate-800 bg-slate-950/70 p-3 text-[12px] text-emerald-200"
+        >
+          <code className="font-mono leading-relaxed">{children}</code>
+        </pre>
+      );
+    },
+    blockquote: (props) => (
+      <blockquote
+        {...props}
+        className="mb-2 border-l-4 border-sky-500/70 pl-3 text-sm italic text-slate-200"
+      />
+    )
+  }), []);
+  const markdownStepCount = useMemo(() => {
+    return markdownEntries.reduce((acc, entry) => acc + entry.steps.length, 0);
+  }, [markdownEntries]);
+  const latestMarkdownTimestamp = useMemo(() => {
+    if (!markdownEntries.length) {
+      return null;
+    }
+    return formatDocumentTimestamp(markdownEntries[markdownEntries.length - 1].createdAt);
+  }, [markdownEntries]);
 
   const addCustomAnnotationLabel = () => {
     const trimmed = customAnnotationLabel.trim();
@@ -637,7 +799,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     return null;
   };
 
-  const formatDocumentSize = (bytes: number): string => {
+  function formatDocumentSize(bytes: number): string {
     if (!bytes) {
       return '0 B';
     }
@@ -645,19 +807,63 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     const exponent = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
     const value = bytes / Math.pow(1024, exponent);
     return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
-  };
+  }
 
-  const formatDocumentTimestamp = (timestamp: number): string => {
+  function formatDocumentTimestamp(timestamp: number): string {
     const date = new Date(timestamp);
     if (Number.isNaN(date.getTime())) {
       return '';
     }
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  }
 
   const clampValue = (value: number, min: number, max: number) => {
     return Math.min(max, Math.max(min, value));
   };
+
+  const parseTextIntoSteps = useCallback((text: string): string[] => {
+    if (!text) {
+      return [];
+    }
+    const normalized = text.replace(/\r\n/g, '\n').trim();
+    if (!normalized) {
+      return [];
+    }
+    const segments = normalized
+      .split(/\n{2,}/)
+      .map(segment => segment.trim())
+      .filter(Boolean);
+    if (segments.length > 0) {
+      return segments;
+    }
+    return [normalized];
+  }, []);
+
+  const appendMarkdownEntry = useCallback(
+    (text: string, heading?: string) => {
+      const steps = parseTextIntoSteps(text);
+      if (!steps.length) {
+        return;
+      }
+      const entry: MarkdownEntry = {
+        id: `markdown-${Date.now()}`,
+        title: heading?.trim() || 'Canvas Explanation',
+        steps,
+        createdAt: Date.now()
+      };
+      setMarkdownEntries(prev => {
+        const next = [...prev, entry];
+        return next.slice(-6);
+      });
+      setIsMarkdownVisible(true);
+      setIsMarkdownCollapsed(false);
+    },
+    [parseTextIntoSteps]
+  );
+
+  const clearMarkdownEntries = useCallback(() => {
+    setMarkdownEntries([]);
+  }, []);
 
   const createDroppedDocumentFromFile = useCallback(
     async (file: File, position: { x: number; y: number }): Promise<CanvasDroppedDocument | null> => {
@@ -1095,6 +1301,70 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     [handleDocumentResizeEnd, handleDocumentResizeMove]
   );
 
+  const handleMarkdownDragMove = useCallback((event: MouseEvent) => {
+    const dragState = markdownDragStateRef.current;
+    if (!dragState) {
+      return;
+    }
+    const nextX = Math.max(16, event.clientX - dragState.offsetX);
+    const nextY = Math.max(80, event.clientY - dragState.offsetY);
+    setMarkdownPanePosition({ x: nextX, y: nextY });
+  }, []);
+
+  const handleMarkdownDragEnd = useCallback(() => {
+    markdownDragStateRef.current = null;
+    window.removeEventListener('mousemove', handleMarkdownDragMove as EventListener);
+    window.removeEventListener('mouseup', handleMarkdownDragEnd as EventListener);
+  }, [handleMarkdownDragMove]);
+
+  const handleMarkdownDragStart = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      markdownDragStateRef.current = {
+        offsetX: event.clientX - markdownPanePosition.x,
+        offsetY: event.clientY - markdownPanePosition.y
+      };
+      window.addEventListener('mousemove', handleMarkdownDragMove as EventListener);
+      window.addEventListener('mouseup', handleMarkdownDragEnd as EventListener);
+    },
+    [handleMarkdownDragEnd, handleMarkdownDragMove, markdownPanePosition.x, markdownPanePosition.y]
+  );
+
+  const handleMarkdownResizeMove = useCallback((event: MouseEvent) => {
+    const resizeState = markdownResizeStateRef.current;
+    if (!resizeState) {
+      return;
+    }
+    const deltaX = event.clientX - resizeState.startX;
+    const deltaY = event.clientY - resizeState.startY;
+    const width = clampValue(resizeState.startWidth + deltaX, MARKDOWN_MIN_WIDTH, MARKDOWN_MAX_WIDTH);
+    const height = clampValue(resizeState.startHeight + deltaY, MARKDOWN_MIN_HEIGHT, MARKDOWN_MAX_HEIGHT);
+    setMarkdownPaneSize({ width, height });
+  }, []);
+
+  const handleMarkdownResizeEnd = useCallback(() => {
+    markdownResizeStateRef.current = null;
+    window.removeEventListener('mousemove', handleMarkdownResizeMove as EventListener);
+    window.removeEventListener('mouseup', handleMarkdownResizeEnd as EventListener);
+  }, [handleMarkdownResizeMove]);
+
+  const handleMarkdownResizeStart = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement | HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      markdownResizeStateRef.current = {
+        startWidth: markdownPaneSize.width,
+        startHeight: markdownPaneSize.height,
+        startX: event.clientX,
+        startY: event.clientY
+      };
+      window.addEventListener('mousemove', handleMarkdownResizeMove as EventListener);
+      window.addEventListener('mouseup', handleMarkdownResizeEnd as EventListener);
+    },
+    [handleMarkdownResizeEnd, handleMarkdownResizeMove, markdownPaneSize.height, markdownPaneSize.width]
+  );
+
   useEffect(() => {
     const handleExternalUpload = (event: Event) => {
       const customEvent = event as CustomEvent<{ files?: File[] | FileList }>;
@@ -1385,6 +1655,7 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     baseX: number;
     baseY: number;
   } | null>(null);
+  const externalTextPlacementRef = useRef<{ index: number }>({ index: 0 });
 
   useEffect(() => {
     if (!arQrCid) {
@@ -1590,6 +1861,10 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     }
   }, [showChemistryToolbar]);
 
+  const resetExternalTextPlacement = useCallback(() => {
+    externalTextPlacementRef.current.index = 0;
+  }, []);
+
   const addTextShapeToCanvas = useCallback((textShape: Shape) => {
     setShapes(prev => {
       const updated = [...prev, textShape];
@@ -1649,22 +1924,41 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     setEditingTextShapeId(null);
   };
 
-  const insertTextBlock = useCallback((text: string) => {
+  const insertTextBlock = useCallback((text: string, options?: { autoPlacement?: boolean }) => {
     if (!text.trim()) {
       return;
     }
 
     const canvas = canvasRef.current;
-    const baseX = canvas ? (canvas.width / zoom) / 2 - 160 : 120;
-    const baseY = canvas ? (canvas.height / zoom) / 2 - 80 : 120;
+    const defaultX = canvas ? (canvas.width / zoom) / 2 - 160 : 120;
+    const defaultY = canvas ? (canvas.height / zoom) / 2 - 80 : 120;
+
+    let targetX = defaultX;
+    let targetY = defaultY;
+
+    if (options?.autoPlacement && canvas) {
+      const canvasWidth = canvas.width / zoom;
+      const columns = 2;
+      const columnSpacing = Math.min(360, canvasWidth / columns);
+      const rowSpacing = 160;
+      const index = externalTextPlacementRef.current.index;
+      externalTextPlacementRef.current.index = index + 1;
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const columnOffset = (column - (columns - 1) / 2) * columnSpacing;
+      const topPadding = Math.max(64, (canvas.height / zoom) * 0.12);
+
+      targetX = canvasWidth / 2 + columnOffset - 160;
+      targetY = topPadding + row * rowSpacing;
+    }
 
     const textShape: Shape = {
       id: `text-${Date.now()}`,
       type: 'text',
-      startX: baseX,
-      startY: baseY,
-      endX: baseX,
-      endY: baseY,
+      startX: targetX,
+      startY: targetY,
+      endX: targetX,
+      endY: targetY,
       color: chemistryColor,
       strokeColor: chemistryStrokeColor,
       size: 22,
@@ -1676,6 +1970,29 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
 
     addTextShapeToCanvas(textShape);
   }, [addTextShapeToCanvas, chemistryColor, chemistryFillColor, chemistryFillEnabled, chemistryStrokeColor, zoom]);
+
+  const handleExternalTextInjection = useCallback((content: string) => {
+    insertTextBlock(content, { autoPlacement: true });
+  }, [insertTextBlock]);
+
+  const handleExternalMarkdownInjection = useCallback((payload: { text: string; heading?: string }) => {
+    if (!payload?.text?.trim()) {
+      return;
+    }
+    appendMarkdownEntry(payload.text, payload.heading);
+  }, [appendMarkdownEntry]);
+
+  useEffect(() => {
+    if (onRegisterTextInjectionHandler) {
+      onRegisterTextInjectionHandler(handleExternalTextInjection);
+    }
+  }, [handleExternalTextInjection, onRegisterTextInjectionHandler]);
+
+  useEffect(() => {
+    if (onRegisterMarkdownInjectionHandler) {
+      onRegisterMarkdownInjectionHandler(handleExternalMarkdownInjection);
+    }
+  }, [handleExternalMarkdownInjection, onRegisterMarkdownInjectionHandler]);
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -2392,11 +2709,14 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
       reactants: reactionData.payload.reactants,
       products: reactionData.payload.products,
       conditions: reactionData.payload.condition,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      includeSDF: Boolean(reactionData.includeSDF ?? reactionData.includeSdf),
+      metadata: reactionData.metadata
     } : {
       ...reactionData,
       includeSDF: Boolean(reactionData.includeSDF),
-      sdfShapeIds: Array.isArray(reactionData.sdfShapeIds) ? [...reactionData.sdfShapeIds] : []
+      sdfShapeIds: Array.isArray(reactionData.sdfShapeIds) ? [...reactionData.sdfShapeIds] : [],
+      metadata: reactionData.metadata
     };
 
     const baseReactionData = {
@@ -2452,6 +2772,149 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
 
     console.log('⚗️ Reaction added to canvas:', finalizedReaction);
   };
+
+  const handleExternalMoleculeInsertion = useCallback(async (request: CanvasMoleculePlacementRequest) => {
+    if (!request || (!request.cid && !request.smiles && !request.name)) {
+      console.warn('Molecule insertion request missing identifiers', request);
+      return false;
+    }
+
+    try {
+      let resolved: MoleculeData | null = null;
+
+      if (request.cid !== undefined && request.cid !== null) {
+        const numericCid = typeof request.cid === 'string' ? Number(request.cid) : request.cid;
+        if (!Number.isNaN(numericCid)) {
+          resolved = await getMoleculeByCID(numericCid);
+        }
+      }
+
+      if (!resolved && request.smiles) {
+        resolved = await getMoleculeBySmiles(request.smiles);
+      }
+
+      if (!resolved && request.name) {
+        resolved = await getMoleculeByName(request.name);
+      }
+
+      if (!resolved) {
+        console.warn('Unable to resolve molecule for canvas insertion', request);
+        return false;
+      }
+
+      const displayName = request.displayLabel || request.name || resolved.displayName || resolved.name;
+
+      await insertMoleculeToCanvas({
+        ...resolved,
+        displayName,
+        role: request.role || resolved.role
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Failed to insert molecule requested by Gemini Live', error);
+      return false;
+    }
+  }, [insertMoleculeToCanvas]);
+
+  const handleExternalProteinInsertion = useCallback(async (request: CanvasProteinPlacementRequest) => {
+    if (!request?.entryId) {
+      return false;
+    }
+
+    const trimmedId = request.entryId.trim();
+    if (!trimmedId) {
+      return false;
+    }
+
+    const entryId = trimmedId.toUpperCase();
+    const lowerId = entryId.toLowerCase();
+    const displayName = request.displayName || request.title || `PDB ${entryId}`;
+
+    const proteinPayload: PDBProteinData = {
+      entryId,
+      title: request.title || displayName,
+      description: request.description || '',
+      organism: request.organism || 'Unknown',
+      method: request.method || 'Unknown',
+      depositionDate: request.depositionDate || '',
+      pdbUrl: `${DEFAULT_PDB_DOWNLOAD_URL}/${entryId}.pdb`,
+      cifUrl: `${DEFAULT_PDB_ENTRY_FILES_URL}/${lowerId}.cif`,
+      mmcifUrl: `${DEFAULT_PDB_ENTRY_FILES_URL}/${lowerId}.cif`,
+      displayName,
+      source: 'pdb',
+      type: 'protein'
+    };
+
+    try {
+      await insertProteinToCanvas(proteinPayload);
+      return true;
+    } catch (error) {
+      console.error('Failed to insert protein requested by Gemini Live', error);
+      return false;
+    }
+  }, [insertProteinToCanvas]);
+
+  const handleExternalReactionInsertion = useCallback(async (request: CanvasReactionPlacementRequest) => {
+    if (!request?.reactionSmiles) {
+      return false;
+    }
+
+    try {
+      const sanitized = sanitizeReactionSmilesInput(request.reactionSmiles) || request.reactionSmiles;
+      const stripped = stripAtomMappings(sanitized);
+      if (!stripped || !stripped.includes('>')) {
+        console.warn('Reaction request does not contain a valid SMILES arrow', request.reactionSmiles);
+        return false;
+      }
+
+      const svg = await reactionSmilesToSVGHuggingFace(stripped);
+      if (!svg) {
+        console.warn('Failed to render reaction SVG for canvas insertion');
+        return false;
+      }
+
+      const payload: StructuredReactionPayload = {
+        'reaction name ': request.title || 'Reaction scheme',
+        'reaction smiles': stripped,
+        condition: [],
+        reactants: [],
+        products: [],
+        'reaction smiles with conditions': stripped,
+        'Reaction Description': request.description || ''
+      };
+
+      await insertReactionToCanvas({
+        payload,
+        svgData: svg,
+        includeSDF: Boolean(request.includeSdf),
+        metadata: request.metadata
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Failed to insert reaction requested by Gemini Live', error);
+      return false;
+    }
+  }, [insertReactionToCanvas]);
+
+  useEffect(() => {
+    if (onRegisterMoleculeInjectionHandler) {
+      onRegisterMoleculeInjectionHandler(handleExternalMoleculeInsertion);
+    }
+  }, [handleExternalMoleculeInsertion, onRegisterMoleculeInjectionHandler]);
+
+  useEffect(() => {
+    if (onRegisterProteinInjectionHandler) {
+      onRegisterProteinInjectionHandler(handleExternalProteinInsertion);
+    }
+  }, [handleExternalProteinInsertion, onRegisterProteinInjectionHandler]);
+
+  useEffect(() => {
+    if (onRegisterReactionInjectionHandler) {
+      onRegisterReactionInjectionHandler(handleExternalReactionInsertion);
+    }
+  }, [handleExternalReactionInsertion, onRegisterReactionInjectionHandler]);
 
   const handleAddSdfModelsToReaction = useCallback(async (reactionShapeId: string) => {
     setReactionSdfError(null);
@@ -5209,7 +5672,8 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
     setCorrections([]);
     setShowCorrections(false);
     setAnalysisResult(null);
-  }, [showGrid]);
+    resetExternalTextPlacement();
+  }, [resetExternalTextPlacement, showGrid]);
 
   const exportCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -6284,6 +6748,126 @@ const [toolbarWidth, setToolbarWidth] = useState(260);
         >
           {documentDropFeedback.message}
         </div>
+      )}
+
+      {isMarkdownVisible && (
+        <div
+          className="group absolute z-40 max-w-[92vw] pointer-events-auto"
+          style={{
+            left: `${markdownPanePosition.x}px`,
+            top: `${markdownPanePosition.y}px`
+          }}
+        >
+          <div
+            className="relative flex flex-col rounded-3xl border border-sky-500/50 bg-slate-950/95 text-slate-100 shadow-[0_20px_60px_rgba(8,15,40,0.85)] backdrop-blur-xl"
+            style={{
+              width: `${markdownPaneSize.width}px`,
+              height: isMarkdownCollapsed ? 'auto' : `${markdownPaneSize.height}px`
+            }}
+          >
+            <div
+              className="flex items-center gap-3 rounded-t-3xl border-b border-slate-800/70 bg-slate-900/70 px-4 py-3 cursor-move select-none"
+              onMouseDown={handleMarkdownDragStart}
+            >
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-sky-400/70 bg-sky-500/20 text-sky-200">
+                <ListOrdered size={16} />
+              </span>
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold">Canvas Explanations</span>
+                <span className="text-[11px] text-slate-400">
+                  {markdownEntries.length ? `${markdownEntries.length} card${markdownEntries.length === 1 ? '' : 's'} · ${markdownStepCount} step${markdownStepCount === 1 ? '' : 's'}` : 'Waiting for updates…'}
+                </span>
+              </div>
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsMarkdownCollapsed(prev => !prev)}
+                  className="rounded-full border border-slate-700/70 bg-slate-900/80 p-1 text-slate-300 transition hover:border-sky-400 hover:text-white"
+                  aria-label={isMarkdownCollapsed ? 'Expand explanations panel' : 'Collapse explanations panel'}
+                >
+                  {isMarkdownCollapsed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearMarkdownEntries}
+                  disabled={!markdownEntries.length}
+                  className={`rounded-full border border-slate-700/70 bg-slate-900/80 p-1 text-slate-300 transition ${
+                    markdownEntries.length ? 'hover:border-rose-400 hover:text-rose-200' : 'opacity-40 cursor-not-allowed'
+                  }`}
+                  aria-label="Clear explanation cards"
+                >
+                  <Trash2 size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsMarkdownVisible(false)}
+                  className="rounded-full border border-slate-700/70 bg-slate-900/80 p-1 text-slate-300 transition hover:border-rose-400 hover:text-rose-200"
+                  aria-label="Hide explanations panel"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            {!isMarkdownCollapsed && (
+              <>
+                <div className="flex items-center justify-between border-b border-slate-800/70 bg-slate-950/60 px-4 py-2 text-[11px] text-slate-400">
+                  <span>{latestMarkdownTimestamp ? `Last update • ${latestMarkdownTimestamp}` : 'Live feed idle'}</span>
+                  <span>{markdownStepCount} step{markdownStepCount === 1 ? '' : 's'}</span>
+                </div>
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                  {markdownEntries.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-700/80 bg-slate-900/70 px-4 py-8 text-center text-sm text-slate-400">
+                      When Gemini explains something, it will land here with full Markdown + LaTeX support.
+                    </div>
+                  ) : (
+                    markdownEntries.map(entry => (
+                      <div key={entry.id} className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-inner">
+                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-400">
+                          <span className="text-slate-100">{entry.title}</span>
+                          <span>{formatDocumentTimestamp(entry.createdAt)}</span>
+                        </div>
+                        <div className="space-y-2">
+                          {entry.steps.map((step, stepIndex) => (
+                            <div key={`${entry.id}-step-${stepIndex}`} className="rounded-2xl border border-slate-800/50 bg-slate-950/60 p-3">
+                              <ReactMarkdown
+                                remarkPlugins={markdownRemarkPlugins}
+                                rehypePlugins={markdownRehypePlugins}
+                                components={markdownComponents}
+                              >
+                                {step}
+                              </ReactMarkdown>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="absolute bottom-2 right-3 h-4 w-4 cursor-se-resize rounded-full border border-slate-600/70 bg-slate-800/80 opacity-0 transition group-hover:opacity-100"
+                  onMouseDown={handleMarkdownResizeStart}
+                  aria-label="Resize explanations panel"
+                />
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!isMarkdownVisible && markdownEntries.length > 0 && (
+        <button
+          type="button"
+          className="absolute bottom-8 left-8 z-20 inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/80 px-4 py-2 text-sm font-semibold text-slate-100 shadow-lg backdrop-blur hover:border-sky-400 hover:text-white"
+          onClick={() => {
+            setIsMarkdownVisible(true);
+            setIsMarkdownCollapsed(false);
+          }}
+        >
+          <ListOrdered size={14} />
+          View Explanations
+        </button>
       )}
 
       {/* Text Input Overlay */}

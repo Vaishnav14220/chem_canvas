@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import GeminiLiveAudioVisualizer from './GeminiLiveAudioVisualizer';
 import GeminiLiveMessageList from './GeminiLiveMessageList';
 import GeminiLiveVisualization from './GeminiLiveVisualization';
 import GeminiLiveChatInterface from './GeminiLiveChatInterface';
 import GeminiLivePDFViewer from './GeminiLivePDFViewer';
-import { useGeminiLive as GeminiLiveUseGeminiLive } from './hooks/useGeminiLive';
-import { ConnectionState, SupportedLanguage, VoiceType, ConceptImageRecord, LearningCanvasImage } from './types';
+import { useGeminiLive } from './hooks/useGeminiLive';
+import { ConnectionState, SupportedLanguage, VoiceType, ConceptImageRecord, LearningCanvasImage, ChatMode, ChatMessage } from './types';
+import { chatHistoryService, ChatSession } from '../../services/chatHistoryService';
 import {
   Mic,
   Loader2,
@@ -19,7 +20,15 @@ import {
   ChevronLeft,
   BookOpen,
   Bot,
-  Waves
+  Waves,
+  MessageSquare,
+  Menu,
+  Plus,
+  History,
+  HelpCircle,
+  Settings,
+  Activity,
+  X
 } from 'lucide-react';
 import GeminiLiveConceptGallery from './GeminiLiveConceptGallery';
 import GeminiLiveImageLightbox from './GeminiLiveImageLightbox';
@@ -28,7 +37,6 @@ import GeminiLivePortalIcon from './GeminiLivePortalIcon';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 
 type AppTab = 'VOICE' | 'TEXT';
@@ -36,9 +44,10 @@ type AppTab = 'VOICE' | 'TEXT';
 interface GeminiLiveWorkspaceProps {
   onClose: () => void;
   apiKey: string;
+  geminiLiveState: ReturnType<typeof useGeminiLive>;
 }
 
-const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiKey }) => {
+const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiKey, geminiLiveState }) => {
   const {
     connect,
     disconnect,
@@ -56,15 +65,81 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
     setPdfContent,
     highlightedPDFText,
     setHighlightedPDFText,
+    setRequestCanvasSnapshot,
+    captureAndSendSnapshot,
     isListening,
     isSpeaking
-  } = GeminiLiveUseGeminiLive(apiKey);
+  } = geminiLiveState;
 
-  const [activeTab, setActiveTab] = useState<AppTab>('VOICE');
+  const [activeTab, setActiveTab] = useState<AppTab>('TEXT');
   const [isPDFViewerOpen, setIsPDFViewerOpen] = useState(false);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [currentPDFPageText, setCurrentPDFPageText] = useState<string>('');
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatMode, setChatMode] = useState<ChatMode>(() => {
+    return (localStorage.getItem('gemini_live_chat_mode') as ChatMode) || 'FAST';
+  });
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Persist chat mode when it changes
+  useEffect(() => {
+    localStorage.setItem('gemini_live_chat_mode', chatMode);
+  }, [chatMode]);
+
+  // Load chat history on mount
+  useEffect(() => {
+    setChatHistory(chatHistoryService.getAllSessions());
+  }, []);
+
+  // Initialize new chat if needed or when explicitly requested
+  const initializeNewChat = useCallback(() => {
+    const newSession = chatHistoryService.createNewSession();
+    setCurrentSessionId(newSession.id);
+    setChatMessages([]);
+    setActiveTab('TEXT');
+    // Don't save yet, wait for first message
+  }, []);
+
+  // Auto-initialize first chat if history is empty or just as a default state
+  useEffect(() => {
+    if (!currentSessionId && chatHistory.length === 0) {
+      initializeNewChat();
+    }
+  }, [currentSessionId, chatHistory.length, initializeNewChat]);
+
+  // Handle messages change to persist chat
+  const handleMessagesChange = useCallback((newMessages: ChatMessage[]) => {
+    setChatMessages(newMessages);
+    
+    if (newMessages.length > 0 && currentSessionId) {
+      // Find current session title or generate a new one
+      const currentSession = chatHistoryService.getSession(currentSessionId);
+      const title = currentSession ? currentSession.title : chatHistoryService.generateTitle(newMessages[0].text);
+
+      const sessionToSave: ChatSession = {
+        id: currentSessionId,
+        title,
+        updatedAt: Date.now(),
+        preview: newMessages[newMessages.length - 1].text.slice(0, 60),
+        messages: newMessages
+      };
+      chatHistoryService.saveSession(sessionToSave);
+      setChatHistory(chatHistoryService.getAllSessions());
+    }
+  }, [currentSessionId]); // Removed chatHistory dependency to fix ReferenceError
+
+  // Load a session from history
+  const loadSession = useCallback((sessionId: string) => {
+    const session = chatHistoryService.getSession(sessionId);
+    if (session) {
+      setCurrentSessionId(session.id);
+      setChatMessages(session.messages);
+      setActiveTab('TEXT');
+    }
+  }, []);
 
   useEffect(() => {
     if (currentPDFPageText && currentPDFPageText.trim().length > 0) {
@@ -106,6 +181,16 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
     } else {
       connect();
     }
+  };
+
+  const handleStartVoiceSession = () => {
+    setActiveTab('VOICE');
+    connect();
+  };
+
+  const handleEndVoiceSession = () => {
+    disconnect();
+    setActiveTab('TEXT');
   };
 
   const handleGalleryImageSelect = useCallback((image: ConceptImageRecord) => {
@@ -152,173 +237,135 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
     : { label: 'Offline', variant: 'outline' as const };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.16),transparent_35%),radial-gradient(circle_at_20%_20%,rgba(167,139,250,0.12),transparent_30%)]" />
-
-      <div className="relative flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 pb-10 pt-6">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-500/40 bg-gradient-to-br from-cyan-500/20 via-blue-600/10 to-purple-700/20 shadow-lg shadow-cyan-500/30">
-              <BookOpen className="h-6 w-6 text-cyan-200" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs uppercase tracking-[0.3em] text-cyan-300/80">Gemini Live</p>
-              <h1 className="text-2xl font-semibold text-white">ChemTutor Copilot</h1>
-              <p className="text-sm text-slate-400">Real-time voice, visuals, and documents in one cockpit.</p>
-            </div>
+    <div className="fixed inset-0 z-50 flex bg-[#131314] text-slate-100 font-sans">
+      {/* Sidebar */}
+      <div className={`flex flex-col justify-between py-6 px-4 bg-[#1e1f20] transition-all duration-300 ${isSidebarOpen ? 'w-72' : 'w-20'} border-r border-[#28292a]`}>
+        <div className="space-y-6">
+          <div className="flex items-center gap-4 px-2">
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-slate-400 hover:text-slate-200">
+              <Menu size={24} />
+            </button>
+            {isSidebarOpen && <span className="text-xl font-medium text-slate-200">Gemini</span>}
           </div>
+          
+          <button 
+            className={`flex items-center gap-3 px-4 py-3 rounded-full bg-[#28292a] text-slate-200 hover:bg-[#333537] transition-colors ${!isSidebarOpen ? 'justify-center px-0 w-12 h-12' : ''}`}
+            onClick={initializeNewChat}
+          >
+            <Plus size={20} className="text-slate-300" />
+            {isSidebarOpen && <span className="text-sm font-medium">New Chat</span>}
+          </button>
 
+          {isSidebarOpen && (
+            <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
+              <p className="px-4 text-xs font-medium text-slate-400 sticky top-0 bg-[#1e1f20] py-1">Recent</p>
+              {chatHistory.map(session => (
+                <div 
+                  key={session.id}
+                  onClick={() => loadSession(session.id)}
+                  className={`px-4 py-2 text-sm text-slate-300 hover:bg-[#28292a] rounded-full cursor-pointer truncate transition-colors ${currentSessionId === session.id ? 'bg-[#28292a] text-white' : ''}`}
+                  title={session.title}
+                >
+                  {session.title}
+                </div>
+              ))}
+              {chatHistory.length === 0 && (
+                <div className="px-4 py-2 text-xs text-slate-500 italic">
+                  No history yet
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <button className={`flex items-center gap-3 px-4 py-2 rounded-full hover:bg-[#28292a] text-slate-300 transition-colors ${!isSidebarOpen ? 'justify-center' : ''}`}>
+            <HelpCircle size={20} />
+            {isSidebarOpen && <span className="text-sm">Help</span>}
+          </button>
+          <button className={`flex items-center gap-3 px-4 py-2 rounded-full hover:bg-[#28292a] text-slate-300 transition-colors ${!isSidebarOpen ? 'justify-center' : ''}`}>
+            <Activity size={20} />
+            {isSidebarOpen && <span className="text-sm">Activity</span>}
+          </button>
+          <button className={`flex items-center gap-3 px-4 py-2 rounded-full hover:bg-[#28292a] text-slate-300 transition-colors ${!isSidebarOpen ? 'justify-center' : ''}`}>
+            <Settings size={20} />
+            {isSidebarOpen && <span className="text-sm">Settings</span>}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-[#131314]">
+        <header className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
-            <Badge variant={connectionBadge.variant}>
-              <span className="h-2 w-2 rounded-full bg-current opacity-80" />
-              {connectionBadge.label}
-            </Badge>
-            <Button variant="ghost" size="icon" aria-label="Close workspace" onClick={onClose}>
-              ✕
-            </Button>
+            <span className="text-lg font-medium text-slate-200">{activeTab === 'VOICE' ? 'Gemini Live' : 'Gemini'}</span>
+            {isConnected && (
+               <button
+                 onClick={() => captureAndSendSnapshot()}
+                 className="ml-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 text-xs font-medium transition-colors border border-blue-600/30"
+                 title="Share current canvas view with Gemini"
+               >
+                 <ImageIcon size={14} />
+                 Share Canvas
+               </button>
+            )}
+            {activeTab === 'VOICE' && (
+               <Badge variant={connectionBadge.variant} className="ml-2">
+                <span className="h-2 w-2 rounded-full bg-current opacity-80 mr-1.5" />
+                {connectionBadge.label}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            {activeTab === 'VOICE' && (
+               <Button variant="ghost" size="sm" onClick={handleEndVoiceSession} className="text-red-400 hover:text-red-300 hover:bg-red-950/30">
+                 End Session
+               </Button>
+            )}
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-medium shadow-md">
+              D
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-200 ml-2">
+              <X size={20} />
+            </button>
           </div>
         </header>
 
-        <Card className="border-slate-800/70 bg-slate-950/70 rounded-3xl">
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-[220px] space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-slate-400 flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-cyan-300" />
-                  Language
-                </p>
-                <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 shadow-inner">
-                  <select
-                    value={selectedLanguage}
-                    onChange={(e) => setSelectedLanguage(e.target.value as SupportedLanguage)}
-                    disabled={isConnected}
-                    className="w-full bg-transparent text-sm font-medium text-slate-100 outline-none"
-                  >
-                    {Object.entries(LANGUAGES).map(([code, label]) => (
-                      <option key={code} value={code} className="bg-slate-900 text-white">
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="min-w-[240px] space-y-2">
-                <p className="text-[11px] uppercase tracking-wide text-slate-400 flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 text-purple-300" />
-                  Voice
-                </p>
-                <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 shadow-inner">
-                  <select
-                    value={selectedVoice}
-                    onChange={(e) => setSelectedVoice(e.target.value as VoiceType)}
-                    disabled={isConnected}
-                    className="w-full bg-transparent text-sm font-medium text-slate-100 outline-none"
-                  >
-                    {Object.entries(VOICES).map(([voice, label]) => (
-                      <option key={voice} value={voice} className="bg-slate-900 text-white">
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant={isPDFViewerOpen ? 'default' : 'outline'}
-                  size="md"
-                  onClick={() => setIsPDFViewerOpen((open) => !open)}
-                >
-                  <FileText className="h-4 w-4" />
-                  {isPDFViewerOpen ? 'Hide PDF' : 'Open PDF'}
-                </Button>
-
-                <Button
-                  variant={isGalleryOpen ? 'soft' : 'outline'}
-                  size="md"
-                  onClick={() => setIsGalleryOpen((prev) => !prev)}
-                >
-                  <ImageIcon className="h-4 w-4" />
-                  {isGalleryOpen ? 'Hide Visual Memory' : 'Visual Memory'}
-                  <Badge variant="secondary" className="ml-1">
-                    {conceptImages.length}
-                  </Badge>
-                  {isGalleryOpen ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
-                </Button>
-
-                <Button
-                  onClick={handleToggleConnection}
-                  variant={isConnected ? 'outline' : 'default'}
-                  size="md"
-                  className={isConnected ? 'border-red-400/40 text-red-200 hover:bg-red-500/10' : ''}
-                  disabled={isConnecting}
-                >
-                  {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
-                  {isConnecting ? 'Connecting' : isConnected ? 'End Session' : 'Start Session'}
-                </Button>
-              </div>
-
-              <div className="ml-auto flex items-center gap-2 text-xs text-slate-400">
-                <Badge variant="secondary">Docs synced {pdfContent ? '• Ready' : '• Waiting'}</Badge>
-                <Badge variant="secondary">Canvas {simulationState.isActive ? 'running' : 'idle'}</Badge>
-              </div>
-            </div>
-
-            <Separator className="bg-slate-800/80" />
-
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] min-h-0">
-              <div className="space-y-4 min-h-0">
-                <Tabs
-                  value={activeTab}
-                  onValueChange={(val) => setActiveTab(val as AppTab)}
-                  defaultValue="VOICE"
-                  className="space-y-3 min-h-0 flex flex-col"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <TabsList>
-                      <TabsTrigger value="VOICE">
-                        <Waves className="h-4 w-4" />
-                        Live Voice
-                      </TabsTrigger>
-                      {/* Text chat removed per request */}
-                    </TabsList>
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span className="flex items-center gap-1 rounded-full bg-slate-900/70 px-3 py-1">
-                        <span className={`h-2 w-2 rounded-full ${isSpeaking ? 'bg-rose-400' : isListening ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-                        {isSpeaking ? 'Speaking' : isListening ? 'Listening' : 'Idle'}
-                      </span>
-                      <span className="rounded-full bg-slate-900/70 px-3 py-1">Model · Gemini 2.5</span>
-                    </div>
-                  </div>
-
-                  <TabsContent value="VOICE" className="space-y-4 flex-1 flex flex-col min-h-0">
-                    <div className="grid gap-0 w-full flex-1 min-h-0">
-                      <Card className="border-slate-800/60 bg-gradient-to-br from-slate-950/80 to-slate-900/70 rounded-2xl h-full flex flex-col overflow-hidden">
-                        <CardHeader className="flex flex-row items-center justify-between">
-                          <div>
-                            <CardTitle className="flex items-center gap-2 text-base text-slate-100">
-                              <Sparkles className="h-4 w-4 text-cyan-300" />
-                              {simulationState.isActive ? 'Learning Canvas' : 'Audio Analysis'}
-                            </CardTitle>
-                            <CardDescription className="text-slate-400">
-                              {simulationState.isActive ? 'See how Gemini reasons visually' : 'Live waveform from your mic'}
-                            </CardDescription>
+        <div className="flex-1 overflow-hidden relative">
+          {activeTab === 'TEXT' ? (
+            <GeminiLiveChatInterface 
+              apiKey={apiKey}
+              liveTranscripts={transcripts}
+              onMessagesChange={handleMessagesChange}
+              onModeChange={setChatMode}
+              initialMessages={chatMessages}
+              initialMode={chatMode}
+              onStartVoiceSession={handleStartVoiceSession}
+              key={currentSessionId} // Re-mount when switching sessions to reset internal state if needed, though we pass initialMessages
+            />
+          ) : (
+            <div className="h-full flex flex-col p-6 gap-6 animate-in fade-in duration-300">
+               {/* Voice Mode Layout */}
+               <div className="grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] flex-1 min-h-0">
+                  <div className="flex flex-col gap-4">
+                    <Card className="border-slate-800/60 bg-gradient-to-br from-slate-900 to-slate-900/50 flex-1 border-none shadow-2xl ring-1 ring-white/10">
+                      <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="flex items-center gap-2 text-base text-slate-100">
+                          <Sparkles className="h-4 w-4 text-cyan-300" />
+                          {simulationState.isActive ? 'Learning Canvas' : 'Audio Visualizer'}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0 h-full min-h-[400px] relative">
+                        {simulationState.isActive ? (
+                          <GeminiLiveVisualization visualizationState={simulationState} onExpandImage={handleCanvasImageExpand} />
+                        ) : (
+                          <div className="h-full w-full rounded-b-xl overflow-hidden">
+                            <GeminiLiveAudioVisualizer analyser={analyser} isConnected={isConnected} isSpeaking={isSpeaking} />
                           </div>
-                        </CardHeader>
-                        <CardContent className="p-0 h-full min-h-[360px]">
-                          {simulationState.isActive ? (
-                            <GeminiLiveVisualization visualizationState={simulationState} onExpandImage={handleCanvasImageExpand} />
-                          ) : (
-                            <div className="h-full rounded-b-2xl border-t border-slate-800/60 bg-slate-950">
-                              <GeminiLiveAudioVisualizer analyser={analyser} isConnected={isConnected} isSpeaking={isSpeaking} />
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </div>
-
+                        )}
+                      </CardContent>
+                    </Card>
+                    
                     <GeminiLiveVoiceStatus
                       isListening={isListening}
                       isSpeaking={isSpeaking}
@@ -328,78 +375,27 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                       isButtonDisabled={false}
                       error={error}
                     />
+                  </div>
 
-                    <Card className="border-slate-800/60 bg-slate-950/70">
-                      <CardContent className="grid gap-3 md:grid-cols-2">
-                        <div className="rounded-xl border border-slate-800/60 bg-slate-900/70 p-4">
-                          <p className="text-xs font-semibold text-slate-200">Ask with examples</p>
-                          <p className="mt-1 text-sm text-slate-400">
-                            “Walk me through the mechanism on page 3” · “Show a molecular sketch for this step”
-                          </p>
-                        </div>
-                        <div className="rounded-xl border border-slate-800/60 bg-slate-900/70 p-4">
-                          <p className="text-xs font-semibold text-slate-200">Upload PDFs</p>
-                          <p className="mt-1 text-sm text-slate-400">
-                            Upload a paper to keep the canvas and answers grounded to highlighted spans.
-                          </p>
-                        </div>
+                  <div className="flex flex-col gap-4 h-full overflow-hidden">
+                    <Card className="flex-1 flex flex-col border-slate-800/60 bg-slate-900/50 border-none shadow-xl ring-1 ring-white/10 overflow-hidden">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-sm text-slate-200">
+                          <MessageCircle className="h-4 w-4 text-cyan-300" />
+                          Live Transcript
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex-1 p-0 overflow-hidden">
+                        <GeminiLiveMessageList transcripts={transcripts} />
                       </CardContent>
                     </Card>
-                  </TabsContent>
-                </Tabs>
-              </div>
-
-              <div className="space-y-4 min-h-0">
-                <Card className="flex h-[calc(100vh-260px)] min-h-[520px] flex-col border-slate-800/60 bg-slate-950/70 overflow-hidden">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2 text-base text-slate-100">
-                        <MessageCircle className="h-4 w-4 text-cyan-300" />
-                        Live Conversation
-                      </CardTitle>
-                      <CardDescription className="text-slate-400">
-                        Transcript of the ongoing voice session in chronological order
-                      </CardDescription>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
-                    <GeminiLiveMessageList transcripts={transcripts} />
-                  </CardContent>
-                </Card>
-
-                {isGalleryOpen && (
-                  <Card className="border-slate-800/60 bg-slate-950/70">
-                    <CardHeader className="flex flex-row items-center justify-between">
-                      <CardTitle className="flex items-center gap-2 text-base text-slate-100">
-                        <ImageIcon className="h-4 w-4 text-cyan-300" />
-                        Visual Memory
-                      </CardTitle>
-                      <Button variant="ghost" size="sm" onClick={() => setIsGalleryOpen(false)}>
-                        Hide
-                      </Button>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                      <GeminiLiveConceptGallery
-                        images={conceptImages}
-                        onSelectImage={handleGalleryImageSelect}
-                        isOpen={isGalleryOpen}
-                        onToggle={() => setIsGalleryOpen(false)}
-                      />
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
+                  </div>
+               </div>
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
 
         <GeminiLiveImageLightbox image={expandedImage} onClose={handleCloseLightbox} />
-
-        {(connectionState === ConnectionState.CONNECTED || connectionState === ConnectionState.CONNECTING) && (
-          <div className="fixed left-6 bottom-24 z-40">
-            <GeminiLivePortalIcon isActive />
-          </div>
-        )}
 
         {!isPDFViewerOpen && (
           <GeminiLivePDFViewer
@@ -412,12 +408,7 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
             embedded={false}
           />
         )}
-
-        <footer className="text-center text-xs text-slate-500">
-          ChemTutor AI • Powered by Google Gemini 2.5 • Advanced Chemistry Tutoring
-        </footer>
       </div>
-    </div>
     </div>
   );
 };

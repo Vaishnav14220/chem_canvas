@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from '@google/genai';
+import type { CanvasMoleculePlacementRequest, CanvasProteinPlacementRequest, CanvasReactionPlacementRequest } from '../../Canvas';
 import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLanguage, VoiceType, VisualizationState, LearningCanvasParams, DerivationStep, LearningCanvasImage, ConceptImageRecord } from '../types';
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
@@ -30,6 +31,12 @@ interface ConceptImageToolArgs {
   medium?: string;
 }
 
+interface CanvasMoleculeToolArgs extends CanvasMoleculePlacementRequest {}
+
+interface CanvasProteinToolArgs extends CanvasProteinPlacementRequest {}
+
+interface CanvasReactionToolArgs extends CanvasReactionPlacementRequest {}
+
 const THEORETICAL_KEYWORDS = [
   'math', 'algebra', 'calculus', 'geometry', 'equation', 'proof', 'theorem', 'derivation',
   'physics', 'chemistry', 'reaction', 'thermodynamics', 'quantum', 'formula', 'analysis',
@@ -43,6 +50,54 @@ const ENGINEERING_KEYWORDS = [
 ];
 
 const QUALITY_NOTE = 'Render at crisp 2K resolution suitable for classroom projection with legible labels.';
+const MAX_CANVAS_TEXT_LENGTH = 1200;
+const DEFAULT_AUTO_CANVAS_HEADING = 'Gemini Live Response';
+
+const CANVAS_OBJECT_KEYWORDS = ['canvas', 'drawing', 'sketch', 'whiteboard', 'diagram', 'board', 'picture', 'screen', 'workspace', 'surface'];
+const CANVAS_INTENT_KEYWORDS = ['look', 'see', 'check', 'analyze', 'analyser', 'analyze', 'inspect', 'review', 'describe', 'explain'];
+const CANVAS_WRITE_ACTION_KEYWORDS = ['write', 'put', 'place', 'draw', 'add', 'bring', 'show', 'display', 'render'];
+const CANVAS_WRITE_TARGET_KEYWORDS = ['answer', 'solution', 'steps', 'work', 'derivation', 'calculation', 'result', 'explanation'];
+const CANVAS_EXAMPLE_KEYWORDS = ['example', 'examples', 'sample', 'practice', 'similar'];
+const CANVAS_WRITE_OVERRIDE_PHRASES: Array<{ phrase: string; reason: 'answer' | 'example' }> = [
+  { phrase: 'write the answer', reason: 'answer' },
+  { phrase: 'write answer', reason: 'answer' },
+  { phrase: 'put the answer', reason: 'answer' },
+  { phrase: 'bring more similar example', reason: 'example' },
+  { phrase: 'bring a similar example', reason: 'example' },
+  { phrase: 'more similar example', reason: 'example' }
+];
+
+const shouldAutoShareCanvas = (text: string): boolean => {
+  if (!text) return false;
+  const normalized = text.toLowerCase();
+  const mentionsCanvas = CANVAS_OBJECT_KEYWORDS.some(keyword => normalized.includes(keyword));
+  if (!mentionsCanvas) return false;
+  return CANVAS_INTENT_KEYWORDS.some(keyword => normalized.includes(keyword));
+};
+
+const detectCanvasWriteIntent = (text: string): 'answer' | 'example' | null => {
+  if (!text) return null;
+  const normalized = text.toLowerCase();
+  const override = CANVAS_WRITE_OVERRIDE_PHRASES.find(entry => normalized.includes(entry.phrase));
+  if (override) {
+    return override.reason;
+  }
+  const mentionsSurface = CANVAS_OBJECT_KEYWORDS.some(keyword => normalized.includes(keyword));
+  if (!mentionsSurface) {
+    return null;
+  }
+  const mentionsAction = CANVAS_WRITE_ACTION_KEYWORDS.some(keyword => normalized.includes(keyword));
+  if (!mentionsAction) {
+    return null;
+  }
+  if (CANVAS_EXAMPLE_KEYWORDS.some(keyword => normalized.includes(keyword))) {
+    return 'example';
+  }
+  if (CANVAS_WRITE_TARGET_KEYWORDS.some(keyword => normalized.includes(keyword))) {
+    return 'answer';
+  }
+  return null;
+};
 
 const normalizeConceptArgs = (rawArgs: ConceptImageToolArgs): ConceptImageToolArgs => ({
   ...rawArgs,
@@ -138,6 +193,16 @@ INTERACTIVE VISUALIZATION TOOLS - USE THESE FREQUENTLY TO ENHANCE LEARNING:
    When to use: Whenever you reference or explain a specific part of the current PDF page
    Extract and pass the exact text from the PDF that you are discussing
    This helps students visually track what you're explaining in the document
+
+5. 'analyze_canvas_drawing' - Use this when the student asks about what they have drawn or written on the canvas.
+   When to use: "What is this molecule?", "Check my equation", "Is this correct?", "I drew something, can you see it?", "Look at my drawing"
+   This tool will capture a screenshot of the canvas and send it to you for analysis.
+
+6. 'write_on_canvas' - Use this when the student asks you to write the answer, show the solution, or add similar examples directly onto the drawing canvas.
+  Provide the exact text you want to appear (and an optional heading) so the interface can render your response where the student is working.
+7. 'place_molecule_on_canvas' - Use this the moment the student says "bring/add/show this molecule/reagent on the board". Provide SMILES, CID, or a name so the exact molecule shows up where they can see it.
+8. 'place_protein_on_canvas' - Call this when they ask for a protein/structure (PDB or AlphaFold) to appear on the canvas. Always send the PDB ID plus any helpful label.
+9. 'place_reaction_on_canvas' - Use for reaction schemes or mechanisms the student wants rendered on the canvas. Supply the reaction SMILES plus a short title/description.
    
 MANDATORY: For EVERY student question, AUTOMATICALLY call 'show_learning_canvas' to provide visual step-by-step explanations:
 - Use it for ALL subjects: math (with LaTeX equations), science (reactions, processes), humanities (analysis, timelines), coding (algorithms), etc.
@@ -439,6 +504,140 @@ const conceptImageTool: FunctionDeclaration = {
   }
 };
 
+const canvasSnapshotTool: FunctionDeclaration = {
+  name: 'analyze_canvas_drawing',
+  description: 'Capture and analyze what is currently drawn on the whiteboard/canvas. Use this when the student asks "what is this?", "check my work", "does this look right?", or asks questions about their drawing.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      question: {
+        type: Type.STRING,
+        description: 'The specific question or aspect to analyze about the drawing (e.g., "Is this benzene ring correct?", "What functional group is this?").'
+      }
+    },
+    required: ['question']
+  }
+};
+
+const canvasWriteTool: FunctionDeclaration = {
+  name: 'write_on_canvas',
+  description: 'Write solutions, worked steps, or additional examples directly on the shared student canvas when they request to see answers or examples there.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      text: {
+        type: Type.STRING,
+        description: 'The text to render on the canvas. Include the full answer or example content.'
+      },
+      heading: {
+        type: Type.STRING,
+        description: 'Optional short title to prepend before the text (e.g., "Solution" or "Similar Example").'
+      }
+    },
+    required: ['text']
+  }
+};
+
+const canvasMoleculeTool: FunctionDeclaration = {
+  name: 'place_molecule_on_canvas',
+  description: 'Insert a requested molecule, reagent, or compound directly onto the shared canvas so the student can see it visually.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      name: {
+        type: Type.STRING,
+        description: 'Common or IUPAC name to label under the molecule.'
+      },
+      smiles: {
+        type: Type.STRING,
+        description: 'SMILES string for the molecule (preferred when known).'
+      },
+      cid: {
+        type: Type.STRING,
+        description: 'PubChem CID identifier. Provide either CID, SMILES, or a name.'
+      },
+      displayLabel: {
+        type: Type.STRING,
+        description: 'Short custom label to show beneath the molecule graphic.'
+      },
+      role: {
+        type: Type.STRING,
+        description: 'Optional role indicator (reactant, reagent, catalyst, product, etc.).'
+      },
+      notes: {
+        type: Type.STRING,
+        description: 'Optional context sentence about why the molecule is being shown.'
+      }
+    }
+  }
+};
+
+const canvasProteinTool: FunctionDeclaration = {
+  name: 'place_protein_on_canvas',
+  description: 'Place a protein (PDB or AlphaFold structure) on the canvas when the student wants to visualize it.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      entryId: {
+        type: Type.STRING,
+        description: 'PDB ID or AlphaFold accession (e.g., 1CRN, 6LU7, AF-Q5VSL9).'
+      },
+      title: {
+        type: Type.STRING,
+        description: 'Short title or protein name to display.'
+      },
+      description: {
+        type: Type.STRING,
+        description: 'Optional description or function summary.'
+      },
+      organism: {
+        type: Type.STRING,
+        description: 'Organism/source of the protein.'
+      },
+      method: {
+        type: Type.STRING,
+        description: 'Experimental method (e.g., X-RAY DIFFRACTION, AlphaFold).'
+      },
+      depositionDate: {
+        type: Type.STRING,
+        description: 'Deposition or release date, if relevant.'
+      },
+      displayName: {
+        type: Type.STRING,
+        description: 'Custom label to show on the canvas.'
+      }
+    },
+    required: ['entryId']
+  }
+};
+
+const canvasReactionTool: FunctionDeclaration = {
+  name: 'place_reaction_on_canvas',
+  description: 'Render a reaction scheme (using reaction SMILES) directly on the canvas whenever the student asks to “bring” or “show” a reaction there.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      reactionSmiles: {
+        type: Type.STRING,
+        description: 'Reaction SMILES in the Reactants>Agents>Products format.'
+      },
+      title: {
+        type: Type.STRING,
+        description: 'Optional reaction title (e.g., Aldol Condensation).' 
+      },
+      description: {
+        type: Type.STRING,
+        description: 'Optional description or mechanism summary.'
+      },
+      includeSdf: {
+        type: Type.BOOLEAN,
+        description: 'Set true to request 3D structures for the participants when available.'
+      }
+    },
+    required: ['reactionSmiles']
+  }
+};
+
 const buildConceptImagePrompt = (args: ConceptImageToolArgs, contextualNote?: string): string => {
   const concept = args.concept?.trim() || args.topic?.trim() || 'the requested concept';
   const parts = [
@@ -486,6 +685,163 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const [pdfContent, setPdfContent] = useState<string>('');
   const [highlightedPDFText, setHighlightedPDFText] = useState<string>('');
   
+  // Canvas context hook
+  const requestCanvasSnapshotRef = useRef<(() => Promise<string | null>) | null>(null);
+  const setRequestCanvasSnapshot = useCallback((handler: () => Promise<string | null>) => {
+    requestCanvasSnapshotRef.current = handler;
+  }, []);
+
+  const setCanvasTextInsertionHandler = useCallback((handler: (text: string) => void) => {
+    canvasTextInsertionHandlerRef.current = handler;
+  }, []);
+
+  const setCanvasMarkdownInsertionHandler = useCallback((handler: (payload: { text: string; heading?: string }) => void) => {
+    canvasMarkdownInsertionHandlerRef.current = handler;
+  }, []);
+
+  const setCanvasMoleculeInsertionHandler = useCallback((handler: (payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) => {
+    canvasMoleculeInsertionHandlerRef.current = handler;
+  }, []);
+
+  const setCanvasProteinInsertionHandler = useCallback((handler: (payload: CanvasProteinPlacementRequest) => Promise<boolean> | boolean) => {
+    canvasProteinInsertionHandlerRef.current = handler;
+  }, []);
+
+  const setCanvasReactionInsertionHandler = useCallback((handler: (payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) => {
+    canvasReactionInsertionHandlerRef.current = handler;
+  }, []);
+
+  const setCanvasSurfaceActive = useCallback((isActive: boolean) => {
+    canvasSurfaceActiveRef.current = isActive;
+  }, []);
+
+  const captureAndSendSnapshot = useCallback(async (message?: string) => {
+    if (!requestCanvasSnapshotRef.current) {
+      console.warn('No canvas snapshot handler registered');
+      return;
+    }
+    
+    try {
+      const imageDataUrl = await requestCanvasSnapshotRef.current();
+      if (!imageDataUrl) {
+        console.error('Failed to capture canvas snapshot: Empty result');
+        return;
+      }
+
+      if (!sessionPromiseRef.current) {
+        console.warn('No active Gemini Live session; cannot share canvas');
+        return;
+      }
+      
+      const session = await sessionPromiseRef.current;
+      if (!session) {
+        console.warn('Gemini Live session not resolved; aborting canvas share');
+        return;
+      }
+
+      const base64Data = imageDataUrl.split(',')[1];
+      const userMessage = message || "I'm sharing my canvas drawing with you. Please analyze it.";
+
+      console.log('Sending canvas snapshot to Gemini Live (bytes:', base64Data?.length || 0, ')');
+
+      await session.sendRealtimeInput({ media: { mimeType: 'image/jpeg', data: base64Data } });
+      await session.sendRealtimeInput({ text: userMessage });
+
+      console.log('Canvas snapshot sent successfully');
+    } catch (e) {
+      console.error("Failed to capture/send snapshot", e);
+    }
+  }, []);
+
+  const triggerAutoShareCanvas = useCallback((userText: string) => {
+    if (!userText || !shouldAutoShareCanvas(userText)) {
+      return;
+    }
+
+    const normalized = userText.trim();
+    if (!normalized) {
+      return;
+    }
+
+    const now = Date.now();
+    if (
+      normalized === lastAutoShareRef.current.text &&
+      now - lastAutoShareRef.current.timestamp < 4000
+    ) {
+      return;
+    }
+
+    lastAutoShareRef.current = { text: normalized, timestamp: now };
+    console.log('Auto-sharing canvas snapshot based on user request');
+    void captureAndSendSnapshot(normalized);
+  }, [captureAndSendSnapshot]);
+
+  const scheduleCanvasWriteFromUser = useCallback((userText: string) => {
+    if (!userText) {
+      return;
+    }
+    const intent = detectCanvasWriteIntent(userText);
+    if (!intent) {
+      return;
+    }
+    pendingCanvasWriteRef.current = { reason: intent, requestedAt: Date.now() };
+    console.log('Scheduled canvas text insertion for intent:', intent);
+  }, []);
+
+  const pushTextToCanvas = useCallback((text: string, heading?: string) => {
+    const sanitized = text?.toString().replace(/\n{3,}/g, '\n\n').trim();
+    if (!sanitized) {
+      return false;
+    }
+
+    const clipped = sanitized.slice(0, MAX_CANVAS_TEXT_LENGTH);
+    const trimmedHeading = heading?.trim();
+
+    if (canvasMarkdownInsertionHandlerRef.current) {
+      canvasMarkdownInsertionHandlerRef.current({ text: clipped, heading: trimmedHeading });
+      return true;
+    }
+
+    if (!canvasTextInsertionHandlerRef.current) {
+      console.warn('Canvas text handler not registered');
+      return false;
+    }
+
+    const finalText = trimmedHeading ? `${trimmedHeading}\n\n${clipped}` : clipped;
+    canvasTextInsertionHandlerRef.current(finalText);
+    return true;
+  }, []);
+
+  const placeMoleculeOnCanvas = useCallback(async (payload: CanvasMoleculePlacementRequest) => {
+    if (!canvasMoleculeInsertionHandlerRef.current) {
+      throw new Error('Canvas molecule handler is not available right now.');
+    }
+    const success = await canvasMoleculeInsertionHandlerRef.current(payload);
+    if (!success) {
+      throw new Error('Unable to place that molecule on the canvas.');
+    }
+  }, []);
+
+  const placeProteinOnCanvas = useCallback(async (payload: CanvasProteinPlacementRequest) => {
+    if (!canvasProteinInsertionHandlerRef.current) {
+      throw new Error('Canvas protein handler is not available right now.');
+    }
+    const success = await canvasProteinInsertionHandlerRef.current(payload);
+    if (!success) {
+      throw new Error('Unable to place that protein structure on the canvas.');
+    }
+  }, []);
+
+  const placeReactionOnCanvas = useCallback(async (payload: CanvasReactionPlacementRequest) => {
+    if (!canvasReactionInsertionHandlerRef.current) {
+      throw new Error('Canvas reaction handler is not available right now.');
+    }
+    const success = await canvasReactionInsertionHandlerRef.current(payload);
+    if (!success) {
+      throw new Error('Unable to render that reaction on the canvas.');
+    }
+  }, []);
+
   // Audio Contexts and Nodes
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -504,6 +860,15 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
   const aiInstanceRef = useRef<GoogleGenAI | null>(null);
   const currentImageRequestIdRef = useRef<string | null>(null);
+  const canvasTextInsertionHandlerRef = useRef<((text: string) => void) | null>(null);
+  const canvasMarkdownInsertionHandlerRef = useRef<((payload: { text: string; heading?: string }) => void) | null>(null);
+  const canvasMoleculeInsertionHandlerRef = useRef<((payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) | null>(null);
+  const canvasProteinInsertionHandlerRef = useRef<((payload: CanvasProteinPlacementRequest) => Promise<boolean> | boolean) | null>(null);
+  const canvasReactionInsertionHandlerRef = useRef<((payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) | null>(null);
+  const pendingCanvasWriteRef = useRef<{ reason: 'answer' | 'example'; requestedAt: number } | null>(null);
+  const lastAutoShareRef = useRef<{ text: string; timestamp: number }>({ text: '', timestamp: 0 });
+  const canvasSurfaceActiveRef = useRef(false);
+  const canvasWritePerformedThisTurnRef = useRef(false);
   
   // Current transcript text buffers
   const currentInputRef = useRef<string>('');
@@ -972,7 +1337,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
           systemInstruction: getSystemInstruction(selectedLanguage, pdfContent),
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          tools: [{ functionDeclarations: [simulationTool, molecule3DTool, learningCanvasTool, pdfHighlightTool, conceptImageTool] }]
+          tools: [{ functionDeclarations: [simulationTool, molecule3DTool, learningCanvasTool, pdfHighlightTool, conceptImageTool, canvasSnapshotTool, canvasWriteTool, canvasMoleculeTool, canvasProteinTool, canvasReactionTool] }]
         },
         callbacks: {
           onopen: () => {
@@ -984,6 +1349,15 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 sendPdfContextToAI();
               }, 100);
             }
+
+            // Send initial greeting prompt
+            setTimeout(() => {
+              sessionPromiseRef.current?.then(session => {
+                session.sendRealtimeInput({
+                  text: "The user has just connected. Please greet them warmly and ask 'How can I help you today?'"
+                });
+              });
+            }, 500);
             
             // Start Audio Input Streaming
             if (!inputContextRef.current || !streamRef.current) return;
@@ -1145,6 +1519,117 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                         name: fc.name,
                         response: { result: `PDF section highlighted: "${text.substring(0, 50)}..."` }
                       };
+                    } else if (fc.name === 'analyze_canvas_drawing') {
+                      const { question } = fc.args as any;
+                      
+                      try {
+                        if (!requestCanvasSnapshotRef.current) {
+                          throw new Error('Canvas snapshot capability not available.');
+                        }
+                        
+                        const imageDataUrl = await requestCanvasSnapshotRef.current();
+                        if (!imageDataUrl) {
+                          throw new Error('Failed to capture canvas image.');
+                        }
+                        
+                        console.log('Tool: analyze_canvas_drawing - Image captured, length:', imageDataUrl.length);
+
+                        // Send the image as a user message with context
+                        // Note: We send this as a separate input to ensure the model processes the image
+                        // The tool response just confirms we did it.
+                        setTimeout(() => {
+                          const base64Data = imageDataUrl.split(',')[1];
+                          const textPrompt = `Here is the snapshot of my canvas drawing. ${question || 'Please analyze it.'}`;
+                          console.log('Tool: Sending image to Live API...');
+                          session.sendRealtimeInput({ media: { mimeType: 'image/jpeg', data: base64Data } })
+                            .then(() => session.sendRealtimeInput({ text: textPrompt }))
+                            .catch(err => console.error('Failed to send canvas snapshot via tool call', err));
+                        }, 200);
+
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { result: 'Canvas snapshot captured and sent. Please analyze the image I just sent.' }
+                        };
+                      } catch (err: any) {
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { error: err.message || 'Failed to analyze canvas.' }
+                        };
+                      }
+                    } else if (fc.name === 'write_on_canvas') {
+                      const { text, heading } = fc.args as any;
+                      if (!text || typeof text !== 'string') {
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { error: 'Text content is required to write on the canvas.' }
+                        };
+                      }
+
+                      const inserted = pushTextToCanvas(text, heading || undefined);
+                      pendingCanvasWriteRef.current = null;
+
+                      if (inserted) {
+                        canvasWritePerformedThisTurnRef.current = true;
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { result: 'Content written on the canvas successfully.' }
+                        };
+                      }
+
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { error: 'Canvas writing is unavailable right now.' }
+                      };
+                    } else if (fc.name === 'place_molecule_on_canvas') {
+                      try {
+                        await placeMoleculeOnCanvas(fc.args as CanvasMoleculeToolArgs);
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { result: 'Molecule placed on the canvas.' }
+                        };
+                      } catch (error: any) {
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { error: error?.message || 'Failed to place molecule on the canvas.' }
+                        };
+                      }
+                    } else if (fc.name === 'place_protein_on_canvas') {
+                      try {
+                        await placeProteinOnCanvas(fc.args as CanvasProteinToolArgs);
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { result: 'Protein placed on the canvas.' }
+                        };
+                      } catch (error: any) {
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { error: error?.message || 'Failed to place protein on the canvas.' }
+                        };
+                      }
+                    } else if (fc.name === 'place_reaction_on_canvas') {
+                      try {
+                        await placeReactionOnCanvas(fc.args as CanvasReactionToolArgs);
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { result: 'Reaction rendered on the canvas.' }
+                        };
+                      } catch (error: any) {
+                        return {
+                          id: fc.id,
+                          name: fc.name,
+                          response: { error: error?.message || 'Failed to render reaction on the canvas.' }
+                        };
+                      }
                     }
                     return {
                       id: fc.id,
@@ -1209,7 +1694,12 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 // Mark current messages as complete
                 if (currentUserIdRef.current) {
                     const id = currentUserIdRef.current;
+                    const userTurnText = currentInputRef.current;
                     setTranscripts(prev => prev.map(m => m.id === id ? { ...m, isComplete: true } : m));
+                    if (userTurnText) {
+                      triggerAutoShareCanvas(userTurnText);
+                      scheduleCanvasWriteFromUser(userTurnText);
+                    }
                     currentUserIdRef.current = null;
                 }
                 if (currentModelIdRef.current) {
@@ -1225,10 +1715,35 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                   }
 
                   learningCanvasUpdatedThisTurnRef.current = false;
+
+                  const trimmedResponse = completedText.trim();
+                  const pendingWrite = pendingCanvasWriteRef.current;
+                  if (pendingWrite && trimmedResponse.length > 0) {
+                    const heading = pendingWrite.reason === 'answer' ? 'Solution' : 'Similar Example';
+                    const inserted = pushTextToCanvas(trimmedResponse, heading);
+                    if (inserted) {
+                      canvasWritePerformedThisTurnRef.current = true;
+                    } else {
+                      console.warn('Failed to push assistant response to canvas despite user request');
+                    }
+                    pendingCanvasWriteRef.current = null;
+                  } else if (
+                    trimmedResponse.length > 0 &&
+                    canvasSurfaceActiveRef.current &&
+                    !canvasWritePerformedThisTurnRef.current
+                  ) {
+                    const inserted = pushTextToCanvas(trimmedResponse, DEFAULT_AUTO_CANVAS_HEADING);
+                    if (inserted) {
+                      canvasWritePerformedThisTurnRef.current = true;
+                    } else {
+                      console.warn('Failed to push assistant response to canvas by default');
+                    }
+                  }
                 }
 
                 currentInputRef.current = '';
                 currentOutputRef.current = '';
+                canvasWritePerformedThisTurnRef.current = false;
              }
 
              // Handle Audio Output
@@ -1377,6 +1892,14 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     setPdfContent,
     highlightedPDFText,
     setHighlightedPDFText,
+    setRequestCanvasSnapshot,
+    setCanvasTextInsertionHandler,
+    setCanvasMarkdownInsertionHandler,
+    setCanvasMoleculeInsertionHandler,
+    setCanvasProteinInsertionHandler,
+    setCanvasReactionInsertionHandler,
+    setCanvasSurfaceActive,
+    captureAndSendSnapshot,
     isListening,
     isSpeaking
   };

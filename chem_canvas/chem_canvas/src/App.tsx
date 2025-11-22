@@ -1,7 +1,12 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic } from 'lucide-react';
-import Canvas, { type CanvasCommand } from './components/Canvas';
+import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus } from 'lucide-react';
+import Canvas, {
+  type CanvasCommand,
+  type CanvasMoleculeInsertionHandler,
+  type CanvasProteinInsertionHandler,
+  type CanvasReactionInsertionHandler
+} from './components/Canvas';
 import DocumentEditorCanvas from './components/DocumentEditorCanvas';
 import AIChat from './components/AIChat';
 import LobeChat from './components/LobeChat';
@@ -38,9 +43,13 @@ import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWo
 import SubjectExplorer from './components/SubjectExplorer';
 import GeminiLiveWorkspace from './components/GeminiLive/GeminiLiveWorkspace';
 import EpoxidationLearningExperience from './components/epoxidation/EpoxidationLearningExperience';
+import MessageDockPage from './components/MessageDockPage';
+import { MessageDock, type Character } from './components/ui/message-dock';
 import type { AIInteraction, InteractionMode } from './types';
 import type { IElement } from '@hufe921/canvas-editor';
 import { captureToolClick, captureFeatureEvent, captureApiKey } from './utils/errorLogger';
+import { useGeminiLive } from './components/GeminiLive/hooks/useGeminiLive';
+import { ConnectionState } from './components/GeminiLive/types';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
 • Explain steps clearly and reference relevant controls inside NMRium when appropriate.
@@ -83,6 +92,23 @@ type SourceEntry = {
   channelSubscribers?: number;
 };
 
+type CanvasWorkspace = {
+  id: string;
+  title: string;
+};
+
+type CanvasWorkspaceHandlers = {
+  snapshot?: () => Promise<string | null>;
+  text?: (text: string) => void;
+  markdown?: (payload: { text: string; heading?: string }) => void;
+  molecule?: CanvasMoleculeInsertionHandler;
+  protein?: CanvasProteinInsertionHandler;
+  reaction?: CanvasReactionInsertionHandler;
+};
+
+const INITIAL_WORKSPACE_ID = 'workspace-1';
+const generateWorkspaceId = () => `workspace-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
 const generateSourceId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -90,15 +116,58 @@ const generateSourceId = () =>
 
 const App: React.FC = () => {
   const location = useLocation();
+  const dockCharacters: Character[] = [
+    { emoji: "✨", name: "Sparkle", online: false, backgroundColor: "bg-amber-200", gradientColors: "#fde68a, #fffbeb" },
+    { emoji: "🧙‍♂️", name: "Wizard", online: true, backgroundColor: "bg-emerald-200 dark:bg-emerald-300", gradientColors: "#a7f3d0, #ecfdf5" },
+    { emoji: "🦄", name: "Unicorn", online: true, backgroundColor: "bg-violet-200 dark:bg-violet-300", gradientColors: "#c4b5fd, #f5f3ff" },
+    { emoji: "🐵", name: "Monkey", online: true, backgroundColor: "bg-amber-200 dark:bg-amber-300", gradientColors: "#fde68a, #fffbeb" },
+    { emoji: "🤖", name: "Robot", online: false, backgroundColor: "bg-rose-200 dark:bg-rose-300", gradientColors: "#fecaca, #fef2f2" },
+  ];
 
   if (location.pathname.startsWith('/epoxidation')) {
-    return <EpoxidationLearningExperience />;
+    return (
+      <>
+        <EpoxidationLearningExperience />
+        <MessageDock
+          characters={dockCharacters}
+          onMessageSend={(message, character) => {
+            console.log('Message:', message, 'to', character.name);
+          }}
+          onCharacterSelect={(character) => {
+            console.log('Selected:', character.name);
+          }}
+          expandedWidth={500}
+          placeholder={(name) => `Send a message to ${name}...`}
+          theme="light"
+        />
+      </>
+    );
+  }
+
+  if (location.pathname === '/components/dock/message-dock') {
+    return <MessageDockPage />;
   }
 
   const isArRoute = location.pathname.startsWith('/ar/');
 
   if (isArRoute) {
-    return <ArMobileView />;
+    return (
+      <>
+        <ArMobileView />
+        <MessageDock
+          characters={dockCharacters}
+          onMessageSend={(message, character) => {
+            console.log('Message:', message, 'to', character.name);
+          }}
+          onCharacterSelect={(character) => {
+            console.log('Selected:', character.name);
+          }}
+          expandedWidth={500}
+          placeholder={(name) => `Send a message to ${name}...`}
+          theme="light"
+        />
+      </>
+    );
   }
 
   // Authentication state
@@ -186,6 +255,9 @@ const App: React.FC = () => {
   const [showSubjectExplorer, setShowSubjectExplorer] = useState(false);
   const [showDocumentEditorCanvas, setShowDocumentEditorCanvas] = useState(false);
   const [showGeminiLiveWorkspace, setShowGeminiLiveWorkspace] = useState(false);
+  const [canvasWorkspaces, setCanvasWorkspaces] = useState<CanvasWorkspace[]>(() => [{ id: INITIAL_WORKSPACE_ID, title: 'Workspace 1' }]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(INITIAL_WORKSPACE_ID);
+  const workspaceHandlersRef = useRef<Record<string, CanvasWorkspaceHandlers>>({});
   const currentFeatureRef = useRef<{ id: string; start: number } | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
   
@@ -194,6 +266,124 @@ const App: React.FC = () => {
   const [resizeStartX, setResizeStartX] = useState(0);
   const [resizeStartWidth, setResizeStartWidth] = useState(0);
   const [apiKey, setApiKey] = useState('');
+  
+  // Initialize global Gemini Live state
+  const geminiLiveState = useGeminiLive(apiKey);
+  const {
+    setRequestCanvasSnapshot,
+    setCanvasTextInsertionHandler,
+    setCanvasMarkdownInsertionHandler,
+    setCanvasMoleculeInsertionHandler,
+    setCanvasProteinInsertionHandler,
+    setCanvasReactionInsertionHandler,
+    setCanvasSurfaceActive
+  } = geminiLiveState;
+  const isMainCanvasSurfaceActive =
+    !isMolecularMode &&
+    !showSrlCoachWorkspace &&
+    !showStudyToolsWorkspace &&
+    !showDocumentUnderstandingWorkspace &&
+    !showSubjectExplorer &&
+    !showNmrFullscreen &&
+    !showGeminiLiveWorkspace &&
+    !showDocumentEditorCanvas;
+
+  useEffect(() => {
+    setCanvasSurfaceActive(isMainCanvasSurfaceActive);
+  }, [setCanvasSurfaceActive, isMainCanvasSurfaceActive]);
+
+  const noopSnapshotHandler = useCallback(async () => null, []);
+  const noopTextHandler = useCallback(() => {}, []);
+  const noopMarkdownHandler = useCallback(() => {}, []);
+  const noopMoleculeHandler = useCallback(async () => false, []);
+  const noopProteinHandler = useCallback(async () => false, []);
+  const noopReactionHandler = useCallback(async () => false, []);
+
+  const updateGeminiHandlers = useCallback(() => {
+    const handlers = workspaceHandlersRef.current[activeWorkspaceId];
+    setRequestCanvasSnapshot(handlers?.snapshot ?? noopSnapshotHandler);
+    setCanvasTextInsertionHandler(handlers?.text ?? noopTextHandler);
+    setCanvasMarkdownInsertionHandler(handlers?.markdown ?? noopMarkdownHandler);
+    setCanvasMoleculeInsertionHandler(handlers?.molecule ?? noopMoleculeHandler);
+    setCanvasProteinInsertionHandler(handlers?.protein ?? noopProteinHandler);
+    setCanvasReactionInsertionHandler(handlers?.reaction ?? noopReactionHandler);
+  }, [
+    activeWorkspaceId,
+    noopMarkdownHandler,
+    noopMoleculeHandler,
+    noopProteinHandler,
+    noopReactionHandler,
+    noopSnapshotHandler,
+    noopTextHandler,
+    setCanvasMarkdownInsertionHandler,
+    setCanvasMoleculeInsertionHandler,
+    setCanvasProteinInsertionHandler,
+    setCanvasReactionInsertionHandler,
+    setCanvasTextInsertionHandler,
+    setRequestCanvasSnapshot
+  ]);
+
+  useEffect(() => {
+    updateGeminiHandlers();
+  }, [activeWorkspaceId, updateGeminiHandlers]);
+
+  const registerWorkspaceHandler = useCallback(
+    <K extends keyof CanvasWorkspaceHandlers,>(
+      workspaceId: string,
+      key: K,
+      handler: NonNullable<CanvasWorkspaceHandlers[K]>
+    ) => {
+      workspaceHandlersRef.current[workspaceId] = {
+        ...(workspaceHandlersRef.current[workspaceId] || {}),
+        [key]: handler
+      };
+      if (workspaceId === activeWorkspaceId) {
+        updateGeminiHandlers();
+      }
+    },
+    [activeWorkspaceId, updateGeminiHandlers]
+  );
+
+  const handleAddWorkspace = useCallback(() => {
+    setCanvasWorkspaces(prev => {
+      const newWorkspace: CanvasWorkspace = {
+        id: generateWorkspaceId(),
+        title: `Workspace ${prev.length + 1}`
+      };
+      setActiveWorkspaceId(newWorkspace.id);
+      return [...prev, newWorkspace];
+    });
+  }, []);
+
+  const handleCloseWorkspace = useCallback(
+    (workspaceId: string) => {
+      setCanvasWorkspaces(prev => {
+        if (prev.length === 1) {
+          return prev;
+        }
+        if (!prev.some(ws => ws.id === workspaceId)) {
+          return prev;
+        }
+        const filtered = prev.filter(ws => ws.id !== workspaceId);
+        delete workspaceHandlersRef.current[workspaceId];
+        if (workspaceId === activeWorkspaceId) {
+          const closingIndex = prev.findIndex(ws => ws.id === workspaceId);
+          const fallbackIndex = Math.max(0, closingIndex - 1);
+          const fallbackWorkspace = filtered[fallbackIndex] ?? filtered[0];
+          if (fallbackWorkspace) {
+            setActiveWorkspaceId(fallbackWorkspace.id);
+          }
+        }
+        return filtered;
+      });
+    },
+    [activeWorkspaceId]
+  );
+
+  const handleSelectWorkspace = useCallback((workspaceId: string) => {
+    setActiveWorkspaceId(workspaceId);
+  }, []);
+  
   const pillButtonClasses =
     'inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground';
   const dispatchCanvasCommand = useCallback((command: CanvasCommand) => {
@@ -1675,6 +1865,7 @@ Here is the learner's question: ${message}`;
         <GeminiLiveWorkspace
           onClose={() => setShowGeminiLiveWorkspace(false)}
           apiKey={apiKey}
+          geminiLiveState={geminiLiveState}
         />
       ) : (
       <div className="flex h-[calc(100vh-5rem)]">
@@ -1848,24 +2039,76 @@ Here is the learner's question: ${message}`;
           {/* Canvas, Chat, and Study Tools */}
           <div className="flex-1 flex relative">
             {/* Canvas */}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative flex flex-col">
               {isMolecularMode ? (
                 <MoldrawEmbed />
               ) : (
-                  <Canvas
-                    currentTool={currentTool}
-                    strokeWidth={strokeWidth}
-                    strokeColor={strokeColor}
-                    onOpenCalculator={handleOpenCalculator}
-                    onOpenMolView={handleOpenMolView}
-                    onOpenPeriodicTable={handleOpenPeriodicTable}
-                    onDocumentCaptured={handleDocumentInsightsGeneration}
-                    onDocumentAddToChat={handleAddDocumentToChat}
-                  />
+                <>
+                  <div className="flex items-center gap-2 border-b border-slate-800/60 bg-slate-900/60 px-4 py-2 text-sm">
+                    {canvasWorkspaces.map(workspace => {
+                      const isActive = workspace.id === activeWorkspaceId;
+                      return (
+                        <button
+                          key={workspace.id}
+                          onClick={() => handleSelectWorkspace(workspace.id)}
+                          className={`inline-flex items-center gap-2 rounded-2xl px-3 py-1.5 transition ${
+                            isActive
+                              ? 'bg-slate-800 text-slate-100 border border-slate-700 shadow-sm'
+                              : 'text-slate-400 border border-transparent hover:border-slate-700 hover:text-slate-100'
+                          }`}
+                        >
+                          <span className="font-medium">{workspace.title}</span>
+                          {canvasWorkspaces.length > 1 && (
+                            <span
+                              role="button"
+                              tabIndex={-1}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleCloseWorkspace(workspace.id);
+                              }}
+                              className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-slate-700/70"
+                            >
+                              <X size={12} />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={handleAddWorkspace}
+                      className="inline-flex items-center justify-center rounded-2xl border border-dashed border-slate-700 px-2.5 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
+                      title="Add workspace tab"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  <div className="flex-1 relative">
+                    {canvasWorkspaces.map(workspace => (
+                      <div
+                        key={workspace.id}
+                        className={`${workspace.id === activeWorkspaceId ? 'block' : 'hidden'} h-full w-full`}
+                      >
+                        <Canvas
+                          currentTool={currentTool}
+                          strokeWidth={strokeWidth}
+                          strokeColor={strokeColor}
+                          onOpenCalculator={handleOpenCalculator}
+                          onOpenMolView={handleOpenMolView}
+                          onOpenPeriodicTable={handleOpenPeriodicTable}
+                          onDocumentCaptured={handleDocumentInsightsGeneration}
+                          onDocumentAddToChat={handleAddDocumentToChat}
+                          onRegisterSnapshotHandler={(handler) => registerWorkspaceHandler(workspace.id, 'snapshot', handler)}
+                          onRegisterTextInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'text', handler)}
+                          onRegisterMarkdownInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'markdown', handler)}
+                          onRegisterMoleculeInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'molecule', handler)}
+                          onRegisterProteinInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'protein', handler)}
+                          onRegisterReactionInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'reaction', handler)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
-              
-
-              
             </div>
 
 
@@ -1876,7 +2119,20 @@ Here is the learner's question: ${message}`;
 
             {/* Chat Start Button - Floating */}
             {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
-              <div className="absolute top-4 right-8 z-10">
+              <div className="absolute top-4 right-8 z-10 flex flex-col gap-3 items-end">
+                {/* Gemini Live Share Canvas Button */}
+                {geminiLiveState.connectionState === ConnectionState.CONNECTED && (
+                  <DarkButtonWithIcon
+                    onClick={() => geminiLiveState.captureAndSendSnapshot()}
+                    className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 bg-blue-600 hover:bg-blue-500 border-blue-500"
+                  >
+                    <span className='mr-[10px]'>
+                      <Video className="h-5 w-5" />
+                    </span>
+                    Share Canvas
+                  </DarkButtonWithIcon>
+                )}
+
                 <DarkButtonWithIcon
                   onClick={() => {
                     console.log('Starting chat panel...');
@@ -2037,6 +2293,30 @@ Here is the learner's question: ${message}`;
           </div>
         </div>
       )}
+
+      {/* Message Dock - Always visible */}
+      <MessageDock
+        characters={dockCharacters}
+        onMessageSend={(message, character, index) => {
+          console.log('Message:', message, 'to', character.name);
+        }}
+        onCharacterSelect={(character) => {
+          console.log('Selected:', character.name);
+        }}
+        isLiveActive={geminiLiveState.connectionState === ConnectionState.CONNECTED}
+        onSparkleClick={() => {
+          if (geminiLiveState.connectionState === ConnectionState.CONNECTED || geminiLiveState.connectionState === ConnectionState.CONNECTING) {
+            geminiLiveState.disconnect();
+          } else {
+            geminiLiveState.connect();
+          }
+        }}
+        onShareCanvas={() => geminiLiveState.captureAndSendSnapshot()}
+        showShareCanvas={!showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && !showDocumentEditorCanvas}
+        expandedWidth={500}
+        placeholder={(name) => `Send a message to ${name}...`}
+        theme="light"
+      />
     </div>
   );
 };

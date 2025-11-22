@@ -1,35 +1,48 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChatMessage, ChatMode, TranscriptionMessage } from './types';
-import { Send, Image as ImageIcon, X, Loader2, Zap, BrainCircuit, Search, Bot, User, Globe } from 'lucide-react';
+import { Send, Image as ImageIcon, X, Loader2, Zap, BrainCircuit, Search, Bot, User, Compass, Lightbulb, MessageSquare, Code, Mic } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-
-const getDomain = (url: string) => {
-  try {
-    const domain = new URL(url).hostname;
-    return domain.replace(/^www\./, '');
-  } catch (e) {
-    return 'Source';
-  }
-};
+import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai/conversation';
+import { cn } from '@/lib/utils';
 
 interface GeminiLiveChatInterfaceProps {
   apiKey: string;
   liveTranscripts?: TranscriptionMessage[];
+  onMessagesChange?: (messages: ChatMessage[]) => void;
+  onModeChange?: (mode: ChatMode) => void;
+  initialMessages?: ChatMessage[];
+  initialMode?: ChatMode;
+  onStartVoiceSession?: () => void;
 }
 
-const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({ apiKey, liveTranscripts = [] }) => {
-  // Note: This component is currently simplified. For a full implementation,
-  // you would need to integrate with the actual Gemini API using the provided apiKey
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({ 
+  apiKey, 
+  liveTranscripts = [],
+  onMessagesChange,
+  onModeChange,
+  initialMessages = [],
+  initialMode = 'FAST',
+  onStartVoiceSession
+}) => {
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
-  const [mode, setMode] = useState<ChatMode>('FAST');
+  const [mode, setMode] = useState<ChatMode>(initialMode);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Sync internal state with props callbacks
+  useEffect(() => {
+    onMessagesChange?.(messages);
+  }, [messages, onMessagesChange]);
+
+  useEffect(() => {
+    onModeChange?.(mode);
+  }, [mode, onModeChange]);
 
   const allMessages = useMemo(() => {
     const transcriptMessages: ChatMessage[] = liveTranscripts.map(t => ({
@@ -39,12 +52,21 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({ apiKe
       timestamp: t.timestamp
     }));
     
-    return [...messages, ...transcriptMessages].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    return [...messages, ...transcriptMessages].sort((a, b) => {
+      const timeA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp).getTime();
+      const timeB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp).getTime();
+      return timeA - timeB;
+    });
   }, [messages, liveTranscripts]);
 
+  // Auto-scroll to bottom when messages change
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [allMessages]);
+    scrollToBottom();
+  }, [allMessages, scrollToBottom]);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,20 +81,20 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({ apiKe
     }
   };
 
-  const handleSend = async () => {
-    if ((!input.trim() && !selectedImage) || isLoading) return;
+  const handleSend = async (text: string = input) => {
+    if ((!text.trim() && !selectedImage) || isLoading) return;
 
     const userMsg: ChatMessage = {
       id: uuidv4(),
       role: 'user',
-      text: input,
+      text: text,
       image: selectedImage || undefined,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMsg]);
 
-    const currentInput = input;
+    const currentInput = text;
     const currentImage = selectedImage;
 
     setInput('');
@@ -89,10 +111,8 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({ apiKe
     }]);
 
     try {
-      // Import the chat service
       const { generateChatResponseStream } = await import('./services/chatService');
 
-      // Convert history for API (using current messages state which excludes the just-added user msg, which is correct as we pass it separately)
       const history = messages.map(m => ({
         role: m.role,
         parts: m.image
@@ -114,7 +134,6 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({ apiKe
                   return {
                       ...msg,
                       text: fullText,
-                      // Update metadata if present, or keep existing if already received
                       groundingMetadata: groundingMetadata || msg.groundingMetadata
                   };
               }
@@ -141,149 +160,210 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({ apiKe
     }
   };
 
-  return (
-    <div className="flex flex-col h-full bg-slate-900/30 rounded-2xl border border-slate-800 overflow-hidden">
-      {/* Toolbar */}
-      <div className="p-3 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between backdrop-blur">
-        <div className="flex gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
-          <button
-            onClick={() => setMode('FAST')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-colors ${
-              mode === 'FAST' ? 'bg-molecule-teal text-slate-950 shadow-md' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Zap size={14} />
-            Fast
-          </button>
-          <button
-            onClick={() => setMode('PRO')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-colors ${
-              mode === 'PRO' ? 'bg-molecule-purple text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <BrainCircuit size={14} />
-            Pro
-          </button>
-          <button
-            onClick={() => setMode('SEARCH')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-colors ${
-              mode === 'SEARCH' ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Search size={14} />
-            Search
-          </button>
-        </div>
-        <div className="text-[10px] text-slate-500 font-mono hidden sm:block">
-           {mode === 'FAST' && "Model: Gemini 2.5 Flash"}
-           {mode === 'PRO' && "Model: Gemini 3.0 Pro"}
-           {mode === 'SEARCH' && "Model: Gemini 2.5 Flash + Search"}
-        </div>
+  const SuggestionCard = ({ icon: Icon, text, onClick }: { icon: any, text: string, onClick: () => void }) => (
+    <button 
+      onClick={onClick}
+      className="flex flex-col gap-3 p-4 rounded-xl bg-[#1e1f20] hover:bg-[#333537] text-left transition-colors h-full"
+    >
+      <div className="p-2 w-fit rounded-full bg-[#131314] text-slate-200">
+        <Icon size={18} />
       </div>
+      <span className="text-sm text-slate-300 font-medium">{text}</span>
+    </button>
+  );
 
+  return (
+    <div className="flex flex-col h-full bg-[#131314] overflow-hidden relative">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {allMessages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-60">
-            <BrainCircuit className="w-16 h-16 mb-4 stroke-1" />
-            <p className="text-sm font-mono">Select a mode and ask a question</p>
-          </div>
-        )}
-        {allMessages.map((msg) => (
-          <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-              msg.role === 'user' ? 'bg-slate-700' : 'bg-molecule-teal text-slate-900'
-            }`}>
-              {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-            </div>
-            <div className={`max-w-[85%] space-y-2 ${msg.role === 'user' ? 'items-end flex flex-col' : ''}`}>
-              <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
-                msg.role === 'user'
-                  ? 'bg-slate-800 text-slate-200 rounded-tr-sm'
-                  : 'bg-slate-950 border border-slate-800 text-slate-100 rounded-tl-sm shadow-sm'
-              }`}>
-                {msg.image && (
-                  <img src={msg.image} alt="Uploaded content" className="max-w-full h-auto rounded-lg mb-3 border border-slate-700" />
-                )}
-                {msg.role === 'user' ? (
-                   <div className="whitespace-pre-wrap">{msg.text}</div>
-                ) : (
-                   <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-800 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                     <ReactMarkdown
-                       remarkPlugins={[remarkMath]}
-                       rehypePlugins={[rehypeKatex]}
-                       components={{
-                          a: ({node, ...props}) => <a {...props} className="text-molecule-teal hover:underline break-all" target="_blank" rel="noopener noreferrer" />,
-                          code: ({node, ...props}) => <code {...props} className="bg-slate-900 px-1 py-0.5 rounded text-molecule-purple font-mono text-xs" />,
-                       }}
-                     >
-                       {msg.text}
-                     </ReactMarkdown>
+      <div className="flex-1 min-h-0 relative overflow-hidden">
+        <Conversation
+          className="h-full bg-transparent border-none"
+          padding="md"
+          initial="instant"
+          resize="smooth"
+        >
+          <ConversationContent className="max-w-3xl mx-auto w-full">
+            {allMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center mt-12 mb-32 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                 <h1 className="text-5xl md:text-6xl font-medium mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-rose-400 pb-2 text-center">
+                   Hello, Dev.
+                 </h1>
+                 <h2 className="text-4xl md:text-5xl font-medium text-slate-500 mb-16 text-center">
+                   How can I help you today?
+                 </h2>
+
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full max-w-4xl px-4">
+                    <SuggestionCard 
+                      icon={Compass} 
+                      text="Explain the concept of orbital hybridization" 
+                      onClick={() => handleSend("Explain the concept of orbital hybridization")}
+                    />
+                    <SuggestionCard 
+                      icon={Lightbulb} 
+                      text="Briefly summarize the laws of thermodynamics" 
+                      onClick={() => handleSend("Briefly summarize the laws of thermodynamics")}
+                    />
+                    <SuggestionCard 
+                      icon={MessageSquare} 
+                      text="Brainstorm ideas for a chemistry project" 
+                      onClick={() => handleSend("Brainstorm ideas for a chemistry project")}
+                    />
+                    <SuggestionCard 
+                      icon={Code} 
+                      text="Write a Python script to balance equations" 
+                      onClick={() => handleSend("Write a Python script to balance equations")}
+                    />
+                 </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-8 pb-4 pt-8">
+                {allMessages.map((msg) => (
+                  <div key={`${msg.id}-${msg.timestamp.getTime()}`} className={cn("flex gap-6 group", msg.role === 'user' ? 'flex-row-reverse' : '')}>
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1",
+                      msg.role === 'user' 
+                        ? "bg-slate-700 text-slate-200" 
+                        : "bg-gradient-to-br from-blue-500 to-purple-600 text-white"
+                    )}>
+                      {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+                    </div>
+                    
+                    <div className={cn("flex flex-col gap-2 max-w-[85%]", msg.role === 'user' ? 'items-end' : 'items-start')}>
+                      {/* Message Bubble */}
+                      <div className={cn(
+                        "text-base leading-relaxed",
+                        msg.role === 'user'
+                          ? "text-slate-100 bg-[#28292a] px-5 py-3 rounded-3xl rounded-tr-sm"
+                          : "text-slate-200"
+                      )}>
+                        {msg.image && (
+                          <div className="relative mb-3 rounded-xl overflow-hidden border border-slate-700/50 group-image">
+                            <img src={msg.image} alt="Uploaded content" className="max-w-full h-auto max-h-[300px] object-cover" />
+                          </div>
+                        )}
+                        
+                        {msg.role === 'user' ? (
+                           <div className="whitespace-pre-wrap">{msg.text}</div>
+                        ) : (
+                           <div className="max-w-none">
+                             <ReactMarkdown
+                               remarkPlugins={[remarkMath]}
+                               rehypePlugins={[rehypeKatex]}
+                               components={{
+                                  a: ({node, ...props}) => <a {...props} target="_blank" rel="noopener noreferrer" className="no-underline border-b border-blue-500/30 hover:border-blue-500 transition-colors" />,
+                                  code: ({node, inline, className, children, ...props}) => {
+                                    if (inline) {
+                                      return <code className="bg-[#1e1f20] px-1.5 py-0.5 rounded border border-slate-800/50 font-mono text-[13px]" {...props}>{children}</code>;
+                                    }
+                                    // Code block
+                                    return <code className="block bg-[#1e1f20] p-4 rounded-xl border border-slate-800/50 font-mono text-sm text-blue-300 whitespace-pre-wrap overflow-x-auto" {...props}>{children}</code>;
+                                  },
+                                  pre: ({node, children, ...props}) => <pre className="my-3" {...props}>{children}</pre>,
+                               }}
+                             >
+                               {msg.text}
+                             </ReactMarkdown>
+                           </div>
+                        )}
+                      </div>
+                      
+                      {/* Metadata / Timestamp */}
+                      <div className="text-[10px] text-slate-500 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {isLoading && (
+                   <div className="flex gap-6">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center">
+                         <Bot size={16} />
+                      </div>
+                      <div className="flex items-center gap-2 py-2">
+                         <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                      </div>
                    </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
-            </div>
-          </div>
-        ))}
-        {isLoading && messages[messages.length - 1]?.role === 'user' && (
-           <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-molecule-teal text-slate-900 flex items-center justify-center">
-                 <Bot size={16} />
-              </div>
-              <div className="bg-slate-950 border border-slate-800 px-4 py-3 rounded-2xl rounded-tl-sm">
-                 <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-              </div>
-           </div>
-        )}
-        <div ref={scrollRef} />
+            )}
+          </ConversationContent>
+          <ConversationScrollButton className="bg-[#28292a] hover:bg-[#333537] text-slate-200 border-slate-700 shadow-xl mb-4" />
+        </Conversation>
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-slate-950 border-t border-slate-800">
-        {selectedImage && (
-          <div className="flex items-center gap-2 mb-2 bg-slate-900 p-2 rounded-lg w-fit border border-slate-800">
-            <div className="relative w-10 h-10 overflow-hidden rounded bg-black">
-               <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
+      <div className="flex-none p-6 bg-[#131314] border-t border-slate-800/50 z-10">
+        <div className="max-w-3xl mx-auto">
+          {selectedImage && (
+            <div className="absolute bottom-full left-0 mb-4 flex items-center gap-2 bg-[#1e1f20] p-2 rounded-xl border border-[#28292a]">
+              <div className="relative w-12 h-12 overflow-hidden rounded-lg bg-black/20 border border-white/10">
+                 <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
+              </div>
+              <div className="flex flex-col px-2">
+                <span className="text-xs font-medium text-slate-200">Image attached</span>
+                <span className="text-[10px] text-slate-400">Ready to analyze</span>
+              </div>
+              <button onClick={() => setSelectedImage(null)} className="p-1.5 hover:bg-[#333537] rounded-full text-slate-400 hover:text-slate-200 transition-colors ml-2">
+                 <X size={14} />
+              </button>
             </div>
-            <span className="text-xs text-slate-400 truncate max-w-[100px]">Image attached</span>
-            <button onClick={() => setSelectedImage(null)} className="p-1 hover:bg-slate-800 rounded-full text-slate-500">
-               <X size={14} />
-            </button>
+          )}
+
+          <div className="flex items-center gap-2 bg-[#1e1f20] rounded-full p-2 pl-6 border border-[#28292a] shadow-lg focus-within:ring-1 focus-within:ring-slate-600 transition-all">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageSelect}
+              accept="image/*"
+              className="hidden"
+            />
+
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Enter a prompt here"
+              className="flex-1 bg-transparent border-none py-3 text-base text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-0 resize-none max-h-32 min-h-[24px] leading-relaxed"
+              rows={1}
+              style={{ height: 'auto' }}
+            />
+
+            <div className="flex items-center gap-1 pr-1">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2.5 text-slate-400 hover:text-slate-200 hover:bg-[#333537] rounded-full transition-all"
+                title="Upload Image"
+              >
+                <ImageIcon size={20} />
+              </button>
+              
+              {input.trim() || selectedImage ? (
+                <button
+                  onClick={() => handleSend()}
+                  disabled={isLoading}
+                  className="p-2.5 bg-slate-200 text-slate-900 hover:bg-white rounded-full transition-all"
+                >
+                  {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className="ml-0.5" />}
+                </button>
+              ) : (
+                <button
+                  onClick={onStartVoiceSession}
+                  className="p-2.5 text-slate-400 hover:text-slate-200 hover:bg-[#333537] rounded-full transition-all"
+                  title="Use Microphone"
+                >
+                  <Mic size={20} />
+                </button>
+              )}
+            </div>
           </div>
-        )}
-        <div className="flex gap-2 items-end">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-3 text-slate-400 hover:text-molecule-teal hover:bg-slate-900 rounded-xl transition-colors border border-transparent hover:border-slate-800"
-            title="Attach Image"
-          >
-            <ImageIcon size={20} />
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImageSelect}
-            accept="image/*"
-            className="hidden"
-          />
-
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={mode === 'PRO' ? "Ask complex questions or analyze images..." : "Ask a quick chemistry question..."}
-            className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-molecule-teal focus:ring-1 focus:ring-molecule-teal resize-none max-h-32 min-h-[46px]"
-            rows={1}
-            style={{ height: 'auto', minHeight: '46px' }}
-          />
-
-          <button
-            onClick={handleSend}
-            disabled={isLoading || (!input.trim() && !selectedImage)}
-            className="p-3 bg-molecule-teal text-slate-900 rounded-xl font-medium hover:bg-molecule-teal/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-          </button>
+          
+          <div className="flex justify-center mt-3">
+            <p className="text-[11px] text-slate-500">
+              Gemini may display inaccurate info, including about people, so double-check its responses. Your privacy and Gemini Apps
+            </p>
+          </div>
         </div>
       </div>
     </div>
