@@ -24,6 +24,17 @@ import {
   compileLatexProject, 
   type CompileResult 
 } from './latexAgentService';
+import {
+  extractFromImage,
+  extractPDFContent,
+  extractImagesFromDocument,
+  htmlTableToLatex,
+  type OCRResult,
+  type TableData,
+  type FigureData,
+  type FormulaData,
+  type ExtractedDocumentContent
+} from './ocrService';
 
 // ==========================================
 // Types & Interfaces
@@ -38,6 +49,10 @@ export interface UploadedFile {
   size: number;
   uploadedAt: Date;
   extractedInfo?: ExtractedInfo;
+  ocrContent?: ExtractedDocumentContent;
+  extractedImages?: FigureData[];
+  extractedTables?: TableData[];
+  extractedFormulas?: FormulaData[];
 }
 
 export interface ExtractedInfo {
@@ -378,38 +393,107 @@ Only output the corrected LaTeX code, no explanations.`
 // File Processing
 // ==========================================
 
-export const extractTextFromFile = async (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = async (e) => {
-      const content = e.target?.result;
-      
+export const extractTextFromFile = async (file: File): Promise<{
+  text: string;
+  ocrContent?: ExtractedDocumentContent;
+}> => {
+  return new Promise(async (resolve, reject) => {
+    try {
       if (file.type === 'application/pdf') {
-        // For PDFs, we'll use a simple text extraction approach
-        // In production, you'd want to use pdf.js or similar
-        resolve(`[PDF Content from: ${file.name}]\n\nNote: PDF text extraction requires additional processing. Please paste the relevant text content or use a text-based format.`);
-      } else if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.tex')) {
-        resolve(content as string);
-      } else if (file.type.includes('json')) {
+        // Use OCR for PDFs to extract text, tables, figures
+        emitEvent({
+          type: 'file-analyzed',
+          data: { fileName: file.name },
+          message: `Extracting content from PDF: ${file.name} (using OCR)...`
+        });
+        
         try {
-          const json = JSON.parse(content as string);
-          resolve(JSON.stringify(json, null, 2));
-        } catch {
-          resolve(content as string);
+          const ocrContent = await extractPDFContent(file);
+          resolve({
+            text: ocrContent.text,
+            ocrContent
+          });
+        } catch (ocrError) {
+          console.warn('OCR extraction failed, using basic text extraction:', ocrError);
+          // Fallback to basic PDF text extraction
+          const pdfjs = await import('pdfjs-dist');
+          pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+          
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+          
+          let fullText = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              .map((item: any) => item.str)
+              .join(' ');
+            fullText += pageText + '\n\n';
+          }
+          
+          resolve({ text: fullText || `[PDF Content from: ${file.name}]` });
         }
+      } else if (file.type.startsWith('image/')) {
+        // Use OCR for images
+        emitEvent({
+          type: 'file-analyzed',
+          data: { fileName: file.name },
+          message: `Extracting content from image: ${file.name} (using OCR)...`
+        });
+        
+        try {
+          const base64 = await new Promise<string>((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = () => res((reader.result as string).split(',')[1]);
+            reader.onerror = rej;
+            reader.readAsDataURL(file);
+          });
+          
+          const ocrResult = await extractFromImage(base64, 'all');
+          
+          const ocrContent: ExtractedDocumentContent = {
+            text: ocrResult.raw_text,
+            tables: ocrResult.tables,
+            figures: ocrResult.figures,
+            formulas: ocrResult.formulas,
+            latex: ''
+          };
+          
+          resolve({
+            text: ocrResult.raw_text,
+            ocrContent
+          });
+        } catch (ocrError) {
+          console.warn('Image OCR failed:', ocrError);
+          resolve({ text: `[Image file: ${file.name}]` });
+        }
+      } else if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.tex')) {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve({ text: e.target?.result as string });
+        reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+        reader.readAsText(file);
+      } else if (file.type.includes('json')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const json = JSON.parse(e.target?.result as string);
+            resolve({ text: JSON.stringify(json, null, 2) });
+          } catch {
+            resolve({ text: e.target?.result as string });
+          }
+        };
+        reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+        reader.readAsText(file);
       } else {
         // Try to read as text
-        resolve(content as string || `[Binary file: ${file.name}]`);
+        const reader = new FileReader();
+        reader.onload = (e) => resolve({ text: e.target?.result as string || `[Binary file: ${file.name}]` });
+        reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+        reader.readAsText(file);
       }
-    };
-    
-    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
-    
-    if (file.type === 'application/pdf') {
-      reader.readAsArrayBuffer(file);
-    } else {
-      reader.readAsText(file);
+    } catch (error) {
+      reject(error);
     }
   });
 };
@@ -420,6 +504,61 @@ export const uploadFile = async (
 ): Promise<UploadedFile> => {
   const content = await extractTextFromFile(file);
   
+  // Check if we have OCR content with images/tables
+  let ocrContent: ExtractedDocumentContent | undefined;
+  let extractedImages: FigureData[] = [];
+  let extractedTables: TableData[] = [];
+  let extractedFormulas: FormulaData[] = [];
+  
+  // For PDFs and images, extract structured content
+  if (file.type === 'application/pdf') {
+    try {
+      ocrContent = await extractPDFContent(file);
+      extractedImages = ocrContent.figures;
+      extractedTables = ocrContent.tables;
+      extractedFormulas = ocrContent.formulas;
+      
+      emitEvent({
+        type: 'agent-thinking',
+        data: { agent: 'OCR' },
+        message: `Extracted ${extractedImages.length} images, ${extractedTables.length} tables, ${extractedFormulas.length} formulas from PDF`
+      });
+    } catch (e) {
+      console.warn('PDF OCR extraction failed:', e);
+    }
+  } else if (file.type.startsWith('image/')) {
+    try {
+      const imageResult = await extractFromImage(file);
+      if (imageResult.tables.length > 0) {
+        extractedTables = imageResult.tables;
+      }
+      
+      // Store the image itself as a figure
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      
+      extractedImages = [{
+        id: `fig-${Date.now()}`,
+        base64Data: base64,
+        mimeType: file.type,
+        caption: file.name,
+        width: 0,
+        height: 0
+      }];
+      
+      emitEvent({
+        type: 'agent-thinking',
+        data: { agent: 'OCR' },
+        message: `Extracted content from image: ${file.name}`
+      });
+    } catch (e) {
+      console.warn('Image OCR extraction failed:', e);
+    }
+  }
+  
   const uploadedFile: UploadedFile = {
     id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name: file.name,
@@ -427,7 +566,11 @@ export const uploadFile = async (
     content,
     mimeType: file.type,
     size: file.size,
-    uploadedAt: new Date()
+    uploadedAt: new Date(),
+    ocrContent,
+    extractedImages,
+    extractedTables,
+    extractedFormulas
   };
   
   state.uploadedFiles.push(uploadedFile);
@@ -976,12 +1119,133 @@ Format as a complete .bib file content.`;
 // LaTeX Document Generation
 // ==========================================
 
+/**
+ * Generate LaTeX for extracted figures
+ */
+const generateFiguresLatex = (): string => {
+  const allFigures: FigureData[] = [];
+  
+  // Collect figures from all uploaded files
+  for (const file of state.uploadedFiles) {
+    if (file.extractedImages && file.extractedImages.length > 0) {
+      allFigures.push(...file.extractedImages);
+    }
+  }
+  
+  if (allFigures.length === 0) return '';
+  
+  let figuresLatex = '\n\\section{Figures}\n\n';
+  
+  allFigures.forEach((figure, index) => {
+    const figNum = index + 1;
+    const caption = figure.caption || `Figure ${figNum}`;
+    const label = `fig:extracted-${figNum}`;
+    
+    // For base64 images, we need to save them as files
+    // In a real implementation, these would be written to the LaTeX project
+    if (figure.base64Data) {
+      // Store the base64 data in a virtual file for the compiler
+      const filename = `figure${figNum}.png`;
+      // The base64 data will be handled by the LaTeX compiler service
+      figuresLatex += `\\begin{figure}[htbp]
+\\centering
+% Figure from uploaded document: ${filename}
+\\fbox{\\parbox{0.8\\textwidth}{\\centering [Image: ${caption}]}}
+\\caption{${caption}}
+\\label{${label}}
+\\end{figure}\n\n`;
+    }
+  });
+  
+  return figuresLatex;
+};
+
+/**
+ * Generate LaTeX for extracted tables
+ */
+const generateTablesLatex = (): string => {
+  const allTables: TableData[] = [];
+  
+  // Collect tables from all uploaded files
+  for (const file of state.uploadedFiles) {
+    if (file.extractedTables && file.extractedTables.length > 0) {
+      allTables.push(...file.extractedTables);
+    }
+  }
+  
+  if (allTables.length === 0) return '';
+  
+  let tablesLatex = '\n\\section{Tables}\n\n';
+  
+  allTables.forEach((table, index) => {
+    const tableNum = index + 1;
+    const caption = table.caption || `Table ${tableNum}`;
+    const label = `tab:extracted-${tableNum}`;
+    
+    // Use the LaTeX content if available, otherwise generate it
+    let tableContent = table.latexContent;
+    if (!tableContent && table.rows && table.rows.length > 0) {
+      tableContent = htmlTableToLatex({
+        rows: table.rows,
+        headers: table.headers,
+        caption: table.caption,
+        label: table.label
+      });
+    }
+    
+    if (tableContent) {
+      tablesLatex += `\\begin{table}[htbp]
+\\centering
+\\caption{${caption}}
+\\label{${label}}
+${tableContent}
+\\end{table}\n\n`;
+    }
+  });
+  
+  return tablesLatex;
+};
+
+/**
+ * Generate LaTeX for extracted formulas
+ */
+const generateFormulasLatex = (): string => {
+  const allFormulas: FormulaData[] = [];
+  
+  // Collect formulas from all uploaded files
+  for (const file of state.uploadedFiles) {
+    if (file.extractedFormulas && file.extractedFormulas.length > 0) {
+      allFormulas.push(...file.extractedFormulas);
+    }
+  }
+  
+  if (allFormulas.length === 0) return '';
+  
+  let formulasLatex = '\n% Extracted formulas from source documents\n';
+  
+  allFormulas.forEach((formula, index) => {
+    if (formula.latex) {
+      formulasLatex += `\\begin{equation}
+${formula.latex}
+\\label{eq:extracted-${index + 1}}
+\\end{equation}\n\n`;
+    }
+  });
+  
+  return formulasLatex;
+};
+
 export const compileToLatex = (): string => {
   if (!state.config) {
     throw new Error('Paper config not initialized');
   }
   
   const { title, authors, affiliation, citationStyle } = state.config;
+  
+  // Generate content for extracted elements
+  const figuresLatex = generateFiguresLatex();
+  const tablesLatex = generateTablesLatex();
+  const formulasLatex = generateFormulasLatex();
   
   // Build the complete LaTeX document
   const latexDocument = `\\documentclass[12pt,a4paper]{article}
@@ -996,6 +1260,7 @@ export const compileToLatex = (): string => {
 \\usepackage{cleveref}
 \\usepackage{lipsum}
 \\usepackage{geometry}
+\\usepackage{float}
 \\geometry{margin=1in}
 
 % Bibliography style
@@ -1026,6 +1291,12 @@ ${validatedContent}
 ${validatedContent}`;
   })
   .join('\n\n')}
+
+${figuresLatex}
+
+${tablesLatex}
+
+${formulasLatex}
 
 \\printbibliography
 
