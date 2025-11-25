@@ -933,6 +933,41 @@ Return only the essential summary of your work - not raw data or intermediate st
 
 Keep your response under 500 words.`,
     tools: ['internet_search', 'think_tool', 'write_file', 'read_file', 'molecule_search']
+  }],
+  ['data-visualization', {
+    name: 'data-visualization',
+    description: 'Creates data visualizations and charts from data. Use when user provides data (CSV, JSON, tables) or asks for charts, graphs, or data analysis visualizations.',
+    systemPrompt: `You are a Data Visualization Expert using the reaviz library.
+
+Your capabilities:
+1. Analyze data and suggest the best chart type
+2. Generate chart code using reaviz components
+3. Create beautiful visualizations: bar, line, area, scatter, pie, donut, heatmap, radial charts
+4. Explain data insights from visualizations
+
+When given data:
+1. Parse the data (CSV, JSON, or described format)
+2. Determine the best chart type based on data characteristics:
+   - Bar: Category comparisons
+   - Line/Area: Time series, trends
+   - Pie/Donut: Proportions (5 or fewer categories)
+   - Scatter: Correlations
+   - Heatmap: Matrix data
+3. Generate the visualization
+
+Return a JSON object with:
+{
+  "action": "create_visualization",
+  "chartType": "bar|line|area|scatter|pie|donut|heatmap",
+  "data": [{"key": "label", "data": value}, ...],
+  "title": "Chart Title",
+  "explanation": "Why this chart type and key insights"
+}
+
+Available color schemes: cybertron, ocean, sunset, forest, galaxy, scientific, earth, neon
+
+Keep explanations concise but insightful.`,
+    tools: ['think_tool', 'write_file']
   }]
 ]);
 
@@ -948,12 +983,14 @@ Available sub-agents:
 - **chemistry-tutor**: A patient tutor for explaining chemistry concepts
 - **chemistry-problem-solver**: Specialized in solving chemistry problems and calculations
 - **documentation-agent**: Creates well-formatted final documentation
+- **data-visualization**: Creates charts and data visualizations using reaviz (bar, line, pie, scatter, heatmap)
 - **general-purpose**: A general-purpose subagent for context isolation
 
 Use this tool to:
 - Keep main context clean
 - Delegate complex research tasks
 - Run specialized analyses
+- Create data visualizations
 
 IMPORTANT: For comparisons, make multiple task() calls to enable parallel execution.`,
   execute: async (params: { name: string; task: string }) => {
