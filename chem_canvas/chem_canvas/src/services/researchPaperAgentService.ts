@@ -1219,6 +1219,90 @@ ${formula.latex}
   return formulasLatex;
 };
 
+/**
+ * Convert BibTeX-style or plain text references to thebibliography format
+ */
+const formatReferencesForThebibliography = (referencesContent: string): string => {
+  // If content is empty
+  if (!referencesContent || referencesContent.trim().length === 0) {
+    return '';
+  }
+  
+  // Clean up the content
+  let content = referencesContent.trim();
+  
+  // Check if already in thebibliography format
+  if (content.includes('\\bibitem')) {
+    // Extract just the bibitem entries
+    const bibitems = content.match(/\\bibitem\{[^}]+\}[^\\]+/g);
+    if (bibitems) {
+      return bibitems.join('\n');
+    }
+  }
+  
+  // Check if in BibTeX format - convert to thebibliography
+  if (content.includes('@article') || content.includes('@book') || content.includes('@inproceedings')) {
+    const entries: string[] = [];
+    const bibtexPattern = /@\w+\{([^,]+),([^@]*)/g;
+    let match;
+    let refNum = 1;
+    
+    while ((match = bibtexPattern.exec(content)) !== null) {
+      const key = match[1].trim();
+      const fields = match[2];
+      
+      // Extract common fields
+      const author = extractBibField(fields, 'author') || 'Unknown Author';
+      const title = extractBibField(fields, 'title') || 'Untitled';
+      const year = extractBibField(fields, 'year') || '';
+      const journal = extractBibField(fields, 'journal') || extractBibField(fields, 'booktitle') || '';
+      
+      let entry = `\\bibitem{ref${refNum}} ${author}. "${title}"`;
+      if (journal) entry += `, ${journal}`;
+      if (year) entry += `, ${year}`;
+      entry += '.';
+      
+      entries.push(entry);
+      refNum++;
+    }
+    
+    if (entries.length > 0) {
+      return entries.join('\n\n');
+    }
+  }
+  
+  // Plain text format - convert numbered list to bibitems
+  const lines = content.split('\n').filter(line => line.trim().length > 0);
+  const entries: string[] = [];
+  let refNum = 1;
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Skip LaTeX commands
+    if (trimmed.startsWith('\\') && !trimmed.startsWith('\\bibitem')) continue;
+    // Skip empty or whitespace lines
+    if (!trimmed) continue;
+    
+    // Remove leading numbers like "1." or "[1]"
+    const cleanedLine = trimmed.replace(/^\s*\[?\d+\]?\.?\s*/, '');
+    if (cleanedLine.length > 10) { // Minimum reasonable reference length
+      entries.push(`\\bibitem{ref${refNum}} ${cleanedLine}`);
+      refNum++;
+    }
+  }
+  
+  return entries.join('\n\n');
+};
+
+/**
+ * Extract a field value from BibTeX entry
+ */
+const extractBibField = (content: string, fieldName: string): string => {
+  const pattern = new RegExp(`${fieldName}\\s*=\\s*[{"]([^}"]+)[}"]`, 'i');
+  const match = content.match(pattern);
+  return match ? match[1].trim() : '';
+};
+
 export const compileToLatex = (): string => {
   if (!state.config) {
     throw new Error('Paper config not initialized');
@@ -1231,7 +1315,11 @@ export const compileToLatex = (): string => {
   const tablesLatex = generateTablesLatex();
   const formulasLatex = generateFormulasLatex();
   
-  // Build the complete LaTeX document
+  // Get references section for inline bibliography
+  const referencesSection = state.sections.find(s => s.name === 'references');
+  const referencesContent = referencesSection?.content || referencesSection?.latexContent || '';
+  
+  // Build the complete LaTeX document (simplified for online compilation)
   const latexDocument = `\\documentclass[12pt,a4paper]{article}
 
 % Packages
@@ -1241,15 +1329,9 @@ export const compileToLatex = (): string => {
 \\usepackage{graphicx}
 \\usepackage{booktabs}
 \\usepackage{hyperref}
-\\usepackage{cleveref}
-\\usepackage{lipsum}
 \\usepackage{geometry}
 \\usepackage{float}
 \\geometry{margin=1in}
-
-% Bibliography style
-\\usepackage[style=${citationStyle === 'ieee' ? 'ieee' : citationStyle === 'apa' ? 'apa' : 'numeric'},backend=biber]{biblatex}
-\\addbibresource{references.bib}
 
 % Title
 \\title{${escapeLatex(title)}}
@@ -1282,7 +1364,11 @@ ${tablesLatex}
 
 ${formulasLatex}
 
-\\printbibliography
+% References (inline bibliography for online compilation compatibility)
+${referencesContent ? `\\section*{References}
+\\begin{thebibliography}{99}
+${formatReferencesForThebibliography(referencesContent)}
+\\end{thebibliography}` : ''}
 
 \\end{document}
 `;
@@ -1292,25 +1378,31 @@ ${formulasLatex}
   // Write to LaTeX file system
   writeLatexFile('/main.tex', latexDocument);
   
-  // Write references
-  const referencesSection = state.sections.find(s => s.name === 'references');
-  if (referencesSection?.content) {
-    writeLatexFile('/references.bib', referencesSection.content);
-  }
-  
   return latexDocument;
 };
 
+/**
+ * Escape special LaTeX characters in plain text (for titles, authors, etc.)
+ * Does NOT escape backslashes if they appear to be LaTeX commands
+ */
 const escapeLatex = (text: string): string => {
+  // Only escape if it looks like plain text (no LaTeX commands)
+  const hasLatexCommands = /\\[a-zA-Z]+/.test(text);
+  if (hasLatexCommands) {
+    // Just escape the most problematic characters
+    return text
+      .replace(/(?<!\\)&/g, '\\&')
+      .replace(/(?<!\\)%/g, '\\%')
+      .replace(/(?<!\\)\$/g, '\\$')
+      .replace(/(?<!\\)#/g, '\\#');
+  }
+  
   return text
-    .replace(/\\/g, '\\textbackslash{}')
     .replace(/&/g, '\\&')
     .replace(/%/g, '\\%')
     .replace(/\$/g, '\\$')
     .replace(/#/g, '\\#')
     .replace(/_/g, '\\_')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
     .replace(/~/g, '\\textasciitilde{}')
     .replace(/\^/g, '\\textasciicircum{}');
 };

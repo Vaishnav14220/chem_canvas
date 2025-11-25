@@ -141,53 +141,74 @@ export const generateTextContent = async (prompt: string): Promise<string> => {
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
 
-  try {
-    return await executeWithRotation(async (apiKey) => {
-      // Reinitialize with new key if rate limit hit
-      if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
-        currentApiKey = apiKey;
-        cachedModelName = null; // Reset model cache with new key
-      }
+  // Internal retry for 503 errors with exponential backoff
+  const maxRetries = 5;
+  let lastError: any;
 
-      const modelName = await getAvailableModel(genAI!, { skipRotation: true });
-      const response = await genAI!.models.generateContent({
-        model: modelName,
-        contents: prompt,
+  for (let retry = 0; retry < maxRetries; retry++) {
+    try {
+      return await executeWithRotation(async (apiKey) => {
+        // Reinitialize with new key if rate limit hit
+        if (apiKey !== currentApiKey) {
+          genAI = new GoogleGenAI({ apiKey });
+          currentApiKey = apiKey;
+          cachedModelName = null; // Reset model cache with new key
+        }
+
+        const modelName = await getAvailableModel(genAI!, { skipRotation: true });
+        const response = await genAI!.models.generateContent({
+          model: modelName,
+          contents: prompt,
+        });
+        return response.text ?? '';
       });
-      return response.text ?? '';
-    });
-  } catch (error: any) {
-    // Check if error is a 503 (model overloaded) and Vertex AI is available
-    const errorMessage = error?.message?.toLowerCase() || '';
-    if ((errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('unavailable')) 
-        && !errorMessage.includes('vertex')) {
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error?.message?.toLowerCase() || '';
+      const errorCode = error?.error?.code || error?.code;
+      const is503 = errorCode === 503 || errorMessage.includes('503') || 
+                    errorMessage.includes('overloaded') || errorMessage.includes('unavailable');
       
-      console.log('⚠️ Gemini API overloaded, attempting to use Vertex AI fallback...');
+      if (is503 && retry < maxRetries - 1) {
+        // Exponential backoff with jitter
+        const delay = Math.min(2000 * Math.pow(2, retry) + Math.random() * 1000, 30000);
+        console.log(`⏳ API overloaded (attempt ${retry + 1}/${maxRetries}). Waiting ${Math.round(delay/1000)}s before retry...`);
+        await sleep(delay);
+        continue;
+      }
       
-      // Try to initialize Vertex AI if not already done
-      if (!isVertexAIAvailable()) {
-        const vertexInitialized = await initializeVertexAI();
-        if (!vertexInitialized) {
-          console.warn('❌ Vertex AI fallback not available');
-          throw error; // Re-throw original error if Vertex AI is not available
+      // Check if error is a 503 (model overloaded) and Vertex AI is available as last resort
+      if ((errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('unavailable')) 
+          && !errorMessage.includes('vertex')) {
+        
+        console.log('⚠️ Gemini API overloaded, attempting to use Vertex AI fallback...');
+        
+        // Try to initialize Vertex AI if not already done
+        if (!isVertexAIAvailable()) {
+          const vertexInitialized = await initializeVertexAI();
+          if (!vertexInitialized) {
+            console.warn('❌ Vertex AI fallback not available');
+            throw error; // Re-throw original error if Vertex AI is not available
+          }
+        }
+        
+        try {
+          // Use Vertex AI as fallback
+          const result = await generateContentWithVertexAI(prompt);
+          console.log('✅ Successfully used Vertex AI fallback');
+          return result;
+        } catch (vertexError) {
+          console.error('❌ Vertex AI fallback also failed:', vertexError);
+          throw error; // Throw original error if both fail
         }
       }
       
-      try {
-        // Use Vertex AI as fallback
-        const result = await generateContentWithVertexAI(prompt);
-        console.log('✅ Successfully used Vertex AI fallback');
-        return result;
-      } catch (vertexError) {
-        console.error('❌ Vertex AI fallback also failed:', vertexError);
-        throw error; // Throw original error if both fail
-      }
+      // Re-throw error if it's not a 503/overloaded error
+      throw error;
     }
-    
-    // Re-throw error if it's not a 503/overloaded error
-    throw error;
   }
+  
+  throw lastError ?? new Error('All retry attempts failed');
 };
 
 // Convenience wrapper used by UI helpers like the document editor.
@@ -210,8 +231,8 @@ export const generateContentWithGemini = async (
   prompt: string,
   options?: { retries?: number; retryDelayMs?: number }
 ): Promise<string> => {
-  const maxAttempts = Math.max(1, options?.retries ?? 3);
-  const baseDelay = options?.retryDelayMs ?? 800;
+  const maxAttempts = Math.max(1, options?.retries ?? 5); // Increased default retries
+  const baseDelay = options?.retryDelayMs ?? 2000; // Increased base delay for 503 errors
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -221,17 +242,28 @@ export const generateContentWithGemini = async (
       return typeof result === 'string' ? result.trim() : '';
     } catch (error) {
       lastError = error;
-      if (attempt === maxAttempts || !isRetryableGeminiError(error)) {
+      
+      // Check if it's a 503 overload error
+      const errorMessage = (error as any)?.message?.toLowerCase() || '';
+      const errorCode = (error as any)?.error?.code || (error as any)?.code;
+      const is503 = errorCode === 503 || errorMessage.includes('503') || 
+                    errorMessage.includes('overloaded') || errorMessage.includes('unavailable');
+      
+      if (attempt === maxAttempts || (!isRetryableGeminiError(error) && !is503)) {
         throw error;
       }
-      const delay = attempt === 1 ? 0 : baseDelay * (attempt - 1);
+      
+      // Exponential backoff with jitter for 503 errors
+      const jitter = Math.random() * 1000;
+      const delay = is503 
+        ? Math.min(baseDelay * Math.pow(2, attempt - 1) + jitter, 30000) // Max 30s delay
+        : (attempt === 1 ? 500 : baseDelay * (attempt - 1));
+      
       console.warn(
-        `Gemini request failed (attempt ${attempt}/${maxAttempts}). Retrying${delay ? ` in ${delay}ms` : ' immediately'}...`,
-        error
+        `⏳ Gemini request failed (attempt ${attempt}/${maxAttempts}). ${is503 ? 'API overloaded. ' : ''}Retrying in ${Math.round(delay)}ms...`
       );
-      if (delay > 0) {
-        await sleep(delay);
-      }
+      
+      await sleep(delay);
     }
   }
 
