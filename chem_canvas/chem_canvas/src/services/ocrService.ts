@@ -1,16 +1,17 @@
 /**
- * OCR Extraction Service
+ * OCR Extraction Service (Client-Side Only)
  * 
- * Provides document OCR capabilities using PaddleOCR on the server
- * and Tesseract.js as a client-side fallback.
+ * Provides document OCR capabilities using Tesseract.js (client-side).
+ * No server-side dependencies - works entirely in the browser.
  * 
  * Features:
  * - Text extraction from images/PDFs
  * - Table detection and extraction
  * - Figure/diagram detection
- * - Formula recognition
  * - LaTeX generation for extracted content
  */
+
+import Tesseract from 'tesseract.js';
 
 // Types
 export interface TextBlock {
@@ -19,20 +20,20 @@ export interface TextBlock {
   bbox?: number[][];
 }
 
-export interface TableData {
-  type: 'table';
-  bbox: number[];
-  html?: string;
-  cells?: TableCell[];
-  latex?: string;
-}
-
 export interface TableCell {
   row: number;
   col: number;
   text: string;
   rowSpan?: number;
   colSpan?: number;
+}
+
+export interface TableData {
+  type: 'table';
+  bbox: number[];
+  html?: string;
+  cells?: TableCell[];
+  latex?: string;
 }
 
 export interface FigureData {
@@ -51,13 +52,11 @@ export interface FormulaData {
 
 export interface OCRResult {
   success: boolean;
-  fallback?: boolean;
   text_blocks: TextBlock[];
   tables: TableData[];
   figures: FigureData[];
   formulas: FormulaData[];
   raw_text: string;
-  use_client_ocr?: boolean;
   error?: string;
 }
 
@@ -69,38 +68,68 @@ export interface ExtractedDocumentContent {
   latex: string;
 }
 
+// Progress callback type
+type ProgressCallback = (progress: number, status: string) => void;
+
 // ==========================================
-// OCR Service Implementation
+// OCR Service Implementation (Client-Side)
 // ==========================================
 
 /**
- * Extract content from an image using OCR
+ * Extract content from an image using Tesseract.js (client-side OCR)
  */
 export async function extractFromImage(
   imageData: string | Blob | File,
-  extractType: 'text' | 'table' | 'figure' | 'all' = 'all'
+  extractType: 'text' | 'table' | 'figure' | 'all' = 'all',
+  onProgress?: ProgressCallback
 ): Promise<OCRResult> {
   try {
-    // Convert to base64 if needed
-    let base64Data: string;
+    // Convert to data URL if needed
+    let dataUrl: string;
     
     if (typeof imageData === 'string') {
-      // Already base64 or data URL
-      base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+      // Check if it's already a data URL or just base64
+      if (imageData.startsWith('data:')) {
+        dataUrl = imageData;
+      } else {
+        dataUrl = `data:image/png;base64,${imageData}`;
+      }
     } else {
-      // Blob or File - convert to base64
-      base64Data = await blobToBase64(imageData);
+      // Blob or File - convert to data URL
+      dataUrl = await blobToDataUrl(imageData);
     }
     
-    // Try server-side OCR first
-    const serverResult = await tryServerOCR(base64Data, extractType);
+    // Perform OCR with Tesseract.js
+    const result = await Tesseract.recognize(
+      dataUrl,
+      'eng',
+      {
+        logger: (m) => {
+          if (m.status === 'recognizing text' && onProgress) {
+            onProgress(Math.round(m.progress * 100), 'Recognizing text...');
+          }
+        }
+      }
+    );
     
-    if (serverResult.success && !serverResult.use_client_ocr) {
-      return serverResult;
-    }
+    // Convert Tesseract result to our format
+    const textBlocks: TextBlock[] = result.data.words.map(word => ({
+      text: word.text,
+      confidence: word.confidence / 100,
+      bbox: [[word.bbox.x0, word.bbox.y0], [word.bbox.x1, word.bbox.y1]]
+    }));
     
-    // Fallback to client-side OCR
-    return await clientSideOCR(base64Data, extractType);
+    // Try to detect tables from text structure
+    const tables = extractType === 'text' ? [] : detectTablesFromText(result.data);
+    
+    return {
+      success: true,
+      text_blocks: textBlocks,
+      tables,
+      figures: [],
+      formulas: [],
+      raw_text: result.data.text
+    };
     
   } catch (error) {
     console.error('OCR extraction failed:', error);
@@ -117,111 +146,9 @@ export async function extractFromImage(
 }
 
 /**
- * Try server-side OCR using Netlify function (PaddleOCR)
- */
-async function tryServerOCR(
-  base64Image: string,
-  extractType: string
-): Promise<OCRResult> {
-  const netlifyUrl = window.location.hostname === 'localhost'
-    ? 'http://localhost:8888/.netlify/functions/ocr_extract'
-    : '/.netlify/functions/ocr_extract';
-  
-  try {
-    const response = await fetch(netlifyUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        image: base64Image,
-        extract_type: extractType
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-    
-    return await response.json();
-    
-  } catch (error) {
-    console.log('Server OCR not available:', error);
-    return {
-      success: true,
-      use_client_ocr: true,
-      text_blocks: [],
-      tables: [],
-      figures: [],
-      formulas: [],
-      raw_text: ''
-    };
-  }
-}
-
-/**
- * Client-side OCR using Tesseract.js (fallback)
- */
-async function clientSideOCR(
-  base64Image: string,
-  extractType: string
-): Promise<OCRResult> {
-  try {
-    // Dynamically import Tesseract.js
-    const Tesseract = await import('tesseract.js');
-    
-    const dataUrl = `data:image/png;base64,${base64Image}`;
-    
-    const result = await Tesseract.recognize(
-      dataUrl,
-      'eng',
-      {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
-          }
-        }
-      }
-    );
-    
-    // Convert Tesseract result to our format
-    const textBlocks: TextBlock[] = result.data.words.map(word => ({
-      text: word.text,
-      confidence: word.confidence / 100,
-      bbox: [[word.bbox.x0, word.bbox.y0], [word.bbox.x1, word.bbox.y1]]
-    }));
-    
-    // Try to detect tables from text structure
-    const tables = detectTablesFromText(result.data);
-    
-    return {
-      success: true,
-      fallback: true,
-      text_blocks: textBlocks,
-      tables,
-      figures: [],
-      formulas: [],
-      raw_text: result.data.text
-    };
-    
-  } catch (error) {
-    console.error('Client OCR failed:', error);
-    return {
-      success: false,
-      text_blocks: [],
-      tables: [],
-      figures: [],
-      formulas: [],
-      raw_text: '',
-      error: 'Client-side OCR not available'
-    };
-  }
-}
-
-/**
  * Detect tables from OCR text structure
  */
-function detectTablesFromText(ocrData: any): TableData[] {
+function detectTablesFromText(ocrData: Tesseract.Page): TableData[] {
   const tables: TableData[] = [];
   
   // Simple heuristic: look for grid-like patterns in lines
@@ -235,7 +162,7 @@ function detectTablesFromText(ocrData: any): TableData[] {
     if (words.length < 2) continue;
     
     // Check if words are roughly aligned in columns
-    const xPositions = words.map((w: any) => w.bbox.x0);
+    const xPositions = words.map((w) => w.bbox.x0);
     const hasRegularSpacing = checkRegularSpacing(xPositions);
     
     if (hasRegularSpacing) {
@@ -244,7 +171,7 @@ function detectTablesFromText(ocrData: any): TableData[] {
       }
       tableEndY = line.bbox.y1;
       
-      const row = words.map((w: any, i: number) => ({
+      const row = words.map((w, i) => ({
         row: currentTable.length,
         col: i,
         text: w.text
@@ -268,7 +195,7 @@ function detectTablesFromText(ocrData: any): TableData[] {
 function checkRegularSpacing(positions: number[]): boolean {
   if (positions.length < 3) return false;
   
-  const gaps = [];
+  const gaps: number[] = [];
   for (let i = 1; i < positions.length; i++) {
     gaps.push(positions[i] - positions[i - 1]);
   }
@@ -304,14 +231,13 @@ function convertToTableData(cells: TableCell[][], startY: number, endY: number):
 }
 
 /**
- * Convert blob to base64
+ * Convert blob to data URL
  */
-async function blobToBase64(blob: Blob | File): Promise<string> {
+async function blobToDataUrl(blob: Blob | File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64 = (reader.result as string).split(',')[1];
-      resolve(base64);
+      resolve(reader.result as string);
     };
     reader.onerror = reject;
     reader.readAsDataURL(blob);
@@ -325,7 +251,10 @@ async function blobToBase64(blob: Blob | File): Promise<string> {
 /**
  * Extract images from PDF pages for OCR processing
  */
-export async function extractPDFPages(file: File): Promise<string[]> {
+export async function extractPDFPages(
+  file: File,
+  onProgress?: ProgressCallback
+): Promise<string[]> {
   const pdfjs = await import('pdfjs-dist');
   
   // Set worker
@@ -337,6 +266,10 @@ export async function extractPDFPages(file: File): Promise<string[]> {
   const pages: string[] = [];
   
   for (let i = 1; i <= pdf.numPages; i++) {
+    if (onProgress) {
+      onProgress(Math.round((i / pdf.numPages) * 50), `Rendering page ${i}/${pdf.numPages}...`);
+    }
+    
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better OCR
     
@@ -352,19 +285,37 @@ export async function extractPDFPages(file: File): Promise<string[]> {
       viewport
     }).promise;
     
-    // Convert to base64
-    const base64 = canvas.toDataURL('image/png').split(',')[1];
-    pages.push(base64);
+    // Convert to data URL (base64)
+    const dataUrl = canvas.toDataURL('image/png');
+    pages.push(dataUrl);
   }
   
   return pages;
 }
 
 /**
- * Extract all content from a PDF document
+ * Extract all content from a PDF document using client-side OCR
  */
-export async function extractPDFContent(file: File): Promise<ExtractedDocumentContent> {
-  const pages = await extractPDFPages(file);
+export async function extractPDFContent(
+  file: File,
+  onProgress?: ProgressCallback
+): Promise<ExtractedDocumentContent> {
+  // First, try to extract text directly from PDF (faster, more accurate)
+  const directText = await extractPDFTextDirect(file);
+  
+  if (directText && directText.length > 100) {
+    // If we got good text directly, use it
+    return {
+      text: directText,
+      tables: [],
+      figures: [],
+      formulas: [],
+      latex: ''
+    };
+  }
+  
+  // Otherwise, fall back to OCR (for scanned PDFs)
+  const pages = await extractPDFPages(file, onProgress);
   
   const allText: string[] = [];
   const allTables: TableData[] = [];
@@ -372,6 +323,10 @@ export async function extractPDFContent(file: File): Promise<ExtractedDocumentCo
   const allFormulas: FormulaData[] = [];
   
   for (let i = 0; i < pages.length; i++) {
+    if (onProgress) {
+      onProgress(50 + Math.round((i / pages.length) * 50), `OCR page ${i + 1}/${pages.length}...`);
+    }
+    
     console.log(`Processing page ${i + 1}/${pages.length}...`);
     
     const result = await extractFromImage(pages[i], 'all');
@@ -402,6 +357,35 @@ export async function extractPDFContent(file: File): Promise<ExtractedDocumentCo
     formulas: allFormulas,
     latex
   };
+}
+
+/**
+ * Extract text directly from PDF without OCR (for digital PDFs)
+ */
+async function extractPDFTextDirect(file: File): Promise<string> {
+  try {
+    const pdfjs = await import('pdfjs-dist');
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    
+    let fullText = '';
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      fullText += pageText + '\n\n';
+    }
+    
+    return fullText.trim();
+  } catch (error) {
+    console.warn('Direct PDF text extraction failed:', error);
+    return '';
+  }
 }
 
 // ==========================================
@@ -454,111 +438,43 @@ ${table.latex}
   return latex;
 }
 
+// ==========================================
+// Utility: HTML Table to LaTeX
+// ==========================================
+
+interface HtmlTableData {
+  rows: string[][];
+  headers?: string[];
+  caption?: string;
+  label?: string;
+}
+
 /**
- * Convert HTML table to LaTeX
+ * Convert HTML table structure to LaTeX
  */
-export function htmlTableToLatex(html: string): string {
-  // Parse HTML table
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const table = doc.querySelector('table');
+export function htmlTableToLatex(table: HtmlTableData): string {
+  const numCols = Math.max(
+    table.headers?.length || 0,
+    ...table.rows.map(r => r.length)
+  );
   
-  if (!table) return '';
+  if (numCols === 0) return '';
   
-  const rows = table.querySelectorAll('tr');
-  const numCols = Math.max(...Array.from(rows).map(row => row.querySelectorAll('td, th').length));
+  const colSpec = 'l'.repeat(numCols);
+  let latex = `\\begin{tabular}{${colSpec}}\n\\toprule\n`;
   
-  let latex = `\\begin{tabular}{${'l'.repeat(numCols)}}\n\\toprule\n`;
+  // Add headers if present
+  if (table.headers && table.headers.length > 0) {
+    latex += table.headers.join(' & ') + ' \\\\\n';
+    latex += '\\midrule\n';
+  }
   
-  rows.forEach((row, i) => {
-    const cells = row.querySelectorAll('td, th');
-    const cellTexts = Array.from(cells).map(cell => escapeLatex(cell.textContent || ''));
-    
-    // Pad with empty cells if needed
-    while (cellTexts.length < numCols) {
-      cellTexts.push('');
-    }
-    
-    latex += cellTexts.join(' & ') + ' \\\\\n';
-    
-    // Add midrule after header
-    if (i === 0 && row.querySelector('th')) {
-      latex += '\\midrule\n';
-    }
+  // Add rows
+  table.rows.forEach((row) => {
+    latex += row.join(' & ') + ' \\\\\n';
   });
   
   latex += '\\bottomrule\n\\end{tabular}';
   
   return latex;
-}
-
-/**
- * Escape special LaTeX characters
- */
-function escapeLatex(text: string): string {
-  return text
-    .replace(/\\/g, '\\textbackslash{}')
-    .replace(/&/g, '\\&')
-    .replace(/%/g, '\\%')
-    .replace(/\$/g, '\\$')
-    .replace(/#/g, '\\#')
-    .replace(/_/g, '\\_')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/~/g, '\\textasciitilde{}')
-    .replace(/\^/g, '\\textasciicircum{}');
-}
-
-// ==========================================
-// Image Extraction from Documents
-// ==========================================
-
-/**
- * Extract embedded images from a document
- */
-export async function extractImagesFromDocument(
-  file: File
-): Promise<{ images: FigureData[]; thumbnails: string[] }> {
-  const images: FigureData[] = [];
-  const thumbnails: string[] = [];
-  
-  if (file.type === 'application/pdf') {
-    // Extract images from PDF
-    const pages = await extractPDFPages(file);
-    
-    for (let i = 0; i < pages.length; i++) {
-      // Each page as a potential figure
-      thumbnails.push(`data:image/png;base64,${pages[i]}`);
-      
-      images.push({
-        type: 'figure',
-        bbox: [0, 0, 0, 0],
-        base64: pages[i],
-        filename: `page_${i + 1}.png`
-      });
-    }
-  } else if (file.type.startsWith('image/')) {
-    // Single image file
-    const base64 = await blobToBase64(file);
-    thumbnails.push(`data:image/png;base64,${base64}`);
-    
-    images.push({
-      type: 'figure',
-      bbox: [0, 0, 0, 0],
-      base64,
-      filename: file.name
-    });
-  }
-  
-  return { images, thumbnails };
-}
-
-/**
- * Save extracted figure as a file for LaTeX inclusion
- */
-export function saveFigureForLatex(figure: FigureData): { filename: string; content: string } {
-  const filename = figure.filename || `figure_${Date.now()}.png`;
-  const content = figure.base64 || '';
-  
-  return { filename, content };
 }
