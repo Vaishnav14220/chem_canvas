@@ -45,7 +45,8 @@ import {
   ListChecks,
   GraduationCap,
   Lightbulb,
-  PenTool
+  PenTool,
+  Image
 } from 'lucide-react';
 
 import { Button } from './ui/button';
@@ -155,7 +156,25 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
   const [textContentType, setTextContentType] = useState<UploadedFile['type']>('notes');
   
   // Active tab in generate step
-  const [activeTab, setActiveTab] = useState<'progress' | 'sections' | 'latex' | 'preview'>('progress');
+  const [activeTab, setActiveTab] = useState<'progress' | 'sections' | 'latex' | 'preview' | 'images'>('progress');
+  
+  // Collected extracted images from all uploaded files
+  const extractedImages = useMemo(() => {
+    const images: Array<{ filename: string; base64: string; caption: string; source: string }> = [];
+    uploadedFiles.forEach(file => {
+      if (file.extractedImages && file.extractedImages.length > 0) {
+        file.extractedImages.forEach((img, idx) => {
+          images.push({
+            filename: img.filename || `image_${idx + 1}.png`,
+            base64: img.base64 || '',
+            caption: img.caption || `Image ${idx + 1} from ${file.name}`,
+            source: file.name
+          });
+        });
+      }
+    });
+    return images;
+  }, [uploadedFiles]);
   
   // Memoize pdfUrl for react-pdf - only update when URL actually changes
   const pdfFile = useMemo(() => {
@@ -669,7 +688,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
   const renderGenerateStep = () => (
     <div className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col">
-        <TabsList className="grid grid-cols-4 bg-gray-800">
+        <TabsList className="grid grid-cols-5 bg-gray-800">
           <TabsTrigger value="progress">
             <Brain className="w-4 h-4 mr-2" />
             Progress
@@ -682,8 +701,17 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
             <FileCode className="w-4 h-4 mr-2" />
             LaTeX
           </TabsTrigger>
+          <TabsTrigger value="images" className="relative">
+            <Image className="w-4 h-4 mr-2" />
+            Images
+            {extractedImages.length > 0 && (
+              <Badge variant="secondary" className="ml-1 bg-purple-600 text-white text-xs px-1.5">
+                {extractedImages.length}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="preview">
-            <Eye className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" />
             Preview
           </TabsTrigger>
         </TabsList>
@@ -855,6 +883,74 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                   {latexDocument || 'LaTeX will appear here after generation...'}
                 </pre>
               </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Images Tab - Shows extracted images from uploaded documents */}
+        <TabsContent value="images" className="flex-1 overflow-hidden">
+          <Card className="h-full bg-gray-800/50 border-gray-700 flex flex-col">
+            <CardHeader className="pb-2 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Extracted Images</CardTitle>
+                  <CardDescription>
+                    {extractedImages.length > 0 
+                      ? `${extractedImages.length} images extracted from uploaded documents`
+                      : 'No images extracted yet. Upload PDF documents with images.'}
+                  </CardDescription>
+                </div>
+                {extractedImages.length > 0 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      // Download all images as a zip would require additional library
+                      // For now, just show a message
+                      alert('Right-click on individual images to save them.');
+                    }}
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    Save Images
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-hidden">
+              {extractedImages.length > 0 ? (
+                <ScrollArea className="h-full">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-2">
+                    {extractedImages.map((img, index) => (
+                      <div 
+                        key={index} 
+                        className="bg-gray-700/50 rounded-lg overflow-hidden border border-gray-600 hover:border-purple-500 transition-colors"
+                      >
+                        <div className="aspect-square bg-gray-800 flex items-center justify-center p-2">
+                          <img 
+                            src={img.base64} 
+                            alt={img.caption}
+                            className="max-w-full max-h-full object-contain"
+                          />
+                        </div>
+                        <div className="p-2 border-t border-gray-600">
+                          <p className="text-xs text-gray-300 truncate font-medium">{img.filename}</p>
+                          <p className="text-xs text-gray-500 truncate">{img.source}</p>
+                          <p className="text-xs text-gray-400 mt-1 line-clamp-2">{img.caption}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-500">
+                  <div className="text-center">
+                    <Image className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="mb-2">No images extracted yet</p>
+                    <p className="text-sm">Upload PDF documents containing images, diagrams, or figures.</p>
+                    <p className="text-sm text-gray-600 mt-2">Images will be automatically extracted and shown here.</p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -307,64 +307,152 @@ export async function extractPDFPages(
 }
 
 /**
- * Extract all content from a PDF document using client-side OCR
+ * Extract embedded images from a PDF document
+ * This extracts actual image objects embedded in the PDF
+ */
+export async function extractImagesFromPDF(
+  file: File,
+  onProgress?: ProgressCallback
+): Promise<FigureData[]> {
+  const pdfjs = await initPdfJs();
+  const figures: FigureData[] = [];
+  
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      if (onProgress) {
+        onProgress(Math.round((pageNum / pdf.numPages) * 100), `Extracting images from page ${pageNum}/${pdf.numPages}...`);
+      }
+      
+      const page = await pdf.getPage(pageNum);
+      const operatorList = await page.getOperatorList();
+      
+      // Look for image operations in the PDF
+      for (let i = 0; i < operatorList.fnArray.length; i++) {
+        // OPS.paintImageXObject = 85, OPS.paintJpegXObject = 82
+        if (operatorList.fnArray[i] === 85 || operatorList.fnArray[i] === 82) {
+          try {
+            const imgName = operatorList.argsArray[i][0];
+            
+            // Get the image object
+            const objs = (page as any).objs;
+            if (objs && objs._objs && objs._objs[imgName]) {
+              const imgData = objs._objs[imgName].data;
+              
+              if (imgData && imgData.data) {
+                // Convert image data to canvas and then to base64
+                const canvas = document.createElement('canvas');
+                canvas.width = imgData.width;
+                canvas.height = imgData.height;
+                const ctx = canvas.getContext('2d')!;
+                
+                // Create ImageData from the raw data
+                const imageData = ctx.createImageData(imgData.width, imgData.height);
+                
+                // Handle different image formats
+                if (imgData.data.length === imgData.width * imgData.height * 4) {
+                  // RGBA data
+                  imageData.data.set(imgData.data);
+                } else if (imgData.data.length === imgData.width * imgData.height * 3) {
+                  // RGB data - convert to RGBA
+                  for (let j = 0; j < imgData.width * imgData.height; j++) {
+                    imageData.data[j * 4] = imgData.data[j * 3];
+                    imageData.data[j * 4 + 1] = imgData.data[j * 3 + 1];
+                    imageData.data[j * 4 + 2] = imgData.data[j * 3 + 2];
+                    imageData.data[j * 4 + 3] = 255;
+                  }
+                } else {
+                  continue; // Unknown format
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+                const base64 = canvas.toDataURL('image/png');
+                
+                // Only include reasonably sized images (not tiny icons)
+                if (imgData.width > 50 && imgData.height > 50) {
+                  figures.push({
+                    type: 'figure',
+                    bbox: [0, 0, imgData.width, imgData.height],
+                    base64,
+                    filename: `figure_p${pageNum}_${figures.length + 1}.png`,
+                    caption: `Figure from page ${pageNum}`
+                  });
+                }
+              }
+            }
+          } catch (imgError) {
+            // Skip this image if extraction fails
+            console.warn('Failed to extract image:', imgError);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Image extraction from PDF failed:', error);
+  }
+  
+  // If no embedded images found, render pages as images
+  if (figures.length === 0) {
+    console.log('No embedded images found, rendering pages as figures...');
+    const pages = await extractPDFPages(file, onProgress);
+    
+    // Add each page as a figure
+    pages.forEach((pageDataUrl, index) => {
+      figures.push({
+        type: 'figure',
+        bbox: [0, 0, 800, 1000],
+        base64: pageDataUrl,
+        filename: `page_${index + 1}.png`,
+        caption: `Page ${index + 1}`
+      });
+    });
+  }
+  
+  return figures;
+}
+
+/**
+ * Extract all content from a PDF document
+ * Extracts both text AND images
  */
 export async function extractPDFContent(
   file: File,
   onProgress?: ProgressCallback
 ): Promise<ExtractedDocumentContent> {
-  // First, try to extract text directly from PDF (faster, more accurate)
-  const directText = await extractPDFTextDirect(file);
-  
-  if (directText && directText.length > 100) {
-    // If we got good text directly, use it
-    return {
-      text: directText,
-      tables: [],
-      figures: [],
-      formulas: [],
-      latex: ''
-    };
-  }
-  
-  // Otherwise, fall back to OCR (for scanned PDFs)
-  const pages = await extractPDFPages(file, onProgress);
-  
-  const allText: string[] = [];
-  const allTables: TableData[] = [];
   const allFigures: FigureData[] = [];
+  const allTables: TableData[] = [];
   const allFormulas: FormulaData[] = [];
   
-  for (let i = 0; i < pages.length; i++) {
-    if (onProgress) {
-      onProgress(50 + Math.round((i / pages.length) * 50), `OCR page ${i + 1}/${pages.length}...`);
-    }
-    
-    console.log(`Processing page ${i + 1}/${pages.length}...`);
-    
-    const result = await extractFromImage(pages[i], 'all');
-    
-    if (result.success) {
-      allText.push(result.raw_text);
-      allTables.push(...result.tables);
-      allFigures.push(...result.figures.map(f => ({
-        ...f,
-        filename: `figure_page${i + 1}_${allFigures.length + 1}.png`
-      })));
-      allFormulas.push(...result.formulas);
-    }
+  // Extract text directly from PDF
+  const directText = await extractPDFTextDirect(file);
+  
+  // Extract images from PDF
+  if (onProgress) {
+    onProgress(50, 'Extracting images from PDF...');
   }
+  
+  const extractedImages = await extractImagesFromPDF(file, (p, s) => {
+    if (onProgress) {
+      onProgress(50 + Math.round(p * 0.5), s);
+    }
+  });
+  
+  allFigures.push(...extractedImages);
+  
+  console.log(`Extracted ${allFigures.length} images from PDF`);
   
   // Generate combined LaTeX
   const latex = generateLatexFromExtraction({
-    text: allText.join('\n\n'),
+    text: directText,
     tables: allTables,
     figures: allFigures,
     formulas: allFormulas
   });
   
   return {
-    text: allText.join('\n\n'),
+    text: directText || `[PDF Document with ${allFigures.length} images]`,
     tables: allTables,
     figures: allFigures,
     formulas: allFormulas,
