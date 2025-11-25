@@ -61,7 +61,11 @@ import {
   ArrowRight,
   Play,
   Pause,
-  RotateCcw
+  RotateCcw,
+  Paperclip,
+  Upload,
+  FileImage,
+  FileType
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -92,6 +96,7 @@ import { SubAgentIndicator, SubAgentContent } from './deep-agent/SubAgentIndicat
 import { ToolCallBox } from './deep-agent/ToolCallBox';
 import { TasksFilesPanel } from './deep-agent/TasksFilesPanel';
 import type { ToolCall, SubAgent, TodoItem, ChatMessage as ChatMessageType, ActiveTask, TaskProgressStep } from './deep-agent/types';
+import { extractTextFromFile } from '../services/researchPaperAgentService';
 import 'katex/dist/katex.min.css';
 
 // ==========================================
@@ -301,6 +306,19 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
   // Artifacts State
   const [artifactsList, setArtifactsList] = useState<Artifact[]>([]);
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
+
+  // Upload State
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{
+    file: File;
+    name: string;
+    type: string;
+    size: number;
+    content?: string;
+    isProcessing: boolean;
+    error?: string;
+  }>>([]);
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -613,6 +631,108 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
       handleSubmit();
     }
   }, [handleSubmit]);
+
+  // Handle file upload
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsProcessingUpload(true);
+    const newFiles: typeof uploadedFiles = [];
+
+    for (const file of Array.from(files)) {
+      // Add file to list with processing state
+      const fileEntry = {
+        file,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        isProcessing: true
+      };
+      newFiles.push(fileEntry);
+    }
+
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+
+    // Process each file
+    for (let i = 0; i < newFiles.length; i++) {
+      const fileEntry = newFiles[i];
+      try {
+        const result = await extractTextFromFile(fileEntry.file);
+        setUploadedFiles(prev => prev.map(f => 
+          f.name === fileEntry.name && f.size === fileEntry.size
+            ? { ...f, content: result.text, isProcessing: false }
+            : f
+        ));
+      } catch (error) {
+        console.error('Error processing file:', error);
+        setUploadedFiles(prev => prev.map(f => 
+          f.name === fileEntry.name && f.size === fileEntry.size
+            ? { ...f, error: 'Failed to extract content', isProcessing: false }
+            : f
+        ));
+      }
+    }
+
+    setIsProcessingUpload(false);
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
+  // Remove uploaded file
+  const removeUploadedFile = useCallback((fileName: string, fileSize: number) => {
+    setUploadedFiles(prev => prev.filter(f => !(f.name === fileName && f.size === fileSize)));
+  }, []);
+
+  // Get file icon based on type
+  const getFileIcon = (type: string) => {
+    if (type.includes('pdf')) return <FileText className="w-4 h-4 text-red-400" />;
+    if (type.includes('image')) return <FileImage className="w-4 h-4 text-blue-400" />;
+    if (type.includes('text') || type.includes('json')) return <FileCode className="w-4 h-4 text-green-400" />;
+    return <File className="w-4 h-4 text-gray-400" />;
+  };
+
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Build message with file context
+  const buildMessageWithFiles = useCallback((): string => {
+    let message = inputMessage.trim();
+    
+    if (uploadedFiles.length > 0) {
+      const fileContents = uploadedFiles
+        .filter(f => f.content && !f.error)
+        .map(f => `\n\n--- File: ${f.name} ---\n${f.content}`)
+        .join('');
+      
+      if (fileContents) {
+        message = message 
+          ? `${message}\n\nI'm sharing the following documents for context:${fileContents}`
+          : `Please analyze the following documents:${fileContents}`;
+      }
+    }
+    
+    return message;
+  }, [inputMessage, uploadedFiles]);
+
+  // Modified send that includes files
+  const handleSendWithFiles = useCallback(async () => {
+    const messageWithFiles = buildMessageWithFiles();
+    if (!messageWithFiles.trim()) return;
+    
+    // Clear files after sending
+    setUploadedFiles([]);
+    
+    // Use the original send with the combined message
+    setInputMessage(messageWithFiles);
+    setTimeout(() => handleSendMessage(messageWithFiles), 0);
+  }, [buildMessageWithFiles, handleSendMessage]);
 
   // Stop streaming
   const stopStream = useCallback(() => {
@@ -1566,42 +1686,118 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     />
                   )}
 
+                  {/* Uploaded Files Preview */}
+                  {uploadedFiles.length > 0 && (
+                    <div className="px-3 py-2 border-b border-gray-700 bg-gray-850/50">
+                      <div className="flex items-center gap-1 mb-2">
+                        <Paperclip className="w-3 h-3 text-gray-400" />
+                        <span className="text-xs text-gray-400">Attached files ({uploadedFiles.length})</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {uploadedFiles.map((file, idx) => (
+                          <div 
+                            key={`${file.name}-${idx}`}
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs ${
+                              file.error 
+                                ? 'bg-red-900/30 border border-red-700/50' 
+                                : file.isProcessing 
+                                ? 'bg-blue-900/30 border border-blue-700/50' 
+                                : 'bg-gray-700/50 border border-gray-600'
+                            }`}
+                          >
+                            {file.isProcessing ? (
+                              <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+                            ) : (
+                              getFileIcon(file.type)
+                            )}
+                            <span className={`max-w-[120px] truncate ${file.error ? 'text-red-300' : 'text-gray-300'}`}>
+                              {file.name}
+                            </span>
+                            <span className="text-gray-500">{formatFileSize(file.size)}</span>
+                            {file.content && (
+                              <CheckCircle2 className="w-3 h-3 text-green-400" />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeUploadedFile(file.name, file.size)}
+                              className="p-0.5 hover:bg-gray-600 rounded text-gray-400 hover:text-white"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Input */}
-                  <form onSubmit={handleSubmit} className="flex flex-col">
+                  <form onSubmit={(e) => { e.preventDefault(); uploadedFiles.length > 0 ? handleSendWithFiles() : handleSubmit(); }} className="flex flex-col">
                     <textarea
                       ref={inputRef}
                       value={inputMessage}
                       onChange={(e) => setInputMessage(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder={isLoading ? "Running..." : "Write your message..."}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          uploadedFiles.length > 0 ? handleSendWithFiles() : handleSubmit();
+                        }
+                      }}
+                      placeholder={isLoading ? "Running..." : uploadedFiles.length > 0 ? "Add a message about these files (optional)..." : "Write your message or attach files..."}
                       className="flex-1 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-7 text-white outline-none placeholder:text-gray-500"
                       rows={1}
                       disabled={isLoading || isInitializing}
                       style={{ minHeight: '48px', maxHeight: '120px' }}
                     />
                     <div className="flex justify-between gap-2 p-3 border-t border-gray-700">
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        {hasTasks && (
-                          <span className="flex items-center gap-1">
-                            <ListTodo className="w-3 h-3" />
-                            {groupedTodos.completed.length}/{currentTodos.length}
-                          </span>
-                        )}
-                        {hasFiles && (
-                          <span className="flex items-center gap-1">
-                            <FolderOpen className="w-3 h-3" />
-                            {Object.keys(currentFiles).length}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-3">
+                        {/* File Upload Button */}
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          accept=".pdf,.txt,.md,.json,.csv,.tex,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isLoading || isProcessingUpload}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Upload documents (PDF, TXT, images, etc.)"
+                        >
+                          {isProcessingUpload ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Paperclip className="w-4 h-4" />
+                          )}
+                          <span>Attach</span>
+                        </button>
+
+                        {/* Status indicators */}
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          {hasTasks && (
+                            <span className="flex items-center gap-1">
+                              <ListTodo className="w-3 h-3" />
+                              {groupedTodos.completed.length}/{currentTodos.length}
+                            </span>
+                          )}
+                          {hasFiles && (
+                            <span className="flex items-center gap-1">
+                              <FolderOpen className="w-3 h-3" />
+                              {Object.keys(currentFiles).length}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <button
                         type={isLoading ? 'button' : 'submit'}
                         onClick={isLoading ? stopStream : undefined}
-                        disabled={!isLoading && (!inputMessage.trim() || isInitializing)}
+                        disabled={!isLoading && (!inputMessage.trim() && uploadedFiles.length === 0) || isInitializing || isProcessingUpload}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           isLoading
                             ? 'bg-red-500 hover:bg-red-600 text-white'
-                            : !inputMessage.trim() || isInitializing
+                            : (!inputMessage.trim() && uploadedFiles.length === 0) || isInitializing || isProcessingUpload
                             ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                             : 'bg-purple-500 hover:bg-purple-600 text-white'
                         }`}
@@ -1614,7 +1810,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                         ) : (
                           <>
                             <ArrowUp className="w-4 h-4" />
-                            <span>Send</span>
+                            <span>{uploadedFiles.length > 0 ? 'Send with Files' : 'Send'}</span>
                           </>
                         )}
                       </button>
