@@ -11,8 +11,6 @@
  * - LaTeX generation for extracted content
  */
 
-import Tesseract from 'tesseract.js';
-
 // Types
 export interface TextBlock {
   text: string;
@@ -84,6 +82,9 @@ export async function extractFromImage(
   onProgress?: ProgressCallback
 ): Promise<OCRResult> {
   try {
+    // Dynamically import Tesseract.js
+    const Tesseract = await import('tesseract.js');
+    
     // Convert to data URL if needed
     let dataUrl: string;
     
@@ -248,6 +249,21 @@ async function blobToDataUrl(blob: Blob | File): Promise<string> {
 // PDF Page Extraction
 // ==========================================
 
+// PDF.js worker setup - use CDN with proper HTTPS
+const PDF_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+/**
+ * Initialize PDF.js with worker
+ */
+async function initPdfJs() {
+  const pdfjs = await import('pdfjs-dist');
+  
+  // Use CDN worker URL (more reliable than unpkg)
+  pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
+  
+  return pdfjs;
+}
+
 /**
  * Extract images from PDF pages for OCR processing
  */
@@ -255,10 +271,7 @@ export async function extractPDFPages(
   file: File,
   onProgress?: ProgressCallback
 ): Promise<string[]> {
-  const pdfjs = await import('pdfjs-dist');
-  
-  // Set worker
-  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  const pdfjs = await initPdfJs();
   
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
@@ -364,8 +377,7 @@ export async function extractPDFContent(
  */
 async function extractPDFTextDirect(file: File): Promise<string> {
   try {
-    const pdfjs = await import('pdfjs-dist');
-    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    const pdfjs = await initPdfJs();
     
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
