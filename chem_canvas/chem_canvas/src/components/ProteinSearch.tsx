@@ -7,6 +7,7 @@ import {
   getPDBEntryUrl,
 } from '../services/pdbService';
 import { captureFeatureEvent } from '../utils/errorLogger';
+import { toast } from 'react-toastify';
 
 interface ProteinSearchProps {
   onSelectProtein?: (proteinData: PDBProteinData) => void;
@@ -68,9 +69,31 @@ export default function ProteinSearch({
 
   const handleSelectProtein = useCallback((protein: PDBProteinData) => {
     setSelectedProtein(protein);
+    
+    // Show loading toast
+    const toastId = toast.loading(`Adding ${protein.title || protein.entryId} to canvas...`, {
+      position: "top-right",
+      theme: "light",
+    });
+    
     if (onSelectProtein) {
       onSelectProtein(protein);
+      
+      // Update toast to success
+      toast.update(toastId, {
+        render: `✓ ${protein.title || protein.entryId} added successfully!`,
+        type: "success",
+        isLoading: false,
+        autoClose: 3000,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    } else {
+      // Dismiss toast if no handler
+      toast.dismiss(toastId);
     }
+    
     void captureFeatureEvent('protein_search', 'select', {
       pdbId: (protein as any).id ?? protein.entryId,
       title: protein.title

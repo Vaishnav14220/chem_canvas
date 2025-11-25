@@ -3,6 +3,7 @@ import { Search, X, Loader2, AlertCircle, CheckCircle, Gem, Box, Database, Exter
 import type { MoleculeData } from '../services/pubchemService';
 import { searchMinerals, getMineralByCodId, type MineralSearchResult } from '../services/mineralService';
 import { captureFeatureEvent } from '../utils/errorLogger';
+import { toast } from 'react-toastify';
 
 interface MineralSearchProps {
   isOpen?: boolean;
@@ -159,7 +160,25 @@ export default function MineralSearch({
 
   const handleInsert = async () => {
     if (selectedMineral && onSelectMineral) {
+      // Show loading toast
+      const toastId = toast.loading(`Adding ${selectedMineral.name || 'mineral'} to canvas...`, {
+        position: "top-right",
+        theme: "light",
+      });
+      
       onSelectMineral(selectedMineral);
+      
+      // Update toast to success
+      toast.update(toastId, {
+        render: `✓ ${selectedMineral.name || 'Mineral'} added successfully!`,
+        type: "success",
+        isLoading: false,
+        autoClose: 3000,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      
       void captureFeatureEvent('mineral_search', 'select', {
         name: selectedMineral.name,
         codId: selectedMineral.codId ?? selectedResult?.codId ?? null

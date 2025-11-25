@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { getMoleculeByName, getMoleculeAutocomplete, type MoleculeData } from '../services/pubchemService';
 import { captureFeatureEvent } from '../utils/errorLogger';
+import { toast } from 'react-toastify';
 
 interface InlineMoleculeSearchProps {
   onSelectMolecule?: (moleculeData: MoleculeData) => void;
@@ -83,6 +84,12 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
     // Auto-search and insert for the suggestion
     setIsLoading(true);
 
+    // Show loading toast
+    const toastId = toast.loading(`Adding ${suggestion} to canvas...`, {
+      position: "top-right",
+      theme: "light",
+    });
+
     try {
       const data = await getMoleculeByName(suggestion);
       if (data) {
@@ -96,13 +103,45 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
           cid: (data as any).cid ?? (data as any).id ?? null,
           name: (data as any).name ?? null
         });
+        
+        // Update toast to success with checkmark
+        toast.update(toastId, {
+          render: `✓ ${suggestion} added successfully!`,
+          type: "success",
+          isLoading: false,
+          autoClose: 3000,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+        
         setSearchTerm('');
         return;
       } else {
         console.warn(`Molecule "${suggestion}" not found`);
+        // Update toast to error
+        toast.update(toastId, {
+          render: `Molecule "${suggestion}" not found`,
+          type: "error",
+          isLoading: false,
+          autoClose: 4000,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
       }
     } catch (err) {
       console.error('Search error:', err);
+      // Update toast to error
+      toast.update(toastId, {
+        render: `Failed to add ${suggestion}`,
+        type: "error",
+        isLoading: false,
+        autoClose: 4000,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     } finally {
       setIsLoading(false);
     }

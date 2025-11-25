@@ -5,6 +5,7 @@ import { fetchStructuredReaction, type StructuredReactionPayload } from '../serv
 import { reactionSmilesToSVGHuggingFace } from '../services/rdkitService';
 import { sanitizeReactionSmilesInput, stripAtomMappings } from '../utils/reactionSanitizer';
 import { captureFeatureEvent } from '../utils/errorLogger';
+import { toast } from 'react-toastify';
 
 export interface ReactionSearchResult {
   payload: StructuredReactionPayload;
@@ -131,18 +132,61 @@ export default function InlineReactionSearch({ onSelectReaction, className = '' 
     setError(null);
     setShowResult(true);
 
+    // Show loading toast
+    const toastId = toast.loading(`Searching for ${query} reaction...`, {
+      position: "top-right",
+      theme: "light",
+    });
+
     try {
       const payload = await fetchStructuredReaction(query.trim(), { mode: 'name' });
       setStatusIndex(1);
 
       if (payload) {
+        // Update toast for rendering step
+        toast.update(toastId, {
+          render: `Rendering ${query} reaction...`,
+          isLoading: true,
+        });
+        
         await handleInsertReaction(payload);
+        
+        // Update toast to success
+        toast.update(toastId, {
+          render: `✓ ${query} reaction added successfully!`,
+          type: "success",
+          isLoading: false,
+          autoClose: 3000,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
       } else {
         setError('No reaction data found');
+        // Update toast to error
+        toast.update(toastId, {
+          render: `Reaction "${query}" not found`,
+          type: "error",
+          isLoading: false,
+          autoClose: 4000,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
       }
     } catch (err) {
       console.error('Reaction search error:', err);
       setError(err instanceof Error ? err.message : 'Failed to search reaction');
+      // Update toast to error
+      toast.update(toastId, {
+        render: `Failed to add ${query} reaction`,
+        type: "error",
+        isLoading: false,
+        autoClose: 4000,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     } finally {
       setIsLoading(false);
       setStatusIndex(-1);

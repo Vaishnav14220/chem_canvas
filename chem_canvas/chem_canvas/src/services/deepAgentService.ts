@@ -1,0 +1,2137 @@
+/**
+ * Deep Agent Service - Using DeepAgents Pattern with Gemini and Tavily
+ * 
+ * Based on: https://langchain-ai.github.io/deepagents/quickstart
+ * 
+ * Core Capabilities:
+ * - Planning & Task Decomposition (write_todos tool)
+ * - Context Management (file system tools)
+ * - Web Search via Tavily
+ * - Subagent delegation
+ * - Chemistry-focused tools
+ * - Automatic task execution (no manual "continue" needed)
+ * - Real-time progress events
+ */
+
+import { GoogleGenAI } from '@google/genai';
+import { getSharedGeminiApiKey } from '../firebase/apiKeys';
+import { fetchCanonicalSmiles } from './pubchemService';
+import { generateTextContent, isGeminiInitialized, initializeGeminiWithFirebaseKey } from './geminiService';
+
+// ==========================================
+// Task Progress Event System
+// ==========================================
+
+export type TaskStatus = 'pending' | 'in-progress' | 'completed' | 'error';
+
+export interface TaskEvent {
+  type: 'task-start' | 'task-update' | 'task-complete' | 'task-error' | 
+        'step-start' | 'step-complete' | 'tool-call' | 'tool-result' |
+        'thinking' | 'writing' | 'searching' | 'document-ready' | 'artifact-created';
+  taskId: string;
+  title?: string;
+  message?: string;
+  status?: TaskStatus;
+  progress?: { current: number; total: number };
+  data?: any;
+}
+
+// Artifact type for storing agent work products
+export interface Artifact {
+  id: string;
+  type: 'plan' | 'research' | 'notes' | 'document' | 'code' | 'file';
+  title: string;
+  content: string;
+  agentName: string;
+  createdAt: Date;
+  updatedAt: Date;
+  metadata?: Record<string, any>;
+}
+
+// Final document output type
+export interface FinalDocument {
+  id: string;
+  title: string;
+  content: string;
+  format: 'markdown' | 'html' | 'text';
+  createdAt: Date;
+  sections?: { title: string; content: string }[];
+}
+
+export type TaskEventCallback = (event: TaskEvent) => void;
+
+let taskEventListeners: TaskEventCallback[] = [];
+
+export const subscribeToTaskEvents = (callback: TaskEventCallback): (() => void) => {
+  taskEventListeners.push(callback);
+  return () => {
+    taskEventListeners = taskEventListeners.filter(cb => cb !== callback);
+  };
+};
+
+const emitTaskEvent = (event: TaskEvent) => {
+  taskEventListeners.forEach(cb => cb(event));
+};
+
+// Types for deep agent interactions
+export interface DeepAgentMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  todos?: TodoItem[];
+  subagentUsed?: string;
+  filesCreated?: string[];
+  toolsUsed?: string[];
+}
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  status: 'pending' | 'in-progress' | 'completed';
+  description?: string;
+}
+
+export interface DeepAgentConfig {
+  systemPrompt?: string;
+  maxTokens?: number;
+  temperature?: number;
+  enableSubagents?: boolean;
+  enableFileSystem?: boolean;
+  enablePlanning?: boolean;
+  tavilyApiKey?: string;
+  autoExecute?: boolean; // Automatically execute all tasks without waiting
+}
+
+export interface DeepAgentResult {
+  messages: DeepAgentMessage[];
+  todos: TodoItem[];
+  filesCreated: string[];
+  subagentsSpawned: string[];
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  execute: (params: any) => Promise<string>;
+}
+
+export interface SubAgentDefinition {
+  name: string;
+  description: string;
+  systemPrompt: string;
+  tools: string[];
+}
+
+// In-memory file system for context management
+class MemoryFileSystem {
+  private files: Map<string, string> = new Map();
+
+  ls(path: string = '/'): string[] {
+    const files: string[] = [];
+    for (const key of this.files.keys()) {
+      if (key.startsWith(path)) {
+        files.push(key);
+      }
+    }
+    return files;
+  }
+
+  readFile(path: string): string | null {
+    return this.files.get(path) || null;
+  }
+
+  writeFile(path: string, content: string): void {
+    this.files.set(path, content);
+  }
+
+  editFile(path: string, newContent: string): boolean {
+    if (this.files.has(path)) {
+      this.files.set(path, newContent);
+      return true;
+    }
+    return false;
+  }
+
+  deleteFile(path: string): boolean {
+    return this.files.delete(path);
+  }
+
+  clear(): void {
+    this.files.clear();
+  }
+}
+
+// State management
+let genAI: GoogleGenAI | null = null;
+let isInitialized = false;
+let currentTodos: TodoItem[] = [];
+let conversationHistory: Array<{ role: string; content: string }> = [];
+const fileSystem = new MemoryFileSystem();
+let tavilyApiKey: string | null = null;
+let finalDocuments: FinalDocument[] = [];
+let artifacts: Artifact[] = [];
+
+// Helper to create and track artifacts
+const createArtifact = (params: {
+  type: Artifact['type'];
+  title: string;
+  content: string;
+  agentName: string;
+  metadata?: Record<string, any>;
+}): Artifact => {
+  const artifact: Artifact = {
+    id: `artifact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    type: params.type,
+    title: params.title,
+    content: params.content,
+    agentName: params.agentName,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    metadata: params.metadata
+  };
+  artifacts.push(artifact);
+  
+  // Emit artifact created event
+  emitTaskEvent({
+    type: 'artifact-created',
+    taskId: artifact.id,
+    title: artifact.title,
+    message: `${params.agentName} created: ${artifact.title}`,
+    status: 'completed',
+    data: artifact
+  });
+  
+  return artifact;
+};
+
+// ==========================================
+// Tavily Internet Search Tool
+// ==========================================
+const tavilySearch = async (params: {
+  query: string;
+  maxResults?: number;
+  topic?: 'general' | 'news' | 'finance';
+  includeRawContent?: boolean;
+}): Promise<string> => {
+  const { query, maxResults = 5, topic = 'general', includeRawContent = false } = params;
+  
+  if (!tavilyApiKey) {
+    return JSON.stringify({
+      success: false,
+      error: 'Tavily API key not configured. Please provide your TAVILY_API_KEY.'
+    });
+  }
+
+  try {
+    // Call Tavily Search API directly
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        api_key: tavilyApiKey,
+        query,
+        max_results: maxResults,
+        search_depth: 'advanced',
+        include_raw_content: includeRawContent,
+        topic,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Tavily API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    // Format results for the agent
+    const formattedResults = data.results?.map((result: any, index: number) => ({
+      rank: index + 1,
+      title: result.title,
+      url: result.url,
+      content: result.content,
+      score: result.score,
+      rawContent: includeRawContent ? result.raw_content : undefined,
+    })) || [];
+
+    // Create artifact for research results
+    if (formattedResults.length > 0) {
+      const researchContent = `# Research: ${query}\n\n**Search Date:** ${new Date().toLocaleString()}\n\n` +
+        (data.answer ? `## Quick Answer\n${data.answer}\n\n` : '') +
+        `## Sources (${formattedResults.length} results)\n\n` +
+        formattedResults.map((r: any) => 
+          `### ${r.rank}. ${r.title}\n**URL:** ${r.url}\n\n${r.content}\n\n---\n`
+        ).join('\n');
+      
+      createArtifact({
+        type: 'research',
+        title: `Research: ${query.substring(0, 50)}${query.length > 50 ? '...' : ''}`,
+        content: researchContent,
+        agentName: 'Research Agent',
+        metadata: { query, resultCount: formattedResults.length }
+      });
+    }
+
+    return JSON.stringify({
+      success: true,
+      query,
+      answer: data.answer || null,
+      results: formattedResults,
+      totalResults: formattedResults.length,
+    });
+  } catch (error) {
+    console.error('Tavily search error:', error);
+    return JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown search error',
+    });
+  }
+};
+
+// ==========================================
+// Built-in Deep Agent Tools (write_todos, read_file, write_file)
+// ==========================================
+
+// write_todos - The planning tool
+const writeTodosFromParams = (params: { todos?: (string | TodoItem)[] }): string => {
+  // Validate todos parameter
+  if (!params.todos || !Array.isArray(params.todos)) {
+    return JSON.stringify({
+      success: false,
+      error: 'Missing or invalid todos parameter - expected an array'
+    });
+  }
+
+  // Handle both string arrays and TodoItem arrays
+  currentTodos = params.todos.map((todo, index) => {
+    if (typeof todo === 'string') {
+      // If todo is just a string, convert it to TodoItem
+      return {
+        id: `todo-${index}-${Date.now()}`,
+        title: todo,
+        status: 'pending' as const,
+        description: ''
+      };
+    }
+    // If it's already a TodoItem object
+    return {
+      ...todo,
+      id: todo.id || `todo-${index}-${Date.now()}`,
+      title: todo.title || `Task ${index + 1}`,
+      status: todo.status || 'pending',
+      description: todo.description || ''
+    };
+  });
+  
+  // Create artifact for the plan
+  const planContent = currentTodos.map((t, i) => 
+    `${i + 1}. ${t.status === 'completed' ? '✅' : t.status === 'in-progress' ? '🔄' : '⬜'} ${t.title}${t.description ? `\n   - ${t.description}` : ''}`
+  ).join('\n');
+  
+  createArtifact({
+    type: 'plan',
+    title: 'Task Plan',
+    content: `# Task Plan\n\nCreated: ${new Date().toLocaleString()}\n\n${planContent}`,
+    agentName: 'Planning Agent',
+    metadata: { todoCount: currentTodos.length }
+  });
+  
+  return JSON.stringify({
+    success: true,
+    message: `Updated todo list with ${currentTodos.length} items`,
+    todos: currentTodos,
+  });
+};
+
+// read_file - Read from memory file system
+const readFileFromMemory = (params: { path?: string }): string => {
+  // Validate path parameter
+  if (!params.path || typeof params.path !== 'string') {
+    return JSON.stringify({
+      success: false,
+      error: 'Missing or invalid path parameter'
+    });
+  }
+
+  const content = fileSystem.readFile(params.path);
+  if (content) {
+    return JSON.stringify({
+      success: true,
+      path: params.path,
+      content,
+    });
+  }
+  return JSON.stringify({
+    success: false,
+    error: `File not found: ${params.path}`,
+  });
+};
+
+// write_file - Write to memory file system
+const writeFileToMemory = (params: { path?: string; content?: string }): string => {
+  // Validate parameters
+  if (!params.path || typeof params.path !== 'string') {
+    return JSON.stringify({
+      success: false,
+      error: 'Missing or invalid path parameter'
+    });
+  }
+  
+  if (!params.content || typeof params.content !== 'string') {
+    return JSON.stringify({
+      success: false,
+      error: 'Missing or invalid content parameter'
+    });
+  }
+
+  fileSystem.writeFile(params.path, params.content);
+  
+  // Determine artifact type based on path/content
+  const isCode = params.path.endsWith('.py') || params.path.endsWith('.js') || params.path.endsWith('.ts');
+  const isResearch = params.path.includes('research') || params.path.includes('notes');
+  
+  createArtifact({
+    type: isCode ? 'code' : isResearch ? 'research' : 'file',
+    title: params.path.split('/').pop() || params.path,
+    content: params.content,
+    agentName: 'File Agent',
+    metadata: { path: params.path }
+  });
+  
+  return JSON.stringify({
+    success: true,
+    message: `File written: ${params.path}`,
+    path: params.path,
+  });
+};
+
+// list_files - List files in memory
+const listFilesInMemory = (params: { path?: string }): string => {
+  const files = fileSystem.ls(params.path || '/');
+  return JSON.stringify({
+    success: true,
+    files,
+    count: files.length,
+  });
+};
+
+// ==========================================
+// Tool Implementations
+// ==========================================
+
+const tools: Map<string, ToolDefinition> = new Map();
+
+// Internet Search Tool (Tavily)
+tools.set('internet_search', {
+  name: 'internet_search',
+  description: 'Run a web search using Tavily to find current information from the internet. Use this for research, finding recent news, or looking up facts.',
+  execute: tavilySearch,
+});
+
+// write_todos Tool (Planning)
+tools.set('write_todos', {
+  name: 'write_todos',
+  description: 'Create or update your task list to plan and track your work. Use this to break down complex tasks into manageable steps.',
+  execute: async (params) => writeTodosFromParams(params),
+});
+
+// read_file Tool
+tools.set('read_file', {
+  name: 'read_file',
+  description: 'Read content from a file in the workspace. Use this to retrieve previously saved information.',
+  execute: async (params) => readFileFromMemory(params),
+});
+
+// write_file Tool
+tools.set('write_file', {
+  name: 'write_file',
+  description: 'Write content to a file in the workspace. Use this to save research results, notes, or generated content.',
+  execute: async (params) => writeFileToMemory(params),
+});
+
+// list_files Tool
+tools.set('list_files', {
+  name: 'list_files',
+  description: 'List all files in the workspace directory.',
+  execute: async (params) => listFilesInMemory(params),
+});
+
+// think_tool - Strategic reflection for research agents
+tools.set('think_tool', {
+  name: 'think_tool',
+  description: 'Tool for strategic reflection on research progress and decision-making. Use this after each search to analyze results, assess gaps, and plan next steps. Helps maintain focus and prevent excessive searching.',
+  execute: async (params: { reflection: string }) => {
+    // Create artifact for thinking/notes
+    createArtifact({
+      type: 'notes',
+      title: `Research Reflection - ${new Date().toLocaleTimeString()}`,
+      content: params.reflection,
+      agentName: 'Research Agent',
+      metadata: { type: 'reflection' }
+    });
+    
+    return JSON.stringify({
+      success: true,
+      message: `Reflection recorded: ${params.reflection.substring(0, 100)}...`,
+      reflection: params.reflection
+    });
+  }
+});
+
+// NOTE: The 'task' tool is defined after subagents Map below
+
+// finalize_document Tool - Creates the final formatted document
+tools.set('finalize_document', {
+  name: 'finalize_document',
+  description: 'Create and save the final formatted document. Use this when you have completed your research and want to present the final output as a well-structured markdown document.',
+  execute: async (params: { title: string; content: string; sections?: { title: string; content: string }[] }) => {
+    const doc: FinalDocument = {
+      id: `doc-${Date.now()}`,
+      title: params.title,
+      content: params.content,
+      format: 'markdown',
+      createdAt: new Date(),
+      sections: params.sections
+    };
+    
+    finalDocuments.push(doc);
+    
+    // Also save to file system
+    const filename = `${params.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}.md`;
+    fileSystem.writeFile(`/documents/${filename}`, params.content);
+    
+    // Create artifact for the final document
+    createArtifact({
+      type: 'document',
+      title: params.title,
+      content: params.content,
+      agentName: 'Documentation Agent',
+      metadata: { documentId: doc.id, filename, format: 'markdown' }
+    });
+    
+    // Emit document-ready event
+    emitTaskEvent({
+      type: 'document-ready',
+      taskId: doc.id,
+      title: params.title,
+      message: 'Final document is ready',
+      status: 'completed',
+      data: doc
+    });
+    
+    return JSON.stringify({
+      success: true,
+      message: `Document "${params.title}" has been finalized`,
+      documentId: doc.id,
+      filename
+    });
+  }
+});
+
+// Molecule Search Tool
+tools.set('molecule_search', {
+  name: 'molecule_search',
+  description: 'Search for detailed information about a chemical molecule or compound. Returns SMILES notation, chemical properties, and usage information.',
+  execute: async (params: { query: string; includeSmiles?: boolean }) => {
+    try {
+      const smiles = await fetchCanonicalSmiles(params.query);
+      if (smiles) {
+        return JSON.stringify({
+          success: true,
+          molecule: params.query,
+          smiles,
+          source: 'pubchem',
+          message: `Found molecule: ${params.query} with SMILES: ${smiles}`
+        });
+      }
+      
+      const description = await generateTextContent(
+        `Provide detailed information about the molecule or chemical compound: ${params.query}. 
+        Include its chemical formula, structure description, common uses, and safety information.
+        If you know the SMILES notation, include it.`
+      );
+      
+      return JSON.stringify({
+        success: true,
+        molecule: params.query,
+        description,
+        source: 'gemini'
+      });
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: `Failed to find information for: ${params.query}`,
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+});
+
+// Reaction Analysis Tool
+tools.set('analyze_reaction', {
+  name: 'analyze_reaction',
+  description: 'Analyze a chemical reaction to understand its mechanism, type, and significance.',
+  execute: async (params: { reaction: string; analysisType?: string }) => {
+    try {
+      const analysisType = params.analysisType || 'full';
+      const prompt = `Analyze the following chemical reaction and provide a ${analysisType} analysis:
+
+Reaction: ${params.reaction}
+
+Please include:
+1. Balanced equation (if not already balanced)
+2. Reaction type (synthesis, decomposition, single replacement, double replacement, combustion, etc.)
+3. Oxidation states and electron transfer (if applicable)
+4. Enthalpy change estimation (exothermic or endothermic)
+5. Reaction mechanism overview
+6. Practical applications or significance
+7. Safety considerations
+
+Format the response in a clear, educational manner.`;
+
+      const analysis = await generateTextContent(prompt);
+      
+      return JSON.stringify({
+        success: true,
+        reaction: params.reaction,
+        analysisType,
+        analysis
+      });
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: `Failed to analyze reaction: ${params.reaction}`,
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+});
+
+// Concept Explanation Tool
+tools.set('explain_concept', {
+  name: 'explain_concept',
+  description: 'Explain a chemistry concept at the appropriate level with examples.',
+  execute: async (params: { concept: string; level?: string; includeExamples?: boolean }) => {
+    try {
+      const level = params.level || 'intermediate';
+      const includeExamples = params.includeExamples !== false;
+      
+      const levelDescriptions: Record<string, string> = {
+        beginner: 'Use simple terms, analogies, and avoid complex jargon. Explain as if to a high school student.',
+        intermediate: 'Balance technical accuracy with accessibility. Include some technical terms with explanations.',
+        advanced: 'Use full technical terminology and mathematical formulations. Assume strong chemistry background.'
+      };
+
+      const prompt = `Explain the following chemistry concept at a ${level} level:
+
+Concept: ${params.concept}
+
+${levelDescriptions[level] || levelDescriptions.intermediate}
+
+${includeExamples ? 'Include 2-3 relevant examples to illustrate the concept.' : ''}
+
+Structure your explanation with:
+1. Definition and core idea
+2. Key principles involved
+3. ${includeExamples ? 'Practical examples' : 'Applications'}
+4. Common misconceptions (if any)
+5. Connection to other chemistry concepts`;
+
+      const explanation = await generateTextContent(prompt);
+      
+      return JSON.stringify({
+        success: true,
+        concept: params.concept,
+        level,
+        explanation
+      });
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: `Failed to explain concept: ${params.concept}`,
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+});
+
+// Practice Problems Tool
+tools.set('generate_practice_problems', {
+  name: 'generate_practice_problems',
+  description: 'Generate chemistry practice problems with solutions for studying.',
+  execute: async (params: { topic: string; difficulty?: string; count?: number }) => {
+    try {
+      const difficulty = params.difficulty || 'medium';
+      const count = params.count || 3;
+      
+      const prompt = `Generate ${count} ${difficulty} practice problems for the following chemistry topic:
+
+Topic: ${params.topic}
+
+For each problem:
+1. State the problem clearly
+2. Provide any necessary data or constants
+3. Include the step-by-step solution
+4. Explain the key concepts being tested
+
+Format each problem with clear numbering and separation between problem and solution.`;
+
+      const problems = await generateTextContent(prompt);
+      
+      return JSON.stringify({
+        success: true,
+        topic: params.topic,
+        difficulty,
+        count,
+        problems
+      });
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: `Failed to generate problems for: ${params.topic}`,
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+});
+
+// Molecular Calculator Tool
+tools.set('molecular_calculator', {
+  name: 'molecular_calculator',
+  description: 'Calculate molecular properties like molar mass, composition, and more.',
+  execute: async (params: { formula: string; calculations?: string[] }) => {
+    try {
+      const calculations = params.calculations || ['molar_mass'];
+      const calculationTypes = calculations.join(', ');
+      
+      const prompt = `For the molecular formula "${params.formula}", calculate the following properties:
+${calculations.map(c => `- ${c.replace('_', ' ')}`).join('\n')}
+
+Provide:
+1. Step-by-step calculations showing all work
+2. Final answers with appropriate units and significant figures
+3. Any assumptions made
+
+Also include:
+- Molecular structure implications (if any)
+- Common name (if this is a well-known compound)`;
+
+      const result = await generateTextContent(prompt);
+      
+      return JSON.stringify({
+        success: true,
+        formula: params.formula,
+        calculations: calculationTypes,
+        result
+      });
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: `Failed to calculate for: ${params.formula}`,
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+});
+
+// ==========================================
+// Subagent Definitions (Following DeepAgents Best Practices)
+// ==========================================
+
+// Research workflow instructions per deepagents-quickstarts pattern
+const RESEARCH_WORKFLOW_INSTRUCTIONS = `# Research Workflow
+
+Follow this workflow for all research requests:
+
+1. **Plan**: Create a todo list with write_todos to break down the research into focused tasks
+2. **Save the request**: Use write_file() to save the user's research question to \`/research_request.md\`
+3. **Research**: Delegate research tasks to sub-agents using the task() tool - ALWAYS use sub-agents for research, never conduct research yourself
+4. **Synthesize**: Review all sub-agent findings and consolidate citations (each unique URL gets one number across all findings)
+5. **Write Report**: Write a comprehensive final report using finalize_document
+6. **Verify**: Confirm you've addressed all aspects with proper citations and structure
+
+## Research Planning Guidelines
+- Batch similar research tasks into a single TODO to minimize overhead
+- For simple fact-finding questions, use 1 sub-agent
+- For comparisons, use 1 sub-agent per element being compared
+- For multi-faceted topics, use 1 sub-agent per aspect`;
+
+// Subagent delegation instructions
+const SUBAGENT_DELEGATION_INSTRUCTIONS = `# Sub-Agent Research Coordination
+
+Your role is to coordinate research by delegating tasks to specialized research sub-agents.
+
+## Delegation Strategy
+
+**DEFAULT: Start with 1 sub-agent** for most queries:
+- "What is quantum computing?" → 1 sub-agent (general overview)
+- "List the top 10 chemistry discoveries" → 1 sub-agent
+- "Summarize the history of organic chemistry" → 1 sub-agent
+
+**ONLY parallelize when the query EXPLICITLY requires comparison:**
+- "Compare organic vs inorganic chemistry" → 2 parallel sub-agents
+- "Compare Python vs JavaScript for chemistry simulations" → 2 parallel sub-agents
+
+## Key Principles
+- **Bias towards single sub-agent**: One comprehensive research task is more efficient than multiple narrow ones
+- **Avoid premature decomposition**: Don't break "research X" into multiple sub-tasks unless explicitly needed
+
+## Parallel Execution Limits
+- Use at most 3 parallel sub-agents per iteration
+- Make multiple task() calls in a single response to enable parallel execution
+
+## Research Limits
+- Stop after 3 delegation rounds if you haven't found adequate sources
+- Stop when you have sufficient information to answer comprehensively`;
+
+// Researcher instructions for sub-agents
+const RESEARCHER_INSTRUCTIONS = `You are a research assistant conducting research on the assigned topic.
+
+<Task>
+Your job is to use tools to gather information about the given topic.
+You can call tools in series to find resources that can help answer the research question.
+</Task>
+
+<Available Research Tools>
+You have access to two specific research tools:
+1. **internet_search**: For conducting web searches to gather information
+2. **think_tool**: For reflection and strategic planning during research
+**CRITICAL: Use think_tool after each search to reflect on results and plan next steps**
+</Available Research Tools>
+
+<Instructions>
+Think like a human researcher with limited time. Follow these steps:
+
+1. **Read the question carefully** - What specific information is needed?
+2. **Start with broader searches** - Use broad, comprehensive queries first
+3. **After each search, pause and assess** - Do I have enough to answer? What's still missing?
+4. **Execute narrower searches as you gather information** - Fill in the gaps
+5. **Stop when you can answer confidently** - Don't keep searching for perfection
+</Instructions>
+
+<Hard Limits>
+**Tool Call Budgets** (Prevent excessive searching):
+- **Simple queries**: Use 2-3 search tool calls maximum
+- **Complex queries**: Use up to 5 search tool calls maximum
+
+**Stop Immediately When**:
+- You can answer the user's question comprehensively
+- You have 3+ relevant sources for the question
+- Your last 2 searches returned similar information
+</Hard Limits>
+
+<Final Response Format>
+When providing your findings:
+1. **Structure your response**: Organize findings with clear headings
+2. **Cite sources inline**: Use [1], [2], [3] format when referencing information
+3. **Include Sources section**: End with ### Sources listing each numbered source with URL
+4. **Keep response under 500 words** to maintain clean context
+</Final Response Format>`;
+
+const subagents: Map<string, SubAgentDefinition> = new Map([
+  ['research-agent', {
+    name: 'research-agent',
+    description: 'Conducts in-depth research on specific topics using web search. Use when you need detailed information that requires multiple searches. Delegate ONE topic at a time.',
+    systemPrompt: RESEARCHER_INSTRUCTIONS,
+    tools: ['internet_search', 'think_tool', 'write_file']
+  }],
+  ['chemistry-researcher', {
+    name: 'chemistry-researcher',
+    description: 'Specialized researcher for chemistry topics. Combines web search with molecule databases and reaction analysis. Use for scientific chemistry questions.',
+    systemPrompt: `${RESEARCHER_INSTRUCTIONS}
+
+<Chemistry Specialization>
+You are an expert chemistry researcher. In addition to web searches:
+- Use molecule_search for compound information from PubChem
+- Use analyze_reaction for reaction mechanism analysis
+- Verify chemical formulas and SMILES notations
+- When uncertain, clearly state limitations
+</Chemistry Specialization>`,
+    tools: ['internet_search', 'think_tool', 'molecule_search', 'analyze_reaction', 'write_file']
+  }],
+  ['chemistry-tutor', {
+    name: 'chemistry-tutor',
+    description: 'A patient tutor for explaining chemistry concepts at any level. Use when the user needs educational explanations rather than research.',
+    systemPrompt: `You are an expert chemistry tutor. Your role is to:
+1. Explain concepts clearly and patiently
+2. Adapt explanations to the student's level
+3. Use analogies and visual descriptions
+4. Provide examples that connect to real life
+
+Keep explanations concise but comprehensive. Use markdown formatting.
+Return: 
+- Clear definition (1-2 sentences)
+- Key principles (bullet points)
+- One concrete example
+- One practice question if appropriate
+
+Keep response under 400 words.`,
+    tools: ['explain_concept', 'think_tool', 'generate_practice_problems']
+  }],
+  ['chemistry-problem-solver', {
+    name: 'chemistry-problem-solver',
+    description: 'Specialized in solving chemistry problems and calculations. Use for stoichiometry, equilibrium, thermodynamics calculations.',
+    systemPrompt: `You are an expert at solving chemistry problems. Your role is to:
+1. Carefully analyze the problem
+2. Identify knowns and unknowns
+3. Select appropriate formulas and methods
+4. Show all work step-by-step
+5. Check the answer for reasonableness
+
+Always include units and significant figures.
+
+Return:
+- Problem summary
+- Step-by-step solution with formulas
+- Final answer with units
+- Brief explanation of physical meaning
+
+Keep response focused and under 400 words.`,
+    tools: ['molecular_calculator', 'analyze_reaction', 'think_tool']
+  }],
+  ['documentation-agent', {
+    name: 'documentation-agent',
+    description: 'Creates well-formatted final documentation from gathered research. Use ONLY after research is complete.',
+    systemPrompt: `You are a technical writer creating final documentation.
+
+<Task>
+Create a polished, well-organized document from the provided research.
+</Task>
+
+<Instructions>
+1. Review all gathered information
+2. Organize into logical sections
+3. Consolidate and renumber citations (each unique URL gets one number)
+4. Create clear headings and subheadings
+5. Write in paragraph form with proper markdown
+</Instructions>
+
+<Output Format>
+Use finalize_document tool with:
+- title: Clear, descriptive title
+- content: Well-formatted markdown with:
+  - Introduction/Overview
+  - Main sections with ## headings
+  - Key findings or takeaways
+  - ### Sources section at the end
+</Output Format>
+
+Do NOT include meta-commentary like "I found..." or "I researched..."
+Write as a professional report.`,
+    tools: ['read_file', 'finalize_document']
+  }],
+  ['general-purpose', {
+    name: 'general-purpose',
+    description: 'A general-purpose subagent for context isolation. Use for complex multi-step tasks that would clutter main context. Has access to all standard tools.',
+    systemPrompt: `You are a general-purpose assistant handling a delegated task.
+
+Complete the assigned task thoroughly but efficiently.
+Use available tools as needed.
+Return only the essential summary of your work - not raw data or intermediate steps.
+
+Keep your response under 500 words.`,
+    tools: ['internet_search', 'think_tool', 'write_file', 'read_file', 'molecule_search']
+  }]
+]);
+
+// Register the task tool AFTER subagents are defined
+// task - Spawn a subagent for isolated task execution (Core DeepAgents pattern)
+tools.set('task', {
+  name: 'task',
+  description: `Delegate a task to a specialized sub-agent with isolated context. The sub-agent will work independently and return only a summary of findings.
+
+Available sub-agents:
+- **research-agent**: Conducts in-depth research on specific topics using web search
+- **chemistry-researcher**: Specialized researcher for chemistry topics with molecule databases
+- **chemistry-tutor**: A patient tutor for explaining chemistry concepts
+- **chemistry-problem-solver**: Specialized in solving chemistry problems and calculations
+- **documentation-agent**: Creates well-formatted final documentation
+- **general-purpose**: A general-purpose subagent for context isolation
+
+Use this tool to:
+- Keep main context clean
+- Delegate complex research tasks
+- Run specialized analyses
+
+IMPORTANT: For comparisons, make multiple task() calls to enable parallel execution.`,
+  execute: async (params: { name: string; task: string }) => {
+    const subagentName = params.name;
+    const taskDescription = params.task;
+    
+    const subagent = subagents.get(subagentName);
+    if (!subagent) {
+      // Check for general-purpose fallback
+      if (subagentName !== 'general-purpose') {
+        return JSON.stringify({
+          success: false,
+          error: `Subagent "${subagentName}" not found. Available: ${Array.from(subagents.keys()).join(', ')}`
+        });
+      }
+    }
+    
+    // Emit step start event
+    const stepId = `subagent-${subagentName}-${Date.now()}`;
+    emitTaskEvent({
+      type: 'step-start',
+      taskId: stepId,
+      title: `${subagent?.name || 'general-purpose'}: ${taskDescription.substring(0, 50)}...`,
+      message: `Delegating to ${subagent?.name || 'general-purpose'}`,
+      status: 'in-progress'
+    });
+    
+    try {
+      const result = await executeSubagentWithTools(subagentName, taskDescription);
+      
+      // Create artifact for subagent work
+      createArtifact({
+        type: 'research',
+        title: `${subagent?.name || 'Subagent'}: ${taskDescription.substring(0, 40)}...`,
+        content: result,
+        agentName: subagent?.name || 'Subagent',
+        metadata: { task: taskDescription, subagent: subagentName }
+      });
+      
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId: stepId,
+        title: `${subagent?.name || 'general-purpose'} completed`,
+        status: 'completed'
+      });
+      
+      return JSON.stringify({
+        success: true,
+        subagent: subagentName,
+        task: taskDescription,
+        result: result
+      });
+    } catch (error) {
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId: stepId,
+        title: `${subagent?.name || 'general-purpose'} failed`,
+        status: 'error'
+      });
+      
+      return JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Subagent execution failed'
+      });
+    }
+  }
+});
+
+// ==========================================
+// Core Agent Logic
+// ==========================================
+
+const getSystemPrompt = (): string => {
+  const toolDescriptions = Array.from(tools.values())
+    .map(t => `## \`${t.name}\`\n${t.description}`)
+    .join('\n\n');
+
+  return `You are an advanced Chemistry Study Assistant with deep agent capabilities, powered by the DeepAgents framework with Gemini.
+
+You have access to tools for planning, file management, web search (via Tavily), subagent delegation, and chemistry-specific tasks.
+
+${RESEARCH_WORKFLOW_INSTRUCTIONS}
+
+================================================================================
+
+${SUBAGENT_DELEGATION_INSTRUCTIONS}
+
+================================================================================
+
+## Available Tools
+
+${toolDescriptions}
+
+## How to Use Tools
+
+When you need to use a tool, output a JSON object in a code block with the tool name and parameters:
+
+\`\`\`tool
+{
+  "tool": "tool_name",
+  "params": {
+    "param1": "value1",
+    "param2": "value2"
+  }
+}
+\`\`\`
+
+## Task Delegation with task() Tool
+
+**CRITICAL**: For any research or complex task, use the \`task\` tool to delegate to specialized sub-agents:
+
+\`\`\`tool
+{
+  "tool": "task",
+  "params": {
+    "name": "research-agent",
+    "task": "Research the latest developments in green chemistry and sustainable synthesis methods"
+  }
+}
+\`\`\`
+
+**For comparisons, make MULTIPLE task() calls** to enable parallel execution:
+\`\`\`tool
+{
+  "tool": "task",
+  "params": {
+    "name": "chemistry-researcher",
+    "task": "Research organic synthesis methods and their environmental impact"
+  }
+}
+\`\`\`
+
+\`\`\`tool
+{
+  "tool": "task",
+  "params": {
+    "name": "chemistry-researcher", 
+    "task": "Research inorganic synthesis methods and their environmental impact"
+  }
+}
+\`\`\`
+
+## Chemistry Focus
+
+You specialize in chemistry education and research. Use appropriate subagents:
+- **chemistry-researcher**: For in-depth research combining web search + molecule databases
+- **chemistry-tutor**: For educational explanations and practice problems
+- **chemistry-problem-solver**: For calculations and problem solving
+- **research-agent**: For general web research on any topic
+- **documentation-agent**: For creating final reports (use AFTER research is complete)
+
+## Response Guidelines
+
+1. **For simple questions**: Answer directly without delegation
+2. **For research tasks**: 
+   a. Create a plan with \`write_todos\` 
+   b. Save the request with \`write_file\` to \`/research_request.md\`
+   c. Delegate to subagents using \`task\` tool
+   d. Synthesize results
+   e. Create final document with \`finalize_document\`
+3. Use proper markdown formatting
+4. Include chemical formulas with proper notation
+5. Use LaTeX for equations: $formula$ or $$equation$$
+
+## Final Document Creation
+
+**IMPORTANT**: For complex research tasks, you MUST finish by using the \`finalize_document\` tool to create a well-structured final document with:
+- Clear title
+- Executive summary/introduction
+- Well-organized sections
+- Key findings and conclusions
+- Properly formatted sources/references
+
+Remember: Your goal is to help students learn and understand chemistry through thorough research and clear explanations. Always delegate research to subagents to keep your context clean!`
+};
+
+/**
+ * Parse tool calls from agent response
+ */
+const parseToolCalls = (response: string): Array<{ tool: string; params: Record<string, any> }> => {
+  const toolCalls: Array<{ tool: string; params: Record<string, any> }> = [];
+  
+  // Match new tool block format
+  const toolBlockRegex = /\`\`\`tool\s*([\s\S]*?)\`\`\`/g;
+  let match;
+  
+  while ((match = toolBlockRegex.exec(response)) !== null) {
+    try {
+      const jsonStr = match[1].trim();
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.tool && parsed.params) {
+        toolCalls.push({ tool: parsed.tool, params: parsed.params });
+      }
+    } catch (e) {
+      console.warn('Failed to parse tool block:', match[1]);
+    }
+  }
+  
+  // Also support legacy format
+  const legacyRegex = /\[TOOL:\s*(\w+)\]\s*([\s\S]*?)\s*\[\/TOOL\]/g;
+  while ((match = legacyRegex.exec(response)) !== null) {
+    try {
+      const params = JSON.parse(match[2].trim());
+      toolCalls.push({ tool: match[1], params });
+    } catch (e) {
+      console.warn('Failed to parse legacy tool params:', match[2]);
+    }
+  }
+  
+  return toolCalls;
+};
+
+/**
+ * Parse delegation requests from agent response
+ */
+const parseDelegations = (response: string): Array<{ subagent: string; task: string }> => {
+  const delegations: Array<{ subagent: string; task: string }> = [];
+  const delegateRegex = /\[DELEGATE:\s*(\S+)\]\s*([\s\S]*?)\s*\[\/DELEGATE\]/g;
+  
+  let match;
+  while ((match = delegateRegex.exec(response)) !== null) {
+    delegations.push({ subagent: match[1], task: match[2].trim() });
+  }
+  
+  return delegations;
+};
+
+/**
+ * Parse plan/todos from agent response
+ */
+const parsePlan = (response: string): TodoItem[] => {
+  const todos: TodoItem[] = [];
+  const planRegex = /\[PLAN\]([\s\S]*?)\[\/PLAN\]/;
+  const match = planRegex.exec(response);
+  
+  if (match) {
+    const planContent = match[1];
+    const lines = planContent.split('\n').filter(l => l.trim());
+    
+    lines.forEach((line, index) => {
+      const isCompleted = line.includes('✓') || line.includes('[x]') || line.includes('[X]');
+      const cleanLine = line.replace(/^\d+\.\s*/, '').replace(/[✓\[\]xX]/g, '').trim();
+      
+      if (cleanLine) {
+        todos.push({
+          id: `todo-${index}`,
+          title: cleanLine,
+          status: isCompleted ? 'completed' : 'pending'
+        });
+      }
+    });
+  }
+  
+  return todos;
+};
+
+/**
+ * Parse file operations from agent response
+ */
+const parseFileOps = (response: string): { saves: Array<{ name: string; content: string }>; reads: string[] } => {
+  const saves: Array<{ name: string; content: string }> = [];
+  const reads: string[] = [];
+  
+  // Parse saves
+  const saveRegex = /\[SAVE:\s*(\S+)\]\s*([\s\S]*?)\s*\[\/SAVE\]/g;
+  let match;
+  while ((match = saveRegex.exec(response)) !== null) {
+    saves.push({ name: match[1], content: match[2].trim() });
+  }
+  
+  // Parse reads
+  const readRegex = /\[READ:\s*(\S+)\]/g;
+  while ((match = readRegex.exec(response)) !== null) {
+    reads.push(match[1]);
+  }
+  
+  return { saves, reads };
+};
+
+/**
+ * Execute a subagent task (legacy simple version)
+ */
+const executeSubagent = async (
+  subagentName: string, 
+  task: string
+): Promise<string> => {
+  const subagent = subagents.get(subagentName);
+  if (!subagent || !genAI) {
+    return `Error: Subagent "${subagentName}" not found or not initialized.`;
+  }
+
+  try {
+    const subagentPrompt = `${subagent.systemPrompt}
+
+Available tools: ${subagent.tools.join(', ')}
+
+Task: ${task}
+
+Provide a comprehensive response to this task.`;
+
+    const response = await genAI.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: subagentPrompt
+    });
+
+    return response.text || 'Subagent completed the task but returned no response.';
+  } catch (error) {
+    return `Subagent error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  }
+};
+
+/**
+ * Execute a subagent with full tool support (DeepAgents pattern)
+ * Subagent runs in isolation with its own context and returns concise results
+ */
+const executeSubagentWithTools = async (
+  subagentName: string,
+  task: string
+): Promise<string> => {
+  const subagent = subagents.get(subagentName);
+  if (!subagent || !genAI) {
+    return `Error: Subagent "${subagentName}" not found or not initialized.`;
+  }
+
+  // Build tool descriptions for available tools
+  const availableTools = subagent.tools
+    .map(toolName => tools.get(toolName))
+    .filter(Boolean)
+    .map(t => `## \`${t!.name}\`\n${t!.description}`)
+    .join('\n\n');
+
+  const subagentSystemPrompt = `${subagent.systemPrompt}
+
+## Available Tools
+
+${availableTools}
+
+## How to Use Tools
+
+When you need to use a tool, output a JSON object in a code block:
+
+\`\`\`tool
+{
+  "tool": "tool_name",
+  "params": {
+    "param1": "value1"
+  }
+}
+\`\`\`
+
+## Your Task
+
+${task}
+
+IMPORTANT: 
+- Complete this task thoroughly but efficiently
+- Return only essential findings - not raw data or intermediate steps
+- Keep your response under 500 words
+- Cite sources with [1], [2] format if using web search`;
+
+  try {
+    let conversationMessages = [
+      { role: 'user', parts: [{ text: subagentSystemPrompt }] }
+    ];
+    
+    // Initial response
+    let response = await genAI.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: conversationMessages
+    });
+    
+    let responseText = response.text || '';
+    let toolIterations = 0;
+    const maxToolIterations = 10; // Safety limit
+    
+    // Process tool calls in a loop
+    while (toolIterations < maxToolIterations) {
+      const toolCalls = parseToolCalls(responseText);
+      
+      if (toolCalls.length === 0) {
+        // No more tool calls, we're done
+        break;
+      }
+      
+      toolIterations++;
+      const toolResults: string[] = [];
+      
+      for (const call of toolCalls) {
+        // Only execute tools the subagent has access to
+        if (!subagent.tools.includes(call.tool)) {
+          toolResults.push(`Tool ${call.tool}: Not available to this subagent.`);
+          continue;
+        }
+        
+        const tool = tools.get(call.tool);
+        if (tool) {
+          // Emit tool event
+          emitTaskEvent({
+            type: 'tool-call',
+            taskId: `${subagentName}-tool-${Date.now()}`,
+            title: call.tool,
+            message: `${subagentName} using ${call.tool}`,
+            status: 'in-progress'
+          });
+          
+          try {
+            const result = await tool.execute(call.params);
+            toolResults.push(`Tool ${call.tool} result:\n${result}`);
+            
+            emitTaskEvent({
+              type: 'tool-result',
+              taskId: `${subagentName}-tool-${Date.now()}`,
+              title: call.tool,
+              status: 'completed'
+            });
+          } catch (toolError) {
+            toolResults.push(`Tool ${call.tool} error: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`);
+          }
+        }
+      }
+      
+      if (toolResults.length > 0) {
+        // Continue conversation with tool results
+        conversationMessages.push(
+          { role: 'model', parts: [{ text: responseText }] },
+          { role: 'user', parts: [{ text: `Tool results:\n\n${toolResults.join('\n\n')}\n\nContinue your work based on these results. Remember to use think_tool to reflect on findings. When done, provide your final response.` }] }
+        );
+        
+        response = await genAI.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: conversationMessages
+        });
+        
+        responseText = response.text || '';
+      }
+    }
+    
+    // Clean up the response - remove tool markers
+    const cleanResponse = responseText
+      .replace(/\`\`\`tool[\s\S]*?\`\`\`/g, '')
+      .replace(/\[TOOL:.*?\][\s\S]*?\[\/TOOL\]/g, '')
+      .trim();
+    
+    return cleanResponse || 'Subagent completed the task but returned no summary.';
+    
+  } catch (error) {
+    console.error(`Subagent ${subagentName} error:`, error);
+    return `Subagent error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  }
+};
+
+/**
+ * Process a single turn of the agent
+ */
+const processAgentTurn = async (
+  userMessage: string,
+  history: Array<{ role: string; content: string }>
+): Promise<{
+  response: string;
+  todos: TodoItem[];
+  toolsUsed: string[];
+  subagentsUsed: string[];
+  filesCreated: string[];
+}> => {
+  if (!genAI) {
+    throw new Error('Deep Agent not initialized');
+  }
+
+  const toolsUsed: string[] = [];
+  const subagentsUsed: string[] = [];
+  const filesCreated: string[] = [];
+
+  // Build the conversation
+  const messages = [
+    { role: 'user', parts: [{ text: getSystemPrompt() }] },
+    ...history.map(h => ({
+      role: h.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: h.content }]
+    })),
+    { role: 'user', parts: [{ text: userMessage }] }
+  ];
+
+  // Get initial response
+  let response = await genAI.models.generateContent({
+    model: 'gemini-2.0-flash',
+    contents: messages
+  });
+
+  let responseText = response.text || '';
+
+  // Process tool calls
+  const toolCalls = parseToolCalls(responseText);
+  if (toolCalls.length > 0) {
+    const toolResults: string[] = [];
+    
+    for (const call of toolCalls) {
+      const tool = tools.get(call.tool);
+      if (tool) {
+        toolsUsed.push(call.tool);
+        const result = await tool.execute(call.params);
+        toolResults.push(`Tool ${call.tool} result:\n${result}`);
+      }
+    }
+
+    if (toolResults.length > 0) {
+      // Get updated response with tool results
+      const updatedMessages = [
+        ...messages,
+        { role: 'model', parts: [{ text: responseText }] },
+        { role: 'user', parts: [{ text: `Tool results:\n${toolResults.join('\n\n')}\n\nPlease incorporate these results into your response.` }] }
+      ];
+
+      const updatedResponse = await genAI.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: updatedMessages
+      });
+
+      responseText = updatedResponse.text || responseText;
+    }
+  }
+
+  // Process delegations
+  const delegations = parseDelegations(responseText);
+  for (const delegation of delegations) {
+    subagentsUsed.push(delegation.subagent);
+    const subagentResult = await executeSubagent(delegation.subagent, delegation.task);
+    responseText = responseText.replace(
+      `[DELEGATE: ${delegation.subagent}]${delegation.task}[/DELEGATE]`,
+      `**${delegation.subagent} response:**\n${subagentResult}`
+    );
+  }
+
+  // Process file operations
+  const fileOps = parseFileOps(responseText);
+  for (const save of fileOps.saves) {
+    fileSystem.writeFile(save.name, save.content);
+    filesCreated.push(save.name);
+  }
+  for (const read of fileOps.reads) {
+    const content = fileSystem.readFile(read);
+    if (content) {
+      responseText = responseText.replace(
+        `[READ: ${read}]`,
+        `**Contents of ${read}:**\n${content}`
+      );
+    }
+  }
+
+  // Parse todos
+  const todos = parsePlan(responseText);
+
+  // Clean up response (remove markers)
+  responseText = responseText
+    .replace(/\[TOOL:.*?\][\s\S]*?\[\/TOOL\]/g, '')
+    .replace(/\[PLAN\][\s\S]*?\[\/PLAN\]/g, '')
+    .replace(/\[SAVE:.*?\][\s\S]*?\[\/SAVE\]/g, '')
+    .replace(/\[LIST\]/g, `Files: ${fileSystem.ls('/').join(', ') || 'none'}`)
+    .trim();
+
+  return {
+    response: responseText,
+    todos,
+    toolsUsed,
+    subagentsUsed,
+    filesCreated
+  };
+};
+
+// ==========================================
+// Public API
+// ==========================================
+
+/**
+ * Set the Tavily API key for web search
+ */
+export const setTavilyApiKey = (apiKey: string): void => {
+  tavilyApiKey = apiKey;
+  console.log('✅ Tavily API key configured for web search');
+};
+
+/**
+ * Get if Tavily is configured
+ */
+export const isTavilyConfigured = (): boolean => {
+  return tavilyApiKey !== null && tavilyApiKey.length > 0;
+};
+
+/**
+ * Initialize the deep agent with Gemini
+ */
+export const initializeDeepAgent = async (config?: DeepAgentConfig): Promise<void> => {
+  try {
+    // Ensure Gemini service is initialized
+    if (!isGeminiInitialized()) {
+      await initializeGeminiWithFirebaseKey();
+    }
+
+    // Initialize our own Gemini instance
+    const apiKey = await getSharedGeminiApiKey();
+    if (!apiKey) {
+      throw new Error('No Gemini API key available. Please configure your API key.');
+    }
+
+    genAI = new GoogleGenAI({ apiKey });
+    
+    // Set Tavily API key if provided in config
+    if (config?.tavilyApiKey) {
+      tavilyApiKey = config.tavilyApiKey;
+      console.log('✅ Tavily API key set from config');
+    }
+    
+    isInitialized = true;
+    conversationHistory = [];
+    currentTodos = [];
+    fileSystem.clear();
+    
+    console.log('✅ Deep Agent initialized with Gemini + Tavily search capabilities');
+  } catch (error) {
+    console.error('❌ Failed to initialize Deep Agent:', error);
+    throw error;
+  }
+};
+
+/**
+ * Check if the deep agent is initialized
+ */
+export const isDeepAgentInitialized = (): boolean => {
+  return isInitialized && genAI !== null;
+};
+
+/**
+ * Invoke the deep agent with a message
+ */
+export const invokeDeepAgent = async (
+  message: string,
+  existingHistory?: DeepAgentMessage[]
+): Promise<DeepAgentResult> => {
+  if (!isInitialized || !genAI) {
+    await initializeDeepAgent();
+  }
+
+  if (!genAI) {
+    throw new Error('Failed to initialize deep agent');
+  }
+
+  try {
+    // Convert existing history if provided
+    if (existingHistory) {
+      conversationHistory = existingHistory.map(m => ({
+        role: m.role,
+        content: m.content
+      }));
+    }
+
+    // Process the message
+    const result = await processAgentTurn(message, conversationHistory);
+
+    // Update conversation history
+    conversationHistory.push({ role: 'user', content: message });
+    conversationHistory.push({ role: 'assistant', content: result.response });
+
+    // Update todos
+    if (result.todos.length > 0) {
+      currentTodos = result.todos;
+    }
+
+    // Create the response message
+    const agentMessage: DeepAgentMessage = {
+      role: 'assistant',
+      content: result.response,
+      timestamp: new Date(),
+      todos: result.todos.length > 0 ? result.todos : undefined,
+      toolsUsed: result.toolsUsed.length > 0 ? result.toolsUsed : undefined,
+      subagentUsed: result.subagentsUsed.length > 0 ? result.subagentsUsed[0] : undefined,
+      filesCreated: result.filesCreated.length > 0 ? result.filesCreated : undefined
+    };
+
+    const messages: DeepAgentMessage[] = [
+      ...(existingHistory || []),
+      { role: 'user', content: message, timestamp: new Date() },
+      agentMessage
+    ];
+
+    return {
+      messages,
+      todos: currentTodos,
+      filesCreated: result.filesCreated,
+      subagentsSpawned: result.subagentsUsed
+    };
+  } catch (error) {
+    console.error('Error invoking deep agent:', error);
+    
+    const errorMessage: DeepAgentMessage = {
+      role: 'assistant',
+      content: `I encountered an error while processing your request: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+      timestamp: new Date()
+    };
+
+    return {
+      messages: [
+        ...(existingHistory || []),
+        { role: 'user', content: message, timestamp: new Date() },
+        errorMessage
+      ],
+      todos: currentTodos,
+      filesCreated: [],
+      subagentsSpawned: []
+    };
+  }
+};
+
+/**
+ * Stream a response from the deep agent
+ */
+export async function* streamDeepAgent(
+  message: string,
+  existingHistory?: DeepAgentMessage[]
+): AsyncGenerator<string, void, unknown> {
+  if (!isInitialized || !genAI) {
+    await initializeDeepAgent();
+  }
+
+  if (!genAI) {
+    throw new Error('Failed to initialize deep agent');
+  }
+
+  try {
+    // Convert existing history if provided
+    if (existingHistory) {
+      conversationHistory = existingHistory.map(m => ({
+        role: m.role,
+        content: m.content
+      }));
+    }
+
+    // Build the conversation
+    const messages = [
+      { role: 'user', parts: [{ text: getSystemPrompt() }] },
+      ...conversationHistory.map(h => ({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.content }]
+      })),
+      { role: 'user', parts: [{ text: message }] }
+    ];
+
+    const taskId = `task-${Date.now()}`;
+    
+    // Emit task start event
+    emitTaskEvent({
+      type: 'task-start',
+      taskId,
+      title: 'Processing request',
+      status: 'in-progress'
+    });
+
+    // Stream the response
+    const response = await genAI.models.generateContentStream({
+      model: 'gemini-2.0-flash',
+      contents: messages
+    });
+
+    let fullResponse = '';
+    
+    emitTaskEvent({
+      type: 'thinking',
+      taskId,
+      message: 'Analyzing your request...',
+      status: 'in-progress'
+    });
+
+    for await (const chunk of response) {
+      const text = chunk.text || '';
+      fullResponse += text;
+      yield text;
+    }
+
+    // Mark thinking step as complete
+    emitTaskEvent({
+      type: 'step-complete',
+      taskId,
+      title: 'Analysis complete',
+      status: 'completed'
+    });
+
+    // Update conversation history
+    conversationHistory.push({ role: 'user', content: message });
+    conversationHistory.push({ role: 'assistant', content: fullResponse });
+
+    // Parse and execute any tool calls after streaming
+    const toolCalls = parseToolCalls(fullResponse);
+    if (toolCalls.length > 0) {
+      yield '\n\n---\n';
+      
+      const totalTools = toolCalls.length;
+      let completedTools = 0;
+
+      for (const call of toolCalls) {
+        const tool = tools.get(call.tool);
+        if (tool) {
+          // Emit tool call event
+          emitTaskEvent({
+            type: 'tool-call',
+            taskId,
+            title: call.tool,
+            message: `Executing ${call.tool}...`,
+            status: 'in-progress',
+            progress: { current: completedTools, total: totalTools }
+          });
+
+          yield `\n🔧 **${call.tool}**: `;
+          const result = await tool.execute(call.params);
+          completedTools++;
+
+          try {
+            const parsed = JSON.parse(result);
+            
+            // Emit tool result event
+            emitTaskEvent({
+              type: 'tool-result',
+              taskId,
+              title: call.tool,
+              status: parsed.success ? 'completed' : 'error',
+              progress: { current: completedTools, total: totalTools },
+              data: parsed
+            });
+
+            if (parsed.success) {
+              // Handle different tool result types
+              if (call.tool === 'internet_search' && parsed.results) {
+                emitTaskEvent({
+                  type: 'searching',
+                  taskId,
+                  message: `Found ${parsed.results.length} web results`,
+                  status: 'completed'
+                });
+                yield `Found ${parsed.results.length} results\n\n`;
+                if (parsed.answer) {
+                  yield `**Quick Answer:** ${parsed.answer}\n\n`;
+                }
+                for (const r of parsed.results.slice(0, 5)) {
+                  yield `- **[${r.title}](${r.url})**\n  ${r.content?.substring(0, 150)}...\n\n`;
+                }
+              } else if (call.tool === 'write_todos' && parsed.todos) {
+                // Update current todos and emit event
+                emitTaskEvent({
+                  type: 'task-update',
+                  taskId,
+                  title: 'Plan created',
+                  message: `Created ${parsed.todos.length} tasks`,
+                  status: 'completed',
+                  data: { todos: parsed.todos }
+                });
+                yield `Created ${parsed.todos.length} tasks\n\n`;
+                for (const todo of parsed.todos) {
+                  const statusIcon = todo.status === 'completed' ? '✅' : todo.status === 'in-progress' ? '🔄' : '⬜';
+                  yield `${statusIcon} ${todo.title}\n`;
+                }
+                yield '\n';
+              } else if (call.tool === 'write_file') {
+                emitTaskEvent({
+                  type: 'writing',
+                  taskId,
+                  message: `Saved: ${parsed.path}`,
+                  status: 'completed'
+                });
+                yield `File saved: ${parsed.path}\n\n`;
+              } else if (call.tool === 'read_file') {
+                yield `Content from ${parsed.path}:\n\`\`\`\n${parsed.content?.substring(0, 500)}${parsed.content?.length > 500 ? '...' : ''}\n\`\`\`\n\n`;
+              } else if (call.tool === 'finalize_document') {
+                yield `\n\n✅ **Final Document Created:** ${parsed.message || 'Document ready'}\n\n`;
+                yield `📄 Your document has been finalized and is available in the document panel below.\n\n`;
+              } else if (call.tool === 'task' && parsed.result) {
+                // Handle task (subagent) results
+                yield `\n**${parsed.subagent || 'Subagent'} findings:**\n\n${parsed.result}\n\n`;
+              } else if (call.tool === 'think_tool') {
+                yield `*Reflected on research progress*\n\n`;
+              } else {
+                yield `${parsed.analysis || parsed.explanation || parsed.description || parsed.result || parsed.message || 'Completed'}\n\n`;
+              }
+            } else {
+              yield `Error: ${parsed.error}\n\n`;
+            }
+          } catch {
+            yield `Done\n\n`;
+          }
+        }
+      }
+    }
+
+    // If there are no pending todos, mark task as complete now
+    if (currentTodos.length === 0 || currentTodos.every(t => t.status === 'completed')) {
+      emitTaskEvent({
+        type: 'task-complete',
+        taskId,
+        title: 'Request completed',
+        status: 'completed'
+      });
+      return;
+    }
+
+    // Process tool calls from continuation responses
+    const processToolCalls = async function* (response: string): AsyncGenerator<string, void, unknown> {
+      const continuationToolCalls = parseToolCalls(response);
+      if (continuationToolCalls.length > 0) {
+        yield '\n\n---\n';
+        
+        for (const call of continuationToolCalls) {
+          const tool = tools.get(call.tool);
+          if (tool) {
+            emitTaskEvent({
+              type: 'tool-call',
+              taskId,
+              title: call.tool,
+              message: `Executing ${call.tool}...`,
+              status: 'in-progress'
+            });
+
+            yield `\n🔧 **${call.tool}**: `;
+            const result = await tool.execute(call.params);
+
+            try {
+              const parsed = JSON.parse(result);
+              
+              emitTaskEvent({
+                type: 'tool-result',
+                taskId,
+                title: call.tool,
+                status: parsed.success ? 'completed' : 'error',
+                data: parsed
+              });
+
+              if (parsed.success) {
+                if (call.tool === 'internet_search' && parsed.results) {
+                  yield `Found ${parsed.results.length} results\n\n`;
+                  if (parsed.answer) {
+                    yield `**Quick Answer:** ${parsed.answer}\n\n`;
+                  }
+                  for (const r of parsed.results.slice(0, 3)) {
+                    yield `- **[${r.title}](${r.url})**\n  ${r.content?.substring(0, 100)}...\n\n`;
+                  }
+                } else if (call.tool === 'write_file') {
+                  yield `File saved: ${parsed.path}\n\n`;
+                } else if (call.tool === 'finalize_document') {
+                  yield `\n✅ **Final Document Created**\n\n`;
+                } else if (call.tool === 'task' && parsed.result) {
+                  // Handle task (subagent) results
+                  yield `\n**${parsed.subagent || 'Subagent'} findings:**\n\n${parsed.result}\n\n`;
+                } else if (call.tool === 'think_tool') {
+                  yield `*Reflected on progress*\n\n`;
+                } else {
+                  yield `${parsed.message || 'Completed'}\n\n`;
+                }
+              } else {
+                yield `Error: ${parsed.error}\n\n`;
+              }
+            } catch {
+              yield `Done\n\n`;
+            }
+          }
+        }
+      }
+    };
+
+    // Auto-continue through ALL pending todos
+    let remainingTodos = currentTodos.filter(t => t.status === 'pending');
+    let iterationCount = 0;
+    const maxIterations = 10; // Safety limit
+    
+    while (remainingTodos.length > 0 && iterationCount < maxIterations) {
+      iterationCount++;
+      const nextTodo = remainingTodos[0];
+      
+      yield `\n\n---\n### 📋 Task ${iterationCount}/${currentTodos.length}: ${nextTodo.title}\n\n`;
+      
+      // Mark as in-progress
+      currentTodos = currentTodos.map(t => 
+        t.id === nextTodo.id ? { ...t, status: 'in-progress' as const } : t
+      );
+
+      emitTaskEvent({
+        type: 'step-start',
+        taskId: nextTodo.id,
+        title: nextTodo.title,
+        status: 'in-progress'
+      });
+
+      // Build continuation prompt
+      const continuePrompt = `Execute task ${iterationCount}: "${nextTodo.title}"
+      
+${nextTodo.description || ''}
+
+IMPORTANT: Use the appropriate tools to complete this task:
+- Use \`internet_search\` for research
+- Use \`write_file\` to save findings
+- Use \`finalize_document\` when creating final output
+
+Provide a brief summary of your findings.`;
+
+      const continueMessages = [
+        ...messages,
+        { role: 'model', parts: [{ text: fullResponse }] },
+        { role: 'user', parts: [{ text: continuePrompt }] }
+      ];
+
+      try {
+        const continueResponse = await genAI.models.generateContentStream({
+          model: 'gemini-2.0-flash',
+          contents: continueMessages
+        });
+
+        let taskResponse = '';
+        for await (const chunk of continueResponse) {
+          const text = chunk.text || '';
+          taskResponse += text;
+          fullResponse += text;
+          yield text;
+        }
+
+        // Process any tool calls in the response
+        for await (const toolOutput of processToolCalls(taskResponse)) {
+          yield toolOutput;
+        }
+
+      } catch (taskError) {
+        console.error(`Error on task ${nextTodo.title}:`, taskError);
+        yield `\n⚠️ Error executing task: ${taskError instanceof Error ? taskError.message : 'Unknown error'}\n`;
+      }
+
+      // Mark as completed
+      currentTodos = currentTodos.map(t => 
+        t.id === nextTodo.id ? { ...t, status: 'completed' as const } : t
+      );
+
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId: nextTodo.id,
+        title: nextTodo.title,
+        status: 'completed'
+      });
+
+      emitTaskEvent({
+        type: 'task-update',
+        taskId,
+        title: 'Progress update',
+        data: { todos: currentTodos }
+      });
+
+      // Update remaining todos
+      remainingTodos = currentTodos.filter(t => t.status === 'pending');
+      
+      // Add to conversation history
+      messages.push({ role: 'model', parts: [{ text: fullResponse }] });
+    }
+
+    // Update final conversation history
+    conversationHistory.push({ role: 'user', content: message });
+    conversationHistory.push({ role: 'assistant', content: fullResponse });
+
+    // Emit task complete event
+    emitTaskEvent({
+      type: 'task-complete',
+      taskId,
+      title: 'All tasks completed',
+      status: 'completed'
+    });
+
+    yield `\n\n---\n✅ **All ${currentTodos.length} tasks completed!**\n`;
+
+  } catch (error) {
+    console.error('Error streaming from deep agent:', error);
+    emitTaskEvent({
+      type: 'task-error',
+      taskId: `error-${Date.now()}`,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      status: 'error'
+    });
+    yield `\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  }
+}
+
+/**
+ * Get the available subagents
+ */
+export const getAvailableSubagents = (): Array<{ name: string; description: string }> => {
+  return Array.from(subagents.values()).map(s => ({
+    name: s.name,
+    description: s.description
+  }));
+};
+
+/**
+ * Get the available tools
+ */
+export const getAvailableTools = (): Array<{ name: string; description: string }> => {
+  return Array.from(tools.values()).map(t => ({
+    name: t.name,
+    description: t.description
+  }));
+};
+
+/**
+ * Get current todos
+ */
+export const getCurrentTodos = (): TodoItem[] => {
+  return [...currentTodos];
+};
+
+/**
+ * Get files in the memory file system
+ */
+export const getMemoryFiles = (): string[] => {
+  return fileSystem.ls('/');
+};
+
+/**
+ * Read a file from the memory file system
+ */
+export const readMemoryFile = (path: string): string | null => {
+  return fileSystem.readFile(path);
+};
+
+/**
+ * Get all finalized documents
+ */
+export const getFinalDocuments = (): FinalDocument[] => {
+  return [...finalDocuments];
+};
+
+/**
+ * Get the latest finalized document
+ */
+export const getLatestDocument = (): FinalDocument | null => {
+  return finalDocuments.length > 0 ? finalDocuments[finalDocuments.length - 1] : null;
+};
+
+/**
+ * Get all artifacts
+ */
+export const getArtifacts = (): Artifact[] => {
+  return [...artifacts];
+};
+
+/**
+ * Get artifacts by type
+ */
+export const getArtifactsByType = (type: Artifact['type']): Artifact[] => {
+  return artifacts.filter(a => a.type === type);
+};
+
+/**
+ * Get artifact by id
+ */
+export const getArtifactById = (id: string): Artifact | undefined => {
+  return artifacts.find(a => a.id === id);
+};
+
+/**
+ * Delete an artifact
+ */
+export const deleteArtifact = (id: string): boolean => {
+  const index = artifacts.findIndex(a => a.id === id);
+  if (index !== -1) {
+    artifacts.splice(index, 1);
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Reset the deep agent (useful for changing configuration)
+ */
+export const resetDeepAgent = (): void => {
+  genAI = null;
+  isInitialized = false;
+  conversationHistory = [];
+  currentTodos = [];
+  finalDocuments = [];
+  artifacts = [];
+  fileSystem.clear();
+  console.log('🔄 Deep Agent reset');
+};

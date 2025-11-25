@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus } from 'lucide-react';
+import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine } from 'lucide-react';
 import Canvas, {
   type CanvasCommand,
   type CanvasMoleculeInsertionHandler,
@@ -41,6 +41,9 @@ import FlippingInfo from './components/FlippingInfo';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWorkspace';
 import SubjectExplorer from './components/SubjectExplorer';
+import DeepAgentWorkspace from './components/DeepAgentWorkspace';
+import LatexDocumentWorkspace from './components/LatexDocumentWorkspace';
+import ResearchPaperWorkspace from './components/ResearchPaperWorkspace';
 import GeminiLiveOverlay from './components/GeminiLive/GeminiLiveOverlay';
 import GeminiLiveImageLightbox from './components/GeminiLive/GeminiLiveImageLightbox';
 import { ConceptImageRecord, LearningCanvasImage } from './components/GeminiLive/types';
@@ -52,6 +55,10 @@ import type { IElement } from '@hufe921/canvas-editor';
 import { captureToolClick, captureFeatureEvent, captureApiKey } from './utils/errorLogger';
 import { useGeminiLive } from './components/GeminiLive/hooks/useGeminiLive';
 import { ConnectionState } from './components/GeminiLive/types';
+import { ToastContainer, Bounce } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import AIWord from './components/AIWord';
+import AISheet from './components/AISheet';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
 • Explain steps clearly and reference relevant controls inside NMRium when appropriate.
@@ -256,7 +263,12 @@ const App: React.FC = () => {
   const [showDocumentUnderstandingWorkspace, setShowDocumentUnderstandingWorkspace] = useState(false);
   const [showSubjectExplorer, setShowSubjectExplorer] = useState(false);
   const [showDocumentEditorCanvas, setShowDocumentEditorCanvas] = useState(false);
+  const [showDeepAgentWorkspace, setShowDeepAgentWorkspace] = useState(false);
+  const [showLatexWorkspace, setShowLatexWorkspace] = useState(false);
+  const [showResearchPaperWorkspace, setShowResearchPaperWorkspace] = useState(false);
   const [showGeminiLiveWorkspace, setShowGeminiLiveWorkspace] = useState(false); // Kept for compatibility if needed, or remove
+  const [showAIWord, setShowAIWord] = useState(false);
+  const [showAISheet, setShowAISheet] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
 
@@ -325,6 +337,9 @@ const App: React.FC = () => {
     !showSubjectExplorer &&
     !showNmrFullscreen &&
     !showGeminiLiveWorkspace &&
+    !showDeepAgentWorkspace &&
+    !showLatexWorkspace &&
+    !showResearchPaperWorkspace &&
     !showDocumentEditorCanvas;
 
   useEffect(() => {
@@ -1309,6 +1324,44 @@ Here is the learner's question: ${message}`;
         setRdkitStatus('idle');
         setShowSubjectExplorer(false);
         break;
+      case 'ai-word':
+      case 'word-processor':
+      case 'smart-document':
+        setShowAIWord(true);
+        setShowAISheet(false);
+        setShowSrlCoachWorkspace(false);
+        setShowStudyToolsWorkspace(false);
+        setShowDocumentUnderstandingWorkspace(false);
+        setShowNmrFullscreen(false);
+        setShowChemistryPanel(false);
+        setShowChatPanel(false);
+        setIsNmrAssistantActive(false);
+        setShowNmrAssistant(false);
+        setIsRdkitAssistantActive(false);
+        setShowRdkitAssistant(false);
+        setRdkitStatus('idle');
+        setShowSubjectExplorer(false);
+        startFeature('ai_word');
+        break;
+      case 'ai-sheet':
+      case 'spreadsheet':
+      case 'smart-spreadsheet':
+        setShowAISheet(true);
+        setShowAIWord(false);
+        setShowSrlCoachWorkspace(false);
+        setShowStudyToolsWorkspace(false);
+        setShowDocumentUnderstandingWorkspace(false);
+        setShowNmrFullscreen(false);
+        setShowChemistryPanel(false);
+        setShowChatPanel(false);
+        setIsNmrAssistantActive(false);
+        setShowNmrAssistant(false);
+        setIsRdkitAssistantActive(false);
+        setShowRdkitAssistant(false);
+        setRdkitStatus('idle');
+        setShowSubjectExplorer(false);
+        startFeature('ai_sheet');
+        break;
     }
   };
 
@@ -1589,6 +1642,81 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
+                    setShowDeepAgentWorkspace(true);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowSubjectExplorer(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('deep_agent');
+                    startFeature('deep_agent');
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-transform hover:scale-[1.02]"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Deep Agent
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowLatexWorkspace(true);
+                    setShowDeepAgentWorkspace(false);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowSubjectExplorer(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('latex_agent');
+                    startFeature('latex_agent');
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-green-600 to-teal-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-green-500/25 transition-transform hover:scale-[1.02]"
+                >
+                  <FileText className="h-4 w-4" />
+                  LaTeX Agent
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowResearchPaperWorkspace(true);
+                    setShowLatexWorkspace(false);
+                    setShowDeepAgentWorkspace(false);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowSubjectExplorer(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('research_paper_agent');
+                    startFeature('research_paper_agent');
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-600 to-orange-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-amber-500/25 transition-transform hover:scale-[1.02]"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Research Paper
+                </button>
+
+                <button
+                  onClick={() => {
                     setShowNmrFullscreen(true);
                     setShowSrlCoachWorkspace(false);
                     setShowStudyToolsWorkspace(false);
@@ -1625,6 +1753,56 @@ Here is the learner's question: ${message}`;
                 >
                   <Mic className="h-4 w-4" />
                   Gemini Live
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowAIWord(true);
+                    setShowAISheet(false);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowSubjectExplorer(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('ai_word');
+                    startFeature('ai_word');
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-blue-500/25 transition-transform hover:scale-[1.02]"
+                >
+                  <PenLine className="h-4 w-4" />
+                  AI Word
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowAISheet(true);
+                    setShowAIWord(false);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowSubjectExplorer(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('ai_sheet');
+                    startFeature('ai_sheet');
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 to-green-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-emerald-500/25 transition-transform hover:scale-[1.02]"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  AI Sheet
                 </button>
 
                 <div className="inline-flex items-center rounded-full border border-border/40 bg-background/80 p-0.5 text-xs font-semibold shadow-sm">
@@ -1814,6 +1992,27 @@ Here is the learner's question: ${message}`;
             setShowSubjectExplorer(false);
           }}
           apiKey={apiKey}
+        />
+      ) : showDeepAgentWorkspace ? (
+        <DeepAgentWorkspace
+          onBack={() => {
+            setShowDeepAgentWorkspace(false);
+            setShowChatPanel(false);
+          }}
+        />
+      ) : showLatexWorkspace ? (
+        <LatexDocumentWorkspace
+          onBack={() => {
+            setShowLatexWorkspace(false);
+            setShowChatPanel(false);
+          }}
+        />
+      ) : showResearchPaperWorkspace ? (
+        <ResearchPaperWorkspace
+          onBack={() => {
+            setShowResearchPaperWorkspace(false);
+            setShowChatPanel(false);
+          }}
         />
       ) : showNmrFullscreen ? (
         <div className="flex h-[calc(100vh-5rem)] flex-col">
@@ -2359,6 +2558,42 @@ Here is the learner's question: ${message}`;
 
       {/* Image Lightbox */}
       <GeminiLiveImageLightbox image={expandedImage} onClose={handleCloseLightbox} />
+
+      {/* AI Word */}
+      {showAIWord && (
+        <AIWord
+          onClose={() => {
+            setShowAIWord(false);
+            endCurrentFeature();
+          }}
+        />
+      )}
+
+      {/* AI Sheet */}
+      {showAISheet && (
+        <AISheet
+          onClose={() => {
+            setShowAISheet(false);
+            endCurrentFeature();
+          }}
+        />
+      )}
+
+      {/* Toast Container */}
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        limit={5}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+        transition={Bounce}
+      />
     </div>
   );
 };
