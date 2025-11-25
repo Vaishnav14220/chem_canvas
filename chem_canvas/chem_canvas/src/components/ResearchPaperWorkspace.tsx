@@ -46,7 +46,9 @@ import {
   GraduationCap,
   Lightbulb,
   PenTool,
-  Image
+  Image,
+  Search,
+  Plus
 } from 'lucide-react';
 
 import { Button } from './ui/button';
@@ -78,12 +80,19 @@ import {
   resetResearchPaper,
   subscribeToResearchPaperEvents,
   SUB_AGENTS,
+  searchRelevantPapers,
+  findCitingPapers,
+  findRelatedPapers,
+  addPaperToReferences,
+  searchCitationsForPaper,
+  type CitationSearchResult,
   type UploadedFile,
   type ResearchPaperConfig,
   type PaperSection,
   type AgentProgress,
   type ResearchPaperEvent
 } from '../services/researchPaperAgentService';
+import { type Publication } from '../services/scholarlyService';
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -156,7 +165,14 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
   const [textContentType, setTextContentType] = useState<UploadedFile['type']>('notes');
   
   // Active tab in generate step
-  const [activeTab, setActiveTab] = useState<'progress' | 'sections' | 'latex' | 'preview' | 'images'>('progress');
+  const [activeTab, setActiveTab] = useState<'progress' | 'sections' | 'latex' | 'preview' | 'images' | 'citations'>('progress');
+  
+  // Citation search state
+  const [citationSearchQuery, setCitationSearchQuery] = useState('');
+  const [isSearchingCitations, setIsSearchingCitations] = useState(false);
+  const [citationResults, setCitationResults] = useState<Publication[]>([]);
+  const [relatedPapers, setRelatedPapers] = useState<Publication[]>([]);
+  const [addedPapers, setAddedPapers] = useState<Set<string>>(new Set());
   
   // Collected extracted images from all uploaded files
   const extractedImages = useMemo(() => {
@@ -301,6 +317,63 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
   const handleEditSection = (section: PaperSection) => {
     setEditingSection(section.id);
     setEditContent(section.content);
+  };
+
+  // Citation search handler
+  const handleCitationSearch = async () => {
+    if (!citationSearchQuery.trim()) return;
+    
+    setIsSearchingCitations(true);
+    try {
+      const papers = await searchRelevantPapers(citationSearchQuery, 15);
+      setCitationResults(papers);
+      
+      // Also get related papers if we have results
+      if (papers.length > 0) {
+        try {
+          const related = await findRelatedPapers(papers[0].title, 5);
+          setRelatedPapers(related);
+        } catch (e) {
+          console.warn('Could not fetch related papers:', e);
+        }
+      }
+    } catch (error) {
+      console.error('Citation search failed:', error);
+      setErrors(prev => [...prev, `Citation search failed: ${error}`]);
+    } finally {
+      setIsSearchingCitations(false);
+    }
+  };
+
+  // Auto-search citations based on paper config
+  const handleAutoSearchCitations = async () => {
+    if (!config.title.trim()) {
+      alert('Please configure paper title first');
+      return;
+    }
+    
+    setCitationSearchQuery(config.title);
+    setIsSearchingCitations(true);
+    
+    try {
+      const result = await searchCitationsForPaper();
+      setCitationResults(result.papers);
+      setRelatedPapers(result.relatedPapers);
+    } catch (error) {
+      console.error('Auto citation search failed:', error);
+    } finally {
+      setIsSearchingCitations(false);
+    }
+  };
+
+  // Add paper to references
+  const handleAddToReferences = async (paper: Publication) => {
+    try {
+      await addPaperToReferences(paper);
+      setAddedPapers(prev => new Set([...prev, paper.title]));
+    } catch (error) {
+      console.error('Failed to add paper:', error);
+    }
   };
 
   // Save edited section
@@ -688,7 +761,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
   const renderGenerateStep = () => (
     <div className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col">
-        <TabsList className="grid grid-cols-5 bg-gray-800">
+        <TabsList className="grid grid-cols-6 bg-gray-800">
           <TabsTrigger value="progress">
             <Brain className="w-4 h-4 mr-2" />
             Progress
@@ -696,6 +769,15 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
           <TabsTrigger value="sections">
             <FileText className="w-4 h-4 mr-2" />
             Sections
+          </TabsTrigger>
+          <TabsTrigger value="citations" className="relative">
+            <Search className="w-4 h-4 mr-2" />
+            Citations
+            {citationResults.length > 0 && (
+              <Badge variant="secondary" className="ml-1 bg-blue-600 text-white text-xs px-1.5">
+                {citationResults.length}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="latex">
             <FileCode className="w-4 h-4 mr-2" />
@@ -949,6 +1031,206 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                     <p className="text-sm">Upload PDF documents containing images, diagrams, or figures.</p>
                     <p className="text-sm text-gray-600 mt-2">Images will be automatically extracted and shown here.</p>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Citations Tab */}
+        <TabsContent value="citations" className="flex-1 overflow-hidden">
+          <Card className="h-full bg-gray-800/50 border-gray-700 flex flex-col">
+            <CardHeader className="pb-2 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Search className="w-5 h-5" />
+                    Citation Search
+                  </CardTitle>
+                  <CardDescription>
+                    Search for academic papers and add citations to your research
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-hidden flex flex-col gap-4">
+              {/* Search Input */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={citationSearchQuery}
+                  onChange={(e) => setCitationSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCitationSearch()}
+                  placeholder="Search for papers, authors, or topics..."
+                  className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <Button 
+                  onClick={handleCitationSearch}
+                  disabled={isSearchingCitations || !citationSearchQuery.trim()}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  {isSearchingCitations ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4 mr-1" />
+                      Search
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Results and Saved Citations */}
+              <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Search Results */}
+                <div className="flex flex-col bg-gray-700/30 rounded-lg p-3">
+                  <h3 className="text-sm font-medium text-gray-300 mb-2">
+                    Search Results {citationResults.length > 0 && `(${citationResults.length})`}
+                  </h3>
+                  <ScrollArea className="flex-1">
+                    {citationResults.length > 0 ? (
+                      <div className="space-y-2">
+                        {citationResults.map((paper: Publication, index: number) => (
+                          <div 
+                            key={index}
+                            className={`bg-gray-700/50 rounded-lg p-3 border transition-colors ${
+                              addedPapers.has(paper.title) 
+                                ? 'border-green-600 bg-green-900/20' 
+                                : 'border-gray-600 hover:border-purple-500'
+                            }`}
+                          >
+                            <h4 className="text-sm font-medium text-white line-clamp-2">{paper.title}</h4>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {paper.authors?.slice(0, 3).join(', ')}
+                              {paper.authors && paper.authors.length > 3 && ' et al.'}
+                            </p>
+                            <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                              {paper.year && <span>{paper.year}</span>}
+                              {paper.citations !== undefined && <span>Cited by {paper.citations}</span>}
+                              {paper.venue && <span className="truncate max-w-[150px]">{paper.venue}</span>}
+                            </div>
+                            <div className="flex gap-2 mt-2">
+                              {addedPapers.has(paper.title) ? (
+                                <span className="text-xs text-green-400 flex items-center h-7">✓ Added</span>
+                              ) : (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  className="text-xs h-7"
+                                  onClick={() => handleAddToReferences(paper)}
+                                >
+                                  + Add to Refs
+                                </Button>
+                              )}
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                className="text-xs h-7"
+                                onClick={async () => {
+                                  const related = await findRelatedPapers(paper.title, 5);
+                                  setRelatedPapers(related);
+                                }}
+                              >
+                                Find Related
+                              </Button>
+                              {paper.url && (
+                                <a 
+                                  href={paper.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-purple-400 hover:text-purple-300 flex items-center h-7"
+                                >
+                                  View →
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                        {isSearchingCitations ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Searching papers...
+                          </div>
+                        ) : (
+                          'Search for papers to find citations'
+                        )}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+
+                {/* Added Citations */}
+                <div className="flex flex-col bg-gray-700/30 rounded-lg p-3">
+                  <h3 className="text-sm font-medium text-gray-300 mb-2">
+                    Added Citations {addedPapers.size > 0 && `(${addedPapers.size})`}
+                  </h3>
+                  <ScrollArea className="flex-1">
+                    {addedPapers.size > 0 ? (
+                      <div className="space-y-2">
+                        {citationResults.filter((paper: Publication) => addedPapers.has(paper.title)).map((paper: Publication, index: number) => (
+                          <div 
+                            key={index}
+                            className="bg-green-900/20 rounded-lg p-3 border border-green-700/50"
+                          >
+                            <h4 className="text-sm font-medium text-white line-clamp-2">{paper.title}</h4>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {paper.authors?.slice(0, 3).join(', ')}
+                            </p>
+                            <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                              {paper.year && <span>{paper.year}</span>}
+                              <span className="text-green-400">✓ Added to references</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                        No citations added yet
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+              </div>
+
+              {/* Related Papers Section */}
+              {relatedPapers.length > 0 && (
+                <div className="bg-gray-700/30 rounded-lg p-3">
+                  <h3 className="text-sm font-medium text-gray-300 mb-2">
+                    Related Papers ({relatedPapers.length})
+                  </h3>
+                  <ScrollArea className="max-h-[150px]">
+                    <div className="flex gap-2 flex-wrap">
+                      {relatedPapers.map((paper: Publication, index: number) => (
+                        <div 
+                          key={index}
+                          className={`rounded-lg px-3 py-2 border text-xs max-w-[300px] ${
+                            addedPapers.has(paper.title)
+                              ? 'bg-green-900/20 border-green-700/50'
+                              : 'bg-gray-700/50 border-gray-600'
+                          }`}
+                        >
+                          <p className="text-white truncate">{paper.title}</p>
+                          <div className="flex gap-2 mt-1">
+                            {addedPapers.has(paper.title) ? (
+                              <span className="text-xs text-green-400">✓ Added</span>
+                            ) : (
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                className="text-xs h-6 px-2"
+                                onClick={() => handleAddToReferences(paper)}
+                              >
+                                + Add
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
                 </div>
               )}
             </CardContent>

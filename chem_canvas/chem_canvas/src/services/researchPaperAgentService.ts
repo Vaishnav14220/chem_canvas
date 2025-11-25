@@ -32,6 +32,16 @@ import {
   type FormulaData,
   type ExtractedDocumentContent
 } from './ocrService';
+import {
+  searchPublications,
+  getCitations,
+  getSimilarPapers,
+  getBibtex,
+  comprehensivePaperSearch,
+  type Publication,
+  type SearchResult,
+  type CitationResult
+} from './scholarlyService';
 
 // ==========================================
 // Types & Interfaces
@@ -368,6 +378,32 @@ Output format: Generate BibTeX entries for all references.
 Create a .bib file content with proper formatting.`
   },
   {
+    name: 'Citation Search Agent',
+    role: 'citation_search',
+    description: 'Searches for relevant papers, citations, and related work',
+    sectionNames: [],
+    systemPrompt: `You are an expert Citation Search Agent. Your task is to:
+1. Analyze the research topic and identify key concepts for literature search
+2. Suggest relevant papers and citations that should be included
+3. Find seminal works and foundational papers in the field
+4. Identify recent advances and state-of-the-art research
+5. Locate papers that support the methodology or approach
+6. Find contradicting or alternative viewpoints for balanced discussion
+7. Suggest highly-cited papers for credibility
+
+When searching, provide:
+- Search queries that would find relevant literature
+- Specific paper titles if known
+- Author names who are experts in the field
+- Key journals or conferences to search
+
+Output format: Provide a structured list of suggested citations with:
+- Paper title (if known)
+- Authors (if known)
+- Relevance to the research
+- Where it should be cited in the paper`
+  },
+  {
     name: 'LaTeX Validator Agent',
     role: 'validator',
     description: 'Validates and corrects LaTeX formatting issues',
@@ -671,6 +707,182 @@ export const analyzeAllFiles = async (): Promise<void> => {
     type: 'agent-completed',
     data: { agent: 'File Analysis' },
     message: 'File analysis complete'
+  });
+};
+
+// ==========================================
+// Citation Search Functions
+// ==========================================
+
+export interface CitationSearchResult {
+  papers: Publication[];
+  relatedPapers: Publication[];
+  suggestedCitations: Publication[];
+  searchQuery: string;
+}
+
+/**
+ * Search for relevant papers based on the research topic
+ */
+export const searchRelevantPapers = async (query: string, limit: number = 10): Promise<Publication[]> => {
+  try {
+    emitEvent({
+      type: 'agent-started',
+      data: { agent: 'Citation Search Agent' },
+      message: `Searching for papers: "${query}"`
+    });
+
+    const result = await searchPublications(query, limit);
+    
+    emitEvent({
+      type: 'agent-completed',
+      data: { agent: 'Citation Search Agent', count: result.publications.length },
+      message: `Found ${result.publications.length} relevant papers`
+    });
+
+    return result.publications;
+  } catch (error) {
+    console.error('Paper search failed:', error);
+    state.errors.push(`Paper search failed: ${error}`);
+    return [];
+  }
+};
+
+/**
+ * Get papers that cite a specific work
+ */
+export const findCitingPapers = async (paperTitle: string, limit: number = 20): Promise<Publication[]> => {
+  try {
+    emitEvent({
+      type: 'agent-progress',
+      data: { agent: 'Citation Search Agent' },
+      message: `Finding papers that cite "${paperTitle}"...`
+    });
+
+    const result = await getCitations(paperTitle, limit);
+    
+    emitEvent({
+      type: 'agent-progress',
+      data: { agent: 'Citation Search Agent', count: result.citingPapers.length },
+      message: `Found ${result.citingPapers.length} citing papers`
+    });
+
+    return result.citingPapers;
+  } catch (error) {
+    console.error('Citation search failed:', error);
+    return [];
+  }
+};
+
+/**
+ * Find similar/related papers to a given work
+ */
+export const findRelatedPapers = async (paperTitle: string, limit: number = 10): Promise<Publication[]> => {
+  try {
+    const result = await getSimilarPapers(paperTitle, limit);
+    return result.similarPapers;
+  } catch (error) {
+    console.error('Similar papers search failed:', error);
+    return [];
+  }
+};
+
+/**
+ * Get BibTeX citation for a paper
+ */
+export const getPaperBibtex = async (paperTitle: string): Promise<string> => {
+  try {
+    return await getBibtex(paperTitle);
+  } catch (error) {
+    console.error('BibTeX fetch failed:', error);
+    return '';
+  }
+};
+
+/**
+ * Comprehensive citation search based on paper config
+ */
+export const searchCitationsForPaper = async (): Promise<CitationSearchResult> => {
+  if (!state.config) {
+    throw new Error('Paper config not initialized');
+  }
+
+  emitEvent({
+    type: 'agent-started',
+    data: { agent: 'Citation Search Agent' },
+    message: 'Starting comprehensive citation search...'
+  });
+
+  const { title } = state.config;
+  
+  // Extract key concepts from title
+  const keywords = title.split(/\s+/).filter(w => w.length > 3).slice(0, 5).join(' ');
+  
+  try {
+    const result = await comprehensivePaperSearch(keywords);
+    
+    emitEvent({
+      type: 'agent-completed',
+      data: { 
+        agent: 'Citation Search Agent',
+        papers: result.papers.length,
+        related: result.relatedPapers.length,
+        suggested: result.suggestedCitations.length
+      },
+      message: `Citation search complete: ${result.papers.length} papers, ${result.relatedPapers.length} related, ${result.suggestedCitations.length} suggested citations`
+    });
+
+    return {
+      ...result,
+      searchQuery: keywords
+    };
+  } catch (error) {
+    console.error('Comprehensive citation search failed:', error);
+    state.errors.push(`Citation search failed: ${error}`);
+    return {
+      papers: [],
+      relatedPapers: [],
+      suggestedCitations: [],
+      searchQuery: keywords
+    };
+  }
+};
+
+/**
+ * Add a paper to the references
+ */
+export const addPaperToReferences = async (paper: Publication): Promise<void> => {
+  let bibtex = paper.bibtex;
+  
+  if (!bibtex) {
+    try {
+      bibtex = await getBibtex(paper.title);
+    } catch (e) {
+      // Generate basic BibTeX
+      const firstAuthor = paper.authors[0] || 'Unknown';
+      const lastName = firstAuthor.split(' ').pop() || 'unknown';
+      const citeKey = `${lastName.toLowerCase()}${paper.year || ''}`;
+      
+      bibtex = `@article{${citeKey},
+  author = {${paper.authors.join(' and ')}},
+  title = {${paper.title}},
+  year = {${paper.year || ''}},
+  journal = {${paper.venue || ''}},
+}`;
+    }
+  }
+  
+  // Add to references section
+  const referencesSection = state.sections.find(s => s.name === 'references');
+  if (referencesSection) {
+    referencesSection.content += '\n\n' + bibtex;
+    referencesSection.latexContent += '\n\n' + bibtex;
+  }
+  
+  emitEvent({
+    type: 'section-progress',
+    data: { sectionId: 'references', paper: paper.title },
+    message: `Added "${paper.title}" to references`
   });
 };
 
