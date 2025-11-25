@@ -27,9 +27,6 @@ import {
 import {
   extractFromImage,
   extractPDFContent,
-  extractImagesFromDocument,
-  htmlTableToLatex,
-  type OCRResult,
   type TableData,
   type FigureData,
   type FormulaData,
@@ -502,31 +499,18 @@ export const uploadFile = async (
   file: File, 
   type: UploadedFile['type']
 ): Promise<UploadedFile> => {
-  const content = await extractTextFromFile(file);
+  // Extract text content from file
+  const extractionResult = await extractTextFromFile(file);
+  const content = extractionResult.text;
   
-  // Check if we have OCR content with images/tables
-  let ocrContent: ExtractedDocumentContent | undefined;
-  let extractedImages: FigureData[] = [];
-  let extractedTables: TableData[] = [];
-  let extractedFormulas: FormulaData[] = [];
+  // Get OCR content if available from extraction
+  let ocrContent: ExtractedDocumentContent | undefined = extractionResult.ocrContent;
+  let extractedImages: FigureData[] = ocrContent?.figures || [];
+  let extractedTables: TableData[] = ocrContent?.tables || [];
+  let extractedFormulas: FormulaData[] = ocrContent?.formulas || [];
   
-  // For PDFs and images, extract structured content
-  if (file.type === 'application/pdf') {
-    try {
-      ocrContent = await extractPDFContent(file);
-      extractedImages = ocrContent.figures;
-      extractedTables = ocrContent.tables;
-      extractedFormulas = ocrContent.formulas;
-      
-      emitEvent({
-        type: 'agent-thinking',
-        data: { agent: 'OCR' },
-        message: `Extracted ${extractedImages.length} images, ${extractedTables.length} tables, ${extractedFormulas.length} formulas from PDF`
-      });
-    } catch (e) {
-      console.warn('PDF OCR extraction failed:', e);
-    }
-  } else if (file.type.startsWith('image/')) {
+  // For images that weren't processed yet, extract structured content
+  if (file.type.startsWith('image/') && !ocrContent) {
     try {
       const imageResult = await extractFromImage(file);
       if (imageResult.tables.length > 0) {
@@ -541,12 +525,11 @@ export const uploadFile = async (
       });
       
       extractedImages = [{
-        id: `fig-${Date.now()}`,
-        base64Data: base64,
-        mimeType: file.type,
+        type: 'figure',
+        bbox: [0, 0, 0, 0],
+        base64,
         caption: file.name,
-        width: 0,
-        height: 0
+        filename: file.name
       }];
       
       emitEvent({
@@ -557,6 +540,15 @@ export const uploadFile = async (
     } catch (e) {
       console.warn('Image OCR extraction failed:', e);
     }
+  }
+  
+  // Log extraction results for PDFs
+  if (file.type === 'application/pdf' && ocrContent) {
+    emitEvent({
+      type: 'agent-thinking',
+      data: { agent: 'OCR' },
+      message: `Extracted ${extractedImages.length} images, ${extractedTables.length} tables, ${extractedFormulas.length} formulas from PDF`
+    });
   }
   
   const uploadedFile: UploadedFile = {
@@ -1140,12 +1132,10 @@ const generateFiguresLatex = (): string => {
     const figNum = index + 1;
     const caption = figure.caption || `Figure ${figNum}`;
     const label = `fig:extracted-${figNum}`;
+    const filename = figure.filename || `figure${figNum}.png`;
     
-    // For base64 images, we need to save them as files
-    // In a real implementation, these would be written to the LaTeX project
-    if (figure.base64Data) {
-      // Store the base64 data in a virtual file for the compiler
-      const filename = `figure${figNum}.png`;
+    // For figures with base64 data or filename, add to LaTeX
+    if (figure.base64 || figure.filename) {
       // The base64 data will be handled by the LaTeX compiler service
       figuresLatex += `\\begin{figure}[htbp]
 \\centering
@@ -1182,15 +1172,24 @@ const generateTablesLatex = (): string => {
     const caption = table.caption || `Table ${tableNum}`;
     const label = `tab:extracted-${tableNum}`;
     
-    // Use the LaTeX content if available, otherwise generate it
-    let tableContent = table.latexContent;
-    if (!tableContent && table.rows && table.rows.length > 0) {
-      tableContent = htmlTableToLatex({
-        rows: table.rows,
-        headers: table.headers,
-        caption: table.caption,
-        label: table.label
-      });
+    // Use the LaTeX content if available
+    let tableContent = table.latex;
+    if (!tableContent && table.cells && table.cells.length > 0) {
+      // Generate from cells if no latex content
+      const numCols = Math.max(...table.cells.map(c => c.col)) + 1;
+      const numRows = Math.max(...table.cells.map(c => c.row)) + 1;
+      const colSpec = 'l'.repeat(numCols);
+      
+      tableContent = `\\begin{tabular}{${colSpec}}\n\\toprule\n`;
+      for (let r = 0; r < numRows; r++) {
+        const rowCells = table.cells.filter(c => c.row === r).sort((a, b) => a.col - b.col);
+        tableContent += rowCells.map(c => c.text).join(' & ') + ' \\\\\n';
+        if (r === 0) tableContent += '\\midrule\n';
+      }
+      tableContent += '\\bottomrule\n\\end{tabular}';
+    } else if (table.html) {
+      // If we have HTML, try to parse it (basic)
+      tableContent = `% Table from HTML content\n\\begin{tabular}{l}\n${table.html.replace(/<[^>]+>/g, '').substring(0, 100)}...\n\\end{tabular}`;
     }
     
     if (tableContent) {
