@@ -2759,6 +2759,87 @@ export async function* streamDeepAgent(
           }
         }
       }
+      
+      // =========================================
+      // AUTO-SYNTHESIS: After subagent results, prompt for final document
+      // =========================================
+      const hasSubagentResults = toolCalls.some(tc => tc.tool === 'task');
+      const hasFinalDocument = toolCalls.some(tc => tc.tool === 'finalize_document');
+      
+      if (hasSubagentResults && !hasFinalDocument) {
+        // Subagents returned results but no final document was created
+        // Prompt the agent to synthesize the results
+        yield '\n\n---\n📝 **Synthesizing findings into final document...**\n\n';
+        
+        emitTaskEvent({
+          type: 'writing',
+          taskId,
+          title: 'Creating final document',
+          message: 'Synthesizing research findings...',
+          status: 'in-progress'
+        });
+        
+        const synthesisPrompt = `Based on the research findings above, create a comprehensive final document.
+
+Use the finalize_document tool with:
+- A clear, descriptive title
+- Well-organized markdown content with proper sections
+- All key findings synthesized
+- Sources properly cited
+
+IMPORTANT: Create the final document NOW using finalize_document. Do NOT output task status messages.`;
+
+        const synthesisMessages = [
+          ...messages,
+          { role: 'model', parts: [{ text: fullResponse }] },
+          { role: 'user', parts: [{ text: synthesisPrompt }] }
+        ];
+        
+        try {
+          const synthesisResponse = await genAI.models.generateContentStream({
+            model: 'gemini-2.5-flash',
+            contents: synthesisMessages
+          });
+          
+          let synthesisText = '';
+          for await (const chunk of synthesisResponse) {
+            const text = chunk.text || '';
+            synthesisText += text;
+            yield text;
+          }
+          
+          // Process any tool calls (should include finalize_document)
+          const synthToolCalls = parseToolCalls(synthesisText);
+          for (const call of synthToolCalls) {
+            const tool = tools.get(call.tool);
+            if (tool) {
+              yield `\n🔧 **${call.tool}**: `;
+              const result = await tool.execute(call.params);
+              
+              try {
+                const parsed = JSON.parse(result);
+                if (call.tool === 'finalize_document' && parsed.success) {
+                  yield `\n\n✅ **Final Document Created:** ${parsed.message || 'Document ready'}\n\n`;
+                  yield `📄 Your document has been finalized and is available in the document panel.\n\n`;
+                  
+                  emitTaskEvent({
+                    type: 'document-ready',
+                    taskId,
+                    title: 'Document created',
+                    status: 'completed',
+                    data: parsed
+                  });
+                }
+              } catch {
+                yield `Done\n\n`;
+              }
+            }
+          }
+        } catch (synthError) {
+          console.error('Synthesis error:', synthError);
+          yield `\n⚠️ Error creating final document. The research findings are available above.\n`;
+        }
+      }
     }
 
     // If there are no pending todos, mark task as complete now
@@ -2932,6 +3013,85 @@ Just execute the task and output the results directly.`;
       
       // Add to conversation history
       messages.push({ role: 'model', parts: [{ text: fullResponse }] });
+    }
+
+    // =========================================
+    // FINAL SYNTHESIS: Ensure document is created after all tasks
+    // =========================================
+    // Check if a final document was created during the process
+    const documentsCreated = finalDocuments.length;
+    const hasNewDocument = finalDocuments.some(d => 
+      d.createdAt.getTime() > Date.now() - 60000 // Created in last minute
+    );
+    
+    if (!hasNewDocument && currentTodos.length > 0) {
+      // All tasks done but no final document - prompt for synthesis
+      yield '\n\n---\n📝 **Creating final research document...**\n\n';
+      
+      emitTaskEvent({
+        type: 'writing',
+        taskId,
+        title: 'Finalizing document',
+        message: 'Creating comprehensive report...',
+        status: 'in-progress'
+      });
+      
+      const finalSynthesisPrompt = `All research tasks are complete. Now create the final comprehensive document.
+
+Use finalize_document tool with:
+- Clear, descriptive title based on the research topic
+- Well-structured markdown content including:
+  - Executive Summary
+  - Main findings organized by topic
+  - Key insights and conclusions
+  - Sources/References section
+
+Create the document NOW. Do not output any task status or meta-commentary.`;
+
+      try {
+        const finalResponse = await genAI.models.generateContentStream({
+          model: 'gemini-2.5-flash',
+          contents: [
+            ...messages,
+            { role: 'user', parts: [{ text: finalSynthesisPrompt }] }
+          ]
+        });
+        
+        let finalText = '';
+        for await (const chunk of finalResponse) {
+          const text = chunk.text || '';
+          finalText += text;
+          yield text;
+        }
+        
+        // Process finalize_document call
+        const finalToolCalls = parseToolCalls(finalText);
+        for (const call of finalToolCalls) {
+          if (call.tool === 'finalize_document') {
+            const tool = tools.get('finalize_document');
+            if (tool) {
+              const result = await tool.execute(call.params);
+              try {
+                const parsed = JSON.parse(result);
+                if (parsed.success) {
+                  yield `\n\n✅ **Final Document Created:** ${parsed.message}\n\n`;
+                  yield `📄 Your comprehensive research report is ready in the document panel.\n\n`;
+                  
+                  emitTaskEvent({
+                    type: 'document-ready',
+                    taskId,
+                    title: parsed.title || 'Research Report',
+                    status: 'completed',
+                    data: parsed
+                  });
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch (finalError) {
+        console.error('Final synthesis error:', finalError);
+      }
     }
 
     // Update final conversation history
