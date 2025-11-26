@@ -127,13 +127,33 @@ const DOCUMENT_EDITOR_URL = 'https://ranuts.github.io/document/?locale=en';
 
 // ============ AVAILABLE AGENTS ============
 const AVAILABLE_AGENTS: AgentConfig[] = [
-  // =========== PROMPT & QUALITY CONTROL ===========
+  // =========== PROMPT & QUALITY CONTROL (Gemini 3 Pro) ===========
   {
     id: 'prompt-enhancer',
     name: '✨ Prompt Enhancer',
     description: 'Improves user prompts before research - makes requests clearer and more actionable',
     skills: ['Prompt Analysis', 'Clarification', 'Scope Definition', 'Question Refinement'],
     icon: <Wand2 className="h-5 w-5" />,
+    color: 'emerald',
+    enabled: true,
+    category: 'utility'
+  },
+  {
+    id: 'document-synthesizer',
+    name: '📄 Document Synthesizer',
+    description: 'Gemini 3 Pro - Collects ALL research findings and creates ONE comprehensive final document',
+    skills: ['Content Collection', 'Synthesis', 'Deduplication', 'Final Formatting'],
+    icon: <FileText className="h-5 w-5" />,
+    color: 'emerald',
+    enabled: true,
+    category: 'utility'
+  },
+  {
+    id: 'output-validator',
+    name: '🛡️ Output Validator',
+    description: 'Gemini 3 Pro - Validates final document is complete, clean, and ready for display',
+    skills: ['Validation', 'Quality Check', 'Artifact Removal', 'Format Verify'],
+    icon: <CheckCircle2 className="h-5 w-5" />,
     color: 'emerald',
     enabled: true,
     category: 'utility'

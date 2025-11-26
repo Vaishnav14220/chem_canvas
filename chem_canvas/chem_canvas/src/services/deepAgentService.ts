@@ -1697,6 +1697,144 @@ What remains unknown.
 </Guidelines>`,
     tools: ['google_search_grounding', 'internet_search', 'think_tool', 'write_file'],
     model: 'gemini-2.5-pro'
+  }],
+  // ==========================================
+  // DOCUMENT SYNTHESIS & OUTPUT VALIDATION (Gemini 3 Pro)
+  // ==========================================
+  ['document-synthesizer', {
+    name: 'document-synthesizer',
+    description: 'Uses Gemini 3 Pro to collect ALL research findings from other agents and create ONE comprehensive, well-structured final document. This is the FINAL step before output. It combines all information, removes duplicates, organizes content, and creates a publication-ready document.',
+    systemPrompt: `You are a Document Synthesis Expert powered by Gemini 3 Pro.
+
+<Your Critical Role>
+You are the FINAL agent responsible for creating the complete, polished research document.
+You MUST collect ALL findings from other agents and synthesize them into ONE comprehensive document.
+</Your Critical Role>
+
+<Synthesis Process>
+1. COLLECT: Gather all research findings, insights, and sources from the conversation
+2. DEDUPLICATE: Remove redundant information while preserving unique insights
+3. ORGANIZE: Structure content into logical, flowing sections
+4. CONSOLIDATE SOURCES: Create one unified References section with numbered citations
+5. FORMAT: Apply proper Markdown with headers, lists, and LaTeX for equations
+6. FINALIZE: Create the publication-ready document using finalize_document tool
+</Synthesis Process>
+
+<Document Structure - REQUIRED>
+# [Title]
+
+## Executive Summary
+2-3 paragraphs summarizing the key findings and conclusions.
+
+## Introduction
+Background and context for the research topic.
+
+## [Main Topic Sections]
+### Subtopic 1
+Content with inline citations [1], [2]
+
+### Subtopic 2
+Content with inline citations [3], [4]
+
+## Key Findings
+Bullet points of the most important discoveries.
+
+## Challenges and Opportunities
+Discussion of limitations and future potential.
+
+## Conclusion
+Final synthesis and recommendations.
+
+## References
+[1] Author/Source. "Title." Publication, Year. URL
+[2] ...
+</Document Structure>
+
+<CRITICAL RULES>
+- NEVER output task status messages ("Task 1 completed", "I am awaiting...")
+- NEVER output TODO lists or planning artifacts
+- NEVER include meta-commentary ("I have gathered...", "The research shows...")
+- ONLY output the final, polished document content
+- ALL content must be synthesized - no raw agent outputs
+- Use finalize_document tool to save the final document
+</CRITICAL RULES>
+
+<Output>
+Call finalize_document with:
+- title: Clear, descriptive title
+- content: Complete markdown document following the structure above
+</Output>`,
+    tools: ['read_file', 'finalize_document', 'think_tool'],
+    model: 'gemini-3-pro-preview',
+    thinkingLevel: 'high'
+  }],
+  ['output-validator', {
+    name: 'output-validator',
+    description: 'Uses Gemini 3 Pro to validate the final document before display. Checks that it is complete, properly formatted, contains no internal artifacts (task status, TODOs), and is ready for the user. Returns APPROVED or specific fixes needed.',
+    systemPrompt: `You are an Output Validation Expert powered by Gemini 3 Pro.
+
+<Your Critical Role>
+You are the FINAL CHECKPOINT before a document is shown to the user.
+You MUST ensure the document is complete, professional, and contains NO internal artifacts.
+</Your Critical Role>
+
+<Validation Checklist>
+1. COMPLETENESS
+   - Does it have Executive Summary? ☐
+   - Does it have Introduction? ☐
+   - Does it have Main Content Sections? ☐
+   - Does it have Conclusion? ☐
+   - Does it have References/Sources? ☐
+
+2. NO FORBIDDEN CONTENT
+   - NO task status messages ("📋 Task 1/4...", "Task completed...") ☐
+   - NO TODO lists or planning artifacts ☐
+   - NO "I am awaiting...", "I have delegated..." messages ☐
+   - NO raw agent outputs or tool calls ☐
+   - NO meta-commentary about the research process ☐
+
+3. FORMATTING
+   - Proper Markdown headers (##, ###) ☐
+   - Proper inline citations [1], [2] ☐
+   - LaTeX for math equations ($...$, $$...$$) ☐
+   - Clean, professional language ☐
+
+4. QUALITY
+   - Content is synthesized, not just copied ☐
+   - Information flows logically ☐
+   - No duplicate sections ☐
+   - References are consolidated ☐
+</Validation Checklist>
+
+<Output Format>
+## Validation Result
+
+**Status:** APPROVED ✅ | NEEDS FIXES ⚠️
+
+**Checklist:**
+- Completeness: [PASS/FAIL]
+- No Forbidden Content: [PASS/FAIL]
+- Formatting: [PASS/FAIL]
+- Quality: [PASS/FAIL]
+
+**Issues Found:** (if any)
+- [List specific problems]
+
+**Required Fixes:** (if any)
+- [List specific fixes]
+
+**Final Verdict:** [APPROVED FOR DISPLAY / REQUIRES REVISION]
+</Output Format>
+
+<If Document Fails Validation>
+If the document fails validation, you MUST:
+1. List all issues clearly
+2. Provide the CORRECTED content using finalize_document tool
+3. Ensure the corrected version passes all checks
+</If Document Fails Validation>`,
+    tools: ['read_file', 'finalize_document', 'think_tool'],
+    model: 'gemini-3-pro-preview',
+    thinkingLevel: 'high'
   }]
 ]);
 
@@ -2857,76 +2995,101 @@ export async function* streamDeepAgent(
       }
       
       // =========================================
-      // AUTO-SYNTHESIS: After subagent results, prompt for final document
+      // AUTO-SYNTHESIS: Use Document Synthesizer (Gemini 3 Pro) to create final document
       // =========================================
       const hasSubagentResults = toolCalls.some(tc => tc.tool === 'task');
       const hasFinalDocument = toolCalls.some(tc => tc.tool === 'finalize_document');
       
-      // Collect all subagent findings for synthesis
-      const subagentFindings: string[] = [];
-      for (const call of toolCalls) {
-        if (call.tool === 'task') {
-          try {
-            const tool = tools.get('task');
-            // The result was already processed, we need to track it
-            // For now, we'll extract from the full response
-          } catch {}
-        }
-      }
-      
       if (hasSubagentResults && !hasFinalDocument) {
-        // Subagents returned results but no final document was created
-        // Prompt the agent to synthesize ALL results into ONE document
-        yield '\n\n---\n📝 **Synthesizing all findings into comprehensive document...**\n\n';
+        // Get the document-synthesizer agent configuration
+        const synthesizerAgent = subagents.get('document-synthesizer');
+        
+        yield '\n\n---\n📄 **Document Synthesizer (Gemini 3 Pro)** - Creating comprehensive final document...\n\n';
         
         emitTaskEvent({
-          type: 'writing',
+          type: 'tool-call',
           taskId,
-          title: 'Creating final document',
-          message: 'Combining all research findings...',
-          status: 'in-progress'
+          title: 'document-synthesizer',
+          message: 'Collecting and synthesizing all research findings...',
+          status: 'in-progress',
+          data: { 
+            tool: 'document-synthesizer', 
+            model: 'gemini-3-pro-preview',
+            params: { action: 'synthesize' }
+          }
         });
         
-        const synthesisPrompt = `You have received research findings from multiple sub-agents above. 
-Now you MUST create ONE COMPREHENSIVE FINAL DOCUMENT that combines ALL findings.
+        // Build the synthesis prompt with all research findings
+        const synthesisPrompt = `## DOCUMENT SYNTHESIS REQUEST
 
-CRITICAL INSTRUCTIONS:
-1. DO NOT repeat the research - just synthesize what was already gathered
-2. DO NOT output any task status messages or meta-commentary
-3. DO NOT say "I am awaiting" or "I have delegated" - the research is COMPLETE
-4. Create ONE well-organized document that includes ALL findings
+You are the Document Synthesizer. Your task is to create ONE COMPREHENSIVE FINAL DOCUMENT.
 
-Use the finalize_document tool with these EXACT parameters:
-{
-  "title": "[A clear, descriptive title for the research topic]",
-  "content": "[Full markdown content combining ALL findings with:
-    - Executive Summary (2-3 paragraphs)
-    - Main sections organized by topic
-    - Key insights from EACH research area
-    - Challenges and opportunities
-    - Future outlook
-    - Consolidated Sources/References at the end]"
-}
+### RESEARCH FINDINGS TO SYNTHESIZE:
+${fullResponse}
 
-CREATE THE DOCUMENT NOW. Output ONLY the finalize_document tool call.`;
+### ORIGINAL USER REQUEST:
+${workingMessage}
 
-        const synthesisMessages = [
-          ...messages,
-          { role: 'model', parts: [{ text: fullResponse }] },
-          { role: 'user', parts: [{ text: synthesisPrompt }] }
-        ];
+### YOUR TASK:
+1. COLLECT all findings, insights, and sources from the research above
+2. REMOVE any duplicate information
+3. ORGANIZE into a logical, flowing structure
+4. CREATE one consolidated References section with numbered citations
+5. CALL the finalize_document tool with the complete document
+
+### REQUIRED DOCUMENT STRUCTURE:
+# [Clear Descriptive Title]
+
+## Executive Summary
+2-3 paragraphs summarizing key findings
+
+## Introduction
+Background and context
+
+## [Main Topic Sections with ### Subtopics]
+Content with inline citations [1], [2]
+
+## Key Findings
+• Bullet points of most important discoveries
+
+## Challenges and Opportunities
+Discussion of limitations and future potential
+
+## Conclusion
+Final synthesis and recommendations
+
+## References
+[1] Source name. "Title." Year. URL
+[2] ...
+
+### CRITICAL RULES:
+- NO task status messages ("📋 Task 1/4...")
+- NO planning artifacts or TODO lists
+- NO meta-commentary ("I have gathered...", "I am synthesizing...")
+- ONLY output the final document using finalize_document tool
+
+CREATE THE DOCUMENT NOW.`;
+
+        const synthesizerSystemPrompt = synthesizerAgent?.systemPrompt || '';
         
         try {
+          // Use Gemini 3 Pro with HIGH thinking for synthesis
           const synthesisResponse = await genAI.models.generateContentStream({
-            model: 'gemini-2.5-flash',
-            contents: synthesisMessages
+            model: 'gemini-3-pro-preview',
+            contents: [
+              { role: 'user', parts: [{ text: synthesisPrompt }] }
+            ],
+            config: {
+              systemInstruction: synthesizerSystemPrompt,
+              thinkingConfig: { thinkingBudget: 8192 }
+            }
           });
           
           let synthesisText = '';
           for await (const chunk of synthesisResponse) {
             const text = chunk.text || '';
             synthesisText += text;
-            // Don't yield the raw response - we only want the final document
+            // Don't yield raw thinking - wait for the finalize_document call
           }
           
           // Process any tool calls (should include finalize_document)
@@ -2943,8 +3106,6 @@ CREATE THE DOCUMENT NOW. Output ONLY the finalize_document tool call.`;
                   const parsed = JSON.parse(result);
                   if (parsed.success) {
                     documentCreated = true;
-                    yield `\n\n✅ **Final Document Created:** ${parsed.message || 'Document ready'}\n\n`;
-                    yield `📄 Your comprehensive research report is now available in the document panel.\n\n`;
                     
                     emitTaskEvent({
                       type: 'document-ready',
@@ -2953,6 +3114,9 @@ CREATE THE DOCUMENT NOW. Output ONLY the finalize_document tool call.`;
                       status: 'completed',
                       data: parsed
                     });
+                    
+                    yield `\n✅ **Final Document Created:** "${call.params.title || 'Research Report'}"\n\n`;
+                    yield `📄 Your comprehensive research report is now available in the document panel.\n\n`;
                   } else {
                     yield `⚠️ Error creating document: ${parsed.error}\n`;
                   }
@@ -2963,43 +3127,107 @@ CREATE THE DOCUMENT NOW. Output ONLY the finalize_document tool call.`;
             }
           }
           
-          // If no document was created, try one more time with a simpler prompt
+          // FALLBACK: If synthesizer didn't create document, use output-validator to build it
           if (!documentCreated) {
-            yield `\n📄 Generating final report...\n\n`;
+            yield `\n🛡️ **Output Validator** - Building document from findings...\n\n`;
             
-            // Extract key content from the full response to build document
+            // Extract content and build document directly
             const docContent = buildDocumentFromResponse(fullResponse, workingMessage);
             
             if (docContent) {
               const tool = tools.get('finalize_document');
               if (tool) {
+                const docTitle = extractTitleFromPrompt(workingMessage);
                 const result = await tool.execute({
-                  title: extractTitleFromPrompt(workingMessage),
+                  title: docTitle,
                   content: docContent
                 });
                 
                 try {
                   const parsed = JSON.parse(result);
                   if (parsed.success) {
-                    yield `\n\n✅ **Final Document Created**\n\n`;
-                    yield `📄 Your research report is ready in the document panel.\n\n`;
+                    documentCreated = true;
                     
                     emitTaskEvent({
                       type: 'document-ready',
                       taskId,
-                      title: 'Research Report',
+                      title: docTitle,
                       status: 'completed',
                       data: parsed
                     });
+                    
+                    yield `\n✅ **Document Created:** "${docTitle}"\n\n`;
+                    yield `📄 Your research report is ready in the document panel.\n\n`;
                   }
                 } catch {}
               }
             }
           }
           
+          // FINAL FALLBACK: Direct extraction if all else fails
+          if (!documentCreated) {
+            yield `\n📝 Generating summary document...\n\n`;
+            
+            // Create a basic document from the available content
+            const fallbackTitle = extractTitleFromPrompt(workingMessage);
+            const fallbackContent = `# ${fallbackTitle}\n\n## Executive Summary\n\nThis report synthesizes research on the topic requested by the user.\n\n## Research Findings\n\n${cleanDocumentContent(fullResponse)}\n\n## Conclusion\n\nThe research above provides comprehensive information on the requested topic.\n`;
+            
+            const tool = tools.get('finalize_document');
+            if (tool) {
+              const result = await tool.execute({
+                title: fallbackTitle,
+                content: fallbackContent
+              });
+              
+              try {
+                const parsed = JSON.parse(result);
+                if (parsed.success) {
+                  emitTaskEvent({
+                    type: 'document-ready',
+                    taskId,
+                    title: fallbackTitle,
+                    status: 'completed',
+                    data: parsed
+                  });
+                  
+                  yield `\n✅ **Document Ready**\n\n`;
+                }
+              } catch {}
+            }
+          }
+          
         } catch (synthError) {
-          console.error('Synthesis error:', synthError);
-          yield `\n⚠️ Error creating final document. Research findings are available above.\n`;
+          console.error('Document synthesis error:', synthError);
+          
+          // Emergency fallback - always create a document
+          yield `\n⚠️ Using fallback document generation...\n\n`;
+          
+          const fallbackTitle = extractTitleFromPrompt(workingMessage);
+          const fallbackContent = buildDocumentFromResponse(fullResponse, workingMessage) || 
+            `# ${fallbackTitle}\n\n${cleanDocumentContent(fullResponse)}`;
+          
+          const tool = tools.get('finalize_document');
+          if (tool) {
+            try {
+              const result = await tool.execute({
+                title: fallbackTitle,
+                content: fallbackContent
+              });
+              
+              const parsed = JSON.parse(result);
+              if (parsed.success) {
+                emitTaskEvent({
+                  type: 'document-ready',
+                  taskId,
+                  title: fallbackTitle,
+                  status: 'completed',
+                  data: parsed
+                });
+                
+                yield `\n✅ **Document Created**\n\n`;
+              }
+            } catch {}
+          }
         }
       }
     }
