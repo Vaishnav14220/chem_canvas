@@ -119,7 +119,7 @@ interface AgentConfig {
   icon: React.ReactNode;
   color: string;
   enabled: boolean;
-  category: 'research' | 'chemistry' | 'writing' | 'utility';
+  category: 'research' | 'chemistry' | 'writing' | 'utility' | 'advanced';
 }
 
 // Document Editor URL
@@ -127,6 +127,48 @@ const DOCUMENT_EDITOR_URL = 'https://ranuts.github.io/document/?locale=en';
 
 // ============ AVAILABLE AGENTS ============
 const AVAILABLE_AGENTS: AgentConfig[] = [
+  // =========== ADVANCED REASONING AGENTS (Gemini 3 Pro / 2.5 Pro) ===========
+  {
+    id: 'advanced-reasoner',
+    name: '🧠 Advanced Reasoner',
+    description: 'Gemini 3 Pro with HIGH thinking for complex reasoning',
+    skills: ['Deep Logic', 'Math Proofs', 'Code Analysis', 'Scientific Analysis'],
+    icon: <Brain className="h-5 w-5" />,
+    color: 'violet',
+    enabled: true,
+    category: 'advanced'
+  },
+  {
+    id: 'deep-researcher',
+    name: '📚 Deep Researcher',
+    description: 'Gemini 2.5 Pro for thorough research analysis',
+    skills: ['Literature Review', 'Multi-perspective Analysis', 'Fact-checking', 'Synthesis'],
+    icon: <BookOpen className="h-5 w-5" />,
+    color: 'violet',
+    enabled: true,
+    category: 'advanced'
+  },
+  {
+    id: 'complex-problem-solver',
+    name: '🎯 Complex Problem Solver',
+    description: 'Gemini 3 Pro for multi-variable optimization & strategy',
+    skills: ['Systems Analysis', 'Optimization', 'Strategic Planning', 'Root Cause Analysis'],
+    icon: <Target className="h-5 w-5" />,
+    color: 'violet',
+    enabled: true,
+    category: 'advanced'
+  },
+  {
+    id: 'scientific-analyst',
+    name: '🔬 Scientific Analyst',
+    description: 'Gemini 2.5 Pro for rigorous scientific analysis',
+    skills: ['Methodology Eval', 'Statistical Analysis', 'Paper Review', 'Evidence Hierarchy'],
+    icon: <Activity className="h-5 w-5" />,
+    color: 'violet',
+    enabled: true,
+    category: 'advanced'
+  },
+  // =========== RESEARCH AGENTS ===========
   {
     id: 'research-agent',
     name: 'Research Agent',
@@ -147,6 +189,7 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     enabled: true,
     category: 'research'
   },
+  // =========== CHEMISTRY AGENTS ===========
   {
     id: 'chemistry-researcher',
     name: 'Chemistry Researcher',
@@ -177,6 +220,7 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     enabled: true,
     category: 'chemistry'
   },
+  // =========== WRITING AGENTS ===========
   {
     id: 'latex-formatter-agent',
     name: 'LaTeX Formatter',
@@ -197,6 +241,7 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     enabled: true,
     category: 'writing'
   },
+  // =========== UTILITY AGENTS ===========
   {
     id: 'data-visualization',
     name: 'Data Visualizer',
@@ -2569,6 +2614,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' },
                   red: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
                   gray: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-400' },
+                  violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/30', text: 'text-violet-400' },
                 };
                 const colors = colorClasses[agent.color] || colorClasses.gray;
 
@@ -2712,6 +2758,14 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-xs text-blue-400 hover:bg-blue-500/20 transition-colors"
                 >
                   Research & Writing
+                </button>
+                <button
+                  onClick={() => setEnabledAgents(new Set(
+                    AVAILABLE_AGENTS.filter(a => a.category === 'advanced').map(a => a.id)
+                  ))}
+                  className="px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/30 text-xs text-violet-400 hover:bg-violet-500/20 transition-colors"
+                >
+                  🧠 Advanced (Pro)
                 </button>
               </div>
             )}

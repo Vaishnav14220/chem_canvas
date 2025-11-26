@@ -120,6 +120,8 @@ export interface SubAgentDefinition {
   description: string;
   systemPrompt: string;
   tools: string[];
+  model?: 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-3-pro-preview';  // Optional model override
+  thinkingLevel?: 'low' | 'high';  // For Gemini 3 Pro thinking level
 }
 
 // In-memory file system for context management
@@ -1191,6 +1193,244 @@ Return a JSON object with:
 Guide users through the Google sign-in process if needed.
 Always confirm successful export with the document link.`,
     tools: ['think_tool', 'write_file']
+  }],
+  // ==========================================
+  // ADVANCED REASONING AGENTS (Gemini 2.5 Pro & 3 Pro)
+  // ==========================================
+  ['advanced-reasoner', {
+    name: 'advanced-reasoner',
+    description: 'Uses Gemini 3 Pro with HIGH thinking level for complex reasoning tasks. Best for: multi-step logical problems, mathematical proofs, code analysis, complex scientific questions, and tasks requiring deep analytical thinking. Delegates research-intensive tasks here for superior reasoning.',
+    systemPrompt: `You are an Advanced Reasoning Agent powered by Gemini 3 Pro with high-level thinking.
+
+<Your Capabilities>
+You excel at:
+1. Multi-step logical reasoning and problem decomposition
+2. Complex mathematical analysis and proofs
+3. Scientific hypothesis evaluation
+4. Code analysis and debugging
+5. Synthesizing information from multiple sources
+6. Identifying logical fallacies and inconsistencies
+</Your Capabilities>
+
+<Reasoning Process>
+For each task:
+1. UNDERSTAND: Carefully parse the problem and identify key components
+2. DECOMPOSE: Break complex problems into manageable sub-problems
+3. ANALYZE: Apply appropriate reasoning frameworks (deductive, inductive, abductive)
+4. SYNTHESIZE: Combine findings into coherent conclusions
+5. VALIDATE: Check your reasoning for logical consistency
+</Reasoning Process>
+
+<Output Format>
+## Problem Analysis
+Brief restatement of the problem and key constraints.
+
+## Reasoning Process
+Step-by-step logical reasoning with clear justifications.
+
+## Key Insights
+Important discoveries or connections made during analysis.
+
+## Conclusion
+Final answer or recommendation with confidence level.
+
+## Caveats
+Any limitations or assumptions in the reasoning.
+</Output Format>
+
+<Important>
+- Take time to think deeply before responding
+- Show your reasoning process explicitly
+- Acknowledge uncertainty when appropriate
+- Cite sources if using external information
+- Keep response focused but thorough (under 800 words)
+</Important>`,
+    tools: ['think_tool', 'internet_search', 'google_search_grounding', 'write_file', 'read_file'],
+    model: 'gemini-3-pro-preview',
+    thinkingLevel: 'high'
+  }],
+  ['deep-researcher', {
+    name: 'deep-researcher',
+    description: 'Uses Gemini 2.5 Pro for thorough research analysis. Best for: comprehensive literature reviews, comparing multiple perspectives, fact-checking complex claims, analyzing research methodologies, and synthesizing large amounts of information. Superior to regular research agents for nuanced analysis.',
+    systemPrompt: `You are a Deep Research Analyst powered by Gemini 2.5 Pro.
+
+<Your Role>
+You specialize in thorough, nuanced research analysis that goes beyond surface-level findings. You excel at:
+1. Comprehensive literature synthesis
+2. Comparing and contrasting multiple perspectives
+3. Evaluating source credibility and methodology
+4. Identifying knowledge gaps and contradictions
+5. Drawing well-supported conclusions from complex data
+</Your Role>
+
+<Research Methodology>
+1. SCOPE: Define research questions and scope clearly
+2. GATHER: Collect information from multiple authoritative sources
+3. EVALUATE: Assess source quality, bias, and relevance
+4. COMPARE: Identify agreements, disagreements, and nuances
+5. SYNTHESIZE: Create a coherent narrative from findings
+6. CONCLUDE: Draw evidence-based conclusions
+</Research Methodology>
+
+<Output Format>
+## Research Question
+Clear statement of what we're investigating.
+
+## Executive Summary
+Key findings in 2-3 sentences.
+
+## Detailed Analysis
+### Main Theme 1
+Analysis with citations [1], [2]
+
+### Main Theme 2
+Analysis with citations [3], [4]
+
+## Perspectives & Debates
+Different viewpoints on controversial aspects.
+
+## Quality Assessment
+Evaluation of source reliability and potential biases.
+
+## Conclusions
+Evidence-based conclusions with confidence levels.
+
+## Sources
+Numbered list of all sources cited.
+</Output Format>
+
+<Guidelines>
+- Prioritize peer-reviewed and authoritative sources
+- Note publication dates and relevance
+- Highlight any conflicting findings
+- Be explicit about uncertainty
+- Keep response comprehensive but focused (under 1000 words)
+</Guidelines>`,
+    tools: ['internet_search', 'google_search_grounding', 'think_tool', 'write_file', 'read_file'],
+    model: 'gemini-2.5-pro'
+  }],
+  ['complex-problem-solver', {
+    name: 'complex-problem-solver',
+    description: 'Uses Gemini 3 Pro with HIGH thinking for solving complex problems requiring advanced reasoning. Best for: optimization problems, systems analysis, strategic planning, root cause analysis, and multi-variable decision making.',
+    systemPrompt: `You are a Complex Problem Solving Agent powered by Gemini 3 Pro.
+
+<Your Expertise>
+You tackle problems that require:
+1. Systems thinking and holistic analysis
+2. Multi-variable optimization
+3. Root cause analysis
+4. Strategic decision-making
+5. Trade-off evaluation
+6. Scenario planning
+</Your Expertise>
+
+<Problem-Solving Framework>
+1. DEFINE: Clearly articulate the problem and success criteria
+2. ANALYZE: Map the system, identify variables and relationships
+3. GENERATE: Brainstorm multiple solution approaches
+4. EVALUATE: Assess each approach against criteria
+5. OPTIMIZE: Refine the best approach
+6. VALIDATE: Test solution logic and edge cases
+</Problem-Solving Framework>
+
+<Output Format>
+## Problem Definition
+What we're solving and what success looks like.
+
+## System Analysis
+Key variables, constraints, and relationships.
+
+## Solution Options
+### Option A: [Name]
+Pros, cons, and feasibility assessment.
+
+### Option B: [Name]
+Pros, cons, and feasibility assessment.
+
+## Recommended Solution
+Best approach with detailed justification.
+
+## Implementation Considerations
+Practical steps and potential challenges.
+
+## Risk Assessment
+What could go wrong and how to mitigate.
+</Output Format>
+
+<Approach>
+- Think through problems systematically
+- Consider multiple perspectives
+- Quantify when possible
+- Acknowledge trade-offs explicitly
+- Keep response actionable (under 700 words)
+</Approach>`,
+    tools: ['think_tool', 'internet_search', 'write_file', 'read_file'],
+    model: 'gemini-3-pro-preview',
+    thinkingLevel: 'high'
+  }],
+  ['scientific-analyst', {
+    name: 'scientific-analyst',
+    description: 'Uses Gemini 2.5 Pro for rigorous scientific analysis. Best for: evaluating experimental designs, analyzing statistical claims, understanding research papers, comparing treatment effects, and assessing scientific consensus.',
+    systemPrompt: `You are a Scientific Analysis Agent powered by Gemini 2.5 Pro.
+
+<Your Expertise>
+You excel at:
+1. Evaluating experimental designs and methodology
+2. Analyzing statistical claims and significance
+3. Understanding and summarizing research papers
+4. Comparing study results across the literature
+5. Assessing levels of scientific evidence
+6. Identifying potential confounders and biases
+</Your Expertise>
+
+<Analysis Framework>
+For any scientific claim or study:
+1. METHODOLOGY: Is the study design appropriate?
+2. STATISTICS: Are statistical methods valid?
+3. REPRODUCIBILITY: Has it been replicated?
+4. CONTEXT: How does it fit the broader literature?
+5. LIMITATIONS: What are the caveats?
+6. CONCLUSIONS: What can we confidently claim?
+</Analysis Framework>
+
+<Evidence Hierarchy>
+Rate evidence quality:
+- High: Meta-analyses, RCTs, systematic reviews
+- Moderate: Cohort studies, case-control studies
+- Low: Case reports, expert opinion, animal studies
+
+<Output Format>
+## Scientific Question
+What's being investigated.
+
+## Evidence Summary
+Overview of available research.
+
+## Methodology Assessment
+Quality evaluation of key studies.
+
+## Statistical Analysis
+Key numbers, effect sizes, confidence intervals.
+
+## Consensus Status
+Scientific consensus level (strong/moderate/weak/contested).
+
+## Practical Implications
+What this means in practice.
+
+## Knowledge Gaps
+What remains unknown.
+</Output Format>
+
+<Guidelines>
+- Always distinguish correlation from causation
+- Report effect sizes, not just p-values
+- Note sample sizes and study populations
+- Identify potential conflicts of interest
+- Keep response rigorous but accessible (under 800 words)
+</Guidelines>`,
+    tools: ['google_search_grounding', 'internet_search', 'think_tool', 'write_file'],
+    model: 'gemini-2.5-pro'
   }]
 ]);
 
@@ -1201,23 +1441,34 @@ tools.set('task', {
   description: `Delegate a task to a specialized sub-agent with isolated context. The sub-agent will work independently and return only a summary of findings.
 
 Available sub-agents:
-- **research-agent**: Conducts in-depth research on specific topics using web search
-- **academic-researcher**: Finds research papers and scholarly sources with proper academic citations (uses Google Search grounding)
-- **chemistry-researcher**: Specialized researcher for chemistry topics with molecule databases
-- **chemistry-tutor**: A patient tutor for explaining chemistry concepts
-- **chemistry-problem-solver**: Specialized in solving chemistry problems and calculations
-- **documentation-agent**: Creates well-formatted final documentation
-- **data-visualization**: Creates charts and data visualizations using reaviz (bar, line, pie, scatter, heatmap)
-- **google-docs-agent**: Exports research papers and outputs to Google Docs (handles Google auth and doc creation)
-- **general-purpose**: A general-purpose subagent for context isolation
 
-Use this tool to:
-- Keep main context clean
-- Delegate complex research tasks
-- Find academic papers and citations (use academic-researcher)
-- Run specialized analyses
-- Create data visualizations
-- Export documents to Google Docs
+**🧠 ADVANCED REASONING (Gemini 3 Pro / 2.5 Pro):**
+- **advanced-reasoner** (Gemini 3 Pro, HIGH thinking): Complex logical reasoning, math proofs, code analysis, deep analytical thinking
+- **deep-researcher** (Gemini 2.5 Pro): Thorough research analysis, literature reviews, comparing perspectives, fact-checking
+- **complex-problem-solver** (Gemini 3 Pro, HIGH thinking): Optimization, systems analysis, strategic planning, root cause analysis
+- **scientific-analyst** (Gemini 2.5 Pro): Scientific methodology evaluation, statistical analysis, research paper analysis
+
+**🔬 CHEMISTRY SPECIALISTS:**
+- **chemistry-researcher**: Chemistry research with molecule databases and reaction analysis
+- **chemistry-tutor**: Patient explanations of chemistry concepts
+- **chemistry-problem-solver**: Stoichiometry, equilibrium, thermodynamics calculations
+
+**📚 RESEARCH & WRITING:**
+- **research-agent**: In-depth research using web search (Gemini 2.5 Flash)
+- **academic-researcher**: Research papers and scholarly sources with citations
+- **documentation-agent**: Creates well-formatted final documentation
+
+**📊 UTILITIES:**
+- **data-visualization**: Charts and visualizations (bar, line, pie, scatter, heatmap)
+- **google-docs-agent**: Export to Google Docs
+- **general-purpose**: General task handling
+
+**DELEGATION GUIDELINES:**
+- Use **advanced-reasoner** for complex logical problems requiring deep thinking
+- Use **deep-researcher** for comprehensive literature reviews and nuanced analysis
+- Use **scientific-analyst** for evaluating scientific claims and research quality
+- Use **complex-problem-solver** for multi-variable optimization and strategic decisions
+- Use regular agents for straightforward tasks
 
 IMPORTANT: For comparisons, make multiple task() calls to enable parallel execution.`,
   execute: async (params: { name: string; task: string }) => {
@@ -1584,11 +1835,29 @@ IMPORTANT:
       { role: 'user', parts: [{ text: subagentSystemPrompt }] }
     ];
     
-    // Initial response
-    let response = await genAI.models.generateContent({
-      model: 'gemini-2.5-flash',
+    // Determine which model to use based on subagent config
+    const modelName = subagent.model || 'gemini-2.5-flash';
+    const isGemini3 = modelName.includes('gemini-3');
+    
+    console.log(`[Subagent ${subagentName}] Using model: ${modelName}${isGemini3 ? ` with thinking_level: ${subagent.thinkingLevel || 'high'}` : ''}`);
+    
+    // Build config based on model
+    const generateConfig: any = {
+      model: modelName,
       contents: conversationMessages
-    });
+    };
+    
+    // Add thinking level for Gemini 3 Pro
+    if (isGemini3 && subagent.thinkingLevel) {
+      generateConfig.config = {
+        thinkingConfig: {
+          thinkingLevel: subagent.thinkingLevel
+        }
+      };
+    }
+    
+    // Initial response
+    let response = await genAI.models.generateContent(generateConfig);
     
     let responseText = response.text || '';
     let toolIterations = 0;
@@ -1647,10 +1916,21 @@ IMPORTANT:
           { role: 'user', parts: [{ text: `Tool results:\n\n${toolResults.join('\n\n')}\n\nContinue your work based on these results. Remember to use think_tool to reflect on findings. When done, provide your final response.` }] }
         );
         
-        response = await genAI.models.generateContent({
-          model: 'gemini-2.5-flash',
+        // Use same model configuration for continuation
+        const continueConfig: any = {
+          model: modelName,
           contents: conversationMessages
-        });
+        };
+        
+        if (isGemini3 && subagent.thinkingLevel) {
+          continueConfig.config = {
+            thinkingConfig: {
+              thinkingLevel: subagent.thinkingLevel
+            }
+          };
+        }
+        
+        response = await genAI.models.generateContent(continueConfig);
         
         responseText = response.text || '';
       }
