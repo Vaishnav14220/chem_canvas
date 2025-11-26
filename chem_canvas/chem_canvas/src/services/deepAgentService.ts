@@ -1804,28 +1804,42 @@ When you need to use a tool, output a JSON object in a code block with the tool 
 ## Chemistry Focus
 
 You specialize in chemistry education and research. Use appropriate subagents:
-- **prompt-enhancer**: FIRST - Enhance ambiguous or complex user requests before research
 - **chemistry-researcher**: For in-depth research combining web search + molecule databases
 - **chemistry-tutor**: For educational explanations and practice problems
 - **chemistry-problem-solver**: For calculations and problem solving
 - **research-agent**: For general web research on any topic
+- **deep-researcher**: For comprehensive literature reviews (Gemini 2.5 Pro)
+- **advanced-reasoner**: For complex logical problems (Gemini 3 Pro)
 - **documentation-agent**: For creating final reports (use AFTER research is complete)
-- **quality-reviewer**: LAST - Review the final document before presenting to user
 
 ## Response Guidelines
 
 1. **For simple questions**: Answer directly without delegation
-2. **For research tasks** (RECOMMENDED WORKFLOW):
-   a. Use \`prompt-enhancer\` to clarify ambiguous requests
-   b. Create a plan with \`write_todos\` 
-   c. Save the request with \`write_file\` to \`/research_request.md\`
-   d. Delegate to research subagents using \`task\` tool
-   e. Synthesize results
-   f. Create final document with \`finalize_document\`
-   g. Use \`quality-reviewer\` to validate the document
+2. **For research tasks** (WORKFLOW):
+   a. Create a plan with \`write_todos\`
+   b. Delegate to research subagents using \`task\` tool
+   c. Wait for subagent results
+   d. Synthesize and create final document with \`finalize_document\`
 3. Use proper markdown formatting
 4. Include chemical formulas with proper notation
 5. Use LaTeX for equations: $formula$ or $$equation$$
+
+## CRITICAL OUTPUT RULES
+
+**NEVER include these in your response or final document:**
+- Task status messages like "📋 Task 1/4: ..."
+- Progress updates like "Task 1 has been completed..."
+- Waiting messages like "I am awaiting..." or "I am unable to execute..."
+- Meta-commentary about delegation like "The delegation has been completed..."
+- Internal planning notes meant for yourself
+
+**ONLY output:**
+- Direct answers to user questions
+- Research findings and analysis
+- Well-formatted final documents
+- Tool calls when needed
+
+When subagents return findings, IMMEDIATELY synthesize them into the final document. Do NOT narrate the process.
 
 ## Final Document Creation
 
@@ -2428,6 +2442,97 @@ export const invokeDeepAgent = async (
   }
 };
 
+// Flag to enable automatic prompt enhancement
+let enableAutoPromptEnhancement = true;
+
+/**
+ * Enable or disable automatic prompt enhancement
+ */
+export const setAutoPromptEnhancement = (enabled: boolean): void => {
+  enableAutoPromptEnhancement = enabled;
+};
+
+/**
+ * Check if a message is a research/complex request that should be enhanced
+ */
+const shouldEnhancePrompt = (message: string): boolean => {
+  const lowerMessage = message.toLowerCase();
+  
+  // Research indicators
+  const researchKeywords = [
+    'research', 'analyze', 'explain', 'compare', 'investigate',
+    'find out', 'tell me about', 'what is', 'how does', 'why does',
+    'fundamentals', 'overview', 'deep dive', 'comprehensive',
+    'study', 'explore', 'understand', 'learn about'
+  ];
+  
+  // Skip for simple questions
+  const simplePatterns = [
+    /^hi\b/i, /^hello\b/i, /^hey\b/i, /^thanks/i, /^thank you/i,
+    /^ok\b/i, /^yes\b/i, /^no\b/i, /^sure\b/i
+  ];
+  
+  if (simplePatterns.some(p => p.test(message.trim()))) {
+    return false;
+  }
+  
+  // Check for research keywords
+  const hasResearchIntent = researchKeywords.some(k => lowerMessage.includes(k));
+  
+  // Also enhance if message is complex (long or has multiple parts)
+  const isComplex = message.length > 100 || message.includes(',') || message.includes('and');
+  
+  return hasResearchIntent || isComplex;
+};
+
+/**
+ * Enhance a prompt using Gemini (fast, non-streaming)
+ */
+const enhancePrompt = async (originalPrompt: string): Promise<{ enhanced: string; questions: string[] }> => {
+  if (!genAI) {
+    return { enhanced: originalPrompt, questions: [] };
+  }
+  
+  const enhancementPrompt = `You are a prompt enhancement specialist. Analyze this user request and create an improved, clearer version.
+
+USER REQUEST: "${originalPrompt}"
+
+TASK: Create an enhanced version that is:
+1. More specific and actionable
+2. Clearly scoped
+3. Broken into clear research questions
+
+RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
+{
+  "enhancedPrompt": "The improved, specific version of the request",
+  "researchQuestions": ["Question 1", "Question 2", "Question 3"],
+  "scope": "Brief scope definition"
+}`;
+
+  try {
+    const response = await genAI.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: enhancementPrompt }] }]
+    });
+    
+    const text = response.text || '';
+    
+    // Try to parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        enhanced: parsed.enhancedPrompt || originalPrompt,
+        questions: parsed.researchQuestions || []
+      };
+    }
+  } catch (error) {
+    console.warn('Prompt enhancement failed, using original:', error);
+  }
+  
+  return { enhanced: originalPrompt, questions: [] };
+};
+
 /**
  * Stream a response from the deep agent
  */
@@ -2452,16 +2557,6 @@ export async function* streamDeepAgent(
       }));
     }
 
-    // Build the conversation
-    const messages = [
-      { role: 'user', parts: [{ text: getSystemPrompt() }] },
-      ...conversationHistory.map(h => ({
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: h.content }]
-      })),
-      { role: 'user', parts: [{ text: message }] }
-    ];
-
     const taskId = `task-${Date.now()}`;
     
     // Emit task start event
@@ -2471,6 +2566,60 @@ export async function* streamDeepAgent(
       title: 'Processing request',
       status: 'in-progress'
     });
+
+    // =========================================
+    // AUTOMATIC PROMPT ENHANCEMENT
+    // =========================================
+    let workingMessage = message;
+    
+    if (enableAutoPromptEnhancement && shouldEnhancePrompt(message)) {
+      emitTaskEvent({
+        type: 'step-start',
+        taskId,
+        title: '✨ Enhancing prompt',
+        message: 'Analyzing and improving your request...',
+        status: 'in-progress',
+        data: { tool: 'prompt-enhancer', model: 'gemini-2.5-flash' }
+      });
+      
+      yield '✨ **Enhancing your request...**\n\n';
+      
+      const { enhanced, questions } = await enhancePrompt(message);
+      
+      if (enhanced !== message) {
+        workingMessage = enhanced;
+        
+        yield `📝 **Enhanced Request:**\n> ${enhanced}\n\n`;
+        
+        if (questions.length > 0) {
+          yield `**Research Questions:**\n`;
+          for (const q of questions) {
+            yield `- ${q}\n`;
+          }
+          yield '\n';
+        }
+        
+        yield '---\n\n';
+      }
+      
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId,
+        title: '✨ Prompt enhanced',
+        status: 'completed',
+        data: { enhanced: true }
+      });
+    }
+
+    // Build the conversation with the (potentially enhanced) message
+    const messages = [
+      { role: 'user', parts: [{ text: getSystemPrompt() }] },
+      ...conversationHistory.map(h => ({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.content }]
+      })),
+      { role: 'user', parts: [{ text: workingMessage }] }
+    ];
 
     // Stream the response
     const response = await genAI.models.generateContentStream({
@@ -2701,31 +2850,33 @@ export async function* streamDeepAgent(
       iterationCount++;
       const nextTodo = remainingTodos[0];
       
-      yield `\n\n---\n### 📋 Task ${iterationCount}/${currentTodos.length}: ${nextTodo.title}\n\n`;
+      // Internal progress tracking - emit event but don't yield verbose status to user
+      emitTaskEvent({
+        type: 'step-start',
+        taskId: nextTodo.id,
+        title: nextTodo.title,
+        message: `Working on: ${nextTodo.title}`,
+        status: 'in-progress',
+        progress: { current: iterationCount, total: currentTodos.length }
+      });
       
       // Mark as in-progress
       currentTodos = currentTodos.map(t => 
         t.id === nextTodo.id ? { ...t, status: 'in-progress' as const } : t
       );
 
-      emitTaskEvent({
-        type: 'step-start',
-        taskId: nextTodo.id,
-        title: nextTodo.title,
-        status: 'in-progress'
-      });
-
       // Build continuation prompt
-      const continuePrompt = `Execute task ${iterationCount}: "${nextTodo.title}"
+      const continuePrompt = `Complete this task: "${nextTodo.title}"
       
 ${nextTodo.description || ''}
 
-IMPORTANT: Use the appropriate tools to complete this task:
-- Use \`internet_search\` for research
-- Use \`write_file\` to save findings
-- Use \`finalize_document\` when creating final output
+Use the appropriate tools:
+- \`task\` to delegate research to subagents
+- \`internet_search\` for web research
+- \`finalize_document\` to create the final document
 
-Provide a brief summary of your findings.`;
+CRITICAL: Do NOT output task status messages like "Task 1 completed" or "I am awaiting...". 
+Just execute the task and output the results directly.`;
 
       const continueMessages = [
         ...messages,
@@ -2791,11 +2942,12 @@ Provide a brief summary of your findings.`;
     emitTaskEvent({
       type: 'task-complete',
       taskId,
-      title: 'All tasks completed',
-      status: 'completed'
+      title: 'Research completed',
+      status: 'completed',
+      progress: { current: currentTodos.length, total: currentTodos.length }
     });
 
-    yield `\n\n---\n✅ **All ${currentTodos.length} tasks completed!**\n`;
+    // Don't output "All X tasks completed" - the final document speaks for itself
 
   } catch (error) {
     console.error('Error streaming from deep agent:', error);
