@@ -595,8 +595,83 @@ tools.set('think_tool', {
 
 // NOTE: The 'task' tool is defined after subagents Map below
 
+// Helper function to extract a title from the user's prompt
+const extractTitleFromPrompt = (prompt: string): string => {
+  // Try to extract topic from common patterns
+  const patterns = [
+    /research\s+(?:report\s+)?(?:on\s+)?(?:the\s+)?(.+?)(?:\.|$)/i,
+    /(?:about|on|regarding)\s+(.+?)(?:\.|$)/i,
+    /(.+?)(?:\s+research|\s+report|\s+analysis)/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = prompt.match(pattern);
+    if (match && match[1]) {
+      // Capitalize and clean up
+      let title = match[1].trim();
+      title = title.charAt(0).toUpperCase() + title.slice(1);
+      // Limit length
+      if (title.length > 80) {
+        title = title.substring(0, 77) + '...';
+      }
+      return `Research Report: ${title}`;
+    }
+  }
+  
+  return 'Research Report';
+};
+
+// Helper function to build a document from the full response when synthesis fails
+const buildDocumentFromResponse = (fullResponse: string, originalPrompt: string): string | null => {
+  // Extract subagent findings from the response
+  const findingsPattern = /\*\*(?:deep-researcher|research-agent|Subagent)\s+findings:\*\*\s*([\s\S]*?)(?=\n\n---|\n\n🔧|\n\n\*\*(?:deep-researcher|research-agent)|$)/gi;
+  const findings: string[] = [];
+  let match;
+  
+  while ((match = findingsPattern.exec(fullResponse)) !== null) {
+    if (match[1] && match[1].trim().length > 100) {
+      findings.push(match[1].trim());
+    }
+  }
+  
+  if (findings.length === 0) {
+    return null;
+  }
+  
+  // Build document structure
+  const title = extractTitleFromPrompt(originalPrompt);
+  let content = `# ${title}\n\n`;
+  content += `*Generated on ${new Date().toLocaleDateString()}*\n\n`;
+  content += `## Executive Summary\n\n`;
+  content += `This report synthesizes research findings on the requested topic, compiled from multiple specialized research agents.\n\n`;
+  
+  // Add each finding as a section
+  findings.forEach((finding, index) => {
+    // Try to extract section title from the finding
+    const titleMatch = finding.match(/^##?\s*(.+?)(?:\n|$)/);
+    const sectionTitle = titleMatch ? titleMatch[1] : `Research Finding ${index + 1}`;
+    
+    content += `## ${sectionTitle}\n\n`;
+    content += finding.replace(/^##?\s*.+?\n/, '').trim();
+    content += '\n\n';
+  });
+  
+  // Add sources section if not present
+  if (!content.includes('## Sources') && !content.includes('## References')) {
+    content += `## References\n\n`;
+    content += `*Sources are cited inline throughout the document.*\n`;
+  }
+  
+  return cleanDocumentContent(content);
+};
+
 // Helper function to clean content from task status messages and internal artifacts
-const cleanDocumentContent = (content: string): string => {
+const cleanDocumentContent = (content: string | undefined | null): string => {
+  // Handle undefined/null content
+  if (!content || typeof content !== 'string') {
+    return '';
+  }
+  
   // Patterns to remove - task status messages, waiting messages, internal artifacts
   const patternsToRemove = [
     // Task status headers and descriptions
@@ -622,8 +697,14 @@ const cleanDocumentContent = (content: string): string => {
     /<thinking>.*?<\/thinking>/gs,
     // Tool call blocks that might have leaked
     /```tool[\s\S]*?```/g,
+    // ```thought blocks
+    /```thought[\s\S]*?```/gs,
     // Multiple consecutive newlines (cleanup)
-    /\n{4,}/g
+    /\n{4,}/g,
+    // "I have delegated" messages
+    /I\s+have\s+(delegated|initiated|completed).*?(?=\n\n|---\n|$)/gis,
+    // Thinking comments
+    /I\s+will\s+now\s+wait.*?(?=\n\n|---\n|$)/gis,
   ];
 
   let cleanedContent = content;
@@ -642,12 +723,27 @@ tools.set('finalize_document', {
   name: 'finalize_document',
   description: 'Create and save the final formatted document. Use this when you have completed your research and want to present the final output as a well-structured markdown document.',
   execute: async (params: { title: string; content: string; sections?: { title: string; content: string }[] }) => {
+    // Validate required parameters
+    if (!params.title || typeof params.title !== 'string') {
+      return JSON.stringify({
+        success: false,
+        error: 'Missing or invalid title parameter'
+      });
+    }
+    
+    if (!params.content || typeof params.content !== 'string') {
+      return JSON.stringify({
+        success: false,
+        error: 'Missing or invalid content parameter'
+      });
+    }
+    
     // Clean the content before saving
     const cleanedContent = cleanDocumentContent(params.content);
     
     // Also clean sections if provided
     const cleanedSections = params.sections?.map(section => ({
-      title: section.title,
+      title: section.title || 'Untitled Section',
       content: cleanDocumentContent(section.content)
     }));
 
@@ -664,13 +760,13 @@ tools.set('finalize_document', {
     
     // Also save to file system
     const filename = `${params.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}.md`;
-    fileSystem.writeFile(`/documents/${filename}`, params.content);
+    fileSystem.writeFile(`/documents/${filename}`, cleanedContent);
     
     // Create artifact for the final document
     createArtifact({
       type: 'document',
       title: params.title,
-      content: params.content,
+      content: cleanedContent,
       agentName: 'Documentation Agent',
       metadata: { documentId: doc.id, filename, format: 'markdown' }
     });
@@ -2766,28 +2862,53 @@ export async function* streamDeepAgent(
       const hasSubagentResults = toolCalls.some(tc => tc.tool === 'task');
       const hasFinalDocument = toolCalls.some(tc => tc.tool === 'finalize_document');
       
+      // Collect all subagent findings for synthesis
+      const subagentFindings: string[] = [];
+      for (const call of toolCalls) {
+        if (call.tool === 'task') {
+          try {
+            const tool = tools.get('task');
+            // The result was already processed, we need to track it
+            // For now, we'll extract from the full response
+          } catch {}
+        }
+      }
+      
       if (hasSubagentResults && !hasFinalDocument) {
         // Subagents returned results but no final document was created
-        // Prompt the agent to synthesize the results
-        yield '\n\n---\n📝 **Synthesizing findings into final document...**\n\n';
+        // Prompt the agent to synthesize ALL results into ONE document
+        yield '\n\n---\n📝 **Synthesizing all findings into comprehensive document...**\n\n';
         
         emitTaskEvent({
           type: 'writing',
           taskId,
           title: 'Creating final document',
-          message: 'Synthesizing research findings...',
+          message: 'Combining all research findings...',
           status: 'in-progress'
         });
         
-        const synthesisPrompt = `Based on the research findings above, create a comprehensive final document.
+        const synthesisPrompt = `You have received research findings from multiple sub-agents above. 
+Now you MUST create ONE COMPREHENSIVE FINAL DOCUMENT that combines ALL findings.
 
-Use the finalize_document tool with:
-- A clear, descriptive title
-- Well-organized markdown content with proper sections
-- All key findings synthesized
-- Sources properly cited
+CRITICAL INSTRUCTIONS:
+1. DO NOT repeat the research - just synthesize what was already gathered
+2. DO NOT output any task status messages or meta-commentary
+3. DO NOT say "I am awaiting" or "I have delegated" - the research is COMPLETE
+4. Create ONE well-organized document that includes ALL findings
 
-IMPORTANT: Create the final document NOW using finalize_document. Do NOT output task status messages.`;
+Use the finalize_document tool with these EXACT parameters:
+{
+  "title": "[A clear, descriptive title for the research topic]",
+  "content": "[Full markdown content combining ALL findings with:
+    - Executive Summary (2-3 paragraphs)
+    - Main sections organized by topic
+    - Key insights from EACH research area
+    - Challenges and opportunities
+    - Future outlook
+    - Consolidated Sources/References at the end]"
+}
+
+CREATE THE DOCUMENT NOW. Output ONLY the finalize_document tool call.`;
 
         const synthesisMessages = [
           ...messages,
@@ -2805,39 +2926,80 @@ IMPORTANT: Create the final document NOW using finalize_document. Do NOT output 
           for await (const chunk of synthesisResponse) {
             const text = chunk.text || '';
             synthesisText += text;
-            yield text;
+            // Don't yield the raw response - we only want the final document
           }
           
           // Process any tool calls (should include finalize_document)
           const synthToolCalls = parseToolCalls(synthesisText);
+          let documentCreated = false;
+          
           for (const call of synthToolCalls) {
-            const tool = tools.get(call.tool);
-            if (tool) {
-              yield `\n🔧 **${call.tool}**: `;
-              const result = await tool.execute(call.params);
-              
-              try {
-                const parsed = JSON.parse(result);
-                if (call.tool === 'finalize_document' && parsed.success) {
-                  yield `\n\n✅ **Final Document Created:** ${parsed.message || 'Document ready'}\n\n`;
-                  yield `📄 Your document has been finalized and is available in the document panel.\n\n`;
-                  
-                  emitTaskEvent({
-                    type: 'document-ready',
-                    taskId,
-                    title: 'Document created',
-                    status: 'completed',
-                    data: parsed
-                  });
+            if (call.tool === 'finalize_document') {
+              const tool = tools.get('finalize_document');
+              if (tool) {
+                const result = await tool.execute(call.params);
+                
+                try {
+                  const parsed = JSON.parse(result);
+                  if (parsed.success) {
+                    documentCreated = true;
+                    yield `\n\n✅ **Final Document Created:** ${parsed.message || 'Document ready'}\n\n`;
+                    yield `📄 Your comprehensive research report is now available in the document panel.\n\n`;
+                    
+                    emitTaskEvent({
+                      type: 'document-ready',
+                      taskId,
+                      title: call.params.title || 'Research Report',
+                      status: 'completed',
+                      data: parsed
+                    });
+                  } else {
+                    yield `⚠️ Error creating document: ${parsed.error}\n`;
+                  }
+                } catch (parseErr) {
+                  yield `⚠️ Error processing document\n`;
                 }
-              } catch {
-                yield `Done\n\n`;
               }
             }
           }
+          
+          // If no document was created, try one more time with a simpler prompt
+          if (!documentCreated) {
+            yield `\n📄 Generating final report...\n\n`;
+            
+            // Extract key content from the full response to build document
+            const docContent = buildDocumentFromResponse(fullResponse, workingMessage);
+            
+            if (docContent) {
+              const tool = tools.get('finalize_document');
+              if (tool) {
+                const result = await tool.execute({
+                  title: extractTitleFromPrompt(workingMessage),
+                  content: docContent
+                });
+                
+                try {
+                  const parsed = JSON.parse(result);
+                  if (parsed.success) {
+                    yield `\n\n✅ **Final Document Created**\n\n`;
+                    yield `📄 Your research report is ready in the document panel.\n\n`;
+                    
+                    emitTaskEvent({
+                      type: 'document-ready',
+                      taskId,
+                      title: 'Research Report',
+                      status: 'completed',
+                      data: parsed
+                    });
+                  }
+                } catch {}
+              }
+            }
+          }
+          
         } catch (synthError) {
           console.error('Synthesis error:', synthError);
-          yield `\n⚠️ Error creating final document. The research findings are available above.\n`;
+          yield `\n⚠️ Error creating final document. Research findings are available above.\n`;
         }
       }
     }
