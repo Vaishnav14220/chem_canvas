@@ -1069,14 +1069,15 @@ IMPORTANT: For comparisons, make multiple task() calls to enable parallel execut
       }
     }
     
-    // Emit step start event
+    // Emit step start event with subagent info
     const stepId = `subagent-${subagentName}-${Date.now()}`;
     emitTaskEvent({
       type: 'step-start',
       taskId: stepId,
       title: `${subagent?.name || 'general-purpose'}: ${taskDescription.substring(0, 50)}...`,
       message: `Delegating to ${subagent?.name || 'general-purpose'}`,
-      status: 'in-progress'
+      status: 'in-progress',
+      data: { subagent: subagentName }
     });
     
     try {

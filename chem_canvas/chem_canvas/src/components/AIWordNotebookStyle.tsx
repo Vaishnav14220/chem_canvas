@@ -463,6 +463,24 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
            }
            break;
 
+        case 'step-start':
+          // Track which subagent is currently running
+          if (event.data?.subagent) {
+            setActiveSubagent(event.data.subagent);
+            setDeepAgentSteps(prev => [...prev, {
+              id: Date.now().toString(),
+              type: 'searching',
+              message: `Running ${event.data.subagent}...`,
+              timestamp: new Date()
+            }]);
+          }
+          break;
+
+        case 'step-complete':
+          // Clear active subagent when step completes
+          setActiveSubagent(null);
+          break;
+
         case 'task-update':
           if (event.data?.todos) {
             setCurrentTodos(event.data.todos);
@@ -2525,8 +2543,11 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {AVAILABLE_AGENTS.map((agent) => {
                 const isEnabled = enabledAgents.has(agent.id);
+                // Check if this agent is currently running
                 const isRunning = activeSubagent === agent.id || 
-                  (isDeepAgentActive && activeSubagent?.includes(agent.id.split('-')[0]));
+                  activeSubagent === agent.name.toLowerCase().replace(/\s+/g, '-') ||
+                  (activeSubagent && agent.id.includes(activeSubagent)) ||
+                  (activeSubagent && activeSubagent.includes(agent.id));
                 const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
                   blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
                   green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
