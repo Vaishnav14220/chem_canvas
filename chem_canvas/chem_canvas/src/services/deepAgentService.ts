@@ -595,18 +595,69 @@ tools.set('think_tool', {
 
 // NOTE: The 'task' tool is defined after subagents Map below
 
+// Helper function to clean content from task status messages and internal artifacts
+const cleanDocumentContent = (content: string): string => {
+  // Patterns to remove - task status messages, waiting messages, internal artifacts
+  const patternsToRemove = [
+    // Task status headers and descriptions
+    /📋\s*Task\s*\d+\/\d+:.*?(?=\n\n|$)/gs,
+    // "Task X has already been completed" messages
+    /Task\s*\d+:?\s*"[^"]*"\s*has\s*(already\s*been\s*)?(completed|done).*?(?=\n\n|---\n|$)/gis,
+    // "I am awaiting", "I am unable to execute" messages
+    /I\s+am\s+(currently\s+)?(awaiting|unable\s+to\s+execute|waiting\s+for).*?(?=\n\n|---\n|$)/gis,
+    // "Please await" messages
+    /Please\s+await.*?(?=\n\n|---\n|$)/gis,
+    // "The delegation...has been completed" messages
+    /The\s+delegation.*?has\s+(already\s+)?been\s+completed.*?(?=\n\n|---\n|$)/gis,
+    // "I have not yet received" messages
+    /I\s+have\s+not\s+yet\s+received.*?(?=\n\n|---\n|$)/gis,
+    // "Without the necessary information" messages
+    /Without\s+the\s+necessary\s+information.*?(?=\n\n|---\n|$)/gis,
+    // "Once the sub-agent's" messages
+    /Once\s+the\s+(sub-?agent'?s?|subagent'?s?).*?(?=\n\n|---\n|$)/gis,
+    // Horizontal rule separators between task status blocks
+    /---\n+(?=📋|Task\s*\d+)/g,
+    // Internal thinking tags
+    /<think>.*?<\/think>/gs,
+    /<thinking>.*?<\/thinking>/gs,
+    // Tool call blocks that might have leaked
+    /```tool[\s\S]*?```/g,
+    // Multiple consecutive newlines (cleanup)
+    /\n{4,}/g
+  ];
+
+  let cleanedContent = content;
+  for (const pattern of patternsToRemove) {
+    cleanedContent = cleanedContent.replace(pattern, '');
+  }
+
+  // Clean up excessive blank lines
+  cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n').trim();
+
+  return cleanedContent;
+};
+
 // finalize_document Tool - Creates the final formatted document
 tools.set('finalize_document', {
   name: 'finalize_document',
   description: 'Create and save the final formatted document. Use this when you have completed your research and want to present the final output as a well-structured markdown document.',
   execute: async (params: { title: string; content: string; sections?: { title: string; content: string }[] }) => {
+    // Clean the content before saving
+    const cleanedContent = cleanDocumentContent(params.content);
+    
+    // Also clean sections if provided
+    const cleanedSections = params.sections?.map(section => ({
+      title: section.title,
+      content: cleanDocumentContent(section.content)
+    }));
+
     const doc: FinalDocument = {
       id: `doc-${Date.now()}`,
       title: params.title,
-      content: params.content,
+      content: cleanedContent,
       format: 'markdown',
       createdAt: new Date(),
-      sections: params.sections
+      sections: cleanedSections
     };
     
     finalDocuments.push(doc);
@@ -944,6 +995,125 @@ When providing your findings:
 </Final Response Format>`;
 
 const subagents: Map<string, SubAgentDefinition> = new Map([
+  // ==========================================
+  // PROMPT ENHANCEMENT & QUALITY CONTROL AGENTS
+  // ==========================================
+  ['prompt-enhancer', {
+    name: 'prompt-enhancer',
+    description: 'Analyzes and enhances user prompts before passing to other agents. Makes prompts clearer, more specific, and actionable. Should be called FIRST before delegating research tasks.',
+    systemPrompt: `You are a Prompt Enhancement Specialist.
+
+<Your Role>
+Analyze the user's prompt and enhance it to be clearer, more specific, and more actionable for downstream research agents. You do NOT perform the research - you only improve the prompt.
+</Your Role>
+
+<Enhancement Process>
+1. PARSE: Identify the core intent and key concepts
+2. CLARIFY: Remove ambiguity and vague terms
+3. EXPAND: Add relevant scope and context
+4. STRUCTURE: Organize into clear research questions
+5. SPECIFY: Add concrete deliverables expected
+</Enhancement Process>
+
+<Enhancement Guidelines>
+- Preserve the user's original intent
+- Add specificity without over-constraining
+- Break complex requests into sub-questions
+- Suggest scope boundaries if missing
+- Identify implicit requirements
+- Add format expectations if applicable
+</Enhancement Guidelines>
+
+<Output Format>
+## Enhanced Prompt
+
+[The improved, enhanced version of the user's prompt]
+
+## Research Questions
+1. [Primary question]
+2. [Secondary question]
+3. [Additional questions...]
+
+## Scope Clarifications
+- [Key scope decisions made]
+- [Boundaries set]
+
+## Expected Deliverables
+- [What the final output should include]
+</Output Format>
+
+<Important>
+- Keep enhancements concise (under 300 words)
+- Don't add unnecessary complexity
+- Maintain the user's core request
+- Output ONLY the enhanced prompt structure, no explanations
+</Important>`,
+    tools: ['think_tool'],
+    model: 'gemini-2.5-flash'
+  }],
+  ['quality-reviewer', {
+    name: 'quality-reviewer',
+    description: 'Reviews and validates final documents before delivery. Checks for completeness, accuracy, formatting, and quality. Should be called LAST before presenting to user.',
+    systemPrompt: `You are a Quality Review Specialist for final documents.
+
+<Your Role>
+Review completed research documents and provide quality assessment. You validate that the document meets quality standards before it's presented to the user.
+</Your Role>
+
+<Review Checklist>
+1. COMPLETENESS: Are all requested topics covered?
+2. ACCURACY: Are facts properly supported by sources?
+3. STRUCTURE: Is the document well-organized with clear sections?
+4. CITATIONS: Are sources properly cited and numbered?
+5. FORMATTING: Is markdown/LaTeX properly formatted?
+6. CLARITY: Is the writing clear and accessible?
+7. COHERENCE: Does the document flow logically?
+8. CONCLUSION: Are key takeaways summarized?
+</Review Checklist>
+
+<Quality Standards>
+- All claims should have source citations [1], [2], etc.
+- Sources section must list all cited references
+- No internal agent artifacts (tool calls, thinking tags, task status)
+- Professional tone throughout
+- Proper heading hierarchy (##, ###)
+- LaTeX math properly formatted ($inline$, $$block$$)
+</Quality Standards>
+
+<Output Format>
+## Quality Assessment
+
+**Overall Score:** [A/B/C/D/F]
+
+**Checklist Results:**
+- ✅ Completeness: [Pass/Needs work]
+- ✅ Accuracy: [Pass/Needs work]
+- ✅ Structure: [Pass/Needs work]
+- ✅ Citations: [Pass/Needs work]
+- ✅ Formatting: [Pass/Needs work]
+- ✅ Clarity: [Pass/Needs work]
+
+**Issues Found:**
+[List any problems]
+
+**Suggested Fixes:**
+[Specific improvements needed]
+
+**Verdict:** [APPROVED / NEEDS REVISION]
+</Output Format>
+
+<Important>
+- Be thorough but fair
+- Focus on actionable feedback
+- Highlight both strengths and weaknesses
+- Keep review concise (under 400 words)
+</Important>`,
+    tools: ['read_file', 'think_tool'],
+    model: 'gemini-2.5-flash'
+  }],
+  // ==========================================
+  // RESEARCH AGENTS
+  // ==========================================
   ['research-agent', {
     name: 'research-agent',
     description: 'Conducts in-depth research on specific topics using web search. Use when you need detailed information that requires multiple searches. Delegate ONE topic at a time.',
@@ -1442,6 +1612,10 @@ tools.set('task', {
 
 Available sub-agents:
 
+**✨ PROMPT & QUALITY CONTROL:**
+- **prompt-enhancer**: FIRST STEP - Enhances user prompts before research. Makes requests clearer and more specific.
+- **quality-reviewer**: FINAL STEP - Reviews completed documents for quality, completeness, and formatting.
+
 **🧠 ADVANCED REASONING (Gemini 3 Pro / 2.5 Pro):**
 - **advanced-reasoner** (Gemini 3 Pro, HIGH thinking): Complex logical reasoning, math proofs, code analysis, deep analytical thinking
 - **deep-researcher** (Gemini 2.5 Pro): Thorough research analysis, literature reviews, comparing perspectives, fact-checking
@@ -1462,6 +1636,12 @@ Available sub-agents:
 - **data-visualization**: Charts and visualizations (bar, line, pie, scatter, heatmap)
 - **google-docs-agent**: Export to Google Docs
 - **general-purpose**: General task handling
+
+**RECOMMENDED WORKFLOW:**
+1. Use **prompt-enhancer** FIRST to clarify the user's request
+2. Use research agents to gather information
+3. Use **documentation-agent** to create the final document
+4. Use **quality-reviewer** LAST to validate the output
 
 **DELEGATION GUIDELINES:**
 - Use **advanced-reasoner** for complex logical problems requiring deep thinking
@@ -1624,21 +1804,25 @@ When you need to use a tool, output a JSON object in a code block with the tool 
 ## Chemistry Focus
 
 You specialize in chemistry education and research. Use appropriate subagents:
+- **prompt-enhancer**: FIRST - Enhance ambiguous or complex user requests before research
 - **chemistry-researcher**: For in-depth research combining web search + molecule databases
 - **chemistry-tutor**: For educational explanations and practice problems
 - **chemistry-problem-solver**: For calculations and problem solving
 - **research-agent**: For general web research on any topic
 - **documentation-agent**: For creating final reports (use AFTER research is complete)
+- **quality-reviewer**: LAST - Review the final document before presenting to user
 
 ## Response Guidelines
 
 1. **For simple questions**: Answer directly without delegation
-2. **For research tasks**: 
-   a. Create a plan with \`write_todos\` 
-   b. Save the request with \`write_file\` to \`/research_request.md\`
-   c. Delegate to subagents using \`task\` tool
-   d. Synthesize results
-   e. Create final document with \`finalize_document\`
+2. **For research tasks** (RECOMMENDED WORKFLOW):
+   a. Use \`prompt-enhancer\` to clarify ambiguous requests
+   b. Create a plan with \`write_todos\` 
+   c. Save the request with \`write_file\` to \`/research_request.md\`
+   d. Delegate to research subagents using \`task\` tool
+   e. Synthesize results
+   f. Create final document with \`finalize_document\`
+   g. Use \`quality-reviewer\` to validate the document
 3. Use proper markdown formatting
 4. Include chemical formulas with proper notation
 5. Use LaTeX for equations: $formula$ or $$equation$$
@@ -1651,6 +1835,8 @@ You specialize in chemistry education and research. Use appropriate subagents:
 - Well-organized sections
 - Key findings and conclusions
 - Properly formatted sources/references
+
+**CRITICAL**: Do NOT include internal task status messages (like "Task 1/4 completed", "I am awaiting...", etc.) in the final document. These are for internal tracking only and should never appear in user-facing output.
 
 Remember: Your goal is to help students learn and understand chemistry through thorough research and clear explanations. Always delegate research to subagents to keep your context clean!`
 };

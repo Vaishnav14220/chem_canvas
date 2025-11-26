@@ -127,6 +127,27 @@ const DOCUMENT_EDITOR_URL = 'https://ranuts.github.io/document/?locale=en';
 
 // ============ AVAILABLE AGENTS ============
 const AVAILABLE_AGENTS: AgentConfig[] = [
+  // =========== PROMPT & QUALITY CONTROL ===========
+  {
+    id: 'prompt-enhancer',
+    name: '✨ Prompt Enhancer',
+    description: 'Improves user prompts before research - makes requests clearer and more actionable',
+    skills: ['Prompt Analysis', 'Clarification', 'Scope Definition', 'Question Refinement'],
+    icon: <Wand2 className="h-5 w-5" />,
+    color: 'emerald',
+    enabled: true,
+    category: 'utility'
+  },
+  {
+    id: 'quality-reviewer',
+    name: '✅ Quality Reviewer',
+    description: 'Reviews final documents for completeness, accuracy, and formatting',
+    skills: ['Quality Check', 'Completeness', 'Citation Verify', 'Format Review'],
+    icon: <CheckCircle2 className="h-5 w-5" />,
+    color: 'emerald',
+    enabled: true,
+    category: 'utility'
+  },
   // =========== ADVANCED REASONING AGENTS (Gemini 3 Pro / 2.5 Pro) ===========
   {
     id: 'advanced-reasoner',
@@ -2624,6 +2645,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                     red: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
                     gray: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-400' },
                     violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/30', text: 'text-violet-400' },
+                    emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400' },
                   };
                   const colors = colorClasses[agent.color] || colorClasses.gray;
 
@@ -2688,7 +2710,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                       blue: 'bg-blue-500/30', indigo: 'bg-indigo-500/30', green: 'bg-green-500/30',
                       yellow: 'bg-yellow-500/30', orange: 'bg-orange-500/30', purple: 'bg-purple-500/30',
                       pink: 'bg-pink-500/30', cyan: 'bg-cyan-500/30', red: 'bg-red-500/30',
-                      gray: 'bg-gray-500/30', violet: 'bg-violet-500/30',
+                      gray: 'bg-gray-500/30', violet: 'bg-violet-500/30', emerald: 'bg-emerald-500/30',
                     };
                     return (
                       <div key={id} className={`w-5 h-5 rounded flex items-center justify-center ${colorClasses[agent.color] || 'bg-gray-500/30'}`} title={agent.name}>
