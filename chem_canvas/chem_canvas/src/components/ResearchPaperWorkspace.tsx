@@ -67,6 +67,7 @@ import {
   DialogFooter 
 } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { GoogleDocsExportButton } from './GoogleDocsIntegration';
 
 import {
   uploadFile,
@@ -1363,28 +1364,46 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
           </div>
         </div>
         
-        {/* Step indicator */}
-        <div className="flex items-center gap-2">
-          <Badge 
-            variant={currentStep === 'upload' ? 'default' : 'outline'}
-            className={currentStep === 'upload' ? 'bg-purple-600' : ''}
-          >
-            1. Upload
-          </Badge>
-          <ChevronRight className="w-4 h-4 text-gray-500" />
-          <Badge 
-            variant={currentStep === 'configure' ? 'default' : 'outline'}
-            className={currentStep === 'configure' ? 'bg-purple-600' : ''}
-          >
-            2. Configure
-          </Badge>
-          <ChevronRight className="w-4 h-4 text-gray-500" />
-          <Badge 
-            variant={currentStep === 'generate' || currentStep === 'review' ? 'default' : 'outline'}
-            className={currentStep === 'generate' || currentStep === 'review' ? 'bg-purple-600' : ''}
-          >
-            3. Generate
-          </Badge>
+        {/* Step indicator and actions */}
+        <div className="flex items-center gap-4">
+          {/* Google Docs Export - only show when paper is generated */}
+          {(currentStep === 'generate' || currentStep === 'review') && latexDocument && (
+            <GoogleDocsExportButton
+              content={latexDocument}
+              title={config.title || 'Research Paper'}
+              exportType="research-paper"
+              paperMetadata={{
+                abstract: config.abstract,
+                author: config.authors?.join(', '),
+                date: new Date().toISOString().split('T')[0]
+              }}
+              variant="compact"
+            />
+          )}
+          
+          {/* Step indicator */}
+          <div className="flex items-center gap-2">
+            <Badge 
+              variant={currentStep === 'upload' ? 'default' : 'outline'}
+              className={currentStep === 'upload' ? 'bg-purple-600' : ''}
+            >
+              1. Upload
+            </Badge>
+            <ChevronRight className="w-4 h-4 text-gray-500" />
+            <Badge 
+              variant={currentStep === 'configure' ? 'default' : 'outline'}
+              className={currentStep === 'configure' ? 'bg-purple-600' : ''}
+            >
+              2. Configure
+            </Badge>
+            <ChevronRight className="w-4 h-4 text-gray-500" />
+            <Badge 
+              variant={currentStep === 'generate' || currentStep === 'review' ? 'default' : 'outline'}
+              className={currentStep === 'generate' || currentStep === 'review' ? 'bg-purple-600' : ''}
+            >
+              3. Generate
+            </Badge>
+          </div>
         </div>
       </header>
 

@@ -57,7 +57,7 @@ import { useGeminiLive } from './components/GeminiLive/hooks/useGeminiLive';
 import { ConnectionState } from './components/GeminiLive/types';
 import { ToastContainer, Bounce } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import AIWord from './components/AIWord';
+import AIWordWithDeepAgent from './components/AIWordWithDeepAgent';
 import AISheet from './components/AISheet';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
@@ -2559,9 +2559,9 @@ Here is the learner's question: ${message}`;
       {/* Image Lightbox */}
       <GeminiLiveImageLightbox image={expandedImage} onClose={handleCloseLightbox} />
 
-      {/* AI Word */}
+      {/* AI Word with Deep Agent */}
       {showAIWord && (
-        <AIWord
+        <AIWordWithDeepAgent
           onClose={() => {
             setShowAIWord(false);
             endCurrentFeature();

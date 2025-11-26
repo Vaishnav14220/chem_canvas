@@ -43,6 +43,8 @@ import {
   File,
   FileCode,
   FilePlus,
+  FileUp,
+  Plus,
   Trash2,
   Square,
   ArrowUp,
@@ -65,7 +67,9 @@ import {
   Paperclip,
   Upload,
   FileImage,
-  FileType
+  FileType,
+  Cloud,
+  ExternalLink
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -97,6 +101,14 @@ import { ToolCallBox } from './deep-agent/ToolCallBox';
 import { TasksFilesPanel } from './deep-agent/TasksFilesPanel';
 import type { ToolCall, SubAgent, TodoItem, ChatMessage as ChatMessageType, ActiveTask, TaskProgressStep } from './deep-agent/types';
 import { extractTextFromFile } from '../services/researchPaperAgentService';
+import { GoogleDocsExportButton } from './GoogleDocsIntegration';
+import { GoogleDocsEmbedded, useGoogleDocsAgent } from './GoogleDocsEmbedded';
+import { GoogleDocsBrowser } from './GoogleDocsBrowser';
+import { 
+  isSignedIn as isGoogleSignedIn,
+  createGoogleDoc,
+  updateGoogleDoc
+} from '../services/googleAuthService';
 import 'katex/dist/katex.min.css';
 
 // ==========================================
@@ -279,7 +291,8 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
   
   // View State
   const [viewMode, setViewMode] = useState<'chat' | 'workflow'>('chat');
-  const [activeTab, setActiveTab] = useState<'chat' | 'artifacts'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'artifacts' | 'google-docs' | 'my-docs'>('chat');
+  const [selectedGoogleDocContent, setSelectedGoogleDocContent] = useState<string>('');
   const [showSidebar, setShowSidebar] = useState(false);
   const [metaOpen, setMetaOpen] = useState<'tasks' | 'files' | null>(null);
   
@@ -307,6 +320,17 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
   const [artifactsList, setArtifactsList] = useState<Artifact[]>([]);
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
 
+  // Google Docs State
+  const [googleDocsEnabled, setGoogleDocsEnabled] = useState(false);
+  const [googleDocId, setGoogleDocId] = useState<string | null>(null);
+  const [googleDocUrl, setGoogleDocUrl] = useState<string | null>(null);
+  const [googleDocTitle, setGoogleDocTitle] = useState<string | null>(null);
+  const [showGoogleDocsPanel, setShowGoogleDocsPanel] = useState(false);
+  const [autoSaveToGoogleDocs, setAutoSaveToGoogleDocs] = useState(true);
+  const [isSavingToGoogle, setIsSavingToGoogle] = useState(false);
+  const [googleDocCreated, setGoogleDocCreated] = useState(false);
+  const [lastSavedContent, setLastSavedContent] = useState<string>('');
+
   // Upload State
   const [uploadedFiles, setUploadedFiles] = useState<Array<{
     file: File;
@@ -318,12 +342,23 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
     error?: string;
   }>>([]);
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [showUploadArea, setShowUploadArea] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Check Google auth status
+  useEffect(() => {
+    setGoogleDocsEnabled(isGoogleSignedIn());
+    const interval = setInterval(() => {
+      setGoogleDocsEnabled(isGoogleSignedIn());
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Get available tools and subagents
   const availableTools = getAvailableTools();
@@ -491,8 +526,21 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
           
         case 'document-ready':
           if (event.data) {
-            setFinalDocument(event.data as FinalDocument);
+            const doc = event.data as FinalDocument;
+            setFinalDocument(doc);
             setShowFinalDocument(true);
+            
+            // Immediately save final document to Google Docs
+            if (googleDocId && autoSaveToGoogleDocs && isGoogleSignedIn() && doc.content) {
+              setIsSavingToGoogle(true);
+              updateGoogleDoc(googleDocId, doc.content)
+                .then(() => {
+                  setLastSavedContent(doc.content);
+                  console.log('Final document saved to Google Docs!');
+                })
+                .catch(err => console.error('Failed to save final document:', err))
+                .finally(() => setIsSavingToGoogle(false));
+            }
           }
           break;
           
@@ -509,6 +557,83 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent, activeTasks]);
+
+  // Auto-save content to Google Docs
+  useEffect(() => {
+    const saveContentToGoogleDoc = async () => {
+      if (!googleDocId || !autoSaveToGoogleDocs || !isGoogleSignedIn()) return;
+      
+      // Priority: Use final document content if available, otherwise use artifacts, lastly use cleaned messages
+      let contentToSave = '';
+      
+      // 1. First priority: Final Document (the actual generated report)
+      if (finalDocument?.content) {
+        contentToSave = finalDocument.content;
+      } 
+      // 2. Second priority: Artifacts that contain actual content (not task plans)
+      else if (artifactsList.length > 0) {
+        // Find the best artifact - prefer files, notes, research over plans
+        const contentArtifacts = artifactsList.filter(a => 
+          a.type === 'file' || 
+          a.type === 'notes' ||
+          a.type === 'research' ||
+          (a.content && !a.content.includes('"tool":') && !a.content.includes('"todos":'))
+        );
+        
+        if (contentArtifacts.length > 0) {
+          // Use the most recent content artifact
+          const bestArtifact = contentArtifacts[contentArtifacts.length - 1];
+          contentToSave = bestArtifact.content;
+        }
+      }
+      // 3. Third priority: Clean assistant messages (filter out tool calls and JSON)
+      if (!contentToSave) {
+        const assistantMessages = messages.filter(m => m.role === 'assistant');
+        if (assistantMessages.length === 0 && !streamingContent) return;
+        
+        // Filter and clean messages - remove tool calls and JSON
+        const cleanedMessages = assistantMessages
+          .map(m => m.content)
+          .filter(content => {
+            // Skip messages that are mostly JSON/tool calls
+            if (content.includes('"tool":') || content.includes('"params":')) return false;
+            if (content.includes('"todos":')) return false;
+            if (content.trim().startsWith('{') && content.trim().endsWith('}')) return false;
+            if (content.trim().startsWith('[') && content.trim().endsWith(']')) return false;
+            return true;
+          })
+          .map(content => {
+            // Clean any remaining JSON blocks
+            return content
+              .replace(/```json[\s\S]*?```/g, '')
+              .replace(/{\s*"tool"[\s\S]*?}\s*}/g, '')
+              .replace(/────+/g, '')
+              .trim();
+          })
+          .filter(content => content.length > 50); // Only keep substantial content
+        
+        contentToSave = cleanedMessages.join('\n\n---\n\n');
+      }
+      
+      // Don't save if content hasn't changed or is empty/too short
+      if (contentToSave === lastSavedContent || !contentToSave.trim() || contentToSave.length < 100) return;
+      
+      setIsSavingToGoogle(true);
+      try {
+        await updateGoogleDoc(googleDocId, contentToSave);
+        setLastSavedContent(contentToSave);
+        console.log('Content saved to Google Doc:', contentToSave.substring(0, 100) + '...');
+      } catch (error) {
+        console.error('Failed to save to Google Doc:', error);
+      } finally {
+        setIsSavingToGoogle(false);
+      }
+    };
+
+    // Debounce save - wait 3 seconds after content stops changing
+    const timeoutId = setTimeout(saveContentToGoogleDoc, 3000);
+    return () => clearTimeout(timeoutId);
+  }, [messages, streamingContent, googleDocId, autoSaveToGoogleDocs, lastSavedContent, finalDocument, artifactsList]);
 
   // Set Tavily API key from props
   useEffect(() => {
@@ -565,6 +690,27 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
     setIsStreaming(true);
     setStreamingContent('');
     setToolCalls([]);
+
+    // Create Google Doc when user sends first message (if signed in)
+    if (autoSaveToGoogleDocs && isGoogleSignedIn() && !googleDocId) {
+      try {
+        // Generate a title from the user's query
+        const docTitle = content.length > 50 
+          ? content.substring(0, 50) + '...' 
+          : content;
+        const fullTitle = `Deep Agent: ${docTitle}`;
+        
+        console.log('Creating Google Doc:', fullTitle);
+        const doc = await createGoogleDoc(fullTitle);
+        setGoogleDocId(doc.documentId);
+        setGoogleDocTitle(fullTitle);
+        setGoogleDocUrl(`https://docs.google.com/document/d/${doc.documentId}/edit`);
+        setGoogleDocCreated(true);
+        console.log('Google Doc created:', doc.documentId);
+      } catch (err) {
+        console.error('Failed to create Google Doc:', err);
+      }
+    }
 
     const userMessage: DeepAgentMessage = {
       role: 'user',
@@ -681,9 +827,110 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
     }
   }, []);
 
+  // Process files from drag & drop or paste
+  const processFiles = useCallback(async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+
+    setIsProcessingUpload(true);
+    setShowUploadArea(false);
+    const newFiles: typeof uploadedFiles = [];
+
+    for (const file of Array.from(files)) {
+      // Skip unsupported files
+      const supportedTypes = [
+        'application/pdf',
+        'text/plain',
+        'text/markdown',
+        'application/json',
+        'text/csv',
+        'image/png',
+        'image/jpeg',
+        'image/gif',
+        'image/webp',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ];
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      const isSupported = supportedTypes.some(t => file.type.includes(t) || file.type === t) ||
+        ['pdf', 'txt', 'md', 'json', 'csv', 'tex', 'doc', 'docx', 'png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '');
+      
+      if (!isSupported) {
+        console.warn(`Skipping unsupported file: ${file.name}`);
+        continue;
+      }
+
+      const fileEntry = {
+        file,
+        name: file.name,
+        type: file.type || `application/${ext}`,
+        size: file.size,
+        isProcessing: true
+      };
+      newFiles.push(fileEntry);
+    }
+
+    if (newFiles.length === 0) {
+      setIsProcessingUpload(false);
+      return;
+    }
+
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+
+    // Process each file
+    for (let i = 0; i < newFiles.length; i++) {
+      const fileEntry = newFiles[i];
+      try {
+        const result = await extractTextFromFile(fileEntry.file);
+        setUploadedFiles(prev => prev.map(f => 
+          f.name === fileEntry.name && f.size === fileEntry.size
+            ? { ...f, content: result.text, isProcessing: false }
+            : f
+        ));
+      } catch (error) {
+        console.error('Error processing file:', error);
+        setUploadedFiles(prev => prev.map(f => 
+          f.name === fileEntry.name && f.size === fileEntry.size
+            ? { ...f, error: 'Failed to extract content', isProcessing: false }
+            : f
+        ));
+      }
+    }
+
+    setIsProcessingUpload(false);
+  }, []);
+
+  // Drag & drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processFiles(files);
+    }
+  }, [processFiles]);
+
   // Remove uploaded file
   const removeUploadedFile = useCallback((fileName: string, fileSize: number) => {
     setUploadedFiles(prev => prev.filter(f => !(f.name === fileName && f.size === fileSize)));
+  }, []);
+
+  // Clear all uploaded files
+  const clearAllFiles = useCallback(() => {
+    setUploadedFiles([]);
+    setShowUploadArea(false);
   }, []);
 
   // Get file icon based on type
@@ -701,25 +948,46 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Build message with file context
+  // Build message with file context - improved formatting for the agent
   const buildMessageWithFiles = useCallback((): string => {
     let message = inputMessage.trim();
     
     if (uploadedFiles.length > 0) {
-      const fileContents = uploadedFiles
-        .filter(f => f.content && !f.error)
-        .map(f => `\n\n--- File: ${f.name} ---\n${f.content}`)
-        .join('');
+      const validFiles = uploadedFiles.filter(f => f.content && !f.error);
       
-      if (fileContents) {
+      if (validFiles.length > 0) {
+        // Create a structured context for the agent
+        const fileList = validFiles.map(f => `- ${f.name} (${formatFileSize(f.size)})`).join('\n');
+        
+        const fileContents = validFiles
+          .map(f => {
+            const truncatedContent = f.content && f.content.length > 50000 
+              ? f.content.substring(0, 50000) + '\n\n[... content truncated for length ...]' 
+              : f.content;
+            return `\n\n========== DOCUMENT: ${f.name} ==========\n${truncatedContent}\n========== END OF ${f.name} ==========`;
+          })
+          .join('');
+        
+        const documentContext = `
+## USER UPLOADED DOCUMENTS (${validFiles.length} file${validFiles.length > 1 ? 's' : ''})
+
+The user has uploaded the following documents for you to reference:
+${fileList}
+
+**IMPORTANT**: Base your response on the content from these uploaded documents. Reference specific sections, data, or information from the documents when relevant.
+${fileContents}
+
+## USER REQUEST
+`;
+        
         message = message 
-          ? `${message}\n\nI'm sharing the following documents for context:${fileContents}`
-          : `Please analyze the following documents:${fileContents}`;
+          ? `${documentContext}${message}`
+          : `${documentContext}Please analyze the uploaded documents, extract key information, and provide a comprehensive summary. Save the final analysis to Google Docs.`;
       }
     }
     
     return message;
-  }, [inputMessage, uploadedFiles]);
+  }, [inputMessage, uploadedFiles, formatFileSize]);
 
   // Modified send that includes files
   const handleSendWithFiles = useCallback(async () => {
@@ -755,6 +1023,12 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
     setSelectedArtifact(null);
     setActiveTab('chat');
     setToolCalls([]);
+    // Reset Google Docs state for new conversation
+    setGoogleDocId(null);
+    setGoogleDocUrl(null);
+    setGoogleDocTitle(null);
+    setGoogleDocCreated(false);
+    setLastSavedContent('');
     resetDeepAgent();
   }, []);
 
@@ -852,6 +1126,20 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Google Docs Export - only show when there's content to export */}
+          {(messages.length > 1 || finalDocument) && (
+            <GoogleDocsExportButton
+              content={finalDocument?.content || messages.map(m => `${m.role}: ${m.content}`).join('\n\n')}
+              title={finalDocument?.title || 'Deep Agent Research'}
+              exportType="deep-agent"
+              conversationHistory={messages.map(m => ({
+                role: m.role,
+                content: m.content,
+                timestamp: m.timestamp
+              }))}
+              variant="icon-only"
+            />
+          )}
           {finalDocument && (
             <button
               onClick={() => setShowFinalDocument(!showFinalDocument)}
@@ -919,6 +1207,33 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
               {artifactsList.length}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab('google-docs')}
+          className={`flex-1 py-2 px-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+            activeTab === 'google-docs'
+              ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-800/50'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          Document
+          {(finalDocument || streamingContent || messages.filter(m => m.role === 'assistant').length > 0) && (
+            <span className="px-1.5 py-0.5 text-xs bg-green-500/30 text-green-300 rounded-full">
+              {isStreaming ? 'Writing' : 'Ready'}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('my-docs')}
+          className={`flex-1 py-2 px-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+            activeTab === 'my-docs'
+              ? 'text-green-400 border-b-2 border-green-400 bg-gray-800/50'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+          }`}
+        >
+          <Cloud className="w-4 h-4" />
+          My Google Docs
         </button>
       </div>
 
@@ -1671,6 +1986,19 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
               </div>
             )}
 
+            {/* Document Status Indicator - Compact view in chat */}
+            {(isStreaming || finalDocument || messages.filter(m => m.role === 'assistant').length > 0) && (
+              <div className="flex-shrink-0 mx-4 mb-2">
+                <GoogleDocsEmbedded
+                  title={finalDocument?.title || 'Deep Agent Research Report'}
+                  content={finalDocument?.content || streamingContent || messages.filter(m => m.role === 'assistant').slice(-1).map(m => m.content).join('')}
+                  isStreaming={isStreaming}
+                  compact={true}
+                  className="max-w-4xl mx-auto"
+                />
+              </div>
+            )}
+
             {/* Input Area with Inline Tasks/Files */}
             <div className="flex-shrink-0 bg-gray-900">
               <div className="mx-auto w-full max-w-4xl px-4 pb-6">
@@ -1686,52 +2014,166 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     />
                   )}
 
-                  {/* Uploaded Files Preview */}
-                  {uploadedFiles.length > 0 && (
-                    <div className="px-3 py-2 border-b border-gray-700 bg-gray-850/50">
-                      <div className="flex items-center gap-1 mb-2">
-                        <Paperclip className="w-3 h-3 text-gray-400" />
-                        <span className="text-xs text-gray-400">Attached files ({uploadedFiles.length})</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {uploadedFiles.map((file, idx) => (
-                          <div 
-                            key={`${file.name}-${idx}`}
-                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs ${
-                              file.error 
-                                ? 'bg-red-900/30 border border-red-700/50' 
-                                : file.isProcessing 
-                                ? 'bg-blue-900/30 border border-blue-700/50' 
-                                : 'bg-gray-700/50 border border-gray-600'
-                            }`}
-                          >
-                            {file.isProcessing ? (
-                              <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
-                            ) : (
-                              getFileIcon(file.type)
-                            )}
-                            <span className={`max-w-[120px] truncate ${file.error ? 'text-red-300' : 'text-gray-300'}`}>
-                              {file.name}
-                            </span>
-                            <span className="text-gray-500">{formatFileSize(file.size)}</span>
-                            {file.content && (
-                              <CheckCircle2 className="w-3 h-3 text-green-400" />
-                            )}
-                            <button
+                  {/* Drag & Drop Upload Area */}
+                  {(showUploadArea || isDragOver) && (
+                    <div 
+                      className={`p-6 border-2 border-dashed rounded-lg m-3 transition-colors ${
+                        isDragOver 
+                          ? 'border-purple-500 bg-purple-900/20' 
+                          : 'border-gray-600 bg-gray-800/50 hover:border-gray-500'
+                      }`}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                    >
+                      <div className="flex flex-col items-center gap-3 text-center">
+                        <div className={`p-3 rounded-full ${isDragOver ? 'bg-purple-500/20' : 'bg-gray-700'}`}>
+                          <Upload className={`w-8 h-8 ${isDragOver ? 'text-purple-400' : 'text-gray-400'}`} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-200">
+                            {isDragOver ? 'Drop files here' : 'Drag & drop files here'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            or <button 
                               type="button"
-                              onClick={() => removeUploadedFile(file.name, file.size)}
-                              className="p-0.5 hover:bg-gray-600 rounded text-gray-400 hover:text-white"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="text-purple-400 hover:text-purple-300 underline"
                             >
-                              <X className="w-3 h-3" />
+                              browse files
                             </button>
-                          </div>
-                        ))}
+                          </p>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Supports: PDF, TXT, MD, JSON, CSV, Images, Word Documents
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowUploadArea(false)}
+                          className="text-xs text-gray-500 hover:text-gray-300"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </div>
                   )}
 
+                  {/* Uploaded Files Preview - Enhanced Grid View */}
+                  {uploadedFiles.length > 0 && !showUploadArea && (
+                    <div className="px-3 py-3 border-b border-gray-700 bg-gradient-to-r from-purple-900/10 to-blue-900/10">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-500/20 rounded-lg">
+                            <FileUp className="w-4 h-4 text-purple-400" />
+                            <span className="text-sm font-medium text-purple-300">
+                              {uploadedFiles.length} document{uploadedFiles.length > 1 ? 's' : ''} attached
+                            </span>
+                          </div>
+                          {uploadedFiles.some(f => f.isProcessing) && (
+                            <span className="flex items-center gap-1 text-xs text-blue-400">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Processing...
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                            Add more
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearAllFiles}
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Clear all
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* File Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {uploadedFiles.map((file, idx) => (
+                          <div 
+                            key={`${file.name}-${idx}`}
+                            className={`group relative flex items-center gap-3 p-2.5 rounded-lg transition-colors ${
+                              file.error 
+                                ? 'bg-red-900/20 border border-red-700/50' 
+                                : file.isProcessing 
+                                ? 'bg-blue-900/20 border border-blue-700/50' 
+                                : file.content
+                                ? 'bg-green-900/10 border border-green-700/30 hover:border-green-600/50'
+                                : 'bg-gray-700/30 border border-gray-600/50'
+                            }`}
+                          >
+                            {/* File Icon */}
+                            <div className={`flex-shrink-0 p-2 rounded-lg ${
+                              file.error ? 'bg-red-900/30' :
+                              file.isProcessing ? 'bg-blue-900/30' :
+                              file.content ? 'bg-green-900/30' : 'bg-gray-700'
+                            }`}>
+                              {file.isProcessing ? (
+                                <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+                              ) : (
+                                getFileIcon(file.type)
+                              )}
+                            </div>
+                            
+                            {/* File Info */}
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium truncate ${
+                                file.error ? 'text-red-300' : 'text-gray-200'
+                              }`}>
+                                {file.name}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-xs text-gray-500">{formatFileSize(file.size)}</span>
+                                {file.content && (
+                                  <span className="flex items-center gap-1 text-xs text-green-400">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Ready
+                                  </span>
+                                )}
+                                {file.error && (
+                                  <span className="text-xs text-red-400">{file.error}</span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Remove Button */}
+                            <button
+                              type="button"
+                              onClick={() => removeUploadedFile(file.name, file.size)}
+                              className="flex-shrink-0 p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                              title="Remove file"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Quick tip */}
+                      {uploadedFiles.length > 0 && uploadedFiles.every(f => f.content && !f.error) && (
+                        <p className="mt-3 text-xs text-gray-500 text-center">
+                          💡 Type your query below to analyze these documents. Results will be saved to Google Docs.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Input */}
-                  <form onSubmit={(e) => { e.preventDefault(); uploadedFiles.length > 0 ? handleSendWithFiles() : handleSubmit(); }} className="flex flex-col">
+                  <form 
+                    onSubmit={(e) => { e.preventDefault(); uploadedFiles.length > 0 ? handleSendWithFiles() : handleSubmit(); }} 
+                    className="flex flex-col"
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                  >
                     <textarea
                       ref={inputRef}
                       value={inputMessage}
@@ -1756,22 +2198,40 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                           type="file"
                           multiple
                           accept=".pdf,.txt,.md,.json,.csv,.tex,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp"
-                          onChange={handleFileUpload}
+                          onChange={(e) => {
+                            const files = e.target.files;
+                            if (files && files.length > 0) {
+                              processFiles(files);
+                            }
+                            e.target.value = '';
+                          }}
                           className="hidden"
                         />
                         <button
                           type="button"
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={() => {
+                            if (uploadedFiles.length === 0) {
+                              setShowUploadArea(!showUploadArea);
+                            } else {
+                              fileInputRef.current?.click();
+                            }
+                          }}
                           disabled={isLoading || isProcessingUpload}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            uploadedFiles.length > 0
+                              ? 'bg-purple-500/20 text-purple-300 hover:bg-purple-500/30'
+                              : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                          }`}
                           title="Upload documents (PDF, TXT, images, etc.)"
                         >
                           {isProcessingUpload ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : uploadedFiles.length > 0 ? (
+                            <FileUp className="w-4 h-4" />
                           ) : (
                             <Paperclip className="w-4 h-4" />
                           )}
-                          <span>Attach</span>
+                          <span>{uploadedFiles.length > 0 ? `${uploadedFiles.length} files` : 'Attach'}</span>
                         </button>
 
                         {/* Status indicators */}
@@ -1787,6 +2247,18 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                               <FolderOpen className="w-3 h-3" />
                               {Object.keys(currentFiles).length}
                             </span>
+                          )}
+                          {googleDocId && (
+                            <a 
+                              href={googleDocUrl || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-green-400 hover:text-green-300"
+                              title="Open Google Doc"
+                            >
+                              <Cloud className="w-3 h-3" />
+                              Saved
+                            </a>
                           )}
                         </div>
                       </div>
@@ -1939,6 +2411,98 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Document Preview Tab - Shows live document being written */}
+        {activeTab === 'google-docs' && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Google Doc Created Banner */}
+            {googleDocCreated && googleDocTitle && (
+              <div className="bg-green-900/30 border-b border-green-700/50 px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5 text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-green-300">Google Doc Created!</p>
+                    <p className="text-xs text-green-400/70 truncate max-w-md">{googleDocTitle}</p>
+                  </div>
+                </div>
+                <a 
+                  href={googleDocUrl || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded-lg transition-colors"
+                >
+                  Open in Google Docs
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            )}
+
+            {/* Auto-save toolbar */}
+            <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="auto-save"
+                  checked={autoSaveToGoogleDocs}
+                  onChange={(e) => setAutoSaveToGoogleDocs(e.target.checked)}
+                  className="rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
+                />
+                <label htmlFor="auto-save" className="text-xs text-gray-300 cursor-pointer select-none">
+                  Auto-save to Google Docs
+                </label>
+                {!isGoogleSignedIn() && (
+                  <span className="text-xs text-yellow-400 ml-2">(Sign in via "My Google Docs" tab)</span>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {isSavingToGoogle ? (
+                  <span className="text-xs text-blue-400 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Saving...
+                  </span>
+                ) : googleDocId ? (
+                  <a 
+                    href={`https://docs.google.com/document/d/${googleDocId}/edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-green-400 flex items-center gap-1 hover:underline"
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                    Saved to Drive
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                ) : isGoogleSignedIn() ? (
+                  <span className="text-xs text-gray-500">Will create doc when you send a message</span>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Embedded Document Preview Component */}
+            <GoogleDocsEmbedded
+              title={finalDocument?.title || 'Deep Agent Research Report'}
+              content={finalDocument?.content || streamingContent || selectedGoogleDocContent || messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
+              isStreaming={isStreaming}
+              height="100%"
+              className="flex-1"
+            />
+          </div>
+        )}
+
+        {/* My Google Docs Tab - Browse and view real Google Docs */}
+        {activeTab === 'my-docs' && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <GoogleDocsBrowser
+              className="flex-1"
+              onContentLoad={(content, title) => {
+                setSelectedGoogleDocContent(content);
+                // Optionally switch to document tab to see it in the nice preview
+              }}
+            />
           </div>
         )}
       </div>

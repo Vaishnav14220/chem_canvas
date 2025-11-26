@@ -18,7 +18,12 @@ export default defineConfig({
     }
   },
   server: {
-    port: 1754,
+    port: 1755,
     host: '0.0.0.0',
+    headers: {
+      // Allow Google OAuth popups to work properly
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      'Cross-Origin-Embedder-Policy': 'unsafe-none',
+    },
   },
 });
