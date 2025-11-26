@@ -430,6 +430,90 @@ tools.set('internet_search', {
   execute: tavilySearch,
 });
 
+// Google Search Grounding Tool - Uses Gemini's built-in Google Search for academic research
+tools.set('google_search_grounding', {
+  name: 'google_search_grounding',
+  description: 'Search using Google Search grounding via Gemini API. Returns results with proper citations and source URLs. Best for finding research papers, academic content, and authoritative sources. Returns grounded responses with inline citations.',
+  execute: async (params: { query: string; focus?: 'academic' | 'general' }) => {
+    try {
+      const apiKey = await getSharedGeminiApiKey();
+      if (!apiKey) {
+        return JSON.stringify({ success: false, error: 'No Gemini API key available' });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      
+      // Enhance query for academic focus
+      const searchQuery = params.focus === 'academic' 
+        ? `Find research papers, academic studies, and scholarly sources about: ${params.query}. Include citations with author names, publication dates, and journal names where available.`
+        : params.query;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: searchQuery,
+        config: {
+          tools: [{ googleSearch: {} }],
+        },
+      });
+
+      // Extract grounding metadata for citations
+      const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+      const text = response.text || '';
+      
+      // Build citations array from grounding chunks
+      const citations: Array<{ title: string; url: string; index: number }> = [];
+      if (groundingMetadata?.groundingChunks) {
+        groundingMetadata.groundingChunks.forEach((chunk: any, index: number) => {
+          if (chunk.web) {
+            citations.push({
+              title: chunk.web.title || 'Source',
+              url: chunk.web.uri || '',
+              index: index + 1
+            });
+          }
+        });
+      }
+
+      // Format response with citations
+      let formattedResponse = text;
+      if (citations.length > 0) {
+        formattedResponse += '\n\n### Sources:\n';
+        citations.forEach((cite) => {
+          formattedResponse += `[${cite.index}] ${cite.title}: ${cite.url}\n`;
+        });
+      }
+
+      // Create artifact for the research
+      createArtifact({
+        type: 'research',
+        title: `Google Search: ${params.query.substring(0, 50)}...`,
+        content: formattedResponse,
+        agentName: 'Academic Researcher',
+        metadata: { 
+          query: params.query,
+          citationCount: citations.length,
+          searchQueries: groundingMetadata?.webSearchQueries || []
+        }
+      });
+
+      return JSON.stringify({
+        success: true,
+        query: params.query,
+        response: formattedResponse,
+        citations,
+        citationCount: citations.length,
+        searchQueries: groundingMetadata?.webSearchQueries || []
+      });
+    } catch (error) {
+      console.error('Google Search Grounding error:', error);
+      return JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Google Search failed'
+      });
+    }
+  }
+});
+
 // write_todos Tool (Planning)
 tools.set('write_todos', {
   name: 'write_todos',
@@ -837,6 +921,58 @@ const subagents: Map<string, SubAgentDefinition> = new Map([
     systemPrompt: RESEARCHER_INSTRUCTIONS,
     tools: ['internet_search', 'think_tool', 'write_file']
   }],
+  ['academic-researcher', {
+    name: 'academic-researcher',
+    description: 'Specialized in finding and citing research papers, academic studies, and scholarly sources. Uses Google Search grounding for authoritative citations. Best for scientific literature reviews and academic research.',
+    systemPrompt: `You are an Academic Research Specialist focused on finding scholarly sources and research papers.
+
+<Primary Goal>
+Find authoritative academic sources, research papers, and scholarly articles on the given topic. Provide properly formatted citations with author names, publication dates, and source URLs.
+</Primary Goal>
+
+<Research Process>
+1. Use google_search_grounding with focus='academic' to find research papers
+2. Analyze the sources for relevance and credibility
+3. Extract key findings from each paper
+4. Organize findings by theme or chronologically
+5. Provide proper academic citations
+</Research Process>
+
+<Citation Format>
+Use the following citation format:
+- Author(s). (Year). "Title of Paper." Journal/Publication. [URL]
+- If author/year unknown: "Title" - Source Name [URL]
+
+Number each citation [1], [2], [3] and reference inline.
+</Citation Format>
+
+<Output Structure>
+## Summary of Research
+Brief overview of the topic and key findings.
+
+## Key Findings
+### Finding 1
+Description with inline citations [1]
+
+### Finding 2  
+Description with inline citations [2]
+
+## Research Papers & Sources
+List all cited sources with full citations.
+
+## Conclusion
+Summary of the state of research on this topic.
+</Output Structure>
+
+<Important Notes>
+- Prioritize peer-reviewed sources when available
+- Note if sources are preprints or non-peer-reviewed
+- Indicate publication dates to show recency
+- Highlight any conflicting findings between sources
+- Keep response focused and under 600 words
+</Important Notes>`,
+    tools: ['google_search_grounding', 'think_tool', 'write_file']
+  }],
   ['chemistry-researcher', {
     name: 'chemistry-researcher',
     description: 'Specialized researcher for chemistry topics. Combines web search with molecule databases and reaction analysis. Use for scientific chemistry questions.',
@@ -1038,6 +1174,7 @@ tools.set('task', {
 
 Available sub-agents:
 - **research-agent**: Conducts in-depth research on specific topics using web search
+- **academic-researcher**: Finds research papers and scholarly sources with proper academic citations (uses Google Search grounding)
 - **chemistry-researcher**: Specialized researcher for chemistry topics with molecule databases
 - **chemistry-tutor**: A patient tutor for explaining chemistry concepts
 - **chemistry-problem-solver**: Specialized in solving chemistry problems and calculations
@@ -1049,6 +1186,7 @@ Available sub-agents:
 Use this tool to:
 - Keep main context clean
 - Delegate complex research tasks
+- Find academic papers and citations (use academic-researcher)
 - Run specialized analyses
 - Create data visualizations
 - Export documents to Google Docs

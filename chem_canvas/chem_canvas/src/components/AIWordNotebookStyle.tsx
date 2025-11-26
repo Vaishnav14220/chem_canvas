@@ -138,6 +138,16 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     category: 'research'
   },
   {
+    id: 'academic-researcher',
+    name: 'Academic Researcher',
+    description: 'Finds research papers & scholarly sources with proper citations',
+    skills: ['Research Papers', 'Academic Citations', 'Literature Review', 'Scholarly Sources'],
+    icon: <BookOpen className="h-5 w-5" />,
+    color: 'indigo',
+    enabled: true,
+    category: 'research'
+  },
+  {
     id: 'chemistry-researcher',
     name: 'Chemistry Researcher',
     description: 'Specialized research for chemistry topics with molecule databases',
@@ -2550,6 +2560,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   (activeSubagent && activeSubagent.includes(agent.id));
                 const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
                   blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
+                  indigo: { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' },
                   green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
                   yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-400' },
                   orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
