@@ -1148,13 +1148,49 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
     return researchKeywords.some(keyword => lowerText.includes(keyword));
   };
 
-  // Helper to clean tool calls and artifacts from content
+  // Helper to clean tool calls and artifacts from content - for display to user
   const cleanMessageContent = (content: string): string => {
-    let cleaned = content.replace(/```tool\s*[\s\S]*?```/g, '');
+    let cleaned = content;
+    
+    // Remove tool call blocks
+    cleaned = cleaned.replace(/```tool\s*[\s\S]*?```/g, '');
     cleaned = cleaned.replace(/\[TOOL:\s*\w+\][\s\S]*?\[\/TOOL\]/g, '');
     cleaned = cleaned.replace(/\[DELEGATE:\s*\S+\][\s\S]*?\[\/DELEGATE\]/g, '');
     cleaned = cleaned.replace(/^\s*\{\s*"tool"\s*:[\s\S]*?\}\s*$/gm, '');
+    
+    // Remove task status messages (📋 Task X/Y, Task completed, etc.)
+    cleaned = cleaned.replace(/📋\s*Task\s*\d+\/\d+:.*?(?=\n\n|$)/gs, '');
+    cleaned = cleaned.replace(/Task\s*\d+:?\s*"[^"]*"\s*has\s*(already\s*been\s*)?(completed|done).*?(?=\n\n|---\n|$)/gis, '');
+    
+    // Remove "I am awaiting/delegated/waiting" messages
+    cleaned = cleaned.replace(/I\s+am\s+(currently\s+)?(awaiting|unable\s+to\s+execute|waiting\s+for).*?(?=\n\n|---\n|$)/gis, '');
+    cleaned = cleaned.replace(/I\s+have\s+(delegated|initiated|completed).*?(?=\n\n|---\n|$)/gis, '');
+    cleaned = cleaned.replace(/Please\s+await.*?(?=\n\n|---\n|$)/gis, '');
+    cleaned = cleaned.replace(/Once\s+the\s+(sub-?agent'?s?|subagent'?s?).*?(?=\n\n|---\n|$)/gis, '');
+    
+    // Remove thinking/thought blocks
+    cleaned = cleaned.replace(/<think>.*?<\/think>/gs, '');
+    cleaned = cleaned.replace(/<thinking>.*?<\/thinking>/gs, '');
+    cleaned = cleaned.replace(/```thought[\s\S]*?```/gs, '');
+    
+    // Remove research process messages that aren't actual content
+    cleaned = cleaned.replace(/---\n📝\s*\*\*Synthesizing.*?\*\*.*?(?=\n\n|$)/gs, '');
+    cleaned = cleaned.replace(/---\n📄\s*\*\*Document Synthesizer.*?\*\*.*?(?=\n\n|$)/gs, '');
+    cleaned = cleaned.replace(/---\n🛡️\s*\*\*Output Validator.*?\*\*.*?(?=\n\n|$)/gs, '');
+    cleaned = cleaned.replace(/---\n✨\s*\*\*Enhancing.*?\*\*.*?(?=\n\n|$)/gs, '');
+    
+    // Remove subagent findings headers (content is in final doc)
+    cleaned = cleaned.replace(/\n\*\*(?:deep-researcher|research-agent|academic-researcher|chemistry-researcher|Subagent)\s+findings:\*\*/gi, '\n');
+    
+    // Remove horizontal rule separators between task blocks
+    cleaned = cleaned.replace(/---\n+(?=📋|Task\s*\d+|🔧)/g, '');
+    
+    // Remove tool execution messages
+    cleaned = cleaned.replace(/🔧\s*\*\*[a-z_]+\*\*:.*?(?=\n\n|$)/gis, '');
+    
+    // Clean up excessive blank lines
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+    
     return cleaned.trim();
   };
 
@@ -1214,9 +1250,11 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       for await (const chunk of streamDeepAgent(enhancedQuery)) {
         fullContent += chunk;
         setStreamingContent(fullContent);
+        // During streaming, show a simplified version (we'll update with final doc content after)
+        const displayContent = cleanMessageContent(fullContent);
         setMessages(prev => prev.map(msg => 
           msg.id === assistantMsgId 
-            ? { ...msg, content: fullContent }
+            ? { ...msg, content: displayContent }
             : msg
         ));
       }
@@ -1226,36 +1264,51 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
       // Clean content for final document
       const cleanedContent = cleanMessageContent(fullContent);
+      
+      // Get the final document from the service (if synthesizer created one)
+      const serviceFinalDocs = getFinalDocuments();
+      const latestServiceDoc = serviceFinalDocs.length > 0 ? serviceFinalDocs[serviceFinalDocs.length - 1] : null;
+      
+      // Use the service's final document content if available, otherwise use cleaned content
+      const finalDocContent = latestServiceDoc?.content || cleanedContent;
+      const finalDocTitle = latestServiceDoc?.title || `Research: ${query.substring(0, 50)}...`;
+      
+      // Update the message with the FINAL cleaned document content
+      setMessages(prev => prev.map(msg => 
+        msg.id === assistantMsgId 
+          ? { ...msg, content: finalDocContent }
+          : msg
+      ));
 
-      // Create final document
+      // Create final document using the synthesized content
       const finalDoc: FinalDocument = {
         id: Date.now().toString(),
-        title: `Research: ${query.substring(0, 50)}...`,
-        content: cleanedContent,
+        title: finalDocTitle,
+        content: finalDocContent,
         format: 'markdown',
         createdAt: new Date()
       };
       setFinalDocument(finalDoc);
 
-      // Create artifact
+      // Create artifact with the final synthesized content
       const newArtifact: Artifact = {
         id: Date.now().toString(),
         type: 'research',
-        title: `Research: ${query.substring(0, 30)}...`,
-        content: cleanedContent,
+        title: finalDocTitle,
+        content: finalDocContent,
         agentName: 'Deep Research Agent',
         createdAt: new Date(),
         updatedAt: new Date()
       };
       setArtifacts(prev => [...prev, newArtifact]);
 
-      // Auto-create Google Doc if signed in
+      // Auto-create Google Doc if signed in - use the final synthesized content
       if (googleUser) {
         try {
           showNotification('📝 Creating Google Doc...');
           const docResult = await createGoogleDocWithContent(
-            `Research: ${query.substring(0, 50)}`,
-            cleanedContent,
+            finalDocTitle,
+            finalDocContent,
             'markdown'
           );
           if (docResult.success && docResult.document) {
