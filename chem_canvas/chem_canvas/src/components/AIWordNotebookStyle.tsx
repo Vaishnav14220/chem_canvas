@@ -1179,6 +1179,9 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
     cleaned = cleaned.replace(/---\n🛡️\s*\*\*Output Validator.*?\*\*.*?(?=\n\n|$)/gs, '');
     cleaned = cleaned.replace(/---\n✨\s*\*\*Enhancing.*?\*\*.*?(?=\n\n|$)/gs, '');
     
+    // Remove "Enhanced Request" block
+    cleaned = cleaned.replace(/✨ \*\*Enhancing.*?\*\*[\s\S]*?📝 \*\*Enhanced Request:\*\*[\s\S]*?(?=\n\n)/g, '');
+    
     // Remove subagent findings headers (content is in final doc)
     cleaned = cleaned.replace(/\n\*\*(?:deep-researcher|research-agent|academic-researcher|chemistry-researcher|Subagent)\s+findings:\*\*/gi, '\n');
     

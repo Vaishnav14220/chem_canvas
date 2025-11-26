@@ -1751,9 +1751,11 @@ Final synthesis and recommendations.
 </Document Structure>
 
 <CRITICAL RULES>
+- NEVER output "Enhanced Request" or "Prompt Enhancement" sections
 - NEVER output task status messages ("Task 1 completed", "I am awaiting...")
-- NEVER output TODO lists or planning artifacts
+- NEVER output TODO lists, checkboxes, or planning artifacts
 - NEVER include meta-commentary ("I have gathered...", "The research shows...")
+- NEVER include emojis or "helper words"
 - ONLY output the final, polished document content
 - ALL content must be synthesized - no raw agent outputs
 - Use finalize_document tool to save the final document
@@ -3025,7 +3027,7 @@ export async function* streamDeepAgent(
 You are the Document Synthesizer. Your task is to create ONE COMPREHENSIVE FINAL DOCUMENT.
 
 ### RESEARCH FINDINGS TO SYNTHESIZE:
-${fullResponse}
+${fullResponse.replace(/✨ \*\*Enhancing.*?\*\*[\s\S]*?📝 \*\*Enhanced Request:\*\*[\s\S]*?(?=\n\n)/g, '')}
 
 ### ORIGINAL USER REQUEST:
 ${workingMessage}
@@ -3063,9 +3065,11 @@ Final synthesis and recommendations
 [2] ...
 
 ### CRITICAL RULES:
+- NO "Enhanced Request" or "Prompt Enhancement" sections
 - NO task status messages ("📋 Task 1/4...")
-- NO planning artifacts or TODO lists
+- NO planning artifacts, checkboxes, or TODO lists
 - NO meta-commentary ("I have gathered...", "I am synthesizing...")
+- NO emojis or "helper words"
 - ONLY output the final document using finalize_document tool
 
 CREATE THE DOCUMENT NOW.`;
