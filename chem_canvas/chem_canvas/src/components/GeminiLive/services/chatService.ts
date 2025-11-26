@@ -15,18 +15,18 @@ export async function generateChatResponseStream(
   console.log(`🔑 ChatService using API key: ${apiKey.substring(0, 10)}...`);
   const ai = new GoogleGenAI({ apiKey });
 
-  let model = 'gemini-2.0-flash-exp'; // Default to latest Flash
+  let model = 'gemini-2.5-flash'; // Default to latest Flash
   let tools: any = undefined;
 
   // Model Selection Strategy
   if (mode === 'PRO') {
-    model = 'gemini-2.0-pro-exp'; // Use experimental Pro model if available, fallback to 1.5 pro if needed
+    model = 'gemini-2.5-pro'; // Use Pro model for complex reasoning
   } else if (mode === 'SEARCH') {
-    model = 'gemini-2.0-flash-exp'; // Use Flash with search
+    model = 'gemini-2.5-flash'; // Use Flash with search
     tools = [{ googleSearch: {} }];
   } else {
     // FAST mode
-    model = 'gemini-2.0-flash-exp'; 
+    model = 'gemini-2.5-flash'; 
   }
 
   console.log(`🤖 ChatService using model: ${model}`);
@@ -70,12 +70,12 @@ export async function generateChatResponseStream(
   } catch (error: any) {
     console.error("Chat generation error:", error);
     
-    // Fallback logic if 2.0 fails, try 1.5
+    // Fallback logic - try gemini-2.5-pro if flash fails
     if (error.message?.includes('404') || error.message?.includes('not found') || error.message?.includes('valid model')) {
-        console.log("⚠️ Model not found, falling back to gemini-1.5-flash");
+        console.log("⚠️ Model not found, falling back to gemini-2.5-pro");
         try {
             const fallbackResult = await ai.models.generateContentStream({
-                model: 'gemini-1.5-flash',
+                model: 'gemini-2.5-pro',
                 contents,
                 config: {
                     tools,

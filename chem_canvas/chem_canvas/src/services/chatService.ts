@@ -20,17 +20,17 @@ export async function generateChatResponseStream(
 
   const ai = new GoogleGenAI({ apiKey: apiKey });
 
-  let model = 'gemini-2.0-flash-lite-preview-02-05';
+  let model = 'gemini-2.5-flash';
   let tools: any = undefined;
 
   // Model Selection Strategy
   if (mode === 'PRO') {
-    model = 'gemini-2.0-pro-exp-02-05'; // For complex reasoning and image analysis
+    model = 'gemini-2.5-pro'; // For complex reasoning and image analysis
   } else if (mode === 'SEARCH') {
-    model = 'gemini-2.0-flash'; // For Search Grounding
+    model = 'gemini-2.5-flash'; // For Search Grounding
     tools = [{ googleSearch: {} }];
   } else {
-    model = 'gemini-2.0-flash-lite-preview-02-05'; // For fast, low-latency text
+    model = 'gemini-2.5-flash'; // For fast, low-latency text
   }
 
   // Construct Content

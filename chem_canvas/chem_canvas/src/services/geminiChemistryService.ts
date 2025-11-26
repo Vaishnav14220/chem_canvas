@@ -122,7 +122,7 @@ Be specific and accurate with chemical nomenclature and SMILES notation.`;
     const result = await executeWithRotation(async (apiKey) => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash-latest',
+        model: 'gemini-2.5-flash',
         generationConfig: {
           responseMimeType: 'application/json',
           responseSchema: responseSchema,
@@ -210,7 +210,7 @@ Be accurate and detailed.`;
     const result = await executeWithRotation(async (apiKey) => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash-latest',
+        model: 'gemini-2.5-flash',
         generationConfig: {
           responseMimeType: 'application/json',
           responseSchema: responseSchema,

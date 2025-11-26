@@ -450,8 +450,8 @@ tools.set('google_search_grounding', {
         ? `Find research papers, academic studies, and scholarly sources about: ${params.query}. Include citations with author names, publication dates, and journal names where available.`
         : params.query;
 
-      // Try multiple model names for compatibility
-      const modelCandidates = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
+      // Use Gemini 2.5 models only (2.0 and below are deprecated)
+      const modelCandidates = ['gemini-2.5-flash', 'gemini-2.5-pro'];
       let response: any = null;
       let usedModel = '';
 
@@ -477,7 +477,7 @@ tools.set('google_search_grounding', {
       }
 
       if (!response) {
-        throw new Error('No working Gemini model found for Google Search grounding');
+        throw new Error('No Gemini 2.5 model available for Google Search grounding');
       }
 
       // Extract grounding metadata for citations
@@ -1520,7 +1520,7 @@ Task: ${task}
 Provide a comprehensive response to this task.`;
 
     const response = await genAI.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: subagentPrompt
     });
 
@@ -1586,7 +1586,7 @@ IMPORTANT:
     
     // Initial response
     let response = await genAI.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: conversationMessages
     });
     
@@ -1648,7 +1648,7 @@ IMPORTANT:
         );
         
         response = await genAI.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash',
           contents: conversationMessages
         });
         
@@ -1703,7 +1703,7 @@ const processAgentTurn = async (
 
   // Get initial response
   let response = await genAI.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     contents: messages
   });
 
@@ -1732,7 +1732,7 @@ const processAgentTurn = async (
       ];
 
       const updatedResponse = await genAI.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
         contents: updatedMessages
       });
 
@@ -1976,7 +1976,7 @@ export async function* streamDeepAgent(
 
     // Stream the response
     const response = await genAI.models.generateContentStream({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: messages
     });
 
@@ -2225,7 +2225,7 @@ Provide a brief summary of your findings.`;
 
       try {
         const continueResponse = await genAI.models.generateContentStream({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash',
           contents: continueMessages
         });
 
