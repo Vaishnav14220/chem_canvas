@@ -2588,194 +2588,191 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   className={`p-1.5 rounded-lg transition-colors ${
                     showAgentConfig ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-[#2d2d2d] text-gray-400'
                   }`}
+                  title={showAgentConfig ? 'Collapse agents' : 'Expand agents'}
                 >
-                  <Settings className="h-4 w-4" />
+                  {showAgentConfig ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
             {/* Mode Description */}
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="text-xs text-gray-500 mb-2">
               {agentSelectionMode === 'auto' 
                 ? '🤖 AI will automatically select the best agents for your query'
-                : '👆 Click agents to enable/disable them for your research'}
+                : '👆 Click agents to enable/disable them'}
             </p>
 
-            {/* Agent Cards Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-              {AVAILABLE_AGENTS.map((agent) => {
-                const isEnabled = enabledAgents.has(agent.id);
-                // Check if this agent is currently running
-                const isRunning = activeSubagent === agent.id || 
-                  activeSubagent === agent.name.toLowerCase().replace(/\s+/g, '-') ||
-                  (activeSubagent && agent.id.includes(activeSubagent)) ||
-                  (activeSubagent && activeSubagent.includes(agent.id));
-                const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
-                  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
-                  indigo: { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' },
-                  green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
-                  yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-400' },
-                  orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
-                  purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
-                  pink: { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-400' },
-                  cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' },
-                  red: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
-                  gray: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-400' },
-                  violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/30', text: 'text-violet-400' },
-                };
-                const colors = colorClasses[agent.color] || colorClasses.gray;
+            {/* Compact Agent Grid - Collapsible */}
+            {showAgentConfig ? (
+              /* Expanded View - Show all agents in compact cards */
+              <div className="grid grid-cols-3 lg:grid-cols-4 gap-1.5 max-h-[280px] overflow-y-auto pr-1">
+                {AVAILABLE_AGENTS.map((agent) => {
+                  const isEnabled = enabledAgents.has(agent.id);
+                  const isRunning = activeSubagent === agent.id || 
+                    activeSubagent === agent.name.toLowerCase().replace(/\s+/g, '-') ||
+                    (activeSubagent && agent.id.includes(activeSubagent)) ||
+                    (activeSubagent && activeSubagent.includes(agent.id));
+                  const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
+                    blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
+                    indigo: { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' },
+                    green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
+                    yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-400' },
+                    orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
+                    purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
+                    pink: { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-400' },
+                    cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' },
+                    red: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
+                    gray: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-400' },
+                    violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/30', text: 'text-violet-400' },
+                  };
+                  const colors = colorClasses[agent.color] || colorClasses.gray;
 
-                return (
-                  <div
-                    key={agent.id}
-                    onClick={() => {
-                      if (agentSelectionMode === 'manual') {
-                        setEnabledAgents(prev => {
-                          const newSet = new Set(prev);
-                          if (newSet.has(agent.id)) {
-                            newSet.delete(agent.id);
-                          } else {
-                            newSet.add(agent.id);
-                          }
-                          return newSet;
-                        });
-                      }
-                    }}
-                    className={`relative p-3 rounded-lg border transition-all cursor-pointer ${
-                      isRunning
-                        ? `${colors.bg} ${colors.border} ring-2 ring-offset-1 ring-offset-[#1a1a1a] ${colors.border.replace('border-', 'ring-')}`
-                        : isEnabled 
-                          ? `${colors.bg} ${colors.border}` 
-                          : 'bg-[#2d2d2d] border-white/5 opacity-50'
-                    } ${agentSelectionMode === 'manual' ? 'hover:scale-[1.02]' : ''}`}
-                  >
-                    {/* Running Indicator - Spinning Loader */}
-                    {isRunning && (
-                      <div className="absolute top-2 right-2">
-                        <Loader2 className={`h-4 w-4 animate-spin ${colors.text}`} />
+                  return (
+                    <div
+                      key={agent.id}
+                      onClick={() => {
+                        if (agentSelectionMode === 'manual') {
+                          setEnabledAgents(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(agent.id)) {
+                              newSet.delete(agent.id);
+                            } else {
+                              newSet.add(agent.id);
+                            }
+                            return newSet;
+                          });
+                        }
+                      }}
+                      title={agent.description}
+                      className={`relative p-2 rounded-lg border transition-all cursor-pointer ${
+                        isRunning
+                          ? `${colors.bg} ${colors.border} ring-1 ring-offset-1 ring-offset-[#1a1a1a] ${colors.border.replace('border-', 'ring-')}`
+                          : isEnabled 
+                            ? `${colors.bg} ${colors.border}` 
+                            : 'bg-[#2d2d2d] border-white/5 opacity-50'
+                      } ${agentSelectionMode === 'manual' ? 'hover:opacity-100' : ''}`}
+                    >
+                      {/* Running/Enabled Indicator */}
+                      {isRunning ? (
+                        <div className="absolute top-1 right-1">
+                          <Loader2 className={`h-3 w-3 animate-spin ${colors.text}`} />
+                        </div>
+                      ) : isEnabled && (
+                        <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
+                      )}
+                      
+                      {/* Compact Agent Info */}
+                      <div className="flex items-center gap-1.5">
+                        <span className={`${colors.text} flex-shrink-0 ${isRunning ? 'animate-pulse' : ''}`}>
+                          {React.cloneElement(agent.icon as React.ReactElement, { className: 'h-3.5 w-3.5' })}
+                        </span>
+                        <span className="text-[11px] font-medium truncate">
+                          {agent.name.replace('🧠 ', '').replace('📚 ', '').replace('🎯 ', '').replace('🔬 ', '')}
+                        </span>
                       </div>
-                    )}
-                    
-                    {/* Enabled Indicator (only show when not running) */}
-                    {isEnabled && !isRunning && (
-                      <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
-                    )}
-                    
-                    {/* Agent Header */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`${colors.text} ${isRunning ? 'animate-pulse' : ''}`}>{agent.icon}</span>
-                      <span className={`text-sm font-medium truncate ${isRunning ? 'text-white' : ''}`}>
-                        {agent.name}
-                        {isRunning && <span className="ml-1 text-xs text-gray-400">running...</span>}
-                      </span>
                     </div>
-                    
-                    {/* Description */}
-                    <p className="text-xs text-gray-500 mb-2 line-clamp-2">{agent.description}</p>
-                    
-                    {/* Skills */}
-                    {showAgentConfig && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {agent.skills.slice(0, 3).map((skill, idx) => (
-                          <span 
-                            key={idx} 
-                            className={`px-1.5 py-0.5 rounded text-[10px] ${colors.bg} ${colors.text}`}
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                        {agent.skills.length > 3 && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 text-gray-500">
-                            +{agent.skills.length - 3}
-                          </span>
-                        )}
+                  );
+                })}
+              </div>
+            ) : (
+              /* Collapsed View - Just show count and quick info */
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-gray-500">
+                  {enabledAgents.size} of {AVAILABLE_AGENTS.length} agents active
+                </span>
+                <div className="flex gap-1">
+                  {Array.from(enabledAgents).slice(0, 5).map(id => {
+                    const agent = AVAILABLE_AGENTS.find(a => a.id === id);
+                    if (!agent) return null;
+                    const colorClasses: Record<string, string> = {
+                      blue: 'bg-blue-500/30', indigo: 'bg-indigo-500/30', green: 'bg-green-500/30',
+                      yellow: 'bg-yellow-500/30', orange: 'bg-orange-500/30', purple: 'bg-purple-500/30',
+                      pink: 'bg-pink-500/30', cyan: 'bg-cyan-500/30', red: 'bg-red-500/30',
+                      gray: 'bg-gray-500/30', violet: 'bg-violet-500/30',
+                    };
+                    return (
+                      <div key={id} className={`w-5 h-5 rounded flex items-center justify-center ${colorClasses[agent.color] || 'bg-gray-500/30'}`} title={agent.name}>
+                        {React.cloneElement(agent.icon as React.ReactElement, { className: 'h-3 w-3' })}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Start Research Button */}
-            <div className="mt-4">
-              <button
-                onClick={() => {
-                  if (inputText.trim()) {
-                    // Pass enabled agents to the research function
-                    const activeAgentsList = Array.from(enabledAgents).join(', ');
-                    const agentInstruction = agentSelectionMode === 'manual' 
-                      ? `\n\n[User has selected these agents: ${activeAgentsList}. Prefer using these agents when delegating tasks.]`
-                      : '';
-                    handleDeepAgentResearch(inputText + agentInstruction);
-                  }
-                }}
-                disabled={isProcessing || isDeepAgentActive || !inputText.trim()}
-                className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-cyan-500/20 hover:from-purple-500/30 hover:via-blue-500/30 hover:to-cyan-500/30 border border-purple-500/30 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-purple-500/20">
-                      <Brain className="h-5 w-5 text-purple-400" />
+                    );
+                  })}
+                  {enabledAgents.size > 5 && (
+                    <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center text-[10px] text-gray-400">
+                      +{enabledAgents.size - 5}
                     </div>
-                    <div>
-                      <span className="text-sm font-medium text-white">Start Deep Research</span>
-                      <p className="text-xs text-gray-500">
-                        {agentSelectionMode === 'auto' 
-                          ? 'AI will select the best agents automatically'
-                          : `Using ${enabledAgents.size} selected agents`}
-                      </p>
-                    </div>
-                  </div>
-                  {isDeepAgentActive ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5 text-purple-400 group-hover:translate-x-1 transition-transform" />
                   )}
                 </div>
-              </button>
-            </div>
+              </div>
+            )}
 
-            {/* Quick Select Buttons */}
+            {/* Quick Select Buttons - Always visible but compact */}
             {agentSelectionMode === 'manual' && (
-              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
+              <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-white/5 flex-wrap">
                 <button
                   onClick={() => setEnabledAgents(new Set(AVAILABLE_AGENTS.map(a => a.id)))}
-                  className="px-3 py-1.5 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-xs text-gray-400 hover:text-white transition-colors"
+                  className="px-2 py-1 rounded bg-[#2d2d2d] hover:bg-[#3d3d3d] text-[10px] text-gray-400 hover:text-white"
                 >
-                  Select All
+                  All
                 </button>
                 <button
                   onClick={() => setEnabledAgents(new Set())}
-                  className="px-3 py-1.5 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-xs text-gray-400 hover:text-white transition-colors"
+                  className="px-2 py-1 rounded bg-[#2d2d2d] hover:bg-[#3d3d3d] text-[10px] text-gray-400 hover:text-white"
                 >
-                  Clear All
-                </button>
-                <button
-                  onClick={() => setEnabledAgents(new Set(
-                    AVAILABLE_AGENTS.filter(a => a.category === 'chemistry').map(a => a.id)
-                  ))}
-                  className="px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/30 text-xs text-green-400 hover:bg-green-500/20 transition-colors"
-                >
-                  Chemistry Only
-                </button>
-                <button
-                  onClick={() => setEnabledAgents(new Set(
-                    AVAILABLE_AGENTS.filter(a => a.category === 'research' || a.category === 'writing').map(a => a.id)
-                  ))}
-                  className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-xs text-blue-400 hover:bg-blue-500/20 transition-colors"
-                >
-                  Research & Writing
+                  None
                 </button>
                 <button
                   onClick={() => setEnabledAgents(new Set(
                     AVAILABLE_AGENTS.filter(a => a.category === 'advanced').map(a => a.id)
                   ))}
-                  className="px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/30 text-xs text-violet-400 hover:bg-violet-500/20 transition-colors"
+                  className="px-2 py-1 rounded bg-violet-500/10 border border-violet-500/30 text-[10px] text-violet-400"
                 >
-                  🧠 Advanced (Pro)
+                  🧠 Pro
+                </button>
+                <button
+                  onClick={() => setEnabledAgents(new Set(
+                    AVAILABLE_AGENTS.filter(a => a.category === 'chemistry').map(a => a.id)
+                  ))}
+                  className="px-2 py-1 rounded bg-green-500/10 border border-green-500/30 text-[10px] text-green-400"
+                >
+                  Chem
+                </button>
+                <button
+                  onClick={() => setEnabledAgents(new Set(
+                    AVAILABLE_AGENTS.filter(a => a.category === 'research' || a.category === 'writing').map(a => a.id)
+                  ))}
+                  className="px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-400"
+                >
+                  Research
                 </button>
               </div>
             )}
+
+            {/* Compact Start Research Button */}
+            <button
+              onClick={() => {
+                if (inputText.trim()) {
+                  const activeAgentsList = Array.from(enabledAgents).join(', ');
+                  const agentInstruction = agentSelectionMode === 'manual' 
+                    ? `\n\n[User has selected these agents: ${activeAgentsList}. Prefer using these agents when delegating tasks.]`
+                    : '';
+                  handleDeepAgentResearch(inputText + agentInstruction);
+                }
+              }}
+              disabled={isProcessing || isDeepAgentActive || !inputText.trim()}
+              className="w-full mt-3 p-2.5 rounded-lg bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-cyan-500/20 hover:from-purple-500/30 hover:via-blue-500/30 hover:to-cyan-500/30 border border-purple-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-purple-400" />
+                  <span className="text-sm font-medium text-white">Start Deep Research</span>
+                </div>
+                {isDeepAgentActive ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-purple-400 group-hover:translate-x-1 transition-transform" />
+                )}
+              </div>
+            </button>
           </div>
 
           {/* Deep Agent Status Panel */}
