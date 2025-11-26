@@ -1488,13 +1488,21 @@ IMPORTANT: For comparisons, make multiple task() calls to enable parallel execut
     
     // Emit step start event with subagent info
     const stepId = `subagent-${subagentName}-${Date.now()}`;
+    // Determine the model for this subagent
+    const agentModel = subagent?.model || 'gemini-2.5-flash';
+    const thinkingInfo = subagent?.thinkingLevel ? ` (thinking: ${subagent.thinkingLevel})` : '';
+    
     emitTaskEvent({
       type: 'step-start',
       taskId: stepId,
       title: `${subagent?.name || 'general-purpose'}: ${taskDescription.substring(0, 50)}...`,
       message: `Delegating to ${subagent?.name || 'general-purpose'}`,
       status: 'in-progress',
-      data: { subagent: subagentName }
+      data: { 
+        subagent: subagentName,
+        model: agentModel,
+        thinkingLevel: subagent?.thinkingLevel || null
+      }
     });
     
     try {
@@ -1506,14 +1514,15 @@ IMPORTANT: For comparisons, make multiple task() calls to enable parallel execut
         title: `${subagent?.name || 'Subagent'}: ${taskDescription.substring(0, 40)}...`,
         content: result,
         agentName: subagent?.name || 'Subagent',
-        metadata: { task: taskDescription, subagent: subagentName }
+        metadata: { task: taskDescription, subagent: subagentName, model: agentModel }
       });
       
       emitTaskEvent({
         type: 'step-complete',
         taskId: stepId,
         title: `${subagent?.name || 'general-purpose'} completed`,
-        status: 'completed'
+        status: 'completed',
+        data: { model: agentModel }
       });
       
       return JSON.stringify({
@@ -1884,13 +1893,20 @@ IMPORTANT:
         
         const tool = tools.get(call.tool);
         if (tool) {
-          // Emit tool event
+          // Emit tool event with proper data for UI display
           emitTaskEvent({
             type: 'tool-call',
             taskId: `${subagentName}-tool-${Date.now()}`,
             title: call.tool,
             message: `${subagentName} using ${call.tool}`,
-            status: 'in-progress'
+            status: 'in-progress',
+            data: { 
+              tool: call.tool, 
+              toolName: call.tool,
+              subagent: subagentName,
+              model: modelName,
+              params: call.params 
+            }
           });
           
           try {
@@ -1901,10 +1917,26 @@ IMPORTANT:
               type: 'tool-result',
               taskId: `${subagentName}-tool-${Date.now()}`,
               title: call.tool,
-              status: 'completed'
+              status: 'completed',
+              data: { 
+                tool: call.tool, 
+                model: modelName,
+                success: true 
+              }
             });
           } catch (toolError) {
             toolResults.push(`Tool ${call.tool} error: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`);
+            emitTaskEvent({
+              type: 'tool-result',
+              taskId: `${subagentName}-tool-${Date.now()}`,
+              title: call.tool,
+              status: 'error',
+              data: { 
+                tool: call.tool, 
+                model: modelName,
+                error: toolError instanceof Error ? toolError.message : 'Unknown error' 
+              }
+            });
           }
         }
       }
@@ -2298,14 +2330,20 @@ export async function* streamDeepAgent(
       for (const call of toolCalls) {
         const tool = tools.get(call.tool);
         if (tool) {
-          // Emit tool call event
+          // Emit tool call event with proper data for UI
           emitTaskEvent({
             type: 'tool-call',
             taskId,
             title: call.tool,
             message: `Executing ${call.tool}...`,
             status: 'in-progress',
-            progress: { current: completedTools, total: totalTools }
+            progress: { current: completedTools, total: totalTools },
+            data: { 
+              tool: call.tool, 
+              toolName: call.tool,
+              model: 'gemini-2.5-flash',
+              params: call.params 
+            }
           });
 
           yield `\n🔧 **${call.tool}**: `;
@@ -2413,7 +2451,13 @@ export async function* streamDeepAgent(
               taskId,
               title: call.tool,
               message: `Executing ${call.tool}...`,
-              status: 'in-progress'
+              status: 'in-progress',
+              data: { 
+                tool: call.tool, 
+                toolName: call.tool,
+                model: 'gemini-2.5-flash',
+                params: call.params 
+              }
             });
 
             yield `\n🔧 **${call.tool}**: `;

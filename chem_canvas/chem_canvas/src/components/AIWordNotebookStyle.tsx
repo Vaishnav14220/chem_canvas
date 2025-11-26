@@ -489,19 +489,24 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           break;
           
         case 'tool-call':
-          setDeepAgentSteps(prev => [...prev, {
-            id: Date.now().toString(),
-            type: 'tool',
-            message: `Using tool: ${event.data?.tool || event.data?.toolName || 'unknown'}`,
-            timestamp: new Date()
-          }]);
-          if (event.data?.toolName) {
-             setToolCalls(prev => [...prev, {
-               id: `tc-${Date.now()}`,
-               name: event.data.toolName,
-               args: event.data.args || {},
-               status: 'pending'
-             }]);
+          {
+            const toolName = event.data?.tool || event.data?.toolName || event.title || 'unknown';
+            const modelName = event.data?.model || '';
+            const modelLabel = modelName ? ` [${modelName.replace('gemini-', '').replace('-preview', '')}]` : '';
+            setDeepAgentSteps(prev => [...prev, {
+              id: Date.now().toString(),
+              type: 'tool',
+              message: `Using tool: ${toolName}${modelLabel}`,
+              timestamp: new Date()
+            }]);
+            if (toolName !== 'unknown') {
+              setToolCalls(prev => [...prev, {
+                id: `tc-${Date.now()}`,
+                name: toolName,
+                args: event.data?.params || event.data?.args || {},
+                status: 'pending'
+              }]);
+            }
           }
           break;
 
@@ -522,10 +527,12 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           // Track which subagent is currently running
           if (event.data?.subagent) {
             setActiveSubagent(event.data.subagent);
+            const modelInfo = event.data?.model ? ` [${event.data.model.replace('gemini-', '').replace('-preview', '')}]` : '';
+            const thinkingInfo = event.data?.thinkingLevel ? ` (${event.data.thinkingLevel} thinking)` : '';
             setDeepAgentSteps(prev => [...prev, {
               id: Date.now().toString(),
               type: 'searching',
-              message: `Running ${event.data.subagent}...`,
+              message: `Running ${event.data.subagent}${modelInfo}${thinkingInfo}`,
               timestamp: new Date()
             }]);
           }
