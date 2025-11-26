@@ -110,10 +110,116 @@ interface AIAction {
   description: string;
 }
 
+// Agent interface for displaying agents in the UI
+interface AgentConfig {
+  id: string;
+  name: string;
+  description: string;
+  skills: string[];
+  icon: React.ReactNode;
+  color: string;
+  enabled: boolean;
+  category: 'research' | 'chemistry' | 'writing' | 'utility';
+}
+
 // Document Editor URL
 const DOCUMENT_EDITOR_URL = 'https://ranuts.github.io/document/?locale=en';
 
-// ============ AI ACTIONS ============
+// ============ AVAILABLE AGENTS ============
+const AVAILABLE_AGENTS: AgentConfig[] = [
+  {
+    id: 'research-agent',
+    name: 'Research Agent',
+    description: 'Conducts in-depth research on any topic using web search',
+    skills: ['Web Search', 'Data Gathering', 'Source Citation', 'Report Writing'],
+    icon: <Search className="h-5 w-5" />,
+    color: 'blue',
+    enabled: true,
+    category: 'research'
+  },
+  {
+    id: 'chemistry-researcher',
+    name: 'Chemistry Researcher',
+    description: 'Specialized research for chemistry topics with molecule databases',
+    skills: ['Molecule Search', 'Reaction Analysis', 'PubChem Integration', 'Scientific Papers'],
+    icon: <Sparkles className="h-5 w-5" />,
+    color: 'green',
+    enabled: true,
+    category: 'chemistry'
+  },
+  {
+    id: 'chemistry-tutor',
+    name: 'Chemistry Tutor',
+    description: 'Patient tutor for explaining chemistry concepts at any level',
+    skills: ['Concept Explanation', 'Analogies', 'Practice Problems', 'Adaptive Teaching'],
+    icon: <BookOpen className="h-5 w-5" />,
+    color: 'yellow',
+    enabled: true,
+    category: 'chemistry'
+  },
+  {
+    id: 'chemistry-problem-solver',
+    name: 'Problem Solver',
+    description: 'Solves chemistry problems with step-by-step calculations',
+    skills: ['Stoichiometry', 'Equilibrium', 'Thermodynamics', 'Unit Conversion'],
+    icon: <Target className="h-5 w-5" />,
+    color: 'orange',
+    enabled: true,
+    category: 'chemistry'
+  },
+  {
+    id: 'latex-formatter-agent',
+    name: 'LaTeX Formatter',
+    description: 'Formats documents with proper LaTeX math and structure',
+    skills: ['LaTeX Syntax', 'Math Formatting', 'Document Structure', 'Academic Style'],
+    icon: <FileCode className="h-5 w-5" />,
+    color: 'purple',
+    enabled: true,
+    category: 'writing'
+  },
+  {
+    id: 'documentation-agent',
+    name: 'Documentation Agent',
+    description: 'Creates polished final documentation from research',
+    skills: ['Report Writing', 'Citation Management', 'Formatting', 'Organization'],
+    icon: <FileText className="h-5 w-5" />,
+    color: 'pink',
+    enabled: true,
+    category: 'writing'
+  },
+  {
+    id: 'data-visualization',
+    name: 'Data Visualizer',
+    description: 'Creates charts and graphs from your data',
+    skills: ['Bar Charts', 'Line Graphs', 'Pie Charts', 'Heatmaps', 'Scatter Plots'],
+    icon: <Presentation className="h-5 w-5" />,
+    color: 'cyan',
+    enabled: true,
+    category: 'utility'
+  },
+  {
+    id: 'google-docs-agent',
+    name: 'Google Docs Agent',
+    description: 'Exports research and documents to Google Docs',
+    skills: ['Google Integration', 'Document Export', 'Cloud Sync', 'Formatting'],
+    icon: <Globe className="h-5 w-5" />,
+    color: 'red',
+    enabled: true,
+    category: 'utility'
+  },
+  {
+    id: 'general-purpose',
+    name: 'General Purpose',
+    description: 'Flexible agent for complex multi-step tasks',
+    skills: ['Multi-step Tasks', 'Context Management', 'Tool Orchestration'],
+    icon: <Zap className="h-5 w-5" />,
+    color: 'gray',
+    enabled: true,
+    category: 'utility'
+  }
+];
+
+// ============ AI ACTIONS (Legacy - kept for compatibility) ============
 const AI_ACTIONS: AIAction[] = [
   {
     id: 'rephrase',
@@ -262,6 +368,13 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   const [toolCalls, setToolCalls] = useState<any[]>([]);
   const [activeSubagent, setActiveSubagent] = useState<string | null>(null);
   const [currentTodos, setCurrentTodos] = useState<TodoItem[]>([]);
+
+  // Agent Configuration State
+  const [enabledAgents, setEnabledAgents] = useState<Set<string>>(
+    new Set(AVAILABLE_AGENTS.filter(a => a.enabled).map(a => a.id))
+  );
+  const [showAgentConfig, setShowAgentConfig] = useState(false);
+  const [agentSelectionMode, setAgentSelectionMode] = useState<'auto' | 'manual'>('auto');
 
   // Scroll to bottom of chat
   useEffect(() => {
@@ -2357,45 +2470,205 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             </div>
           </div>
 
-          {/* AI Actions Grid */}
+          {/* AI Agents Panel */}
           <div className="p-4 border-b border-white/5">
-            <p className="text-xs text-gray-500 mb-3">Quick Actions</p>
-            <div className="grid grid-cols-3 lg:grid-cols-5 gap-2">
-              {AI_ACTIONS.map((action) => (
+            {/* Header with Config Toggle */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Brain className="h-4 w-4 text-purple-400" />
+                <p className="text-sm font-medium">AI Agents</p>
+                <span className="text-xs text-gray-500">({enabledAgents.size} active)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Selection Mode Toggle */}
+                <div className="flex items-center gap-1 bg-[#2d2d2d] rounded-lg p-1">
+                  <button
+                    onClick={() => setAgentSelectionMode('auto')}
+                    className={`px-2 py-1 rounded text-xs transition-colors ${
+                      agentSelectionMode === 'auto' 
+                        ? 'bg-purple-500/30 text-purple-300' 
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    onClick={() => setAgentSelectionMode('manual')}
+                    className={`px-2 py-1 rounded text-xs transition-colors ${
+                      agentSelectionMode === 'manual' 
+                        ? 'bg-purple-500/30 text-purple-300' 
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Manual
+                  </button>
+                </div>
                 <button
-                  key={action.id}
-                  onClick={() => handleAIAction(action)}
-                  disabled={isProcessing || !inputText.trim()}
-                  className="p-3 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-purple-500/30 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                  onClick={() => setShowAgentConfig(!showAgentConfig)}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    showAgentConfig ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-[#2d2d2d] text-gray-400'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-purple-400 group-hover:text-purple-300">{action.icon}</span>
-                    <span className="text-sm font-medium">{action.label}</span>
-                  </div>
-                  <p className="text-xs text-gray-500 hidden lg:block">{action.description}</p>
+                  <Settings className="h-4 w-4" />
                 </button>
-              ))}
+              </div>
             </div>
-            
-            {/* Deep Research Button */}
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <button
-                onClick={() => inputText.trim() && handleDeepAgentResearch(inputText)}
-                disabled={isProcessing || isDeepAgentActive || !inputText.trim()}
-                className="w-full p-3 rounded-lg bg-gradient-to-r from-purple-500/20 to-blue-500/20 hover:from-purple-500/30 hover:to-blue-500/30 border border-purple-500/30 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-              >
-                <div className="flex items-center gap-2">
-                  <Brain className="h-5 w-5 text-purple-400" />
-                  <div>
-                    <span className="text-sm font-medium text-purple-300">Deep Research</span>
-                    <p className="text-xs text-gray-500">AI agents research, analyze, and create documentation</p>
+
+            {/* Mode Description */}
+            <p className="text-xs text-gray-500 mb-3">
+              {agentSelectionMode === 'auto' 
+                ? '🤖 AI will automatically select the best agents for your query'
+                : '👆 Click agents to enable/disable them for your research'}
+            </p>
+
+            {/* Agent Cards Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+              {AVAILABLE_AGENTS.map((agent) => {
+                const isEnabled = enabledAgents.has(agent.id);
+                const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
+                  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
+                  green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
+                  yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-400' },
+                  orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
+                  purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
+                  pink: { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-400' },
+                  cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' },
+                  red: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
+                  gray: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-400' },
+                };
+                const colors = colorClasses[agent.color] || colorClasses.gray;
+
+                return (
+                  <div
+                    key={agent.id}
+                    onClick={() => {
+                      if (agentSelectionMode === 'manual') {
+                        setEnabledAgents(prev => {
+                          const newSet = new Set(prev);
+                          if (newSet.has(agent.id)) {
+                            newSet.delete(agent.id);
+                          } else {
+                            newSet.add(agent.id);
+                          }
+                          return newSet;
+                        });
+                      }
+                    }}
+                    className={`relative p-3 rounded-lg border transition-all cursor-pointer ${
+                      isEnabled 
+                        ? `${colors.bg} ${colors.border}` 
+                        : 'bg-[#2d2d2d] border-white/5 opacity-50'
+                    } ${agentSelectionMode === 'manual' ? 'hover:scale-[1.02]' : ''}`}
+                  >
+                    {/* Enabled Indicator */}
+                    {isEnabled && (
+                      <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
+                    )}
+                    
+                    {/* Agent Header */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={colors.text}>{agent.icon}</span>
+                      <span className="text-sm font-medium truncate">{agent.name}</span>
+                    </div>
+                    
+                    {/* Description */}
+                    <p className="text-xs text-gray-500 mb-2 line-clamp-2">{agent.description}</p>
+                    
+                    {/* Skills */}
+                    {showAgentConfig && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {agent.skills.slice(0, 3).map((skill, idx) => (
+                          <span 
+                            key={idx} 
+                            className={`px-1.5 py-0.5 rounded text-[10px] ${colors.bg} ${colors.text}`}
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                        {agent.skills.length > 3 && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 text-gray-500">
+                            +{agent.skills.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {isDeepAgentActive && (
-                    <Loader2 className="h-4 w-4 animate-spin text-purple-400 ml-auto" />
+                );
+              })}
+            </div>
+
+            {/* Start Research Button */}
+            <div className="mt-4">
+              <button
+                onClick={() => {
+                  if (inputText.trim()) {
+                    // Pass enabled agents to the research function
+                    const activeAgentsList = Array.from(enabledAgents).join(', ');
+                    const agentInstruction = agentSelectionMode === 'manual' 
+                      ? `\n\n[User has selected these agents: ${activeAgentsList}. Prefer using these agents when delegating tasks.]`
+                      : '';
+                    handleDeepAgentResearch(inputText + agentInstruction);
+                  }
+                }}
+                disabled={isProcessing || isDeepAgentActive || !inputText.trim()}
+                className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-cyan-500/20 hover:from-purple-500/30 hover:via-blue-500/30 hover:to-cyan-500/30 border border-purple-500/30 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-purple-500/20">
+                      <Brain className="h-5 w-5 text-purple-400" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-white">Start Deep Research</span>
+                      <p className="text-xs text-gray-500">
+                        {agentSelectionMode === 'auto' 
+                          ? 'AI will select the best agents automatically'
+                          : `Using ${enabledAgents.size} selected agents`}
+                      </p>
+                    </div>
+                  </div>
+                  {isDeepAgentActive ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
+                  ) : (
+                    <ChevronRight className="h-5 w-5 text-purple-400 group-hover:translate-x-1 transition-transform" />
                   )}
                 </div>
               </button>
             </div>
+
+            {/* Quick Select Buttons */}
+            {agentSelectionMode === 'manual' && (
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
+                <button
+                  onClick={() => setEnabledAgents(new Set(AVAILABLE_AGENTS.map(a => a.id)))}
+                  className="px-3 py-1.5 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => setEnabledAgents(new Set())}
+                  className="px-3 py-1.5 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  Clear All
+                </button>
+                <button
+                  onClick={() => setEnabledAgents(new Set(
+                    AVAILABLE_AGENTS.filter(a => a.category === 'chemistry').map(a => a.id)
+                  ))}
+                  className="px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/30 text-xs text-green-400 hover:bg-green-500/20 transition-colors"
+                >
+                  Chemistry Only
+                </button>
+                <button
+                  onClick={() => setEnabledAgents(new Set(
+                    AVAILABLE_AGENTS.filter(a => a.category === 'research' || a.category === 'writing').map(a => a.id)
+                  ))}
+                  className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-xs text-blue-400 hover:bg-blue-500/20 transition-colors"
+                >
+                  Research & Writing
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Deep Agent Status Panel */}
