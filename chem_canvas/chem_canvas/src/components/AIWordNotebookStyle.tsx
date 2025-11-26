@@ -2525,6 +2525,8 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {AVAILABLE_AGENTS.map((agent) => {
                 const isEnabled = enabledAgents.has(agent.id);
+                const isRunning = activeSubagent === agent.id || 
+                  (isDeepAgentActive && activeSubagent?.includes(agent.id.split('-')[0]));
                 const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
                   blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
                   green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
@@ -2555,20 +2557,32 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                       }
                     }}
                     className={`relative p-3 rounded-lg border transition-all cursor-pointer ${
-                      isEnabled 
-                        ? `${colors.bg} ${colors.border}` 
-                        : 'bg-[#2d2d2d] border-white/5 opacity-50'
+                      isRunning
+                        ? `${colors.bg} ${colors.border} ring-2 ring-offset-1 ring-offset-[#1a1a1a] ${colors.border.replace('border-', 'ring-')}`
+                        : isEnabled 
+                          ? `${colors.bg} ${colors.border}` 
+                          : 'bg-[#2d2d2d] border-white/5 opacity-50'
                     } ${agentSelectionMode === 'manual' ? 'hover:scale-[1.02]' : ''}`}
                   >
-                    {/* Enabled Indicator */}
-                    {isEnabled && (
+                    {/* Running Indicator - Spinning Loader */}
+                    {isRunning && (
+                      <div className="absolute top-2 right-2">
+                        <Loader2 className={`h-4 w-4 animate-spin ${colors.text}`} />
+                      </div>
+                    )}
+                    
+                    {/* Enabled Indicator (only show when not running) */}
+                    {isEnabled && !isRunning && (
                       <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
                     )}
                     
                     {/* Agent Header */}
                     <div className="flex items-center gap-2 mb-2">
-                      <span className={colors.text}>{agent.icon}</span>
-                      <span className="text-sm font-medium truncate">{agent.name}</span>
+                      <span className={`${colors.text} ${isRunning ? 'animate-pulse' : ''}`}>{agent.icon}</span>
+                      <span className={`text-sm font-medium truncate ${isRunning ? 'text-white' : ''}`}>
+                        {agent.name}
+                        {isRunning && <span className="ml-1 text-xs text-gray-400">running...</span>}
+                      </span>
                     </div>
                     
                     {/* Description */}
