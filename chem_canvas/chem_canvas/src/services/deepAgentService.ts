@@ -438,9 +438,11 @@ tools.set('google_search_grounding', {
     try {
       const apiKey = await getSharedGeminiApiKey();
       if (!apiKey) {
-        return JSON.stringify({ success: false, error: 'No Gemini API key available' });
+        console.error('Google Search Grounding: No API key available');
+        return JSON.stringify({ success: false, error: 'No Gemini API key available. Please configure your API key.' });
       }
 
+      console.log('Google Search Grounding: Using API key:', apiKey.substring(0, 8) + '...');
       const ai = new GoogleGenAI({ apiKey });
       
       // Enhance query for academic focus
@@ -448,13 +450,35 @@ tools.set('google_search_grounding', {
         ? `Find research papers, academic studies, and scholarly sources about: ${params.query}. Include citations with author names, publication dates, and journal names where available.`
         : params.query;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: searchQuery,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      });
+      // Try multiple model names for compatibility
+      const modelCandidates = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
+      let response: any = null;
+      let usedModel = '';
+
+      for (const modelName of modelCandidates) {
+        try {
+          console.log(`Google Search Grounding: Trying model ${modelName}...`);
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: searchQuery,
+            config: {
+              tools: [{ googleSearch: {} }],
+            },
+          });
+          usedModel = modelName;
+          console.log(`Google Search Grounding: Success with model ${modelName}`);
+          break;
+        } catch (modelError: any) {
+          console.warn(`Google Search Grounding: Model ${modelName} failed:`, modelError.message);
+          if (modelCandidates.indexOf(modelName) === modelCandidates.length - 1) {
+            throw modelError;
+          }
+        }
+      }
+
+      if (!response) {
+        throw new Error('No working Gemini model found for Google Search grounding');
+      }
 
       // Extract grounding metadata for citations
       const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
@@ -492,7 +516,8 @@ tools.set('google_search_grounding', {
         metadata: { 
           query: params.query,
           citationCount: citations.length,
-          searchQueries: groundingMetadata?.webSearchQueries || []
+          searchQueries: groundingMetadata?.webSearchQueries || [],
+          model: usedModel
         }
       });
 
@@ -502,13 +527,15 @@ tools.set('google_search_grounding', {
         response: formattedResponse,
         citations,
         citationCount: citations.length,
-        searchQueries: groundingMetadata?.webSearchQueries || []
+        searchQueries: groundingMetadata?.webSearchQueries || [],
+        model: usedModel
       });
     } catch (error) {
       console.error('Google Search Grounding error:', error);
       return JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Google Search failed'
+        error: error instanceof Error ? error.message : 'Google Search failed',
+        suggestion: 'The Google Search grounding feature may require a specific API key or model access. Falling back to regular internet search.'
       });
     }
   }
@@ -970,8 +997,9 @@ Summary of the state of research on this topic.
 - Indicate publication dates to show recency
 - Highlight any conflicting findings between sources
 - Keep response focused and under 600 words
+- If google_search_grounding fails, use internet_search as fallback
 </Important Notes>`,
-    tools: ['google_search_grounding', 'think_tool', 'write_file']
+    tools: ['google_search_grounding', 'internet_search', 'think_tool', 'write_file']
   }],
   ['chemistry-researcher', {
     name: 'chemistry-researcher',
