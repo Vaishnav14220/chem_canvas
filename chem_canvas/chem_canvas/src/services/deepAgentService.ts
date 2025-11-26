@@ -891,6 +891,32 @@ Return:
 Keep response focused and under 400 words.`,
     tools: ['molecular_calculator', 'analyze_reaction', 'think_tool']
   }],
+  ['latex-formatter-agent', {
+    name: 'latex-formatter-agent',
+    description: 'Specialist in LaTeX formatting and document structure verification. Use to ensure documents are well-formatted, have proper LaTeX math syntax, and follow academic standards.',
+    systemPrompt: `You are a LaTeX Formatting Expert.
+
+<Task>
+Review and format the provided content into high-quality Markdown with LaTeX math.
+</Task>
+
+<Capabilities>
+1. Verify LaTeX syntax for all math equations (use $ for inline, $$ for block)
+2. Ensure proper Markdown structure (headers, lists, bold/italic)
+3. Fix any broken formatting or syntax errors
+4. Organize content into a clean, professional report format
+</Capabilities>
+
+<Instructions>
+- If you see raw math, convert it to LaTeX
+- If you see unstructured text, organize it with headers
+- Remove any internal agent artifacts (like tool calls or thinking tags)
+- Return ONLY the clean, formatted document content
+</Instructions>
+
+Do not add conversational filler. Output the document directly.`,
+    tools: ['read_file', 'write_file']
+  }],
   ['documentation-agent', {
     name: 'documentation-agent',
     description: 'Creates well-formatted final documentation from gathered research. Use ONLY after research is complete.',
@@ -968,6 +994,39 @@ Available color schemes: cybertron, ocean, sunset, forest, galaxy, scientific, e
 
 Keep explanations concise but insightful.`,
     tools: ['think_tool', 'write_file']
+  }],
+  ['google-docs-agent', {
+    name: 'google-docs-agent',
+    description: 'Exports documents and research outputs to Google Docs. Use when user wants to save their work to Google Docs, export research papers, or manage documents in their Google account.',
+    systemPrompt: `You are a Google Docs Integration Agent.
+
+Your capabilities:
+1. Help users connect their Google account
+2. Export research papers and documents to Google Docs
+3. Create new Google Docs from content
+4. Format content for Google Docs (markdown to Docs format)
+5. Manage document organization
+
+When asked to export to Google Docs:
+1. First check if the user is authenticated with Google
+2. If not authenticated, prompt them to sign in
+3. Convert the content to Google Docs format
+4. Create or update the document
+5. Provide the document link
+
+Return a JSON object with:
+{
+  "action": "export_to_docs" | "check_auth" | "create_doc" | "list_docs",
+  "title": "Document title",
+  "content": "Content to export",
+  "status": "success" | "needs_auth" | "error",
+  "documentUrl": "URL if created",
+  "message": "Status message for user"
+}
+
+Guide users through the Google sign-in process if needed.
+Always confirm successful export with the document link.`,
+    tools: ['think_tool', 'write_file']
   }]
 ]);
 
@@ -984,6 +1043,7 @@ Available sub-agents:
 - **chemistry-problem-solver**: Specialized in solving chemistry problems and calculations
 - **documentation-agent**: Creates well-formatted final documentation
 - **data-visualization**: Creates charts and data visualizations using reaviz (bar, line, pie, scatter, heatmap)
+- **google-docs-agent**: Exports research papers and outputs to Google Docs (handles Google auth and doc creation)
 - **general-purpose**: A general-purpose subagent for context isolation
 
 Use this tool to:
@@ -991,6 +1051,7 @@ Use this tool to:
 - Delegate complex research tasks
 - Run specialized analyses
 - Create data visualizations
+- Export documents to Google Docs
 
 IMPORTANT: For comparisons, make multiple task() calls to enable parallel execution.`,
   execute: async (params: { name: string; task: string }) => {

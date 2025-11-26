@@ -97,6 +97,7 @@ import { ToolCallBox } from './deep-agent/ToolCallBox';
 import { TasksFilesPanel } from './deep-agent/TasksFilesPanel';
 import type { ToolCall, SubAgent, TodoItem, ChatMessage as ChatMessageType, ActiveTask, TaskProgressStep } from './deep-agent/types';
 import { extractTextFromFile } from '../services/researchPaperAgentService';
+import { GoogleDocsExportButton } from './GoogleDocsIntegration';
 import 'katex/dist/katex.min.css';
 
 // ==========================================
@@ -852,6 +853,20 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Google Docs Export - only show when there's content to export */}
+          {(messages.length > 1 || finalDocument) && (
+            <GoogleDocsExportButton
+              content={finalDocument?.content || messages.map(m => `${m.role}: ${m.content}`).join('\n\n')}
+              title={finalDocument?.title || 'Deep Agent Research'}
+              exportType="deep-agent"
+              conversationHistory={messages.map(m => ({
+                role: m.role,
+                content: m.content,
+                timestamp: m.timestamp
+              }))}
+              variant="icon-only"
+            />
+          )}
           {finalDocument && (
             <button
               onClick={() => setShowFinalDocument(!showFinalDocument)}
