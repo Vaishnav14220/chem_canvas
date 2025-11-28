@@ -1,8 +1,46 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Globe, Bot, User, Search, ExternalLink, X, Copy, Check } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { sendStudiumChatMessage } from '../../services/geminiService';
 import { ChatMessage } from '../../types/studium';
 import { Spinner } from './Spinner';
+
+const MarkdownText = ({ content }: { content: string }) => (
+    <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+            p: ({ node, ...props }) => <span {...props} className="inline" />,
+            a: ({ node, ...props }) => <a {...props} className="text-blue-600 underline" target="_blank" rel="noreferrer" />,
+            ul: ({ node, ...props }) => <ul {...props} className="list-disc list-inside my-2" />,
+            ol: ({ node, ...props }) => <ol {...props} className="list-decimal list-inside my-2" />,
+            li: ({ node, ...props }) => <li {...props} className="my-1" />,
+            h1: ({ node, ...props }) => <h1 {...props} className="text-xl font-bold my-2" />,
+            h2: ({ node, ...props }) => <h2 {...props} className="text-lg font-bold my-2" />,
+            h3: ({ node, ...props }) => <h3 {...props} className="text-md font-bold my-1" />,
+            code: ({ node, className, children, ...props }: any) => {
+                const match = /language-(\w+)/.exec(className || '');
+                return !match ? (
+                    <code className="bg-slate-200 rounded px-1 py-0.5 text-sm font-mono text-slate-800" {...props}>
+                        {children}
+                    </code>
+                ) : (
+                    <div className="my-2 rounded-lg overflow-hidden bg-slate-800 text-slate-200 p-3 text-sm font-mono">
+                        <code className={className} {...props}>
+                            {children}
+                        </code>
+                    </div>
+                );
+            }
+        }}
+    >
+        {content}
+    </ReactMarkdown>
+);
 
 export const ChatInterface: React.FC = () => {
     const [messages, setMessages] = useState<ChatMessage[]>([
@@ -80,7 +118,7 @@ export const ChatInterface: React.FC = () => {
 
     const renderMessageWithCitations = (msg: ChatMessage) => {
         if (!msg.groundingMetadata || !msg.groundingMetadata.groundingSupports) {
-            return msg.text;
+            return <MarkdownText content={msg.text} />;
         }
 
         const { text, groundingMetadata } = msg;
@@ -100,14 +138,16 @@ export const ChatInterface: React.FC = () => {
 
             // Add text before the supported segment
             if (startIndex > lastIndex) {
-                elements.push(text.substring(lastIndex, startIndex));
+                elements.push(
+                    <MarkdownText key={`pre-${i}`} content={text.substring(lastIndex, startIndex)} />
+                );
             }
 
             // Add the supported text segment
             const supportedText = text.substring(startIndex, endIndex);
             elements.push(
                 <span key={`text-${i}`} className="bg-blue-50/50 rounded px-0.5">
-                    {supportedText}
+                    <MarkdownText content={supportedText} />
                 </span>
             );
 
@@ -156,7 +196,9 @@ export const ChatInterface: React.FC = () => {
 
         // Add remaining text
         if (lastIndex < text.length) {
-            elements.push(text.substring(lastIndex));
+            elements.push(
+                <MarkdownText key="post" content={text.substring(lastIndex)} />
+            );
         }
 
         return <>{elements}</>;
@@ -249,7 +291,7 @@ export const ChatInterface: React.FC = () => {
                                 <div className="whitespace-pre-wrap leading-relaxed">
                                     {msg.groundingMetadata
                                         ? renderMessageWithCitations(msg)
-                                        : msg.text
+                                        : <MarkdownText content={msg.text} />
                                     }
                                 </div>
 

@@ -128,7 +128,7 @@ const TopicInputNode: React.FC<NodeProps> = ({ data, selected }) => {
         value={data.value || ''}
         onChange={(e) => data.onChange?.(e.target.value)}
         placeholder="e.g., Atomic orbital visualization, Chemical bonding animation..."
-        className="w-full h-20 px-3 py-2 text-sm border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100"
+        className="w-full h-20 px-3 py-2 text-sm text-black border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100"
       />
 
       <Handle

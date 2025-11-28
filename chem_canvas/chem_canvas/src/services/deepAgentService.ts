@@ -13,10 +13,11 @@
  * - Real-time progress events
  */
 
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { fetchCanonicalSmiles } from './pubchemService';
 import { generateTextContent, isGeminiInitialized, initializeGeminiWithFirebaseKey } from './geminiService';
+import { AspectRatio, ImageSize, ImageGenerationPromptSchema, ImageGenerationPrompt } from '../types/studium';
 
 // ==========================================
 // Task Progress Event System
@@ -998,6 +999,484 @@ Also include:
 });
 
 // ==========================================
+// Educational Image Generation Tool
+// ==========================================
+
+/**
+ * Schema for structured prompt generation using Gemini 2.5 Flash
+ * This is the exact schema the prompt engineer agent uses
+ */
+const PROMPT_ENGINEER_SYSTEM_INSTRUCTION = `Role: You are an Expert Scientific Illustrator and Prompt Engineer for an advanced AI image generator (Nano Banana Pro).
+
+Objective: Analyze the user's educational query and construct a structured JSON output to generate a scientifically accurate educational image WITH LABELS.
+
+Process:
+
+Analyze the Educational Level:
+
+Grade 5-8: Use bright colors, simplified shapes, "Pixar-style" 3D renders, or engaging illustrations. Avoid overwhelming complexity.
+
+High School: Use clean "textbook style" diagrams, cutaways, or photorealism.
+
+University/Professional: Use Electron Microscope style, hyper-realistic macro photography, or complex data visualizations. Strict scientific accuracy is paramount.
+
+Analyze Technical Requirements:
+
+Identify specific components (e.g., if the topic is "Plant Cell", ensure Chloroplasts and Cell Walls are mentioned).
+
+Ensure correct lighting and camera angles (e.g., "Cross-section view" vs "Macro view").
+
+CRITICAL - Labels and Annotations:
+
+You MUST include labels in the image. For each key component:
+1. Add it to the annotations array with label_text and arrow_target
+2. Include explicit labeling instructions in the final_prompt
+
+Example labeling instruction for final_prompt:
+"with clear text labels and arrows pointing to each part, labeled diagram showing: [Nucleus], [Mitochondria], [Cell Membrane], professional educational diagram with annotations"
+
+Construct the final_prompt:
+
+Format: [Subject] + [Action/Context] + [Art Style/Medium] + [LABELING INSTRUCTIONS] + [Lighting/Color] + [Camera/View] + [Quality Boosters]
+
+MANDATORY: Always include in final_prompt:
+- "labeled educational diagram"
+- "with clear text labels and arrows"
+- "annotations pointing to: [list each label_text from annotations]"
+- "professional textbook illustration with callouts"
+
+Keywords to use: "Unreal Engine 5", "Octane Render", "8k", "Volumetric Lighting", "Educational Diagram", "labeled diagram", "annotated illustration", "Studio Ghibli" (for younger), "National Geographic" (for older).
+
+Construct the negative_prompt:
+
+Always include: "unlabeled, no text, no annotations, watermark, blurry, distorted, anatomical nonsense, bad geometry, low resolution".
+
+Add subject-specific negatives (e.g., for Space: "atmosphere on moon").
+
+Output Format: return ONLY the raw JSON object. Do not wrap it in markdown code blocks.`;
+
+// Educational Image Generation Tool
+tools.set('generate_educational_image', {
+  name: 'generate_educational_image',
+  description: `Generate a scientifically accurate educational image for a topic. Uses a two-step process:
+1. Gemini 2.5 Flash analyzes the topic and creates an optimized prompt with proper art style, labels, and scientific accuracy
+2. Nano Banana Pro (Gemini 3 Pro Image Preview) generates the high-quality image
+
+Parameters:
+- topic: The educational subject to illustrate (e.g., "Plant Cell", "DNA Replication", "Solar System")
+- target_audience: Optional. The academic level (e.g., "Grade 5", "High School", "University")
+- aspect_ratio: Optional. "1:1", "16:9", "3:2", etc. Default: "16:9"
+
+Returns the generated image as a base64 data URL.`,
+  execute: async (params: { 
+    topic: string; 
+    target_audience?: string;
+    aspect_ratio?: string;
+  }) => {
+    if (!params.topic) {
+      return JSON.stringify({
+        success: false,
+        error: 'Topic is required for image generation'
+      });
+    }
+
+    if (!genAI) {
+      return JSON.stringify({
+        success: false,
+        error: 'Gemini API not initialized'
+      });
+    }
+
+    try {
+      // Step 1: Prompt Engineering with Gemini 2.5 Flash
+      const userPrompt = params.target_audience 
+        ? `Topic: ${params.topic}\nTarget Audience: ${params.target_audience}`
+        : params.topic;
+
+      emitTaskEvent({
+        type: 'step-start',
+        taskId: `image-gen-${Date.now()}`,
+        title: '🎨 Engineering image prompt',
+        message: `Analyzing topic and creating optimized prompt for: ${params.topic}`,
+        status: 'in-progress'
+      });
+
+      const promptResult = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        config: {
+          systemInstruction: PROMPT_ENGINEER_SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+          // Enable dynamic thinking for better prompt engineering
+          thinkingConfig: {
+            thinkingBudget: -1  // Dynamic thinking - model decides based on complexity
+          },
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              labels: {
+                type: Type.OBJECT,
+                description: "Details for the overlay text and indicating arrows.",
+                properties: {
+                  include_labels: {
+                    type: Type.BOOLEAN,
+                    description: "Must be true to enable overlay generation."
+                  },
+                  annotations: {
+                    type: Type.ARRAY,
+                    description: "List of specific labels and where their arrows point.",
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        label_text: {
+                          type: Type.STRING,
+                          description: "The actual text to display, e.g., 'Piston Head'."
+                        },
+                        arrow_target: {
+                          type: Type.STRING,
+                          description: "The specific element the arrow points to."
+                        }
+                      },
+                      required: ["label_text", "arrow_target"]
+                    }
+                  }
+                },
+                required: ["include_labels", "annotations"]
+              },
+              request_metadata: {
+                type: Type.OBJECT,
+                properties: {
+                  topic: {
+                    type: Type.STRING,
+                    description: "The core subject, e.g., 'DNA Replication' or 'Turbine Engine'"
+                  },
+                  target_audience: {
+                    type: Type.STRING,
+                    description: "e.g., 'Grade 5', 'High School', 'PhD Candidate'"
+                  },
+                  visual_style_category: {
+                    type: Type.STRING,
+                    description: "The style of the image. For engineering topics, use 'Technical Drawing' (not blueprint)."
+                  }
+                },
+                required: ["topic", "target_audience", "visual_style_category"]
+              },
+              scientific_constraints: {
+                type: Type.OBJECT,
+                properties: {
+                  key_elements_required: {
+                    type: Type.ARRAY,
+                    description: "List of specific scientific parts that MUST be visible",
+                    items: { type: Type.STRING }
+                  },
+                  accuracy_check: {
+                    type: Type.STRING,
+                    description: "Brief note on what makes this scientifically accurate"
+                  }
+                },
+                required: ["key_elements_required", "accuracy_check"]
+              },
+              generation_parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  final_prompt: {
+                    type: Type.STRING,
+                    description: "The complete, comma-separated prompt string for image generation."
+                  },
+                  negative_prompt: {
+                    type: Type.STRING,
+                    description: "What to avoid to prevent hallucinations"
+                  },
+                  aspect_ratio: {
+                    type: Type.STRING,
+                    description: "e.g., '16:9', '1:1'"
+                  },
+                  guidance_scale: {
+                    type: Type.NUMBER,
+                    description: "Recommended CFG, usually 7.0 - 9.0"
+                  },
+                  steps: {
+                    type: Type.INTEGER,
+                    description: "Recommended steps, usually 25-50"
+                  }
+                },
+                required: ["final_prompt", "negative_prompt", "aspect_ratio", "guidance_scale", "steps"]
+              }
+            },
+            required: ["labels", "request_metadata", "scientific_constraints", "generation_parameters"]
+          }
+        },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }]
+      });
+
+      const promptText = promptResult.text;
+      if (!promptText) {
+        throw new Error("Failed to generate prompt engineering result");
+      }
+
+      const promptData = JSON.parse(promptText) as ImageGenerationPrompt;
+      console.log("Engineered Prompt:", promptData);
+
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId: `image-gen-${Date.now()}`,
+        title: '🎨 Prompt engineered',
+        message: `Style: ${promptData.request_metadata.visual_style_category}, Elements: ${promptData.scientific_constraints.key_elements_required.join(', ')}`,
+        status: 'completed',
+        data: promptData
+      });
+
+      // Step 2: Image Generation with Gemini 3 Pro Image Preview (Nano Banana Pro)
+      emitTaskEvent({
+        type: 'step-start',
+        taskId: `image-gen-${Date.now()}`,
+        title: '🖼️ Generating image',
+        message: `Creating educational illustration with Nano Banana Pro...`,
+        status: 'in-progress'
+      });
+
+      // AI image generators cannot reliably render text labels
+      // Solution: Generate clean image first, then use vision AI to position labels as overlay
+      
+      // Generate a clean base image without text (AI does this well)
+      const imagePrompt = `Create a highly detailed, scientifically accurate illustration of: ${params.topic}.
+
+Style: ${promptData.request_metadata.visual_style_category} - professional textbook-quality illustration
+Target audience: ${promptData.request_metadata.target_audience}
+
+REQUIREMENTS:
+- Clean, detailed illustration WITHOUT any text labels or annotations
+- All anatomical/structural parts must be clearly visible and distinct
+- Key elements to show clearly: ${promptData.scientific_constraints.key_elements_required.join(', ')}
+- Use distinct colors for different parts to make them easily identifiable
+- Leave clear space around the edges for labels to be added later
+- ${promptData.scientific_constraints.accuracy_check}
+
+Make it colorful, engaging, educational, and scientifically accurate.
+DO NOT include any text, labels, arrows, or annotations - just the pure illustration.`;
+
+      const aspectRatio = params.aspect_ratio || promptData.generation_parameters.aspect_ratio || '16:9';
+
+      console.log("Final Image Prompt (clean image):", imagePrompt);
+
+      const response = await genAI.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: {
+          parts: [{ text: imagePrompt }],
+        },
+        config: {
+          // Enable high thinking for better image generation
+          thinkingConfig: {
+            thinkingLevel: 'high'
+          },
+          imageConfig: {
+            aspectRatio: aspectRatio as any,
+            imageSize: 'K2' as any,
+          },
+        },
+      });
+
+      // Extract image from response
+      let imageDataUrl: string | null = null;
+      let imageBase64: string | null = null;
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          imageBase64 = part.inlineData.data as string;
+          imageDataUrl = `data:image/png;base64,${imageBase64}`;
+          break;
+        }
+      }
+
+      if (!imageDataUrl || !imageBase64) {
+        throw new Error("No image was generated");
+      }
+
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId: `image-gen-${Date.now()}`,
+        title: '🖼️ Base image generated',
+        message: `Now analyzing image to position labels...`,
+        status: 'completed'
+      });
+
+      // Step 3: Use Vision AI to determine label positions
+      emitTaskEvent({
+        type: 'step-start',
+        taskId: `image-gen-${Date.now()}`,
+        title: '🏷️ Positioning labels',
+        message: `Analyzing image to determine optimal label placement...`,
+        status: 'in-progress'
+      });
+
+      // Prepare the labels for positioning
+      const labelsToPosition = promptData.labels.annotations.map(a => ({
+        label: a.label_text,
+        target: a.arrow_target
+      }));
+
+      // Use Gemini vision to analyze the image and determine label positions
+      const labelPositionPrompt = `You are an expert at creating educational diagram labels. Analyze this image of "${params.topic}" and determine the EXACT positions for labels.
+
+For each of these labels, provide the coordinates where:
+1. The ARROW TIP should point (the exact location of the element in the image)
+2. The LABEL TEXT should be placed (in a clear area, not overlapping the illustration)
+
+Labels to position:
+${labelsToPosition.map((l, i) => `${i + 1}. "${l.label}" → points to: ${l.target}`).join('\n')}
+
+The image dimensions are normalized to 0-100 for both x and y (0,0 is top-left, 100,100 is bottom-right).
+
+Return a JSON array with this EXACT structure:
+[
+  {
+    "label": "Label Text",
+    "arrow_tip": { "x": 45, "y": 30 },
+    "label_position": { "x": 10, "y": 25 },
+    "arrow_direction": "right"
+  }
+]
+
+arrow_direction should be: "left", "right", "up", "down", "up-left", "up-right", "down-left", "down-right"
+This indicates which direction the arrow points FROM the label TO the target.
+
+Position labels around the edges of the image, not on top of the illustration.
+Ensure labels don't overlap each other.
+Return ONLY the JSON array, no other text.`;
+
+      let labelPositions: Array<{
+        label: string;
+        arrow_tip: { x: number; y: number };
+        label_position: { x: number; y: number };
+        arrow_direction: string;
+      }> = [];
+
+      try {
+        const visionResponse = await genAI.models.generateContent({
+          model: 'gemini-2.5-flash',
+          config: {
+            thinkingConfig: {
+              thinkingBudget: 8192  // Good amount for image analysis
+            }
+          },
+          contents: [{
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: imageBase64
+                }
+              },
+              { text: labelPositionPrompt }
+            ]
+          }]
+        });
+
+        const positionText = visionResponse.text?.trim() || '';
+        console.log("Label positions response:", positionText);
+        
+        // Parse the JSON response (handle markdown code blocks if present)
+        let jsonStr = positionText;
+        if (jsonStr.startsWith('```')) {
+          jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+        }
+        
+        labelPositions = JSON.parse(jsonStr);
+        console.log("Parsed label positions:", labelPositions);
+      } catch (posError) {
+        console.warn("Failed to get label positions, using fallback:", posError);
+        // Fallback: distribute labels evenly around the edges
+        const numLabels = labelsToPosition.length;
+        labelPositions = labelsToPosition.map((l, i) => {
+          const angle = (i / numLabels) * 2 * Math.PI;
+          const labelX = 50 + 45 * Math.cos(angle);
+          const labelY = 50 + 45 * Math.sin(angle);
+          const arrowX = 50 + 25 * Math.cos(angle);
+          const arrowY = 50 + 25 * Math.sin(angle);
+          
+          return {
+            label: l.label,
+            arrow_tip: { x: arrowX, y: arrowY },
+            label_position: { x: labelX, y: labelY },
+            arrow_direction: labelX < 50 ? 'right' : 'left'
+          };
+        });
+      }
+
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId: `image-gen-${Date.now()}`,
+        title: '🏷️ Labels positioned',
+        message: `Positioned ${labelPositions.length} labels on the diagram`,
+        status: 'completed'
+      });
+
+      // Create artifact for the generated image with label positions
+      createArtifact({
+        type: 'file',
+        title: `Educational Image: ${params.topic}`,
+        content: imageDataUrl,
+        agentName: 'Image Generator',
+        metadata: {
+          topic: params.topic,
+          target_audience: params.target_audience || promptData.request_metadata.target_audience,
+          visual_style: promptData.request_metadata.visual_style_category,
+          labels: promptData.labels.annotations,
+          label_positions: labelPositions,  // Include positioned labels for UI overlay
+          scientific_elements: promptData.scientific_constraints.key_elements_required,
+          prompt_used: promptData.generation_parameters.final_prompt,
+          requires_label_overlay: true  // Flag to indicate labels should be rendered as overlay
+        }
+      });
+
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId: `image-gen-${Date.now()}`,
+        title: '🖼️ Image generated with labels',
+        message: `Educational image for "${params.topic}" created with ${labelPositions.length} positioned labels`,
+        status: 'completed',
+        data: {
+          imageUrl: imageDataUrl,
+          labelPositions,
+          promptData
+        }
+      });
+
+      return JSON.stringify({
+        success: true,
+        topic: params.topic,
+        target_audience: promptData.request_metadata.target_audience,
+        visual_style: promptData.request_metadata.visual_style_category,
+        imageUrl: imageDataUrl,
+        labels: promptData.labels.annotations,
+        label_positions: labelPositions,  // Coordinates for rendering labels as overlay
+        requires_label_overlay: true,  // Flag for UI to know labels need to be rendered
+        scientific_elements: promptData.scientific_constraints.key_elements_required,
+        accuracy_note: promptData.scientific_constraints.accuracy_check,
+        prompt_used: promptData.generation_parameters.final_prompt,
+        message: `Successfully generated educational image for "${params.topic}" with ${labelPositions.length} positioned labels. Render labels as SVG/HTML overlay using the label_positions data.`
+      });
+
+    } catch (error) {
+      console.error("Educational Image Generation Error:", error);
+      
+      emitTaskEvent({
+        type: 'step-complete',
+        taskId: `image-gen-${Date.now()}`,
+        title: '🖼️ Image generation failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error'
+      });
+
+      return JSON.stringify({
+        success: false,
+        error: `Failed to generate educational image for: ${params.topic}`,
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+});
+
+// ==========================================
 // Subagent Definitions (Following DeepAgents Best Practices)
 // ==========================================
 
@@ -1771,6 +2250,50 @@ Call finalize_document with:
     model: 'gemini-3-pro-preview',
     thinkingLevel: 'high'
   }],
+  // ==========================================
+  // EDUCATIONAL IMAGE GENERATION AGENT
+  // ==========================================
+  ['image-generator', {
+    name: 'image-generator',
+    description: 'Specialized agent for generating scientifically accurate educational images and diagrams. Uses a two-step process: (1) Gemini 2.5 Flash engineers an optimized prompt with proper art style, labels, and scientific accuracy, then (2) Nano Banana Pro (Gemini 3 Pro Image Preview) generates the high-quality image. Best for: creating educational diagrams, scientific illustrations, textbook-style visuals, and labeled diagrams.',
+    systemPrompt: `You are an Educational Image Generation Specialist.
+
+<Your Expertise>
+You create high-quality, scientifically accurate educational images and diagrams.
+
+Your workflow:
+1. Analyze the educational topic and target audience
+2. Determine the appropriate visual style (Pixar-style for young learners, textbook diagrams for high school, electron microscope style for university)
+3. Identify key scientific elements that MUST be visible and labeled
+4. Use the generate_educational_image tool to create the visualization
+</Your Expertise>
+
+<Available Tools>
+- **generate_educational_image**: Creates a scientifically accurate educational image
+  - topic: The subject to illustrate
+  - target_audience: Academic level (Grade 5, High School, University, etc.)
+  - aspect_ratio: Image proportions (16:9, 1:1, 3:2)
+- **think_tool**: For planning and reflection
+</Available Tools>
+
+<Guidelines>
+1. Always specify the target_audience for age-appropriate styling
+2. For complex topics, suggest multiple images for different aspects
+3. Return the image URL and explain what key elements are shown
+4. Mention any labels or annotations that should be visible
+</Guidelines>
+
+<Output Format>
+When an image is generated, provide:
+1. Confirmation that the image was created
+2. The topic and visual style used
+3. Key scientific elements shown
+4. Any labels/annotations included
+5. The image URL (will be displayed to user)
+</Output Format>`,
+    tools: ['generate_educational_image', 'think_tool'],
+    model: 'gemini-2.5-flash'
+  }],
   ['output-validator', {
     name: 'output-validator',
     description: 'Uses Gemini 3 Pro to validate the final document before display. Checks that it is complete, properly formatted, contains no internal artifacts (task status, TODOs), and is ready for the user. Returns APPROVED or specific fixes needed.',
@@ -1873,6 +2396,9 @@ Available sub-agents:
 - **data-visualization**: Charts and visualizations (bar, line, pie, scatter, heatmap)
 - **google-docs-agent**: Export to Google Docs
 - **general-purpose**: General task handling
+
+**🖼️ IMAGE GENERATION:**
+- **image-generator**: Creates scientifically accurate educational images and diagrams using AI. Uses a two-step prompt engineering process for high-quality results.
 
 **RECOMMENDED WORKFLOW:**
 1. Use **prompt-enhancer** FIRST to clarify the user's request
@@ -2048,6 +2574,39 @@ You specialize in chemistry education and research. Use appropriate subagents:
 - **deep-researcher**: For comprehensive literature reviews (Gemini 2.5 Pro)
 - **advanced-reasoner**: For complex logical problems (Gemini 3 Pro)
 - **documentation-agent**: For creating final reports (use AFTER research is complete)
+- **image-generator**: For creating educational diagrams, illustrations, and visual aids
+
+## Educational Image Generation
+
+When the user asks for visual explanations, diagrams, or illustrations:
+1. Use the **image-generator** subagent or the \`generate_educational_image\` tool directly
+2. Specify the target audience (Grade 5, High School, University) for age-appropriate styling
+3. The tool will automatically:
+   - Engineer an optimized prompt with proper art style
+   - Include appropriate scientific elements and labels
+   - Generate a high-quality educational image
+
+Example:
+\`\`\`tool
+{
+  "tool": "generate_educational_image",
+  "params": {
+    "topic": "Plant Cell Structure",
+    "target_audience": "High School"
+  }
+}
+\`\`\`
+
+Or delegate to the image-generator subagent:
+\`\`\`tool
+{
+  "tool": "task",
+  "params": {
+    "name": "image-generator",
+    "task": "Create an educational diagram of the nitrogen cycle for middle school students"
+  }
+}
+\`\`\`
 
 ## Response Guidelines
 
@@ -3638,4 +4197,85 @@ export const resetDeepAgent = (): void => {
   artifacts = [];
   fileSystem.clear();
   console.log('🔄 Deep Agent reset');
+};
+
+// ==========================================
+// Direct Educational Image Generation Export
+// ==========================================
+
+/**
+ * Generate an educational image directly without going through the full agent.
+ * Uses a two-step process:
+ * 1. Gemini 2.5 Flash engineers an optimized prompt with proper art style and scientific accuracy
+ * 2. Nano Banana Pro (Gemini 3 Pro Image Preview) generates the high-quality image
+ * 
+ * @param topic - The educational subject to illustrate
+ * @param targetAudience - Academic level (e.g., "Grade 5", "High School", "University")
+ * @param aspectRatio - Image proportions (default: "16:9")
+ * @returns Promise with image data URL and metadata
+ */
+export const generateEducationalImageDirect = async (
+  topic: string,
+  targetAudience?: string,
+  aspectRatio?: string
+): Promise<{
+  success: boolean;
+  imageUrl?: string;
+  labels?: { label_text: string; arrow_target: string }[];
+  labelPositions?: Array<{
+    label: string;
+    arrow_tip: { x: number; y: number };
+    label_position: { x: number; y: number };
+    arrow_direction: string;
+  }>;
+  requiresLabelOverlay?: boolean;
+  scientificElements?: string[];
+  visualStyle?: string;
+  promptUsed?: string;
+  error?: string;
+}> => {
+  // Ensure the deep agent is initialized
+  if (!isDeepAgentInitialized()) {
+    await initializeDeepAgent();
+  }
+
+  const tool = tools.get('generate_educational_image');
+  if (!tool) {
+    return {
+      success: false,
+      error: 'Educational image generation tool not available'
+    };
+  }
+
+  const result = await tool.execute({
+    topic,
+    target_audience: targetAudience,
+    aspect_ratio: aspectRatio
+  });
+
+  try {
+    const parsed = JSON.parse(result);
+    if (parsed.success) {
+      return {
+        success: true,
+        imageUrl: parsed.imageUrl,
+        labels: parsed.labels,
+        labelPositions: parsed.label_positions,
+        requiresLabelOverlay: parsed.requires_label_overlay,
+        scientificElements: parsed.scientific_elements,
+        visualStyle: parsed.visual_style,
+        promptUsed: parsed.prompt_used
+      };
+    } else {
+      return {
+        success: false,
+        error: parsed.error || parsed.details || 'Unknown error'
+      };
+    }
+  } catch (e) {
+    return {
+      success: false,
+      error: 'Failed to parse image generation result'
+    };
+  }
 };

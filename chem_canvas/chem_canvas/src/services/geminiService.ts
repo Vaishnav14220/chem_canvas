@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { GoogleGenAI, Type } from '@google/genai';
-import { AspectRatio, ImageSize, InteractiveLabel, EducationalSchema } from '../types/studium';
+import { AspectRatio, ImageSize, InteractiveLabel, EducationalSchema, ImageGenerationPromptSchema, ImageGenerationPrompt } from '../types/studium';
 import { fetchCanonicalSmiles } from './pubchemService';
 import { setStructuredReactionApiKey } from './structuredReactionService';
 import { apiKeyRotation, clearUserProvidedApiKey, executeWithRotation, registerUserProvidedApiKey } from './apiKeyRotation';
@@ -812,11 +812,6 @@ export const generateEducationalImage = async (
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
 
-  const prompt = `Create a highly detailed educational diagram of: ${topic}. 
-  CRITICAL: The image MUST have clear, legible text labels pointing to the important parts of the subject. 
-  The style should be clean, textbook-quality illustration suitable for students. 
-  Make it colorful and engaging.`;
-
   try {
     return await executeWithRotation(async (apiKey) => {
       // Reinitialize with new key if needed
@@ -826,10 +821,62 @@ export const generateEducationalImage = async (
         cachedModelName = null;
       }
 
+      // Step 1: Prompt Engineering with Gemini 2.5 Flash
+      const promptResult = await genAI!.models.generateContent({
+        model: 'gemini-2.5-flash',
+        config: {
+          systemInstruction: `Role: You are an Expert Scientific Illustrator and Prompt Engineer for an advanced AI image generator (Nano Banana Pro).
+
+Objective: specific Anlayse the user's educational query and the provided grounded research (search results/PDFs). You must construct a structured JSON output to generate a scientifically accurate educational image.
+
+Process:
+
+Analyze the Educational Level:
+
+Grade 5-8: Use bright colors, simplified shapes, "Pixar-style" 3D renders, or engaging illustrations. Avoid overwhelming complexity.
+
+High School: Use clean "textbook style" diagrams, cutaways, or photorealism.
+
+University/Professional: Use Electron Microscope style, hyper-realistic macro photography, or complex data visualizations. strict scientific accuracy is paramount.
+
+Analyze Technical Requirements:
+
+Identify specific components (e.g., if the topic is "Plant Cell", ensure Chloroplasts and Cell Walls are mentioned).
+
+Ensure correct lighting and camera angles (e.g., "Cross-section view" vs "Macro view").
+
+Construct the final_prompt:
+
+Format: [Subject] + [Action/Context] + [Art Style/Medium] + [Lighting/Color] + [Camera/View] + [Quality Boosters]
+
+Keywords to use: "Unreal Engine 5", "Octane Render", "8k", "Volumetric Lighting", "Educational Diagram", "Studio Ghibli" (for younger), "National Geographic" (for older).
+
+Construct the negative_prompt:
+
+Always include: "text, watermark, blurry, distorted, anatomical nonsense, bad geometry, low resolution".
+
+Add subject-specific negatives (e.g., for Space: "atmosphere on moon").
+
+Output Format: return ONLY the raw JSON object. Do not wrap it in markdown code blocks.`,
+          responseMimeType: 'application/json',
+          responseSchema: ImageGenerationPromptSchema
+        },
+        contents: [{ role: 'user', parts: [{ text: topic }] }]
+      });
+
+      const promptText = promptResult.text;
+      if (!promptText) throw new Error("Failed to generate prompt engineering result");
+
+      const promptData = JSON.parse(promptText) as ImageGenerationPrompt;
+      console.log("Engineered Prompt:", promptData);
+
+      // Step 2: Image Generation with Gemini 3 Pro Image Preview
+      const imagePrompt = `${promptData.generation_parameters.final_prompt} --no ${promptData.generation_parameters.negative_prompt}`;
+
       const response = await genAI!.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: {
-          parts: [{ text: prompt }],
+          parts: [{ text: imagePrompt }],
         },
         config: {
           imageConfig: {
@@ -842,6 +889,17 @@ export const generateEducationalImage = async (
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
           return `data:image/png;base64,${part.inlineData.data}`;
+        }
+        if (part.text) {
+          // Fallback: Check if the model returned an HTML snippet with the image
+          const srcMatch = part.text.match(/src="([^"]+)"/);
+          if (srcMatch) {
+            return srcMatch[1];
+          }
+          // Fallback: Check if the text itself is a URL
+          if (part.text.trim().startsWith('http')) {
+            return part.text.trim();
+          }
         }
       }
       throw new Error("No image generated.");
@@ -882,7 +940,7 @@ export const analyzeImageForLearning = async (base64Image: string): Promise<Inte
               }
             },
             {
-              text: "Analyze this educational diagram. Identify all the text labels present in the image. For each label found, provide a simple definition suitable for a student and a fun fact. Return the result as a JSON object."
+              text: "Analyze this educational diagram. Identify all the text labels present in the image. For each label found, provide:\n1. The term text\n2. A simple definition suitable for a student\n3. A fun fact\n4. The bounding box coordinates (ymin, xmin, ymax, xmax) normalized to 0-1000 scale.\n\nReturn the result as a JSON object."
             }
           ]
         },
