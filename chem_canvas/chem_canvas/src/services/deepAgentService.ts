@@ -25,9 +25,9 @@ import { generateTextContent, isGeminiInitialized, initializeGeminiWithFirebaseK
 export type TaskStatus = 'pending' | 'in-progress' | 'completed' | 'error';
 
 export interface TaskEvent {
-  type: 'task-start' | 'task-update' | 'task-complete' | 'task-error' | 
-        'step-start' | 'step-complete' | 'tool-call' | 'tool-result' |
-        'thinking' | 'writing' | 'searching' | 'document-ready' | 'artifact-created';
+  type: 'task-start' | 'task-update' | 'task-complete' | 'task-error' |
+  'step-start' | 'step-complete' | 'tool-call' | 'tool-result' |
+  'thinking' | 'writing' | 'searching' | 'document-ready' | 'artifact-created' | 'step-stream';
   taskId: string;
   title?: string;
   message?: string;
@@ -61,6 +61,7 @@ export interface FinalDocument {
 export type TaskEventCallback = (event: TaskEvent) => void;
 
 let taskEventListeners: TaskEventCallback[] = [];
+let currentParentTaskId: string | null = null;
 
 export const subscribeToTaskEvents = (callback: TaskEventCallback): (() => void) => {
   taskEventListeners.push(callback);
@@ -192,7 +193,7 @@ const createArtifact = (params: {
     metadata: params.metadata
   };
   artifacts.push(artifact);
-  
+
   // Emit artifact created event
   emitTaskEvent({
     type: 'artifact-created',
@@ -202,7 +203,7 @@ const createArtifact = (params: {
     status: 'completed',
     data: artifact
   });
-  
+
   return artifact;
 };
 
@@ -216,7 +217,7 @@ const tavilySearch = async (params: {
   includeRawContent?: boolean;
 }): Promise<string> => {
   const { query, maxResults = 5, topic = 'general', includeRawContent = false } = params;
-  
+
   if (!tavilyApiKey) {
     return JSON.stringify({
       success: false,
@@ -247,7 +248,7 @@ const tavilySearch = async (params: {
     }
 
     const data = await response.json();
-    
+
     // Format results for the agent
     const formattedResults = data.results?.map((result: any, index: number) => ({
       rank: index + 1,
@@ -263,10 +264,10 @@ const tavilySearch = async (params: {
       const researchContent = `# Research: ${query}\n\n**Search Date:** ${new Date().toLocaleString()}\n\n` +
         (data.answer ? `## Quick Answer\n${data.answer}\n\n` : '') +
         `## Sources (${formattedResults.length} results)\n\n` +
-        formattedResults.map((r: any) => 
+        formattedResults.map((r: any) =>
           `### ${r.rank}. ${r.title}\n**URL:** ${r.url}\n\n${r.content}\n\n---\n`
         ).join('\n');
-      
+
       createArtifact({
         type: 'research',
         title: `Research: ${query.substring(0, 50)}${query.length > 50 ? '...' : ''}`,
@@ -326,12 +327,12 @@ const writeTodosFromParams = (params: { todos?: (string | TodoItem)[] }): string
       description: todo.description || ''
     };
   });
-  
+
   // Create artifact for the plan
-  const planContent = currentTodos.map((t, i) => 
+  const planContent = currentTodos.map((t, i) =>
     `${i + 1}. ${t.status === 'completed' ? '✅' : t.status === 'in-progress' ? '🔄' : '⬜'} ${t.title}${t.description ? `\n   - ${t.description}` : ''}`
   ).join('\n');
-  
+
   createArtifact({
     type: 'plan',
     title: 'Task Plan',
@@ -339,7 +340,7 @@ const writeTodosFromParams = (params: { todos?: (string | TodoItem)[] }): string
     agentName: 'Planning Agent',
     metadata: { todoCount: currentTodos.length }
   });
-  
+
   return JSON.stringify({
     success: true,
     message: `Updated todo list with ${currentTodos.length} items`,
@@ -380,7 +381,7 @@ const writeFileToMemory = (params: { path?: string; content?: string }): string 
       error: 'Missing or invalid path parameter'
     });
   }
-  
+
   if (!params.content || typeof params.content !== 'string') {
     return JSON.stringify({
       success: false,
@@ -389,11 +390,11 @@ const writeFileToMemory = (params: { path?: string; content?: string }): string 
   }
 
   fileSystem.writeFile(params.path, params.content);
-  
+
   // Determine artifact type based on path/content
   const isCode = params.path.endsWith('.py') || params.path.endsWith('.js') || params.path.endsWith('.ts');
   const isResearch = params.path.includes('research') || params.path.includes('notes');
-  
+
   createArtifact({
     type: isCode ? 'code' : isResearch ? 'research' : 'file',
     title: params.path.split('/').pop() || params.path,
@@ -401,7 +402,7 @@ const writeFileToMemory = (params: { path?: string; content?: string }): string 
     agentName: 'File Agent',
     metadata: { path: params.path }
   });
-  
+
   return JSON.stringify({
     success: true,
     message: `File written: ${params.path}`,
@@ -446,9 +447,9 @@ tools.set('google_search_grounding', {
 
       console.log('Google Search Grounding: Using API key:', apiKey.substring(0, 8) + '...');
       const ai = new GoogleGenAI({ apiKey });
-      
+
       // Enhance query for academic focus
-      const searchQuery = params.focus === 'academic' 
+      const searchQuery = params.focus === 'academic'
         ? `Find research papers, academic studies, and scholarly sources about: ${params.query}. Include citations with author names, publication dates, and journal names where available.`
         : params.query;
 
@@ -485,7 +486,7 @@ tools.set('google_search_grounding', {
       // Extract grounding metadata for citations
       const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
       const text = response.text || '';
-      
+
       // Build citations array from grounding chunks
       const citations: Array<{ title: string; url: string; index: number }> = [];
       if (groundingMetadata?.groundingChunks) {
@@ -515,7 +516,7 @@ tools.set('google_search_grounding', {
         title: `Google Search: ${params.query.substring(0, 50)}...`,
         content: formattedResponse,
         agentName: 'Academic Researcher',
-        metadata: { 
+        metadata: {
           query: params.query,
           citationCount: citations.length,
           searchQueries: groundingMetadata?.webSearchQueries || [],
@@ -584,7 +585,7 @@ tools.set('think_tool', {
       agentName: 'Research Agent',
       metadata: { type: 'reflection' }
     });
-    
+
     return JSON.stringify({
       success: true,
       message: `Reflection recorded: ${params.reflection.substring(0, 100)}...`,
@@ -603,7 +604,7 @@ const extractTitleFromPrompt = (prompt: string): string => {
     /(?:about|on|regarding)\s+(.+?)(?:\.|$)/i,
     /(.+?)(?:\s+research|\s+report|\s+analysis)/i,
   ];
-  
+
   for (const pattern of patterns) {
     const match = prompt.match(pattern);
     if (match && match[1]) {
@@ -617,7 +618,7 @@ const extractTitleFromPrompt = (prompt: string): string => {
       return `Research Report: ${title}`;
     }
   }
-  
+
   return 'Research Report';
 };
 
@@ -627,41 +628,41 @@ const buildDocumentFromResponse = (fullResponse: string, originalPrompt: string)
   const findingsPattern = /\*\*(?:deep-researcher|research-agent|Subagent)\s+findings:\*\*\s*([\s\S]*?)(?=\n\n---|\n\n🔧|\n\n\*\*(?:deep-researcher|research-agent)|$)/gi;
   const findings: string[] = [];
   let match;
-  
+
   while ((match = findingsPattern.exec(fullResponse)) !== null) {
     if (match[1] && match[1].trim().length > 100) {
       findings.push(match[1].trim());
     }
   }
-  
+
   if (findings.length === 0) {
     return null;
   }
-  
+
   // Build document structure
   const title = extractTitleFromPrompt(originalPrompt);
   let content = `# ${title}\n\n`;
   content += `*Generated on ${new Date().toLocaleDateString()}*\n\n`;
   content += `## Executive Summary\n\n`;
   content += `This report synthesizes research findings on the requested topic, compiled from multiple specialized research agents.\n\n`;
-  
+
   // Add each finding as a section
   findings.forEach((finding, index) => {
     // Try to extract section title from the finding
     const titleMatch = finding.match(/^##?\s*(.+?)(?:\n|$)/);
     const sectionTitle = titleMatch ? titleMatch[1] : `Research Finding ${index + 1}`;
-    
+
     content += `## ${sectionTitle}\n\n`;
     content += finding.replace(/^##?\s*.+?\n/, '').trim();
     content += '\n\n';
   });
-  
+
   // Add sources section if not present
   if (!content.includes('## Sources') && !content.includes('## References')) {
     content += `## References\n\n`;
     content += `*Sources are cited inline throughout the document.*\n`;
   }
-  
+
   return cleanDocumentContent(content);
 };
 
@@ -671,7 +672,7 @@ const cleanDocumentContent = (content: string | undefined | null): string => {
   if (!content || typeof content !== 'string') {
     return '';
   }
-  
+
   // Patterns to remove - task status messages, waiting messages, internal artifacts
   const patternsToRemove = [
     // Task status headers and descriptions
@@ -730,17 +731,17 @@ tools.set('finalize_document', {
         error: 'Missing or invalid title parameter'
       });
     }
-    
+
     if (!params.content || typeof params.content !== 'string') {
       return JSON.stringify({
         success: false,
         error: 'Missing or invalid content parameter'
       });
     }
-    
+
     // Clean the content before saving
     const cleanedContent = cleanDocumentContent(params.content);
-    
+
     // Also clean sections if provided
     const cleanedSections = params.sections?.map(section => ({
       title: section.title || 'Untitled Section',
@@ -755,13 +756,13 @@ tools.set('finalize_document', {
       createdAt: new Date(),
       sections: cleanedSections
     };
-    
+
     finalDocuments.push(doc);
-    
+
     // Also save to file system
     const filename = `${params.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}.md`;
     fileSystem.writeFile(`/documents/${filename}`, cleanedContent);
-    
+
     // Create artifact for the final document
     createArtifact({
       type: 'document',
@@ -770,7 +771,7 @@ tools.set('finalize_document', {
       agentName: 'Documentation Agent',
       metadata: { documentId: doc.id, filename, format: 'markdown' }
     });
-    
+
     // Emit document-ready event
     emitTaskEvent({
       type: 'document-ready',
@@ -780,7 +781,7 @@ tools.set('finalize_document', {
       status: 'completed',
       data: doc
     });
-    
+
     return JSON.stringify({
       success: true,
       message: `Document "${params.title}" has been finalized`,
@@ -806,13 +807,13 @@ tools.set('molecule_search', {
           message: `Found molecule: ${params.query} with SMILES: ${smiles}`
         });
       }
-      
+
       const description = await generateTextContent(
         `Provide detailed information about the molecule or chemical compound: ${params.query}. 
         Include its chemical formula, structure description, common uses, and safety information.
         If you know the SMILES notation, include it.`
       );
-      
+
       return JSON.stringify({
         success: true,
         molecule: params.query,
@@ -852,7 +853,7 @@ Please include:
 Format the response in a clear, educational manner.`;
 
       const analysis = await generateTextContent(prompt);
-      
+
       return JSON.stringify({
         success: true,
         reaction: params.reaction,
@@ -877,7 +878,7 @@ tools.set('explain_concept', {
     try {
       const level = params.level || 'intermediate';
       const includeExamples = params.includeExamples !== false;
-      
+
       const levelDescriptions: Record<string, string> = {
         beginner: 'Use simple terms, analogies, and avoid complex jargon. Explain as if to a high school student.',
         intermediate: 'Balance technical accuracy with accessibility. Include some technical terms with explanations.',
@@ -900,7 +901,7 @@ Structure your explanation with:
 5. Connection to other chemistry concepts`;
 
       const explanation = await generateTextContent(prompt);
-      
+
       return JSON.stringify({
         success: true,
         concept: params.concept,
@@ -925,7 +926,7 @@ tools.set('generate_practice_problems', {
     try {
       const difficulty = params.difficulty || 'medium';
       const count = params.count || 3;
-      
+
       const prompt = `Generate ${count} ${difficulty} practice problems for the following chemistry topic:
 
 Topic: ${params.topic}
@@ -939,7 +940,7 @@ For each problem:
 Format each problem with clear numbering and separation between problem and solution.`;
 
       const problems = await generateTextContent(prompt);
-      
+
       return JSON.stringify({
         success: true,
         topic: params.topic,
@@ -965,7 +966,7 @@ tools.set('molecular_calculator', {
     try {
       const calculations = params.calculations || ['molar_mass'];
       const calculationTypes = calculations.join(', ');
-      
+
       const prompt = `For the molecular formula "${params.formula}", calculate the following properties:
 ${calculations.map(c => `- ${c.replace('_', ' ')}`).join('\n')}
 
@@ -979,7 +980,7 @@ Also include:
 - Common name (if this is a well-known compound)`;
 
       const result = await generateTextContent(prompt);
-      
+
       return JSON.stringify({
         success: true,
         formula: params.formula,
@@ -1890,7 +1891,7 @@ IMPORTANT: For comparisons, make multiple task() calls to enable parallel execut
   execute: async (params: { name: string; task: string }) => {
     const subagentName = params.name;
     const taskDescription = params.task;
-    
+
     const subagent = subagents.get(subagentName);
     if (!subagent) {
       // Check for general-purpose fallback
@@ -1901,29 +1902,29 @@ IMPORTANT: For comparisons, make multiple task() calls to enable parallel execut
         });
       }
     }
-    
+
     // Emit step start event with subagent info
-    const stepId = `subagent-${subagentName}-${Date.now()}`;
+    const taskId = currentParentTaskId || `task-${Date.now()}`;
     // Determine the model for this subagent
     const agentModel = subagent?.model || 'gemini-2.5-flash';
     const thinkingInfo = subagent?.thinkingLevel ? ` (thinking: ${subagent.thinkingLevel})` : '';
-    
+
     emitTaskEvent({
       type: 'step-start',
-      taskId: stepId,
+      taskId: taskId,
       title: `${subagent?.name || 'general-purpose'}: ${taskDescription.substring(0, 50)}...`,
       message: `Delegating to ${subagent?.name || 'general-purpose'}`,
       status: 'in-progress',
-      data: { 
+      data: {
         subagent: subagentName,
         model: agentModel,
         thinkingLevel: subagent?.thinkingLevel || null
       }
     });
-    
+
     try {
-      const result = await executeSubagentWithTools(subagentName, taskDescription);
-      
+      const result = await executeSubagentWithTools(subagentName, taskDescription, taskId);
+
       // Create artifact for subagent work
       createArtifact({
         type: 'research',
@@ -1932,15 +1933,15 @@ IMPORTANT: For comparisons, make multiple task() calls to enable parallel execut
         agentName: subagent?.name || 'Subagent',
         metadata: { task: taskDescription, subagent: subagentName, model: agentModel }
       });
-      
+
       emitTaskEvent({
         type: 'step-complete',
-        taskId: stepId,
+        taskId: taskId,
         title: `${subagent?.name || 'general-purpose'} completed`,
         status: 'completed',
         data: { model: agentModel }
       });
-      
+
       return JSON.stringify({
         success: true,
         subagent: subagentName,
@@ -1950,11 +1951,11 @@ IMPORTANT: For comparisons, make multiple task() calls to enable parallel execut
     } catch (error) {
       emitTaskEvent({
         type: 'step-complete',
-        taskId: stepId,
+        taskId: taskId,
         title: `${subagent?.name || 'general-purpose'} failed`,
         status: 'error'
       });
-      
+
       return JSON.stringify({
         success: false,
         error: error instanceof Error ? error.message : 'Subagent execution failed'
@@ -2096,11 +2097,11 @@ Remember: Your goal is to help students learn and understand chemistry through t
  */
 const parseToolCalls = (response: string): Array<{ tool: string; params: Record<string, any> }> => {
   const toolCalls: Array<{ tool: string; params: Record<string, any> }> = [];
-  
+
   // Match new tool block format
   const toolBlockRegex = /\`\`\`tool\s*([\s\S]*?)\`\`\`/g;
   let match;
-  
+
   while ((match = toolBlockRegex.exec(response)) !== null) {
     try {
       const jsonStr = match[1].trim();
@@ -2112,7 +2113,7 @@ const parseToolCalls = (response: string): Array<{ tool: string; params: Record<
       console.warn('Failed to parse tool block:', match[1]);
     }
   }
-  
+
   // Also support legacy format
   const legacyRegex = /\[TOOL:\s*(\w+)\]\s*([\s\S]*?)\s*\[\/TOOL\]/g;
   while ((match = legacyRegex.exec(response)) !== null) {
@@ -2123,7 +2124,7 @@ const parseToolCalls = (response: string): Array<{ tool: string; params: Record<
       console.warn('Failed to parse legacy tool params:', match[2]);
     }
   }
-  
+
   return toolCalls;
 };
 
@@ -2133,12 +2134,12 @@ const parseToolCalls = (response: string): Array<{ tool: string; params: Record<
 const parseDelegations = (response: string): Array<{ subagent: string; task: string }> => {
   const delegations: Array<{ subagent: string; task: string }> = [];
   const delegateRegex = /\[DELEGATE:\s*(\S+)\]\s*([\s\S]*?)\s*\[\/DELEGATE\]/g;
-  
+
   let match;
   while ((match = delegateRegex.exec(response)) !== null) {
     delegations.push({ subagent: match[1], task: match[2].trim() });
   }
-  
+
   return delegations;
 };
 
@@ -2149,15 +2150,15 @@ const parsePlan = (response: string): TodoItem[] => {
   const todos: TodoItem[] = [];
   const planRegex = /\[PLAN\]([\s\S]*?)\[\/PLAN\]/;
   const match = planRegex.exec(response);
-  
+
   if (match) {
     const planContent = match[1];
     const lines = planContent.split('\n').filter(l => l.trim());
-    
+
     lines.forEach((line, index) => {
       const isCompleted = line.includes('✓') || line.includes('[x]') || line.includes('[X]');
       const cleanLine = line.replace(/^\d+\.\s*/, '').replace(/[✓\[\]xX]/g, '').trim();
-      
+
       if (cleanLine) {
         todos.push({
           id: `todo-${index}`,
@@ -2167,7 +2168,7 @@ const parsePlan = (response: string): TodoItem[] => {
       }
     });
   }
-  
+
   return todos;
 };
 
@@ -2177,20 +2178,20 @@ const parsePlan = (response: string): TodoItem[] => {
 const parseFileOps = (response: string): { saves: Array<{ name: string; content: string }>; reads: string[] } => {
   const saves: Array<{ name: string; content: string }> = [];
   const reads: string[] = [];
-  
+
   // Parse saves
   const saveRegex = /\[SAVE:\s*(\S+)\]\s*([\s\S]*?)\s*\[\/SAVE\]/g;
   let match;
   while ((match = saveRegex.exec(response)) !== null) {
     saves.push({ name: match[1], content: match[2].trim() });
   }
-  
+
   // Parse reads
   const readRegex = /\[READ:\s*(\S+)\]/g;
   while ((match = readRegex.exec(response)) !== null) {
     reads.push(match[1]);
   }
-  
+
   return { saves, reads };
 };
 
@@ -2198,7 +2199,7 @@ const parseFileOps = (response: string): { saves: Array<{ name: string; content:
  * Execute a subagent task (legacy simple version)
  */
 const executeSubagent = async (
-  subagentName: string, 
+  subagentName: string,
   task: string
 ): Promise<string> => {
   const subagent = subagents.get(subagentName);
@@ -2232,7 +2233,8 @@ Provide a comprehensive response to this task.`;
  */
 const executeSubagentWithTools = async (
   subagentName: string,
-  task: string
+  task: string,
+  stepId?: string
 ): Promise<string> => {
   const subagent = subagents.get(subagentName);
   if (!subagent || !genAI) {
@@ -2279,19 +2281,19 @@ IMPORTANT:
     let conversationMessages = [
       { role: 'user', parts: [{ text: subagentSystemPrompt }] }
     ];
-    
+
     // Determine which model to use based on subagent config
     const modelName = subagent.model || 'gemini-2.5-flash';
     const isGemini3 = modelName.includes('gemini-3');
-    
+
     console.log(`[Subagent ${subagentName}] Using model: ${modelName}${isGemini3 ? ` with thinking_level: ${subagent.thinkingLevel || 'high'}` : ''}`);
-    
+
     // Build config based on model
     const generateConfig: any = {
       model: modelName,
       contents: conversationMessages
     };
-    
+
     // Add thinking level for Gemini 3 Pro
     if (isGemini3 && subagent.thinkingLevel) {
       generateConfig.config = {
@@ -2300,64 +2302,74 @@ IMPORTANT:
         }
       };
     }
-    
+
     // Initial response
-    let response = await genAI.models.generateContent(generateConfig);
-    
-    let responseText = response.text || '';
+    const responseStream = await genAI.models.generateContentStream(generateConfig);
+
+    let responseText = '';
+    for await (const chunk of responseStream) {
+      const text = chunk.text || '';
+      responseText += text;
+
+      if (stepId) {
+        emitTaskEvent({
+          type: 'step-stream',
+          taskId: stepId,
+          data: { content: text }
+        });
+      }
+    }
+
     let toolIterations = 0;
     const maxToolIterations = 10; // Safety limit
-    
+
     // Process tool calls in a loop
     while (toolIterations < maxToolIterations) {
       const toolCalls = parseToolCalls(responseText);
-      
+
       if (toolCalls.length === 0) {
-        // No more tool calls, we're done
         break;
       }
-      
+
       toolIterations++;
       const toolResults: string[] = [];
-      
+
       for (const call of toolCalls) {
-        // Only execute tools the subagent has access to
         if (!subagent.tools.includes(call.tool)) {
           toolResults.push(`Tool ${call.tool}: Not available to this subagent.`);
           continue;
         }
-        
+
         const tool = tools.get(call.tool);
         if (tool) {
-          // Emit tool event with proper data for UI display
           emitTaskEvent({
             type: 'tool-call',
             taskId: `${subagentName}-tool-${Date.now()}`,
             title: call.tool,
             message: `${subagentName} using ${call.tool}`,
             status: 'in-progress',
-            data: { 
-              tool: call.tool, 
+            data: {
+              tool: call.tool,
               toolName: call.tool,
               subagent: subagentName,
               model: modelName,
-              params: call.params 
+              params: call.params
             }
           });
-          
+
           try {
             const result = await tool.execute(call.params);
             toolResults.push(`Tool ${call.tool} result:\n${result}`);
-            
+
             emitTaskEvent({
               type: 'tool-result',
               taskId: `${subagentName}-tool-${Date.now()}`,
               title: call.tool,
               status: 'completed',
-              data: { 
-                tool: call.tool, 
+              data: {
+                tool: call.tool,
                 model: modelName,
-                success: true 
+                success: true
               }
             });
           } catch (toolError) {
@@ -2367,29 +2379,27 @@ IMPORTANT:
               taskId: `${subagentName}-tool-${Date.now()}`,
               title: call.tool,
               status: 'error',
-              data: { 
-                tool: call.tool, 
+              data: {
+                tool: call.tool,
                 model: modelName,
-                error: toolError instanceof Error ? toolError.message : 'Unknown error' 
+                error: toolError instanceof Error ? toolError.message : 'Unknown error'
               }
             });
           }
         }
       }
-      
+
       if (toolResults.length > 0) {
-        // Continue conversation with tool results
         conversationMessages.push(
           { role: 'model', parts: [{ text: responseText }] },
           { role: 'user', parts: [{ text: `Tool results:\n\n${toolResults.join('\n\n')}\n\nContinue your work based on these results. Remember to use think_tool to reflect on findings. When done, provide your final response.` }] }
         );
-        
-        // Use same model configuration for continuation
+
         const continueConfig: any = {
           model: modelName,
           contents: conversationMessages
         };
-        
+
         if (isGemini3 && subagent.thinkingLevel) {
           continueConfig.config = {
             thinkingConfig: {
@@ -2397,21 +2407,33 @@ IMPORTANT:
             }
           };
         }
-        
-        response = await genAI.models.generateContent(continueConfig);
-        
-        responseText = response.text || '';
+
+        const continueResponseStream = await genAI.models.generateContentStream(continueConfig);
+
+        responseText = '';
+        for await (const chunk of continueResponseStream) {
+          const text = chunk.text || '';
+          responseText += text;
+
+          if (stepId) {
+            emitTaskEvent({
+              type: 'step-stream',
+              taskId: stepId,
+              data: { content: text }
+            });
+          }
+        }
       }
     }
-    
-    // Clean up the response - remove tool markers
+
+    // Clean up the response
     const cleanResponse = responseText
       .replace(/\`\`\`tool[\s\S]*?\`\`\`/g, '')
       .replace(/\[TOOL:.*?\][\s\S]*?\[\/TOOL\]/g, '')
       .trim();
-    
+
     return cleanResponse || 'Subagent completed the task but returned no summary.';
-    
+
   } catch (error) {
     console.error(`Subagent ${subagentName} error:`, error);
     return `Subagent error: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -2461,7 +2483,7 @@ const processAgentTurn = async (
   const toolCalls = parseToolCalls(responseText);
   if (toolCalls.length > 0) {
     const toolResults: string[] = [];
-    
+
     for (const call of toolCalls) {
       const tool = tools.get(call.tool);
       if (tool) {
@@ -2571,18 +2593,18 @@ export const initializeDeepAgent = async (config?: DeepAgentConfig): Promise<voi
     }
 
     genAI = new GoogleGenAI({ apiKey });
-    
+
     // Set Tavily API key if provided in config
     if (config?.tavilyApiKey) {
       tavilyApiKey = config.tavilyApiKey;
       console.log('✅ Tavily API key set from config');
     }
-    
+
     isInitialized = true;
     conversationHistory = [];
     currentTodos = [];
     fileSystem.clear();
-    
+
     console.log('✅ Deep Agent initialized with Gemini + Tavily search capabilities');
   } catch (error) {
     console.error('❌ Failed to initialize Deep Agent:', error);
@@ -2658,7 +2680,7 @@ export const invokeDeepAgent = async (
     };
   } catch (error) {
     console.error('Error invoking deep agent:', error);
-    
+
     const errorMessage: DeepAgentMessage = {
       role: 'assistant',
       content: `I encountered an error while processing your request: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
@@ -2693,7 +2715,7 @@ export const setAutoPromptEnhancement = (enabled: boolean): void => {
  */
 const shouldEnhancePrompt = (message: string): boolean => {
   const lowerMessage = message.toLowerCase();
-  
+
   // Research indicators
   const researchKeywords = [
     'research', 'analyze', 'explain', 'compare', 'investigate',
@@ -2701,23 +2723,23 @@ const shouldEnhancePrompt = (message: string): boolean => {
     'fundamentals', 'overview', 'deep dive', 'comprehensive',
     'study', 'explore', 'understand', 'learn about'
   ];
-  
+
   // Skip for simple questions
   const simplePatterns = [
     /^hi\b/i, /^hello\b/i, /^hey\b/i, /^thanks/i, /^thank you/i,
     /^ok\b/i, /^yes\b/i, /^no\b/i, /^sure\b/i
   ];
-  
+
   if (simplePatterns.some(p => p.test(message.trim()))) {
     return false;
   }
-  
+
   // Check for research keywords
   const hasResearchIntent = researchKeywords.some(k => lowerMessage.includes(k));
-  
+
   // Also enhance if message is complex (long or has multiple parts)
   const isComplex = message.length > 100 || message.includes(',') || message.includes('and');
-  
+
   return hasResearchIntent || isComplex;
 };
 
@@ -2728,7 +2750,7 @@ const enhancePrompt = async (originalPrompt: string): Promise<{ enhanced: string
   if (!genAI) {
     return { enhanced: originalPrompt, questions: [] };
   }
-  
+
   const enhancementPrompt = `You are a prompt enhancement specialist. Analyze this user request and create an improved, clearer version.
 
 USER REQUEST: "${originalPrompt}"
@@ -2750,9 +2772,9 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
       model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: enhancementPrompt }] }]
     });
-    
+
     const text = response.text || '';
-    
+
     // Try to parse JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -2765,7 +2787,7 @@ RESPOND IN THIS EXACT JSON FORMAT ONLY (no other text):
   } catch (error) {
     console.warn('Prompt enhancement failed, using original:', error);
   }
-  
+
   return { enhanced: originalPrompt, questions: [] };
 };
 
@@ -2794,7 +2816,8 @@ export async function* streamDeepAgent(
     }
 
     const taskId = `task-${Date.now()}`;
-    
+    currentParentTaskId = taskId;
+
     // Emit task start event
     emitTaskEvent({
       type: 'task-start',
@@ -2807,7 +2830,7 @@ export async function* streamDeepAgent(
     // AUTOMATIC PROMPT ENHANCEMENT
     // =========================================
     let workingMessage = message;
-    
+
     if (enableAutoPromptEnhancement && shouldEnhancePrompt(message)) {
       emitTaskEvent({
         type: 'step-start',
@@ -2817,16 +2840,16 @@ export async function* streamDeepAgent(
         status: 'in-progress',
         data: { tool: 'prompt-enhancer', model: 'gemini-2.5-flash' }
       });
-      
+
       yield '✨ **Enhancing your request...**\n\n';
-      
+
       const { enhanced, questions } = await enhancePrompt(message);
-      
+
       if (enhanced !== message) {
         workingMessage = enhanced;
-        
+
         yield `📝 **Enhanced Request:**\n> ${enhanced}\n\n`;
-        
+
         if (questions.length > 0) {
           yield `**Research Questions:**\n`;
           for (const q of questions) {
@@ -2834,10 +2857,10 @@ export async function* streamDeepAgent(
           }
           yield '\n';
         }
-        
+
         yield '---\n\n';
       }
-      
+
       emitTaskEvent({
         type: 'step-complete',
         taskId,
@@ -2864,7 +2887,7 @@ export async function* streamDeepAgent(
     });
 
     let fullResponse = '';
-    
+
     emitTaskEvent({
       type: 'thinking',
       taskId,
@@ -2894,7 +2917,7 @@ export async function* streamDeepAgent(
     const toolCalls = parseToolCalls(fullResponse);
     if (toolCalls.length > 0) {
       yield '\n\n---\n';
-      
+
       const totalTools = toolCalls.length;
       let completedTools = 0;
 
@@ -2909,11 +2932,11 @@ export async function* streamDeepAgent(
             message: `Executing ${call.tool}...`,
             status: 'in-progress',
             progress: { current: completedTools, total: totalTools },
-            data: { 
-              tool: call.tool, 
+            data: {
+              tool: call.tool,
               toolName: call.tool,
               model: 'gemini-2.5-flash',
-              params: call.params 
+              params: call.params
             }
           });
 
@@ -2923,7 +2946,7 @@ export async function* streamDeepAgent(
 
           try {
             const parsed = JSON.parse(result);
-            
+
             // Emit tool result event
             emitTaskEvent({
               type: 'tool-result',
@@ -2948,7 +2971,7 @@ export async function* streamDeepAgent(
                   yield `**Quick Answer:** ${parsed.answer}\n\n`;
                 }
                 for (const r of parsed.results.slice(0, 5)) {
-                  yield `- **[${r.title}](${r.url})**\n  ${r.content?.substring(0, 150)}...\n\n`;
+                  yield `- **[${r.title}](${r.url})**\n  ${r.content?.substring(0, 150)}...\n`;
                 }
               } else if (call.tool === 'write_todos' && parsed.todos) {
                 // Update current todos and emit event
@@ -2995,32 +3018,32 @@ export async function* streamDeepAgent(
           }
         }
       }
-      
+
       // =========================================
       // AUTO-SYNTHESIS: Use Document Synthesizer (Gemini 3 Pro) to create final document
       // =========================================
       const hasSubagentResults = toolCalls.some(tc => tc.tool === 'task');
       const hasFinalDocument = toolCalls.some(tc => tc.tool === 'finalize_document');
-      
+
       if (hasSubagentResults && !hasFinalDocument) {
         // Get the document-synthesizer agent configuration
         const synthesizerAgent = subagents.get('document-synthesizer');
-        
+
         yield '\n\n---\n📄 **Document Synthesizer (Gemini 3 Pro)** - Creating comprehensive final document...\n\n';
-        
+
         emitTaskEvent({
           type: 'tool-call',
           taskId,
           title: 'document-synthesizer',
           message: 'Collecting and synthesizing all research findings...',
           status: 'in-progress',
-          data: { 
-            tool: 'document-synthesizer', 
+          data: {
+            tool: 'document-synthesizer',
             model: 'gemini-3-pro-preview',
             params: { action: 'synthesize' }
           }
         });
-        
+
         // Build the synthesis prompt with all research findings
         const synthesisPrompt = `## DOCUMENT SYNTHESIS REQUEST
 
@@ -3075,7 +3098,7 @@ Final synthesis and recommendations
 CREATE THE DOCUMENT NOW.`;
 
         const synthesizerSystemPrompt = synthesizerAgent?.systemPrompt || '';
-        
+
         try {
           // Use Gemini 3 Pro with HIGH thinking for synthesis
           const synthesisResponse = await genAI.models.generateContentStream({
@@ -3088,29 +3111,29 @@ CREATE THE DOCUMENT NOW.`;
               thinkingConfig: { thinkingBudget: 8192 }
             }
           });
-          
+
           let synthesisText = '';
           for await (const chunk of synthesisResponse) {
             const text = chunk.text || '';
             synthesisText += text;
             // Don't yield raw thinking - wait for the finalize_document call
           }
-          
+
           // Process any tool calls (should include finalize_document)
           const synthToolCalls = parseToolCalls(synthesisText);
           let documentCreated = false;
-          
+
           for (const call of synthToolCalls) {
             if (call.tool === 'finalize_document') {
               const tool = tools.get('finalize_document');
               if (tool) {
                 const result = await tool.execute(call.params);
-                
+
                 try {
                   const parsed = JSON.parse(result);
                   if (parsed.success) {
                     documentCreated = true;
-                    
+
                     emitTaskEvent({
                       type: 'document-ready',
                       taskId,
@@ -3118,7 +3141,7 @@ CREATE THE DOCUMENT NOW.`;
                       status: 'completed',
                       data: parsed
                     });
-                    
+
                     yield `\n✅ **Final Document Created:** "${call.params.title || 'Research Report'}"\n\n`;
                     yield `📄 Your comprehensive research report is now available in the document panel.\n\n`;
                   } else {
@@ -3130,14 +3153,14 @@ CREATE THE DOCUMENT NOW.`;
               }
             }
           }
-          
+
           // FALLBACK: If synthesizer didn't create document, use output-validator to build it
           if (!documentCreated) {
             yield `\n🛡️ **Output Validator** - Building document from findings...\n\n`;
-            
+
             // Extract content and build document directly
             const docContent = buildDocumentFromResponse(fullResponse, workingMessage);
-            
+
             if (docContent) {
               const tool = tools.get('finalize_document');
               if (tool) {
@@ -3146,12 +3169,12 @@ CREATE THE DOCUMENT NOW.`;
                   title: docTitle,
                   content: docContent
                 });
-                
+
                 try {
                   const parsed = JSON.parse(result);
                   if (parsed.success) {
                     documentCreated = true;
-                    
+
                     emitTaskEvent({
                       type: 'document-ready',
                       taskId,
@@ -3159,30 +3182,30 @@ CREATE THE DOCUMENT NOW.`;
                       status: 'completed',
                       data: parsed
                     });
-                    
+
                     yield `\n✅ **Document Created:** "${docTitle}"\n\n`;
                     yield `📄 Your research report is ready in the document panel.\n\n`;
                   }
-                } catch {}
+                } catch { }
               }
             }
           }
-          
+
           // FINAL FALLBACK: Direct extraction if all else fails
           if (!documentCreated) {
             yield `\n📝 Generating summary document...\n\n`;
-            
+
             // Create a basic document from the available content
             const fallbackTitle = extractTitleFromPrompt(workingMessage);
             const fallbackContent = `# ${fallbackTitle}\n\n## Executive Summary\n\nThis report synthesizes research on the topic requested by the user.\n\n## Research Findings\n\n${cleanDocumentContent(fullResponse)}\n\n## Conclusion\n\nThe research above provides comprehensive information on the requested topic.\n`;
-            
+
             const tool = tools.get('finalize_document');
             if (tool) {
               const result = await tool.execute({
                 title: fallbackTitle,
                 content: fallbackContent
               });
-              
+
               try {
                 const parsed = JSON.parse(result);
                 if (parsed.success) {
@@ -3193,23 +3216,23 @@ CREATE THE DOCUMENT NOW.`;
                     status: 'completed',
                     data: parsed
                   });
-                  
+
                   yield `\n✅ **Document Ready**\n\n`;
                 }
-              } catch {}
+              } catch { }
             }
           }
-          
+
         } catch (synthError) {
           console.error('Document synthesis error:', synthError);
-          
+
           // Emergency fallback - always create a document
           yield `\n⚠️ Using fallback document generation...\n\n`;
-          
+
           const fallbackTitle = extractTitleFromPrompt(workingMessage);
-          const fallbackContent = buildDocumentFromResponse(fullResponse, workingMessage) || 
+          const fallbackContent = buildDocumentFromResponse(fullResponse, workingMessage) ||
             `# ${fallbackTitle}\n\n${cleanDocumentContent(fullResponse)}`;
-          
+
           const tool = tools.get('finalize_document');
           if (tool) {
             try {
@@ -3217,7 +3240,7 @@ CREATE THE DOCUMENT NOW.`;
                 title: fallbackTitle,
                 content: fallbackContent
               });
-              
+
               const parsed = JSON.parse(result);
               if (parsed.success) {
                 emitTaskEvent({
@@ -3227,10 +3250,10 @@ CREATE THE DOCUMENT NOW.`;
                   status: 'completed',
                   data: parsed
                 });
-                
+
                 yield `\n✅ **Document Created**\n\n`;
               }
-            } catch {}
+            } catch { }
           }
         }
       }
@@ -3252,7 +3275,7 @@ CREATE THE DOCUMENT NOW.`;
       const continuationToolCalls = parseToolCalls(response);
       if (continuationToolCalls.length > 0) {
         yield '\n\n---\n';
-        
+
         for (const call of continuationToolCalls) {
           const tool = tools.get(call.tool);
           if (tool) {
@@ -3262,11 +3285,11 @@ CREATE THE DOCUMENT NOW.`;
               title: call.tool,
               message: `Executing ${call.tool}...`,
               status: 'in-progress',
-              data: { 
-                tool: call.tool, 
+              data: {
+                tool: call.tool,
                 toolName: call.tool,
                 model: 'gemini-2.5-flash',
-                params: call.params 
+                params: call.params
               }
             });
 
@@ -3275,7 +3298,7 @@ CREATE THE DOCUMENT NOW.`;
 
             try {
               const parsed = JSON.parse(result);
-              
+
               emitTaskEvent({
                 type: 'tool-result',
                 taskId,
@@ -3320,11 +3343,11 @@ CREATE THE DOCUMENT NOW.`;
     let remainingTodos = currentTodos.filter(t => t.status === 'pending');
     let iterationCount = 0;
     const maxIterations = 10; // Safety limit
-    
+
     while (remainingTodos.length > 0 && iterationCount < maxIterations) {
       iterationCount++;
       const nextTodo = remainingTodos[0];
-      
+
       // Internal progress tracking - emit event but don't yield verbose status to user
       emitTaskEvent({
         type: 'step-start',
@@ -3334,9 +3357,9 @@ CREATE THE DOCUMENT NOW.`;
         status: 'in-progress',
         progress: { current: iterationCount, total: currentTodos.length }
       });
-      
+
       // Mark as in-progress
-      currentTodos = currentTodos.map(t => 
+      currentTodos = currentTodos.map(t =>
         t.id === nextTodo.id ? { ...t, status: 'in-progress' as const } : t
       );
 
@@ -3384,7 +3407,7 @@ Just execute the task and output the results directly.`;
       }
 
       // Mark as completed
-      currentTodos = currentTodos.map(t => 
+      currentTodos = currentTodos.map(t =>
         t.id === nextTodo.id ? { ...t, status: 'completed' as const } : t
       );
 
@@ -3404,7 +3427,7 @@ Just execute the task and output the results directly.`;
 
       // Update remaining todos
       remainingTodos = currentTodos.filter(t => t.status === 'pending');
-      
+
       // Add to conversation history
       messages.push({ role: 'model', parts: [{ text: fullResponse }] });
     }
@@ -3414,14 +3437,14 @@ Just execute the task and output the results directly.`;
     // =========================================
     // Check if a final document was created during the process
     const documentsCreated = finalDocuments.length;
-    const hasNewDocument = finalDocuments.some(d => 
+    const hasNewDocument = finalDocuments.some(d =>
       d.createdAt.getTime() > Date.now() - 60000 // Created in last minute
     );
-    
+
     if (!hasNewDocument && currentTodos.length > 0) {
       // All tasks done but no final document - prompt for synthesis
       yield '\n\n---\n📝 **Creating final research document...**\n\n';
-      
+
       emitTaskEvent({
         type: 'writing',
         taskId,
@@ -3429,7 +3452,7 @@ Just execute the task and output the results directly.`;
         message: 'Creating comprehensive report...',
         status: 'in-progress'
       });
-      
+
       const finalSynthesisPrompt = `All research tasks are complete. Now create the final comprehensive document.
 
 Use finalize_document tool with:
@@ -3450,14 +3473,14 @@ Create the document NOW. Do not output any task status or meta-commentary.`;
             { role: 'user', parts: [{ text: finalSynthesisPrompt }] }
           ]
         });
-        
+
         let finalText = '';
         for await (const chunk of finalResponse) {
           const text = chunk.text || '';
           finalText += text;
           yield text;
         }
-        
+
         // Process finalize_document call
         const finalToolCalls = parseToolCalls(finalText);
         for (const call of finalToolCalls) {
@@ -3470,7 +3493,7 @@ Create the document NOW. Do not output any task status or meta-commentary.`;
                 if (parsed.success) {
                   yield `\n\n✅ **Final Document Created:** ${parsed.message}\n\n`;
                   yield `📄 Your comprehensive research report is ready in the document panel.\n\n`;
-                  
+
                   emitTaskEvent({
                     type: 'document-ready',
                     taskId,
@@ -3479,7 +3502,7 @@ Create the document NOW. Do not output any task status or meta-commentary.`;
                     data: parsed
                   });
                 }
-              } catch {}
+              } catch { }
             }
           }
         }

@@ -65,6 +65,7 @@ export interface TaskProgressStep {
   message?: string;
   startTime?: number;
   endTime?: number;
+  streamContent?: string;
 }
 
 export interface ActiveTask {
