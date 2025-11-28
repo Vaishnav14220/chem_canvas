@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine } from 'lucide-react';
+import { FileText, Settings, Search, Sparkles, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine, GitGraph } from 'lucide-react';
 import Canvas, {
   type CanvasCommand,
   type CanvasMoleculeInsertionHandler,
@@ -59,6 +59,8 @@ import { ToastContainer, Bounce } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import AIWord from './components/AIWord';
 import AISheet from './components/AISheet';
+import SimulationPlayground from './components/SimulationPlayground';
+import GeminiLiveWorkspace from './components/GeminiLiveWorkspace';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
 • Explain steps clearly and reference relevant controls inside NMRium when appropriate.
@@ -269,6 +271,7 @@ const App: React.FC = () => {
   const [showGeminiLiveWorkspace, setShowGeminiLiveWorkspace] = useState(false); // Kept for compatibility if needed, or remove
   const [showAIWord, setShowAIWord] = useState(false);
   const [showAISheet, setShowAISheet] = useState(false);
+  const [showSimulationPlayground, setShowSimulationPlayground] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
 
@@ -340,7 +343,8 @@ const App: React.FC = () => {
     !showDeepAgentWorkspace &&
     !showLatexWorkspace &&
     !showResearchPaperWorkspace &&
-    !showDocumentEditorCanvas;
+    !showDocumentEditorCanvas &&
+    !showSimulationPlayground;
 
   useEffect(() => {
     setCanvasSurfaceActive(isMainCanvasSurfaceActive);
@@ -1807,20 +1811,39 @@ Here is the learner's question: ${message}`;
 
                 <div className="inline-flex items-center rounded-full border border-border/40 bg-background/80 p-0.5 text-xs font-semibold shadow-sm">
                   <button
-                    onClick={() => setIsMolecularMode(false)}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${!isMolecularMode ? 'bg-orange-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                    onClick={() => {
+                      setIsMolecularMode(false);
+                      setShowSimulationPlayground(false);
+                    }}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${!isMolecularMode && !showSimulationPlayground ? 'bg-orange-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
                       }`}
                   >
                     <Edit3 className="h-4 w-4" />
                     Canvas Studio
                   </button>
                   <button
-                    onClick={() => setIsMolecularMode(true)}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${isMolecularMode ? 'bg-blue-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                    onClick={() => {
+                      setIsMolecularMode(true);
+                      setShowSimulationPlayground(false);
+                    }}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${isMolecularMode && !showSimulationPlayground ? 'bg-blue-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
                       }`}
                   >
                     <Beaker className="h-4 w-4" />
                     Molecule Sketcher
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSimulationPlayground(true);
+                      setIsMolecularMode(false);
+                      void captureToolClick('simulation_playground');
+                      startFeature('simulation_playground');
+                    }}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${showSimulationPlayground ? 'bg-emerald-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                  >
+                    <GitGraph className="h-4 w-4" />
+                    Simulation
                   </button>
                 </div>
 
@@ -2101,7 +2124,6 @@ Here is the learner's question: ${message}`;
         <GeminiLiveWorkspace
           onClose={() => setShowGeminiLiveWorkspace(false)}
           apiKey={apiKey}
-          geminiLiveState={geminiLiveState}
         />
       ) : (
         <div className="flex h-[calc(100vh-5rem)]">
@@ -2273,7 +2295,9 @@ Here is the learner's question: ${message}`;
             <div className="flex-1 flex relative">
               {/* Canvas */}
               <div className="flex-1 relative flex flex-col">
-                {isMolecularMode ? (
+                {showSimulationPlayground ? (
+                  <SimulationPlayground onClose={() => setShowSimulationPlayground(false)} />
+                ) : isMolecularMode ? (
                   <MoldrawEmbed />
                 ) : (
                   <>

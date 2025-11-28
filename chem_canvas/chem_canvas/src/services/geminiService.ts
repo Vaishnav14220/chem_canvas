@@ -1,15 +1,16 @@
 // @ts-nocheck
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
+import { AspectRatio, ImageSize, InteractiveLabel, EducationalSchema } from '../types/studium';
 import { fetchCanonicalSmiles } from './pubchemService';
 import { setStructuredReactionApiKey } from './structuredReactionService';
 import { apiKeyRotation, clearUserProvidedApiKey, executeWithRotation, registerUserProvidedApiKey } from './apiKeyRotation';
 import { captureApiEvent, captureApiKey } from '../utils/errorLogger';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
-import { 
-  initializeVertexAI, 
-  generateContentWithVertexAI, 
+import {
+  initializeVertexAI,
+  generateContentWithVertexAI,
   streamContentWithVertexAI,
-  isVertexAIAvailable 
+  isVertexAIAvailable
 } from './vertexAiService';
 
 // Initialize Gemini API
@@ -30,7 +31,7 @@ export const initializeGemini = (apiKey?: string) => {
   cachedModelName = null; // Reset cache when reinitializing
   void captureApiKey(keyToUse, apiKey ? 'provided' : 'rotation');
   void captureApiEvent('gemini_api', 'init', { usedProvidedKey: !!apiKey });
-  
+
   try {
     setStructuredReactionApiKey(keyToUse);
   } catch (error) {
@@ -42,7 +43,7 @@ export const initializeGeminiWithFirebaseKey = async (): Promise<void> => {
   if (genAI) {
     // Also try to initialize Vertex AI as fallback if not already done
     if (!isVertexAIAvailable()) {
-      initializeVertexAI().catch(err => 
+      initializeVertexAI().catch(err =>
         console.warn('⚠️ Could not initialize Vertex AI fallback:', err)
       );
     }
@@ -59,13 +60,13 @@ export const initializeGeminiWithFirebaseKey = async (): Promise<void> => {
     }
     initializeGemini(apiKey);
     console.info('✅ Gemini initialized with Firebase-provided key.');
-    
+
     // Also initialize Vertex AI as fallback (don't wait for it)
     initializeVertexAI().then(success => {
       if (success) {
         console.info('✅ Vertex AI fallback service ready');
       }
-    }).catch(err => 
+    }).catch(err =>
       console.warn('⚠️ Could not initialize Vertex AI fallback:', err)
     );
   })();
@@ -166,23 +167,23 @@ export const generateTextContent = async (prompt: string): Promise<string> => {
       lastError = error;
       const errorMessage = error?.message?.toLowerCase() || '';
       const errorCode = error?.error?.code || error?.code;
-      const is503 = errorCode === 503 || errorMessage.includes('503') || 
-                    errorMessage.includes('overloaded') || errorMessage.includes('unavailable');
-      
+      const is503 = errorCode === 503 || errorMessage.includes('503') ||
+        errorMessage.includes('overloaded') || errorMessage.includes('unavailable');
+
       if (is503 && retry < maxRetries - 1) {
         // Exponential backoff with jitter
         const delay = Math.min(2000 * Math.pow(2, retry) + Math.random() * 1000, 30000);
-        console.log(`⏳ API overloaded (attempt ${retry + 1}/${maxRetries}). Waiting ${Math.round(delay/1000)}s before retry...`);
+        console.log(`⏳ API overloaded (attempt ${retry + 1}/${maxRetries}). Waiting ${Math.round(delay / 1000)}s before retry...`);
         await sleep(delay);
         continue;
       }
-      
+
       // Check if error is a 503 (model overloaded) and Vertex AI is available as last resort
-      if ((errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('unavailable')) 
-          && !errorMessage.includes('vertex')) {
-        
+      if ((errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('unavailable'))
+        && !errorMessage.includes('vertex')) {
+
         console.log('⚠️ Gemini API overloaded, attempting to use Vertex AI fallback...');
-        
+
         // Try to initialize Vertex AI if not already done
         if (!isVertexAIAvailable()) {
           const vertexInitialized = await initializeVertexAI();
@@ -191,7 +192,7 @@ export const generateTextContent = async (prompt: string): Promise<string> => {
             throw error; // Re-throw original error if Vertex AI is not available
           }
         }
-        
+
         try {
           // Use Vertex AI as fallback
           const result = await generateContentWithVertexAI(prompt);
@@ -202,12 +203,12 @@ export const generateTextContent = async (prompt: string): Promise<string> => {
           throw error; // Throw original error if both fail
         }
       }
-      
+
       // Re-throw error if it's not a 503/overloaded error
       throw error;
     }
   }
-  
+
   throw lastError ?? new Error('All retry attempts failed');
 };
 
@@ -242,27 +243,27 @@ export const generateContentWithGemini = async (
       return typeof result === 'string' ? result.trim() : '';
     } catch (error) {
       lastError = error;
-      
+
       // Check if it's a 503 overload error
       const errorMessage = (error as any)?.message?.toLowerCase() || '';
       const errorCode = (error as any)?.error?.code || (error as any)?.code;
-      const is503 = errorCode === 503 || errorMessage.includes('503') || 
-                    errorMessage.includes('overloaded') || errorMessage.includes('unavailable');
-      
+      const is503 = errorCode === 503 || errorMessage.includes('503') ||
+        errorMessage.includes('overloaded') || errorMessage.includes('unavailable');
+
       if (attempt === maxAttempts || (!isRetryableGeminiError(error) && !is503)) {
         throw error;
       }
-      
+
       // Exponential backoff with jitter for 503 errors
       const jitter = Math.random() * 1000;
-      const delay = is503 
+      const delay = is503
         ? Math.min(baseDelay * Math.pow(2, attempt - 1) + jitter, 30000) // Max 30s delay
         : (attempt === 1 ? 500 : baseDelay * (attempt - 1));
-      
+
       console.warn(
         `⏳ Gemini request failed (attempt ${attempt}/${maxAttempts}). ${is503 ? 'API overloaded. ' : ''}Retrying in ${Math.round(delay)}ms...`
       );
-      
+
       await sleep(delay);
     }
   }
@@ -308,11 +309,11 @@ export const streamTextContent = async (
   } catch (error: any) {
     // Check if error is a 503 (model overloaded) and Vertex AI is available
     const errorMessage = error?.message?.toLowerCase() || '';
-    if ((errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('unavailable')) 
-        && !errorMessage.includes('vertex')) {
-      
+    if ((errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('unavailable'))
+      && !errorMessage.includes('vertex')) {
+
       console.log('⚠️ Gemini API streaming overloaded, attempting to use Vertex AI fallback...');
-      
+
       // Try to initialize Vertex AI if not already done
       if (!isVertexAIAvailable()) {
         const vertexInitialized = await initializeVertexAI();
@@ -321,7 +322,7 @@ export const streamTextContent = async (
           throw error; // Re-throw original error if Vertex AI is not available
         }
       }
-      
+
       try {
         // Use Vertex AI streaming as fallback
         const result = await streamContentWithVertexAI(prompt, onChunk);
@@ -332,7 +333,7 @@ export const streamTextContent = async (
         throw error; // Throw original error if both fail
       }
     }
-    
+
     // Re-throw error if it's not a 503/overloaded error
     throw error;
   }
@@ -408,8 +409,8 @@ export const resolveMoleculeDescription = async (
   const rawSmiles = typeof parsed?.smiles === 'string' ? parsed.smiles.trim() : '';
   const synonyms = Array.isArray(parsed?.synonyms)
     ? parsed.synonyms
-        .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
-        .filter((value: string) => value.length > 0)
+      .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
+      .filter((value: string) => value.length > 0)
     : [];
   const confidence = typeof parsed?.confidence === 'number' ? parsed.confidence : undefined;
   const notes = typeof parsed?.notes === 'string' ? parsed.notes.trim() : undefined;
@@ -445,8 +446,8 @@ export const resolveMoleculeDescription = async (
         typeof fallbackParsed?.smiles === 'string' ? fallbackParsed.smiles.trim() : '';
       const fallbackSynonyms = Array.isArray(fallbackParsed?.synonyms)
         ? fallbackParsed.synonyms
-            .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
-            .filter((value: string) => value.length > 0)
+          .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value: string) => value.length > 0)
         : [];
 
       const fallbackCandidates = [fallbackSmiles, ...fallbackSynonyms].filter(
@@ -736,7 +737,7 @@ export const generateQuote = async (topic: string): Promise<{ quote: string; aut
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    
+
     // Parse quote and author
     const match = text.match(/"([^"]+)"\s*-\s*(.+)/);
     if (match) {
@@ -797,6 +798,221 @@ export interface GeneratedFlashcard {
   difficulty?: 'intro' | 'intermediate' | 'advanced';
   tags?: string[];
 }
+
+/**
+ * Generates a high-quality educational image using Nano Banana Pro (Gemini 3 Pro Image Preview).
+ */
+export const generateEducationalImage = async (
+  topic: string,
+  aspectRatio: AspectRatio,
+  imageSize: ImageSize
+): Promise<string> => {
+  ensureInitialized();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  const prompt = `Create a highly detailed educational diagram of: ${topic}. 
+  CRITICAL: The image MUST have clear, legible text labels pointing to the important parts of the subject. 
+  The style should be clean, textbook-quality illustration suitable for students. 
+  Make it colorful and engaging.`;
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      // Reinitialize with new key if needed
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      const response = await genAI!.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: {
+          parts: [{ text: prompt }],
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: aspectRatio,
+            imageSize: imageSize,
+          },
+        },
+      });
+
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
+      throw new Error("No image generated.");
+    });
+  } catch (error) {
+    console.error("Image Gen Error:", error);
+    throw error;
+  }
+};
+
+/**
+ * Analyzes an image to extract educational content from labels using Gemini 3 Pro.
+ */
+export const analyzeImageForLearning = async (base64Image: string): Promise<InteractiveLabel[]> => {
+  ensureInitialized();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      const response = await genAI!.models.generateContent({
+        model: 'gemini-3-pro-preview', // High reasoning model
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: 'image/png',
+                data: cleanBase64
+              }
+            },
+            {
+              text: "Analyze this educational diagram. Identify all the text labels present in the image. For each label found, provide a simple definition suitable for a student and a fun fact. Return the result as a JSON object."
+            }
+          ]
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: EducationalSchema,
+          thinkingConfig: { thinkingBudget: 2048 } // Allow some thinking for accurate OCR and definition generation
+        }
+      });
+
+      const text = response.text;
+      if (!text) return [];
+
+      const data = JSON.parse(text);
+      return data.items || [];
+    });
+  } catch (error) {
+    console.error("Analysis Error:", error);
+    return [];
+  }
+};
+
+/**
+ * Chat with Gemini. Uses Gemini 3 Pro for smarts, or Flash with Search if grounding is needed.
+ */
+export const sendStudiumChatMessage = async (
+  message: string,
+  history: { role: string, parts: { text: string }[] }[],
+  useSearch: boolean
+) => {
+  ensureInitialized();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  // Choose model based on feature
+  const modelName = 'gemini-2.5-flash';
+
+  const tools = useSearch ? [{ googleSearch: {} }] : [];
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      const chat = genAI!.chats.create({
+        model: modelName,
+        history: history.map(h => ({
+          role: h.role,
+          parts: h.parts
+        })),
+        config: {
+          tools: tools,
+        }
+      });
+
+      const result = await chat.sendMessage({ message });
+
+      // Extract sources if search was used
+      let sources: { uri: string; title: string }[] = [];
+      let groundingMetadata: any = undefined;
+
+      if (useSearch) {
+        groundingMetadata = result.candidates?.[0]?.groundingMetadata;
+        const chunks = groundingMetadata?.groundingChunks;
+        if (chunks) {
+          sources = chunks
+            .filter((c: any) => c.web)
+            .map((c: any) => ({ uri: c.web.uri, title: c.web.title }));
+        }
+      }
+
+      return {
+        text: result.text,
+        sources,
+        groundingMetadata
+      };
+    });
+  } catch (error) {
+    console.error("Chat Error:", error);
+    throw error;
+  }
+};
+
+/**
+ * General image analysis for uploaded photos.
+ */
+export const analyzeUploadedImage = async (file: File, prompt: string): Promise<string> => {
+  ensureInitialized();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const base64 = btoa(
+    new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+  );
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      const response = await genAI!.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: file.type,
+                data: base64
+              }
+            },
+            { text: prompt || "Describe this image in detail." }
+          ]
+        }
+      });
+      return response.text || "Could not analyze image.";
+    });
+  } catch (error) {
+    console.error("Upload Analysis Error:", error);
+    throw error;
+  }
+};
 
 export const generateFlashcardDeck = async ({
   topic,
@@ -986,7 +1202,7 @@ export const compileDocumentOutput = async (blocks: any[]): Promise<string> => {
   try {
     const modelName = await getAvailableModel(genAI);
     const model = genAI.getGenerativeModel({ model: modelName });
-    
+
     // Create a structured representation of the document
     let documentStructure = 'Document contains the following blocks:\n\n';
     blocks.forEach((block, index) => {
@@ -1057,7 +1273,7 @@ export const compileDocumentOutput = async (blocks: any[]): Promise<string> => {
     });
 
     const prompt = `You are a professional document compiler. Based on the following document blocks, create a cohesive, well-formatted markdown document output. Use proper markdown formatting including headers, lists, code blocks, and emphasis. Maintain the structure and order of blocks, but enhance the presentation and add smooth transitions between sections where appropriate. Format it as professional markdown:\n\n${documentStructure}\n\nGenerate the final compiled markdown document:`;
-    
+
     const result = await model.generateContent(prompt);
     const response = await result.response;
     return response.text();
