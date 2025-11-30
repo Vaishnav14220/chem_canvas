@@ -2776,7 +2776,7 @@ Respond with a JSON object:
     let isCorrect = false;
     let correctCount = 0;
     let totalCount = 0;
-    let wrongIndices: number[] = [];
+    const wrongIndices: number[] = [];
 
     // Check answers based on module type
     if (module.module_type === 'fill_blanks') {
