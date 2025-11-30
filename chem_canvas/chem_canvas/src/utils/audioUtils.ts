@@ -180,30 +180,32 @@ class AudioPlayerImpl implements AudioPlayer {
 
 // Utility functions for audio format conversion
 export function convertWebmToWav(webmBlob: Blob): Promise<Blob> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      // If it's already WAV, return as-is
-      if (webmBlob.type.includes('wav')) {
-        console.log('🎵 Audio is already WAV format, skipping conversion');
-        resolve(webmBlob);
-        return;
-      }
-
-      // Decode the WebM/Opus audio to raw PCM data
-      const arrayBuffer = await webmBlob.arrayBuffer();
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      // Decode the compressed audio
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
-      // Convert to WAV format
-      const wavBlob = audioBufferToWav(audioBuffer);
-      console.log(`🎵 Converted ${webmBlob.type} to WAV. Original size: ${webmBlob.size}, WAV size: ${wavBlob.size}`);
-      resolve(wavBlob);
-    } catch (error) {
-      console.error('Error converting audio:', error);
-      reject(error);
+  return new Promise((resolve, reject) => {
+    // If it's already WAV, return as-is
+    if (webmBlob.type.includes('wav')) {
+      console.log('🎵 Audio is already WAV format, skipping conversion');
+      resolve(webmBlob);
+      return;
     }
+
+    (async () => {
+      try {
+        // Decode the WebM/Opus audio to raw PCM data
+        const arrayBuffer = await webmBlob.arrayBuffer();
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+        // Decode the compressed audio
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+        // Convert to WAV format
+        const wavBlob = audioBufferToWav(audioBuffer);
+        console.log(`🎵 Converted ${webmBlob.type} to WAV. Original size: ${webmBlob.size}, WAV size: ${wavBlob.size}`);
+        resolve(wavBlob);
+      } catch (error) {
+        console.error('Error converting audio:', error);
+        reject(error);
+      }
+    })();
   });
 }
 
@@ -333,7 +335,7 @@ export async function validateAudioContent(audioBlob: Blob, trackedDuration?: nu
         
         // Add timeout to prevent hanging during decode
         const decodePromise = audioContext.decodeAudioData(arrayBuffer);
-        const timeoutPromise = new Promise<never>((_, reject) => 
+        const timeoutPromise = new Promise<AudioBuffer>((_, reject) =>
           setTimeout(() => reject(new Error('Audio decode timeout')), 5000)
         );
         
@@ -415,7 +417,8 @@ export async function detectAudioContent(audioBlob: Blob): Promise<boolean> {
         
         // Analyze audio data to detect speech patterns
         const channelData = audioBuffer.getChannelData(0);
-        const sampleRate = audioBuffer.sampleRate;
+        // sampleRate is unused in original code, commented out to fix lint error
+        // const sampleRate = audioBuffer.sampleRate;
         
         // Calculate RMS (Root Mean Square) to detect audio level
         let sum = 0;

@@ -281,6 +281,6 @@ Provide a clear, educational response with proper markdown formatting that helps
 };
 
 // Initialize the service when the module loads
-initializeGeminiStreaming().catch(error => {
+void initializeGeminiStreaming().catch(error => {
   console.error('Failed to auto-initialize Gemini Streaming:', error);
 });

@@ -430,9 +430,10 @@ export const extractTextFromFile = async (file: File): Promise<{
   text: string;
   ocrContent?: ExtractedDocumentContent;
 }> => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      if (file.type === 'application/pdf') {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      try {
+        if (file.type === 'application/pdf') {
         // Use OCR for PDFs to extract text, tables, figures
         emitEvent({
           type: 'file-analyzed',
@@ -503,16 +504,17 @@ export const extractTextFromFile = async (file: File): Promise<{
         };
         reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
         reader.readAsText(file);
-      } else {
-        // Try to read as text
-        const reader = new FileReader();
-        reader.onload = (e) => resolve({ text: e.target?.result as string || `[Binary file: ${file.name}]` });
-        reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
-        reader.readAsText(file);
+        } else {
+          // Try to read as text
+          const reader = new FileReader();
+          reader.onload = (e) => resolve({ text: e.target?.result as string || `[Binary file: ${file.name}]` });
+          reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+          reader.readAsText(file);
+        }
+      } catch (error) {
+        reject(error);
       }
-    } catch (error) {
-      reject(error);
-    }
+    })();
   });
 };
 

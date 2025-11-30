@@ -272,7 +272,7 @@ const parseBySmiles = async (
     return null;
   }
 
-  let reactantSection = parts[0] ?? '';
+  const reactantSection = parts[0] ?? '';
   let agentSection = '';
   let productSection = '';
 

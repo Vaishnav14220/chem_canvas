@@ -1,7 +1,8 @@
 const KEYWORD_PREFIX_REGEX = /^(?:product|products|reactant|reactants|agent|agents)+/i;
 const KEYWORD_CLEANUP_REGEX = /(kekule(?:\.js)?|reactionwidget|interactivereactionviewer|unabletoparsereactionsmiles|originalerror|pleaseensurethe|smilesformatiscorrect)/gi;
-const NON_SMILES_CHARS_REGEX = /[^A-Za-z0-9\[\]\(\)@+\-=#\.\/\\>]/g;
-const REACTION_CANDIDATE_REGEX = /([A-Za-z0-9\[\]\(\)@+\-=#\.\/\\]+(?:>[A-Za-z0-9\[\]\(\)@+\-=#\.\/\\]+){1,2})/g;
+// Use new RegExp to avoid issues with escaping forward slashes in regex literals vs linter rules
+const NON_SMILES_CHARS_REGEX = new RegExp('[^A-Za-z0-9[\\]()@+\\-=#./\\\\>]', 'g');
+const REACTION_CANDIDATE_REGEX = new RegExp('([A-Za-z0-9[\\]()@+\\-=#./\\\\]+(?:>[A-Za-z0-9[\\]()@+\\-=#./\\\\]+){1,2})', 'g');
 
 /**
  * Attempts to extract a plausible reaction SMILES string from noisy input.

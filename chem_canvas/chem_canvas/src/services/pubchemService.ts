@@ -359,7 +359,7 @@ export const fetchMoleculeStructure = async (cid: number): Promise<MoleculeData 
     
     const propsResponse = await fetchWithRetry(propertiesUrl);
 
-    let moleculeData: MoleculeData = {
+    const moleculeData: MoleculeData = {
       name: cidToName[cid] || `Compound ${cid}`,
       cid: cid,
       molecularFormula: 'Unknown',
@@ -1326,7 +1326,7 @@ export const getKeggReactionDetails = async (entryId: string): Promise<KeggReact
     const text = await response.text();
     const lines = text.split('\n');
 
-    let reaction: Partial<KeggReaction> = {
+    const reaction: Partial<KeggReaction> = {
       entryId,
       name: '',
       equation: '',

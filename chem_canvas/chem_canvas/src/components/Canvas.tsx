@@ -4224,8 +4224,8 @@ export default function Canvas({
       const rotate3D = (x: number, y: number, z: number) => {
         // Y rotation
         let nx = x * cosy + z * siny;
-        let nz = -x * siny + z * cosy;
-        let ny = y;
+        const nz = -x * siny + z * cosy;
+        const ny = y;
         // X rotation
         const ny2 = ny * cosx - nz * sinx;
         const nz2 = ny * sinx + nz * cosx;
@@ -4348,8 +4348,8 @@ export default function Canvas({
       const rotate3D = (x: number, y: number, z: number) => {
         // Y rotation
         let nx = x * cosy + z * siny;
-        let nz = -x * siny + z * cosy;
-        let ny = y;
+        const nz = -x * siny + z * cosy;
+        const ny = y;
         // X rotation
         const ny2 = ny * cosx - nz * sinx;
         const nz2 = ny * sinx + nz * cosx;
@@ -4468,9 +4468,9 @@ export default function Canvas({
         const cosy = Math.cos(ry), siny = Math.sin(ry);
         const cosz = Math.cos(rz), sinz = Math.sin(rz);
         const rotate3D = (x: number, y: number, z: number) => {
-          let nx = x * cosy + z * siny;
-          let nz = -x * siny + z * cosy;
-          let ny = y;
+          const nx = x * cosy + z * siny;
+          const nz = -x * siny + z * cosy;
+          const ny = y;
           const ny2 = ny * cosx - nz * sinx;
           const nz2 = ny * sinx + nz * cosx;
           const x3 = nx * cosz - ny2 * sinz;
