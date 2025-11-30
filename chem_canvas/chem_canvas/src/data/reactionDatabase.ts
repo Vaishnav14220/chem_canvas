@@ -370,7 +370,7 @@ export const searchReactions = async (query: string, limit: number = 10): Promis
       }
     });
 
-    let uniqueResults = Array.from(dedupe.values());
+    const uniqueResults = Array.from(dedupe.values());
 
     if (uniqueResults.length < limit) {
       const fallbackMatches = FALLBACK_REACTIONS.filter(reaction =>
