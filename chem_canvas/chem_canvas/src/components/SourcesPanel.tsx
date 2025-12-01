@@ -117,7 +117,7 @@ export default function SourcesPanel({
     if (!highlights.length) return text;
 
     const sortedHighlights = highlights.sort((a, b) => a.startIndex - b.startIndex);
-    let result = [];
+    const result = [];
     let lastIndex = 0;
 
     sortedHighlights.forEach((highlight, index) => {

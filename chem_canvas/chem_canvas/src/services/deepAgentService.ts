@@ -2880,7 +2880,7 @@ IMPORTANT:
 - Cite sources with [1], [2] format if using web search`;
 
   try {
-    let conversationMessages = [
+    const conversationMessages = [
       { role: 'user', parts: [{ text: subagentSystemPrompt }] }
     ];
 
@@ -3074,7 +3074,7 @@ const processAgentTurn = async (
   ];
 
   // Get initial response
-  let response = await genAI.models.generateContent({
+  const response = await genAI.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: messages
   });

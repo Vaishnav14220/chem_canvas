@@ -584,7 +584,7 @@ const DocumentUnderstandingWorkspace: React.FC<DocumentUnderstandingWorkspacePro
     ).slice(0, 6);
 
     const sourceBranches = Array.isArray(raw.branches) ? raw.branches.slice(0, 6) : [];
-    let branches = sourceBranches.length > 0
+    const branches = sourceBranches.length > 0
       ? sourceBranches.map(branch => normalizeMindMapBranch(branch, topics))
       : [];
 

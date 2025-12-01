@@ -192,8 +192,8 @@ function markdownToDocsRequests(markdown: string): Array<any> {
     }
 
     // Handle inline formatting (bold, italic)
-    let searchText = text;
-    let textStartIndex = currentIndex + (isList ? listPrefix.length : 0);
+    const searchText = text;
+    const textStartIndex = currentIndex + (isList ? listPrefix.length : 0);
 
     // Bold: **text** or __text__
     const boldMatches = [...text.matchAll(/\*\*(.+?)\*\*|__(.+?)__/g)];

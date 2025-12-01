@@ -430,9 +430,10 @@ export const extractTextFromFile = async (file: File): Promise<{
   text: string;
   ocrContent?: ExtractedDocumentContent;
 }> => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      if (file.type === 'application/pdf') {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      try {
+        if (file.type === 'application/pdf') {
         // Use OCR for PDFs to extract text, tables, figures
         emitEvent({
           type: 'file-analyzed',
@@ -503,16 +504,17 @@ export const extractTextFromFile = async (file: File): Promise<{
         };
         reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
         reader.readAsText(file);
-      } else {
-        // Try to read as text
-        const reader = new FileReader();
-        reader.onload = (e) => resolve({ text: e.target?.result as string || `[Binary file: ${file.name}]` });
-        reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
-        reader.readAsText(file);
+        } else {
+          // Try to read as text
+          const reader = new FileReader();
+          reader.onload = (e) => resolve({ text: e.target?.result as string || `[Binary file: ${file.name}]` });
+          reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+          reader.readAsText(file);
+        }
+      } catch (error) {
+        reject(error);
       }
-    } catch (error) {
-      reject(error);
-    }
+    })();
   });
 };
 
@@ -525,10 +527,10 @@ export const uploadFile = async (
   const content = extractionResult.text;
   
   // Get OCR content if available from extraction
-  let ocrContent: ExtractedDocumentContent | undefined = extractionResult.ocrContent;
+  const ocrContent: ExtractedDocumentContent | undefined = extractionResult.ocrContent;
   let extractedImages: FigureData[] = ocrContent?.figures || [];
   let extractedTables: TableData[] = ocrContent?.tables || [];
-  let extractedFormulas: FormulaData[] = ocrContent?.formulas || [];
+  const extractedFormulas: FormulaData[] = ocrContent?.formulas || [];
   
   // For images that weren't processed yet, extract structured content
   if (file.type.startsWith('image/') && !ocrContent) {
@@ -1225,7 +1227,7 @@ Return ONLY the corrected LaTeX content, no explanations or markdown formatting.
       const response = await generateTextContent(prompt);
       
       // Clean the response (in case AI adds markdown formatting)
-      let cleanedResponse = response
+      const cleanedResponse = response
         .replace(/```latex\s*/gi, '')
         .replace(/```\s*/g, '')
         .trim();
@@ -1441,7 +1443,7 @@ const formatReferencesForThebibliography = (referencesContent: string): string =
   }
   
   // Clean up the content
-  let content = referencesContent.trim();
+  const content = referencesContent.trim();
   
   // Check if already in thebibliography format
   if (content.includes('\\bibitem')) {
