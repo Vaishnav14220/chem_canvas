@@ -21,6 +21,7 @@ import { buildCrystalVisualFromCif } from '../services/mineralService';
 import { type PDBProteinData, fetchPDBStructure } from '../services/pdbService';
 import { reactionSmilesToSVGHuggingFace } from '../services/rdkitService';
 import { sanitizeReactionSmilesInput, stripAtomMappings } from '../utils/reactionSanitizer';
+import { downloadFileFromStorage, getFreshDownloadUrl } from '../services/database/storageService';
 import type { StructuredReactionPayload } from '../services/structuredReactionService';
 import type { ReactionComponentDetails } from '../services/reactionResolver';
 import ChemistryToolbar from './ChemistryToolbar';
@@ -559,6 +560,11 @@ interface CanvasProps {
   onRegisterProteinInjectionHandler?: (handler: CanvasProteinInsertionHandler) => void;
   onRegisterReactionInjectionHandler?: (handler: CanvasReactionInsertionHandler) => void;
   onRegisterMarkdownInjectionHandler?: (handler: (payload: { text: string; heading?: string }) => void) => void;
+  // Workspace persistence handlers
+  onRegisterGetShapesHandler?: (handler: () => any[]) => void;
+  onRegisterSetShapesHandler?: (handler: (shapes: any[]) => void) => void;
+  onShapesChange?: (shapes: any[]) => void;
+  initialShapes?: any[];
   isFullscreen?: boolean;
 }
 
@@ -585,6 +591,10 @@ export default function Canvas({
   onRegisterProteinInjectionHandler,
   onRegisterReactionInjectionHandler,
   onRegisterMarkdownInjectionHandler,
+  onRegisterGetShapesHandler,
+  onRegisterSetShapesHandler,
+  onShapesChange,
+  initialShapes,
   isFullscreen = false
 }: CanvasProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -1020,7 +1030,12 @@ export default function Canvas({
           return;
         }
 
-        setDroppedDocuments(prev => [...prev, ...validDocuments]);
+        console.log('📄 Adding documents to canvas:', validDocuments.map(d => ({ id: d.id, name: d.name, type: d.type })));
+        setDroppedDocuments(prev => {
+          const newDocs = [...prev, ...validDocuments];
+          console.log('📄 Total documents after add:', newDocs.length);
+          return newDocs;
+        });
         const successMessage =
           validDocuments.length === 1
             ? `Added "${validDocuments[0].name}" to the canvas.`
@@ -1403,6 +1418,7 @@ export default function Canvas({
 
   useEffect(() => {
     droppedDocumentsRef.current = droppedDocuments;
+    console.log('📄 droppedDocumentsRef synced:', droppedDocuments.length, 'documents');
   }, [droppedDocuments]);
 
   useEffect(() => {
@@ -1633,6 +1649,9 @@ export default function Canvas({
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const selectedShape = selectedShapeId ? shapes.find(shape => shape.id === selectedShapeId) ?? null : null;
+  const historyPastRef = useRef<Shape[][]>([]);
+  const historyFutureRef = useRef<Shape[][]>([]);
+  const isRestoringHistoryRef = useRef(false);
   const has3DStructure = Boolean(
     selectedShape &&
     selectedShape.type === 'molecule' &&
@@ -1672,6 +1691,59 @@ export default function Canvas({
     baseY: number;
   } | null>(null);
   const externalTextPlacementRef = useRef<{ index: number }>({ index: 0 });
+
+  const cloneShapes = (payload: Shape[]): Shape[] => {
+    try {
+      return structuredClone(payload);
+    } catch {
+      return JSON.parse(JSON.stringify(payload)) as Shape[];
+    }
+  };
+
+  // Track history snapshots for undo/redo
+  useEffect(() => {
+    if (isRestoringHistoryRef.current) {
+      isRestoringHistoryRef.current = false;
+      return;
+    }
+    const snapshot = cloneShapes(shapes);
+    if (historyPastRef.current.length === 0) {
+      historyPastRef.current.push(snapshot);
+      return;
+    }
+    const lastSnapshot = historyPastRef.current[historyPastRef.current.length - 1];
+    if (JSON.stringify(lastSnapshot) === JSON.stringify(snapshot)) return;
+    historyPastRef.current.push(snapshot);
+    historyFutureRef.current = [];
+  }, [shapes]);
+
+  const restoreHistoryState = (snapshot: Shape[]) => {
+    const cloned = cloneShapes(snapshot);
+    isRestoringHistoryRef.current = true;
+    canvasHistoryRef.current = cloned;
+    setShapes(cloned);
+  };
+
+  const handleUndo = () => {
+    if (historyPastRef.current.length <= 1) return;
+    const current = historyPastRef.current.pop();
+    if (current) {
+      historyFutureRef.current.push(current);
+    }
+    const previous = historyPastRef.current[historyPastRef.current.length - 1];
+    if (previous) {
+      restoreHistoryState(previous);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyFutureRef.current.length === 0) return;
+    const next = historyFutureRef.current.pop();
+    if (next) {
+      historyPastRef.current.push(cloneShapes(next));
+      restoreHistoryState(next);
+    }
+  };
 
   useEffect(() => {
     if (!arQrCid) {
@@ -2009,6 +2081,268 @@ export default function Canvas({
       onRegisterMarkdownInjectionHandler(handleExternalMarkdownInjection);
     }
   }, [handleExternalMarkdownInjection, onRegisterMarkdownInjectionHandler]);
+
+  // Register get shapes handler for workspace persistence
+  // Returns both canvas shapes and dropped documents
+  useEffect(() => {
+    if (onRegisterGetShapesHandler) {
+      onRegisterGetShapesHandler(() => {
+        // Combine shapes with documents for saving
+        const shapesCount = canvasHistoryRef.current.length;
+        const docsCount = droppedDocumentsRef.current.length;
+        console.log('📦 getShapes called - Shapes:', shapesCount, 'Documents:', docsCount);
+        console.log('📄 Document details:', droppedDocumentsRef.current.map(d => ({ id: d.id, name: d.name, type: d.type })));
+        
+        const allItems = [
+          ...canvasHistoryRef.current,
+          // Mark documents with a special type so we can restore them
+          // Exclude viewerUrl (blob URL) as it won't work after reload
+          ...droppedDocumentsRef.current.map(doc => {
+            const { viewerUrl, ...docWithoutBlobUrl } = doc;
+            return {
+              ...docWithoutBlobUrl,
+              _isDocument: true,
+              _nodeType: 'document', // Use _nodeType to mark as document node
+              documentType: doc.type, // Preserve original document type (pdf, image, etc.)
+            };
+          })
+        ];
+        console.log('📦 getShapes returning:', allItems.length, 'total items');
+        return allItems;
+      });
+    }
+  }, [onRegisterGetShapesHandler]);
+
+  // Register set shapes handler for workspace persistence
+  // Restores both canvas shapes and dropped documents
+  useEffect(() => {
+    if (onRegisterSetShapesHandler) {
+      onRegisterSetShapesHandler(async (allItems: any[]) => {
+        // Separate documents from shapes
+        const documents = allItems.filter(item => item._isDocument || item._nodeType === 'document' || item.type === 'document');
+        const shapes = allItems.filter(item => !item._isDocument && item._nodeType !== 'document' && item.type !== 'document');
+        
+        console.log('📂 setShapes restoring:', shapes.length, 'shapes and', documents.length, 'documents');
+        
+        // Restore shapes
+        setShapes(shapes);
+        canvasHistoryRef.current = shapes;
+        
+        // Restore documents - fetch content from Storage URLs if available
+        const restoredDocs: CanvasDroppedDocument[] = [];
+        for (const doc of documents) {
+          const { _isDocument, _nodeType, data, ...restDoc } = doc;
+          const docData = data || restDoc;
+          
+          // Get the correct document type - check documentType first, then data.type, then type
+          // Skip 'document' as that's the node type, not the actual document type
+          let originalDocType = docData.documentType || docData.type || 'pdf';
+          if (originalDocType === 'document') originalDocType = 'pdf'; // fallback for legacy data
+          console.log('📄 Processing document:', docData.name, 'type:', originalDocType);
+          
+          // If document has storageUrl, fetch the content and create blob URL
+          if (docData.storageUrl) {
+            console.log('📥 Fetching document from Storage:', docData.name);
+            try {
+              // For PDFs, use the download URL directly in iframe (avoids CORS issues)
+              // For other types, download the blob
+              if (originalDocType === 'pdf') {
+                // Get a fresh download URL with token - can be used directly in iframe
+                const viewerUrl = await getFreshDownloadUrl(docData.storageUrl);
+                console.log('📎 Using direct download URL for PDF:', docData.name);
+                
+                restoredDocs.push({
+                  id: docData.id,
+                  name: docData.name,
+                  type: originalDocType as any,
+                  content: viewerUrl,
+                  viewerUrl: viewerUrl,
+                  position: docData.position || { x: 100, y: 100 },
+                  viewportWidth: docData.viewportWidth || 300,
+                  viewportHeight: docData.viewportHeight || 200,
+                  size: docData.size || 0,
+                  createdAt: docData.createdAt || Date.now(),
+                } as CanvasDroppedDocument);
+                console.log('✅ PDF document restored with direct URL:', docData.name);
+              } else {
+                // For non-PDF types, download as blob
+                const blob = await downloadFileFromStorage(docData.storageUrl);
+                const viewerUrl = URL.createObjectURL(blob);
+                
+                restoredDocs.push({
+                  id: docData.id,
+                  name: docData.name,
+                  type: originalDocType as any,
+                  content: viewerUrl,
+                  viewerUrl: viewerUrl,
+                  position: docData.position || { x: 100, y: 100 },
+                  viewportWidth: docData.viewportWidth || 300,
+                  viewportHeight: docData.viewportHeight || 200,
+                  size: docData.size || 0,
+                  createdAt: docData.createdAt || Date.now(),
+                } as CanvasDroppedDocument);
+                console.log('✅ Document restored from Storage:', docData.name, 'type:', originalDocType);
+              }
+            } catch (fetchError) {
+              console.error('❌ Failed to fetch document from Storage:', docData.name, fetchError);
+            }
+          } else if (docData.content) {
+            // Document has inline content (legacy or small files)
+            // If content is a data URL and it's a PDF, create a blob URL for viewing
+            if (originalDocType === 'pdf' && docData.content.startsWith('data:')) {
+              try {
+                const response = await fetch(docData.content);
+                const blob = await response.blob();
+                const viewerUrl = URL.createObjectURL(blob);
+                restoredDocs.push({
+                  ...docData,
+                  type: originalDocType,
+                  viewerUrl: viewerUrl,
+                  content: viewerUrl,
+                } as CanvasDroppedDocument);
+              } catch {
+                restoredDocs.push({ ...docData, type: originalDocType } as CanvasDroppedDocument);
+              }
+            } else {
+              restoredDocs.push({ ...docData, type: originalDocType } as CanvasDroppedDocument);
+            }
+          }
+        }
+        
+        if (restoredDocs.length > 0) {
+          setDroppedDocuments(restoredDocs);
+          droppedDocumentsRef.current = restoredDocs;
+        }
+      });
+    }
+  }, [onRegisterSetShapesHandler]);
+
+  // Load initial shapes from workspace persistence
+  useEffect(() => {
+    if (initialShapes && initialShapes.length > 0) {
+      // Separate documents from shapes
+      const documents = initialShapes.filter((item: any) => item._isDocument || item._nodeType === 'document' || item.type === 'document');
+      const shapes = initialShapes.filter((item: any) => !item._isDocument && item._nodeType !== 'document' && item.type !== 'document');
+      
+      console.log('🔄 Initial load:', shapes.length, 'shapes and', documents.length, 'documents');
+      
+      setShapes(shapes);
+      canvasHistoryRef.current = shapes;
+      
+      // Restore documents - handle async loading
+      const loadDocuments = async () => {
+        const restoredDocs: CanvasDroppedDocument[] = [];
+        for (const doc of documents) {
+          const { _isDocument, _nodeType, data, ...restDoc } = doc;
+          const docData = data || restDoc;
+          
+          // Get the correct document type - check documentType first, then data.type, then type
+          let originalDocType = docData.documentType || docData.type || 'pdf';
+          // Fallback: if type is 'document', treat as 'pdf' for proper display
+          if (originalDocType === 'document') originalDocType = 'pdf';
+          console.log('📄 Initial load - Processing document:', docData.name, 'type:', originalDocType);
+          
+          // If document has storageUrl, fetch the content and create blob URL
+          if (docData.storageUrl) {
+            console.log('📥 Initial load - Fetching document from Storage:', docData.name);
+            try {
+              // For PDFs, use the download URL directly in iframe (avoids CORS issues)
+              if (originalDocType === 'pdf') {
+                const viewerUrl = await getFreshDownloadUrl(docData.storageUrl);
+                console.log('📎 Initial load - Using direct download URL for PDF:', docData.name);
+                
+                restoredDocs.push({
+                  id: docData.id,
+                  name: docData.name,
+                  type: originalDocType as any,
+                  content: viewerUrl,
+                  viewerUrl: viewerUrl,
+                  position: docData.position || { x: 100, y: 100 },
+                  viewportWidth: docData.viewportWidth || 300,
+                  viewportHeight: docData.viewportHeight || 200,
+                  size: docData.size || 0,
+                  createdAt: docData.createdAt || Date.now(),
+                } as CanvasDroppedDocument);
+                console.log('✅ Initial load - PDF document restored with direct URL:', docData.name);
+              } else {
+                // For non-PDF types, download as blob
+                const blob = await downloadFileFromStorage(docData.storageUrl);
+                const viewerUrl = URL.createObjectURL(blob);
+                
+                restoredDocs.push({
+                  id: docData.id,
+                  name: docData.name,
+                  type: originalDocType as any,
+                  content: viewerUrl,
+                  viewerUrl: viewerUrl,
+                  position: docData.position || { x: 100, y: 100 },
+                  viewportWidth: docData.viewportWidth || 300,
+                  viewportHeight: docData.viewportHeight || 200,
+                  size: docData.size || 0,
+                  createdAt: docData.createdAt || Date.now(),
+                } as CanvasDroppedDocument);
+                console.log('✅ Initial load - Document restored:', docData.name, 'type:', originalDocType);
+              }
+            } catch (fetchError) {
+              console.error('❌ Initial load - Failed to fetch document:', docData.name, fetchError);
+            }
+          } else if (docData.content) {
+            // Document has inline content - handle data URLs for PDFs
+            if (originalDocType === 'pdf' && docData.content.startsWith('data:')) {
+              try {
+                const response = await fetch(docData.content);
+                const blob = await response.blob();
+                const viewerUrl = URL.createObjectURL(blob);
+                restoredDocs.push({
+                  ...docData,
+                  type: originalDocType,
+                  viewerUrl: viewerUrl,
+                  content: viewerUrl,
+                } as CanvasDroppedDocument);
+              } catch {
+                restoredDocs.push({ ...docData, type: originalDocType } as CanvasDroppedDocument);
+              }
+            } else {
+              restoredDocs.push({ ...docData, type: originalDocType } as CanvasDroppedDocument);
+            }
+          }
+        }
+        
+        if (restoredDocs.length > 0) {
+          setDroppedDocuments(restoredDocs);
+          droppedDocumentsRef.current = restoredDocs;
+        }
+      };
+      
+      if (documents.length > 0) {
+        loadDocuments();
+      }
+    }
+  }, []); // Only run once on mount
+
+  // Track previous shapes to avoid unnecessary updates
+  const prevShapesLengthRef = useRef<number>(0);
+  const onShapesChangeRef = useRef(onShapesChange);
+  
+  // Keep ref updated
+  useEffect(() => {
+    onShapesChangeRef.current = onShapesChange;
+  }, [onShapesChange]);
+  
+  // Notify parent of shapes changes for auto-save (debounced)
+  useEffect(() => {
+    // Only notify if shapes count actually changed (avoid infinite loops)
+    if (onShapesChangeRef.current && shapes.length !== prevShapesLengthRef.current) {
+      prevShapesLengthRef.current = shapes.length;
+      // Debounce the notification
+      const timer = setTimeout(() => {
+        if (onShapesChangeRef.current) {
+          onShapesChangeRef.current(shapes);
+        }
+      }, 2000); // Increased debounce time
+      return () => clearTimeout(timer);
+    }
+  }, [shapes.length]); // Only depend on length
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -5689,6 +6023,19 @@ export default function Canvas({
     setShowCorrections(false);
     setAnalysisResult(null);
     resetExternalTextPlacement();
+    setShapes([]);
+    canvasHistoryRef.current = [];
+    historyPastRef.current = [[]];
+    historyFutureRef.current = [];
+    setSelectedShapeId(null);
+    setDroppedDocuments([]);
+    setExpandedDocuments(new Set());
+    setMarkdownEntries([]);
+    setMarkdownPanels([]);
+    setAnnotations([]);
+    setSelectedReaction(null);
+    setActiveMineralPreview(null);
+    setShowInlineReactionSearch(false);
   }, [resetExternalTextPlacement, showGrid]);
 
   const exportCanvas = useCallback(() => {
@@ -6168,7 +6515,10 @@ export default function Canvas({
       label: 'Reactions',
       icon: FlaskConical,
       title: 'Search Reactions',
-      onClick: () => setShowInlineReactionSearch((prev) => !prev),
+      onClick: () => {
+        setShowChemistryToolbar(false);
+        setShowInlineReactionSearch(true);
+      },
       badgeClass: 'bg-orange-500/15 text-orange-300',
       active: showInlineReactionSearch,
       activeClass: 'ring-1 ring-orange-500/40 border-orange-500/60'
@@ -6350,8 +6700,18 @@ export default function Canvas({
 
       {/* Reaction Search - Below Header */}
       {showInlineReactionSearch && (
-        <div className="absolute top-20 left-1/2 z-10 transform -translate-x-1/2">
-          <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-lg p-4">
+        <div className="absolute top-20 left-1/2 z-50 transform -translate-x-1/2">
+          <div className="bg-slate-800/95 backdrop-blur-sm border border-slate-700/60 rounded-xl shadow-2xl p-4 w-[min(640px,90vw)]">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-300">Reaction search</div>
+              <button
+                type="button"
+                onClick={() => setShowInlineReactionSearch(false)}
+                className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-800/80"
+              >
+                Close
+              </button>
+            </div>
             <InlineReactionSearch
               onSelectReaction={(reactionData) => {
                 void (async () => {

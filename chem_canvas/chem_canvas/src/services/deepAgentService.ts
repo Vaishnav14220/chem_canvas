@@ -16,7 +16,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { fetchCanonicalSmiles } from './pubchemService';
-import { generateTextContent, isGeminiInitialized, initializeGeminiWithFirebaseKey } from './geminiService';
+import { generateTextContent, isGeminiInitialized, initializeGeminiWithFirebaseKey, generateImage } from './geminiService';
 import { AspectRatio, ImageSize, ImageGenerationPromptSchema, ImageGenerationPrompt } from '../types/studium';
 
 // ==========================================
@@ -798,38 +798,81 @@ tools.set('molecule_search', {
   description: 'Search for detailed information about a chemical molecule or compound. Returns SMILES notation, chemical properties, and usage information.',
   execute: async (params: { query: string; includeSmiles?: boolean }) => {
     try {
-      const smiles = await fetchCanonicalSmiles(params.query);
-      if (smiles) {
-        return JSON.stringify({
-          success: true,
-          molecule: params.query,
-          smiles,
-          source: 'pubchem',
-          message: `Found molecule: ${params.query} with SMILES: ${smiles}`
-        });
-      }
-
-      const description = await generateTextContent(
-        `Provide detailed information about the molecule or chemical compound: ${params.query}. 
-        Include its chemical formula, structure description, common uses, and safety information.
-        If you know the SMILES notation, include it.`
-      );
-
+      const result = await fetchCanonicalSmiles(params.query);
       return JSON.stringify({
         success: true,
-        molecule: params.query,
-        description,
-        source: 'gemini'
+        data: result
       });
-    } catch (error) {
+    } catch (error: any) {
       return JSON.stringify({
         success: false,
-        error: `Failed to find information for: ${params.query}`,
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: error.message
       });
     }
   }
 });
+
+// Image Generation Tool
+tools.set('image_generation', {
+  name: 'image_generation',
+  description: 'Generate high-quality, grounded images using Gemini 3 Pro (Nano Banana Pro). Use this to create visual aids, diagrams, or illustrations for research topics.',
+  execute: async (params: { prompt: string; count?: number; aspectRatio?: string }) => {
+    try {
+      const count = Math.min(Math.max(1, params.count || 1), 4); // Limit to 1-4 images
+      const aspectRatio = (params.aspectRatio || '1:1') as any;
+      const images: string[] = [];
+
+      // Generate images sequentially (since the API generates one at a time)
+      for (let i = 0; i < count; i++) {
+        // Add variation to prompt if generating multiple to avoid identical images
+        const currentPrompt = count > 1 ? `${params.prompt} (Variation ${i + 1})` : params.prompt;
+
+        const base64Data = await generateImage(currentPrompt, {
+          aspectRatio: aspectRatio,
+          imageSize: '1K'
+        });
+        images.push(base64Data);
+      }
+
+      // Create artifacts for each image
+      const artifactIds: string[] = [];
+
+      images.forEach((base64Data, index) => {
+        // Create a data URL for the content
+        const dataUrl = `data:image/png;base64,${base64Data}`;
+
+        const artifact = createArtifact({
+          type: 'file', // Using 'file' type as we don't have a specific 'image' type in Artifact interface yet, or we can use metadata to distinguish
+          title: `Generated Image: ${params.prompt.substring(0, 30)}... (${index + 1}/${count})`,
+          content: `![Generated Image](${dataUrl})`, // Store as markdown image
+          agentName: 'Image Generation Agent',
+          metadata: {
+            type: 'image',
+            prompt: params.prompt,
+            aspectRatio,
+            base64: base64Data // Store raw base64 in metadata if needed
+          }
+        });
+        artifactIds.push(artifact.id);
+      });
+
+      return JSON.stringify({
+        success: true,
+        message: `Successfully generated ${count} images.`,
+        artifactIds,
+        count
+      });
+
+    } catch (error: any) {
+      console.error('Image generation error:', error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+});
+
 
 // Reaction Analysis Tool
 tools.set('analyze_reaction', {
@@ -1068,8 +1111,8 @@ Parameters:
 - aspect_ratio: Optional. "1:1", "16:9", "3:2", etc. Default: "16:9"
 
 Returns the generated image as a base64 data URL.`,
-  execute: async (params: { 
-    topic: string; 
+  execute: async (params: {
+    topic: string;
     target_audience?: string;
     aspect_ratio?: string;
   }) => {
@@ -1089,7 +1132,7 @@ Returns the generated image as a base64 data URL.`,
 
     try {
       // Step 1: Prompt Engineering with Gemini 2.5 Flash
-      const userPrompt = params.target_audience 
+      const userPrompt = params.target_audience
         ? `Topic: ${params.topic}\nTarget Audience: ${params.target_audience}`
         : params.topic;
 
@@ -1236,7 +1279,7 @@ Returns the generated image as a base64 data URL.`,
 
       // AI image generators cannot reliably render text labels
       // Solution: Generate clean image first, then use vision AI to position labels as overlay
-      
+
       // Generate a clean base image without text (AI does this well)
       const imagePrompt = `Create a highly detailed, scientifically accurate illustration of: ${params.topic}.
 
@@ -1373,13 +1416,13 @@ Return ONLY the JSON array, no other text.`;
 
         const positionText = visionResponse.text?.trim() || '';
         console.log("Label positions response:", positionText);
-        
+
         // Parse the JSON response (handle markdown code blocks if present)
         let jsonStr = positionText;
         if (jsonStr.startsWith('```')) {
           jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
         }
-        
+
         labelPositions = JSON.parse(jsonStr);
         console.log("Parsed label positions:", labelPositions);
       } catch (posError) {
@@ -1392,7 +1435,7 @@ Return ONLY the JSON array, no other text.`;
           const labelY = 50 + 45 * Math.sin(angle);
           const arrowX = 50 + 25 * Math.cos(angle);
           const arrowY = 50 + 25 * Math.sin(angle);
-          
+
           return {
             label: l.label,
             arrow_tip: { x: arrowX, y: arrowY },
@@ -1458,7 +1501,7 @@ Return ONLY the JSON array, no other text.`;
 
     } catch (error) {
       console.error("Educational Image Generation Error:", error);
-      
+
       emitTaskEvent({
         type: 'step-complete',
         taskId: `image-gen-${Date.now()}`,

@@ -21,7 +21,7 @@ export const fetchApiKeysFromFirestore = async (): Promise<string[]> => {
     console.log('📡 Fetching API keys from Firestore...');
     const apiKeysRef = collection(db, 'apikey');
     const querySnapshot = await getDocs(apiKeysRef);
-    
+
     const apiKeys: string[] = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
@@ -31,12 +31,12 @@ export const fetchApiKeysFromFirestore = async (): Promise<string[]> => {
         console.log(`✅ Found API key: ${data.api_key.substring(0, 10)}...`);
       }
     });
-    
+
     if (apiKeys.length === 0) {
       console.warn('⚠️ No API keys found in Firestore "apikey" collection');
       return [];
     }
-    
+
     console.log(`✅ Successfully fetched ${apiKeys.length} API key(s) from Firestore`);
     return apiKeys;
   } catch (error) {
@@ -50,20 +50,20 @@ export const fetchApiKeysFromFirestore = async (): Promise<string[]> => {
  */
 export const getApiKeysWithCache = async (): Promise<string[]> => {
   const now = Date.now();
-  
+
   // Return cached keys if still valid
   if (apiKeyCache.length > 0 && (now - lastCacheTime) < CACHE_DURATION) {
     console.log('📦 Using cached API keys');
     return apiKeyCache;
   }
-  
+
   // Fetch fresh keys
   const freshKeys = await fetchApiKeysFromFirestore();
   if (freshKeys.length > 0) {
     apiKeyCache = freshKeys;
     lastCacheTime = now;
   }
-  
+
   return freshKeys;
 };
 
@@ -128,20 +128,20 @@ export const checkApiKeysInitialized = async (): Promise<boolean> => {
 export const displayAllApiKeys = async (): Promise<void> => {
   try {
     const apiKeys = await getApiKeysWithCache();
-    
+
     console.log('🔑 API Keys from Firestore:');
     console.log('========================================');
-    
+
     if (apiKeys.length === 0) {
       console.log('❌ No API keys found in Firestore');
       return;
     }
-    
+
     apiKeys.forEach((key, index) => {
       const masked = `${key.substring(0, 10)}...${key.substring(key.length - 4)}`;
       console.log(`${index + 1}. ${masked}`);
     });
-    
+
     console.log(`✅ Total API keys: ${apiKeys.length}`);
   } catch (error) {
     console.error('❌ Error displaying API keys:', error);
@@ -199,6 +199,57 @@ export const getVertexAiApiKey = async (): Promise<string | null> => {
     vertexApiKeyCache = freshKey;
     lastVertexCacheTime = now;
     console.log(`✅ Using Vertex AI API key from Firestore: ${freshKey.substring(0, 10)}...`);
+  }
+
+  return freshKey;
+};
+
+/**
+ * Fetch the Google Client ID from Firestore.
+ * Looks for a document containing a "google_client_id" field.
+ */
+export const fetchGoogleClientIdFromFirestore = async (): Promise<string | null> => {
+  try {
+    console.log('📡 Fetching Google Client ID from Firestore...');
+    const apiKeysRef = collection(db, 'apikey');
+    const querySnapshot = await getDocs(apiKeysRef);
+
+    for (const docSnap of querySnapshot.docs) {
+      const data = docSnap.data();
+      if (typeof data.google_client_id === 'string' && data.google_client_id.trim()) {
+        const key = data.google_client_id.trim();
+        console.log(`✅ Found Google Client ID in doc ${docSnap.id}`);
+        return key;
+      }
+    }
+
+    console.warn('⚠️ No Google Client ID found in Firestore "apikey" collection');
+    return null;
+  } catch (error) {
+    console.error('❌ Error fetching Google Client ID from Firestore:', error);
+    return null;
+  }
+};
+
+let googleClientIdCache: string | null = null;
+let lastGoogleClientIdCacheTime = 0;
+
+/**
+ * Get the cached Google Client ID or fetch a fresh one if needed.
+ */
+export const getGoogleClientId = async (): Promise<string | null> => {
+  const now = Date.now();
+
+  if (googleClientIdCache && now - lastGoogleClientIdCacheTime < CACHE_DURATION) {
+    console.log('📦 Using cached Google Client ID');
+    return googleClientIdCache;
+  }
+
+  const freshKey = await fetchGoogleClientIdFromFirestore();
+  if (freshKey) {
+    googleClientIdCache = freshKey;
+    lastGoogleClientIdCacheTime = now;
+    console.log(`✅ Using Google Client ID from Firestore`);
   }
 
   return freshKey;

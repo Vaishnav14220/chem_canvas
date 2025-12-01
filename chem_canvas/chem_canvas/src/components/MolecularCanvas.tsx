@@ -1,11 +1,11 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { 
-  ZoomIn, 
-  ZoomOut, 
-  RotateCcw, 
-  Grid3x3, 
-  Move, 
-  Eye, 
+import {
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Grid3x3,
+  Move,
+  Eye,
   EyeOff,
   Download,
   Upload,
@@ -121,23 +121,23 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
     ctx.strokeStyle = '#374151';
     ctx.lineWidth = 0.5;
     ctx.setLineDash([2, 2]);
-    
+
     const gridSize = 20 * zoom;
-    
+
     for (let x = 0; x <= width; x += gridSize) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
     }
-    
+
     for (let y = 0; y <= height; y += gridSize) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
       ctx.stroke();
     }
-    
+
     ctx.setLineDash([]);
   };
 
@@ -168,7 +168,7 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
 
   const drawAtom = (ctx: CanvasRenderingContext2D, atom: MolecularObject) => {
     const radius = (atom.size || 15) * zoom;
-    
+
     // Atom circle
     ctx.fillStyle = atom.color;
     ctx.strokeStyle = '#ffffff';
@@ -202,7 +202,7 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
   const drawBond = (ctx: CanvasRenderingContext2D, bond: MolecularObject) => {
     const fromAtom = molecularObjects.find(a => a.id === bond.from);
     const toAtom = molecularObjects.find(a => a.id === bond.to);
-    
+
     if (!fromAtom || !toAtom) return;
 
     ctx.strokeStyle = bond.color;
@@ -222,12 +222,12 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
         const length = Math.sqrt(dx * dx + dy * dy);
         const perpX = -dy / length * 3;
         const perpY = dx / length * 3;
-        
+
         ctx.beginPath();
         ctx.moveTo(fromAtom.x + perpX, fromAtom.y + perpY);
         ctx.lineTo(toAtom.x + perpX, toAtom.y + perpY);
         ctx.stroke();
-        
+
         ctx.beginPath();
         ctx.moveTo(fromAtom.x - perpX, fromAtom.y - perpY);
         ctx.lineTo(toAtom.x - perpX, toAtom.y - perpY);
@@ -239,17 +239,17 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
         const length2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
         const perpX2 = -dy2 / length2 * 5;
         const perpY2 = dx2 / length2 * 5;
-        
+
         ctx.beginPath();
         ctx.moveTo(fromAtom.x, fromAtom.y);
         ctx.lineTo(toAtom.x, toAtom.y);
         ctx.stroke();
-        
+
         ctx.beginPath();
         ctx.moveTo(fromAtom.x + perpX2, fromAtom.y + perpY2);
         ctx.lineTo(toAtom.x + perpX2, toAtom.y + perpY2);
         ctx.stroke();
-        
+
         ctx.beginPath();
         ctx.moveTo(fromAtom.x - perpX2, fromAtom.y - perpY2);
         ctx.lineTo(toAtom.x - perpX2, toAtom.y - perpY2);
@@ -269,14 +269,14 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
   const drawArrow = (ctx: CanvasRenderingContext2D, arrow: MolecularObject) => {
     const fromAtom = molecularObjects.find(a => a.id === arrow.from);
     const toAtom = molecularObjects.find(a => a.id === arrow.to);
-    
+
     if (!fromAtom || !toAtom) return;
 
     const dx = toAtom.x - fromAtom.x;
     const dy = toAtom.y - fromAtom.y;
     const length = Math.sqrt(dx * dx + dy * dy);
     const angle = Math.atan2(dy, dx);
-    
+
     const headLength = 15 * zoom;
     const headAngle = Math.PI / 6;
 
@@ -318,7 +318,7 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
       const angle = (i * 2 * Math.PI) / sides;
       const x = ring.x + radius * Math.cos(angle);
       const y = ring.y + radius * Math.sin(angle);
-      
+
       if (i === 0) {
         ctx.moveTo(x, y);
       } else {
@@ -337,7 +337,7 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
       const y1 = ring.y + radius * Math.sin(angle1);
       const x2 = ring.x + radius * Math.cos(angle2);
       const y2 = ring.y + radius * Math.sin(angle2);
-      
+
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -349,16 +349,16 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
   const drawSelectionHighlight = (ctx: CanvasRenderingContext2D, obj: MolecularObject) => {
     ctx.save();
     ctx.scale(zoom, zoom);
-    
+
     ctx.strokeStyle = '#3b82f6';
     ctx.lineWidth = 3;
     ctx.setLineDash([5, 5]);
-    
+
     const radius = (obj.size || 15) + 5;
     ctx.beginPath();
     ctx.arc(obj.x, obj.y, radius, 0, 2 * Math.PI);
     ctx.stroke();
-    
+
     ctx.restore();
   };
 
@@ -437,7 +437,7 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
         color: strokeColor,
         size: strokeWidth
       };
-      
+
       const newObjects = [...molecularObjects, newAtom];
       setMolecularObjects(newObjects);
       addToHistory(newObjects);
@@ -484,7 +484,7 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
           color: strokeColor,
           size: strokeWidth
         };
-        
+
         const newObjects = [...molecularObjects, newBond];
         setMolecularObjects(newObjects);
       }
@@ -550,9 +550,8 @@ const MolecularCanvas: React.FC<MolecularCanvasProps> = ({
             <div className="w-px h-6 bg-slate-600 mx-2" />
             <button
               onClick={() => setShowGrid(!showGrid)}
-              className={`p-2 rounded-lg transition-colors ${
-                showGrid ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700/50'
-              }`}
+              className={`p-2 rounded-lg transition-colors ${showGrid ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700/50'
+                }`}
               title="Toggle Grid"
             >
               <Grid3x3 size={18} />

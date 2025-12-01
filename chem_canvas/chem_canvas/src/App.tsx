@@ -41,9 +41,6 @@ import FlippingInfo from './components/FlippingInfo';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import DocumentUnderstandingWorkspace from './components/DocumentUnderstandingWorkspace';
 import SubjectExplorer from './components/SubjectExplorer';
-import DeepAgentWorkspace from './components/DeepAgentWorkspace';
-import LatexDocumentWorkspace from './components/LatexDocumentWorkspace';
-import ResearchPaperWorkspace from './components/ResearchPaperWorkspace';
 import GeminiLiveOverlay from './components/GeminiLive/GeminiLiveOverlay';
 import GeminiLiveImageLightbox from './components/GeminiLive/GeminiLiveImageLightbox';
 import { ConceptImageRecord, LearningCanvasImage } from './components/GeminiLive/types';
@@ -61,6 +58,18 @@ import AIWord from './components/AIWord';
 import AISheet from './components/AISheet';
 import SimulationPlayground from './components/SimulationPlayground';
 import GeminiLiveWorkspace from './components/GeminiLiveWorkspace';
+import ImmersiveLearning from './components/ImmersiveLearning';
+import {
+  createWorkspace,
+  getWorkspaces,
+  saveCanvasState,
+  loadCanvasState,
+  updateWorkspace as updateWorkspaceFirebase,
+  deleteWorkspace as deleteWorkspaceFirebase
+} from './services/database/workspaceService';
+import { uploadFileToStorage, UploadedFile } from './services/database/storageService';
+import { getCurrentUserId } from './services/database/userService';
+import { Save, CloudOff, Cloud, FolderOpen, Loader2 as LoaderIcon } from 'lucide-react';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
 • Explain steps clearly and reference relevant controls inside NMRium when appropriate.
@@ -106,6 +115,10 @@ type SourceEntry = {
 type CanvasWorkspace = {
   id: string;
   title: string;
+  firebaseId?: string; // The Firestore document ID if saved
+  shapes?: any[]; // Canvas shapes data
+  lastSaved?: Date;
+  hasUnsavedChanges?: boolean;
 };
 
 type CanvasWorkspaceHandlers = {
@@ -115,6 +128,8 @@ type CanvasWorkspaceHandlers = {
   molecule?: CanvasMoleculeInsertionHandler;
   protein?: CanvasProteinInsertionHandler;
   reaction?: CanvasReactionInsertionHandler;
+  getShapes?: () => any[];
+  setShapes?: (shapes: any[]) => void;
 };
 
 const INITIAL_WORKSPACE_ID = 'workspace-1';
@@ -265,13 +280,11 @@ const App: React.FC = () => {
   const [showDocumentUnderstandingWorkspace, setShowDocumentUnderstandingWorkspace] = useState(false);
   const [showSubjectExplorer, setShowSubjectExplorer] = useState(false);
   const [showDocumentEditorCanvas, setShowDocumentEditorCanvas] = useState(false);
-  const [showDeepAgentWorkspace, setShowDeepAgentWorkspace] = useState(false);
-  const [showLatexWorkspace, setShowLatexWorkspace] = useState(false);
-  const [showResearchPaperWorkspace, setShowResearchPaperWorkspace] = useState(false);
   const [showGeminiLiveWorkspace, setShowGeminiLiveWorkspace] = useState(false); // Kept for compatibility if needed, or remove
   const [showAIWord, setShowAIWord] = useState(false);
   const [showAISheet, setShowAISheet] = useState(false);
   const [showSimulationPlayground, setShowSimulationPlayground] = useState(false);
+  const [showImmersiveLearning, setShowImmersiveLearning] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
 
@@ -325,6 +338,12 @@ const App: React.FC = () => {
   const currentFeatureRef = useRef<{ id: string; start: number } | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
 
+  // Workspace persistence states
+  const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
+  const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
+  const [showSavedWorkspaces, setShowSavedWorkspaces] = useState(false);
+  const [savedWorkspacesList, setSavedWorkspacesList] = useState<Array<{ id: string; name: string; updatedAt: any }>>([]);
+
   // Resize states
   const [isResizing, setIsResizing] = useState<'sources' | 'chat' | null>(null);
   const [resizeStartX, setResizeStartX] = useState(0);
@@ -340,9 +359,6 @@ const App: React.FC = () => {
     !showSubjectExplorer &&
     !showNmrFullscreen &&
     !showGeminiLiveWorkspace &&
-    !showDeepAgentWorkspace &&
-    !showLatexWorkspace &&
-    !showResearchPaperWorkspace &&
     !showDocumentEditorCanvas &&
     !showSimulationPlayground;
 
@@ -442,6 +458,245 @@ const App: React.FC = () => {
     setActiveWorkspaceId(workspaceId);
   }, []);
 
+  // Save current workspace to Firebase
+  const handleSaveWorkspace = useCallback(async () => {
+    const userId = getCurrentUserId();
+    console.log('💾 Save workspace - User ID:', userId);
+    if (!userId) {
+      console.error('❌ User not authenticated - cannot save workspace');
+      return;
+    }
+
+    const activeWorkspace = canvasWorkspaces.find(ws => ws.id === activeWorkspaceId);
+    if (!activeWorkspace) {
+      console.error('❌ No active workspace found');
+      return;
+    }
+
+    setIsSavingWorkspace(true);
+    try {
+      // Get current shapes from the canvas
+      const handlers = workspaceHandlersRef.current[activeWorkspaceId];
+      const shapes = handlers?.getShapes?.() || [];
+      console.log('📦 Shapes to save:', shapes.length, 'items');
+
+      let firebaseId = activeWorkspace.firebaseId;
+
+      // Create workspace in Firebase if it doesn't exist
+      if (!firebaseId) {
+        console.log('🆕 Creating new workspace in Firestore...');
+        const newWorkspace = await createWorkspace({
+          name: activeWorkspace.title,
+        });
+        firebaseId = newWorkspace.id;
+        console.log('✅ Created workspace with ID:', firebaseId);
+
+        // Update local state with Firebase ID
+        setCanvasWorkspaces(prev => prev.map(ws =>
+          ws.id === activeWorkspaceId
+            ? { ...ws, firebaseId, lastSaved: new Date(), hasUnsavedChanges: false }
+            : ws
+        ));
+      } else {
+        console.log('📝 Updating existing workspace:', firebaseId);
+        // Update workspace name if changed
+        await updateWorkspaceFirebase(firebaseId, { name: activeWorkspace.title });
+      }
+
+      // Process shapes - upload documents to Storage and replace content with URLs
+      const processedNodes = [];
+      for (const shape of shapes) {
+        if (shape._isDocument && shape.content) {
+          // This is a document - upload to Firebase Storage
+          console.log('📤 Uploading document to Storage:', shape.name);
+          try {
+            const mimeType = shape.type === 'pdf' ? 'application/pdf'
+              : shape.type === 'image' ? 'image/png'
+                : 'text/plain';
+
+            const uploadedFile = await uploadFileToStorage(
+              shape.content,
+              firebaseId,
+              shape.name || `document_${shape.id}`,
+              mimeType
+            );
+
+            // Create node without the large content, but with Storage URL
+            const { content, preview, ...shapeWithoutContent } = shape;
+            processedNodes.push({
+              id: shape.id,
+              type: 'document',
+              position: {
+                x: shape.position?.x || 0,
+                y: shape.position?.y || 0,
+              },
+              width: shape.viewportWidth || 300,
+              height: shape.viewportHeight || 200,
+              data: {
+                ...shapeWithoutContent,
+                storageUrl: uploadedFile.url,
+                storagePath: uploadedFile.path,
+                uploadedAt: uploadedFile.uploadedAt,
+              },
+              style: { color: '#00FFFF' },
+            });
+            console.log('✅ Document uploaded:', shape.name);
+          } catch (uploadError) {
+            console.error('❌ Failed to upload document:', shape.name, uploadError);
+            // Still save the node but without Storage URL
+            processedNodes.push({
+              id: shape.id,
+              type: 'document',
+              position: {
+                x: shape.position?.x || 0,
+                y: shape.position?.y || 0,
+              },
+              width: shape.viewportWidth || 300,
+              height: shape.viewportHeight || 200,
+              data: { ...shape, uploadError: true },
+              style: { color: '#FF0000' },
+            });
+          }
+        } else {
+          // Regular shape - convert to node format
+          processedNodes.push({
+            id: shape.id,
+            type: shape.type || 'custom',
+            position: {
+              x: shape.startX || shape.x || 0,
+              y: shape.startY || shape.y || 0,
+            },
+            width: Math.abs((shape.endX || 0) - (shape.startX || 0)) || shape.width || 100,
+            height: Math.abs((shape.endY || 0) - (shape.startY || 0)) || shape.height || 100,
+            data: { ...shape },
+            style: { color: shape.color || '#00FFFF' },
+          });
+        }
+      }
+
+      console.log('📋 Processed nodes:', processedNodes.length, 'items');
+
+      // Save canvas state (nodes and edges)
+      console.log('💾 Saving canvas state to workspace:', firebaseId);
+      await saveCanvasState(firebaseId, processedNodes, []);
+
+      // Update local state
+      setCanvasWorkspaces(prev => prev.map(ws =>
+        ws.id === activeWorkspaceId
+          ? { ...ws, firebaseId, lastSaved: new Date(), hasUnsavedChanges: false, shapes }
+          : ws
+      ));
+
+      console.log('✅ Workspace saved successfully to Firestore! Path: users/' + userId + '/workspaces/' + firebaseId);
+    } catch (error) {
+      console.error('❌ Error saving workspace:', error);
+    } finally {
+      setIsSavingWorkspace(false);
+    }
+  }, [activeWorkspaceId, canvasWorkspaces]);
+
+  // Load saved workspaces from Firebase
+  const handleLoadSavedWorkspaces = useCallback(async () => {
+    const userId = getCurrentUserId();
+    console.log('📂 Loading saved workspaces for user:', userId);
+
+    if (!userId) {
+      console.warn('⚠️ No user ID found - cannot load workspaces');
+      setSavedWorkspacesList([]);
+      setShowSavedWorkspaces(true);
+      return;
+    }
+
+    setIsLoadingWorkspaces(true);
+    setShowSavedWorkspaces(true); // Show dropdown immediately
+    try {
+      const workspaces = await getWorkspaces({ limit: 20 });
+      console.log('📂 Loaded workspaces:', workspaces);
+      setSavedWorkspacesList(workspaces.map(ws => ({
+        id: ws.id,
+        name: ws.name,
+        updatedAt: ws.updatedAt,
+      })));
+    } catch (error) {
+      console.error('❌ Error loading saved workspaces:', error);
+      setSavedWorkspacesList([]); // Clear list on error
+    } finally {
+      setIsLoadingWorkspaces(false);
+    }
+  }, []);
+
+  // Open a saved workspace from Firebase
+  const handleOpenSavedWorkspace = useCallback(async (firebaseId: string, name: string) => {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+
+    try {
+      // Load canvas state from Firebase
+      const { nodes } = await loadCanvasState(firebaseId);
+
+      // Convert nodes back to shapes format
+      const shapes = nodes.map((node: any) => {
+        const data = node.data || {};
+        return {
+          id: node.id,
+          type: node.type,
+          startX: node.position?.x || 0,
+          startY: node.position?.y || 0,
+          endX: (node.position?.x || 0) + (node.width || 100),
+          endY: (node.position?.y || 0) + (node.height || 100),
+          x: node.position?.x,
+          y: node.position?.y,
+          width: node.width,
+          height: node.height,
+          color: node.style?.color || data.color || '#00FFFF',
+          ...data,
+        };
+      });
+
+      // Check if this workspace is already open
+      const existingWorkspace = canvasWorkspaces.find(ws => ws.firebaseId === firebaseId);
+      if (existingWorkspace) {
+        setActiveWorkspaceId(existingWorkspace.id);
+        setShowSavedWorkspaces(false);
+        return;
+      }
+
+      // Create new workspace tab with the loaded data
+      const newWorkspaceId = generateWorkspaceId();
+      const newWorkspace: CanvasWorkspace = {
+        id: newWorkspaceId,
+        title: name,
+        firebaseId,
+        shapes,
+        lastSaved: new Date(),
+        hasUnsavedChanges: false,
+      };
+
+      setCanvasWorkspaces(prev => [...prev, newWorkspace]);
+      setActiveWorkspaceId(newWorkspaceId);
+      setShowSavedWorkspaces(false);
+
+      // After the canvas mounts, inject the shapes
+      setTimeout(() => {
+        const handlers = workspaceHandlersRef.current[newWorkspaceId];
+        if (handlers?.setShapes) {
+          handlers.setShapes(shapes);
+        }
+      }, 100);
+
+    } catch (error) {
+      console.error('❌ Error opening saved workspace:', error);
+    }
+  }, [canvasWorkspaces]);
+
+  // Track changes to shapes via ref (don't trigger re-renders)
+  const workspaceShapesRef = useRef<Map<string, any[]>>(new Map());
+
+  const handleShapesChange = useCallback((workspaceId: string, shapes: any[]) => {
+    // Store in ref only - don't update state to avoid re-render loops
+    workspaceShapesRef.current.set(workspaceId, shapes);
+  }, []);
+
   const pillButtonClasses =
     'inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground';
   const dispatchCanvasCommand = useCallback((command: CanvasCommand) => {
@@ -494,11 +749,9 @@ const App: React.FC = () => {
       if (session && session.isAuthenticated) {
         const sessionStatus = getSessionStatus();
         if (sessionStatus.isValid) {
-          console.log(`Valid session found! Expires in ${sessionStatus.remainingHours} hours`);
+          // Session found - no need to log on every check
           setUser(session.userProfile);
           setIsAuthenticated(true);
-        } else {
-          console.log('Session expired, clearing...');
         }
       }
     };
@@ -546,6 +799,14 @@ const App: React.FC = () => {
   // Track session duration for engagement
   useEffect(() => {
     sessionStartRef.current = Date.now();
+
+    // Expose immersive learning trigger for testing
+    if (typeof window !== 'undefined') {
+      (window as any).openImmersiveLearning = () => {
+        setShowImmersiveLearning(true);
+        startFeature('immersive-learning');
+      };
+    }
 
     const handleSessionEnd = () => {
       const durationSeconds = Math.max(1, Math.floor((Date.now() - sessionStartRef.current) / 1000));
@@ -1328,6 +1589,22 @@ Here is the learner's question: ${message}`;
         setRdkitStatus('idle');
         setShowSubjectExplorer(false);
         break;
+      case 'immersive-learning':
+        setShowImmersiveLearning(true);
+        setShowSrlCoachWorkspace(false);
+        setShowStudyToolsWorkspace(false);
+        setShowDocumentUnderstandingWorkspace(false);
+        setShowNmrFullscreen(false);
+        setShowChemistryPanel(false);
+        setShowChatPanel(false);
+        setIsNmrAssistantActive(false);
+        setShowNmrAssistant(false);
+        setIsRdkitAssistantActive(false);
+        setShowRdkitAssistant(false);
+        setRdkitStatus('idle');
+        setShowSubjectExplorer(false);
+        startFeature('immersive-learning');
+        break;
       case 'ai-word':
       case 'word-processor':
       case 'smart-document':
@@ -1646,81 +1923,6 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
-                    setShowDeepAgentWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setShowDocumentUnderstandingWorkspace(false);
-                    setShowSubjectExplorer(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                    void captureToolClick('deep_agent');
-                    startFeature('deep_agent');
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-transform hover:scale-[1.02]"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Deep Agent
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowLatexWorkspace(true);
-                    setShowDeepAgentWorkspace(false);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setShowDocumentUnderstandingWorkspace(false);
-                    setShowSubjectExplorer(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                    void captureToolClick('latex_agent');
-                    startFeature('latex_agent');
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-green-600 to-teal-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-green-500/25 transition-transform hover:scale-[1.02]"
-                >
-                  <FileText className="h-4 w-4" />
-                  LaTeX Agent
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowResearchPaperWorkspace(true);
-                    setShowLatexWorkspace(false);
-                    setShowDeepAgentWorkspace(false);
-                    setShowSrlCoachWorkspace(false);
-                    setShowStudyToolsWorkspace(false);
-                    setShowDocumentUnderstandingWorkspace(false);
-                    setShowSubjectExplorer(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                    void captureToolClick('research_paper_agent');
-                    startFeature('research_paper_agent');
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-600 to-orange-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-amber-500/25 transition-transform hover:scale-[1.02]"
-                >
-                  <BookOpen className="h-4 w-4" />
-                  Research Paper
-                </button>
-
-                <button
-                  onClick={() => {
                     setShowNmrFullscreen(true);
                     setShowSrlCoachWorkspace(false);
                     setShowStudyToolsWorkspace(false);
@@ -1807,6 +2009,32 @@ Here is the learner's question: ${message}`;
                 >
                   <FileSpreadsheet className="h-4 w-4" />
                   AI Sheet
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowImmersiveLearning(true);
+                    setShowAISheet(false);
+                    setShowAIWord(false);
+                    setShowSrlCoachWorkspace(false);
+                    setShowStudyToolsWorkspace(false);
+                    setShowDocumentUnderstandingWorkspace(false);
+                    setShowSubjectExplorer(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowChatPanel(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                    void captureToolClick('immersive_learning');
+                    startFeature('immersive_learning');
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-pink-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-transform hover:scale-[1.02]"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Immersive Learning
                 </button>
 
                 <div className="inline-flex items-center rounded-full border border-border/40 bg-background/80 p-0.5 text-xs font-semibold shadow-sm">
@@ -2015,27 +2243,6 @@ Here is the learner's question: ${message}`;
             setShowSubjectExplorer(false);
           }}
           apiKey={apiKey}
-        />
-      ) : showDeepAgentWorkspace ? (
-        <DeepAgentWorkspace
-          onBack={() => {
-            setShowDeepAgentWorkspace(false);
-            setShowChatPanel(false);
-          }}
-        />
-      ) : showLatexWorkspace ? (
-        <LatexDocumentWorkspace
-          onBack={() => {
-            setShowLatexWorkspace(false);
-            setShowChatPanel(false);
-          }}
-        />
-      ) : showResearchPaperWorkspace ? (
-        <ResearchPaperWorkspace
-          onBack={() => {
-            setShowResearchPaperWorkspace(false);
-            setShowChatPanel(false);
-          }}
         />
       ) : showNmrFullscreen ? (
         <div className="flex h-[calc(100vh-5rem)] flex-col">
@@ -2337,7 +2544,90 @@ Here is the learner's question: ${message}`;
                       >
                         <Plus size={14} />
                       </button>
+
+                      {/* Workspace Save/Load Controls */}
+                      <div className="ml-auto flex items-center gap-2">
+                        {/* Load saved workspaces */}
+                        <button
+                          onClick={handleLoadSavedWorkspaces}
+                          disabled={isLoadingWorkspaces}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/50 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition disabled:opacity-50"
+                          title="Open saved workspace"
+                        >
+                          {isLoadingWorkspaces ? (
+                            <LoaderIcon size={14} className="animate-spin" />
+                          ) : (
+                            <FolderOpen size={14} />
+                          )}
+                          <span className="hidden sm:inline">Open</span>
+                        </button>
+
+                        {/* Save current workspace */}
+                        <button
+                          onClick={handleSaveWorkspace}
+                          disabled={isSavingWorkspace}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition ${canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.hasUnsavedChanges
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-500 border border-emerald-500'
+                            : 'border border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-700 hover:text-white'
+                            } disabled:opacity-50`}
+                          title={canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? "Save changes" : "Save workspace to cloud"}
+                        >
+                          {isSavingWorkspace ? (
+                            <LoaderIcon size={14} className="animate-spin" />
+                          ) : canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? (
+                            <Cloud size={14} />
+                          ) : (
+                            <Save size={14} />
+                          )}
+                          <span className="hidden sm:inline">
+                            {canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? 'Saved' : 'Save'}
+                          </span>
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Saved Workspaces Dropdown */}
+                    {showSavedWorkspaces && (
+                      <div className="absolute left-4 top-12 z-50 w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+                        <div className="flex items-center justify-between border-b border-slate-700 px-3 py-2">
+                          <span className="text-sm font-medium text-slate-200">Saved Workspaces</span>
+                          <button
+                            onClick={() => setShowSavedWorkspaces(false)}
+                            className="rounded p-1 hover:bg-slate-800"
+                          >
+                            <X size={14} className="text-slate-400" />
+                          </button>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto p-2">
+                          {isLoadingWorkspaces ? (
+                            <div className="flex items-center justify-center py-4 gap-2">
+                              <LoaderIcon size={16} className="animate-spin text-slate-400" />
+                              <span className="text-sm text-slate-500">Loading workspaces...</span>
+                            </div>
+                          ) : savedWorkspacesList.length === 0 ? (
+                            <p className="py-4 text-center text-sm text-slate-500">
+                              No saved workspaces yet. Save your current workspace using the Save button.
+                            </p>
+                          ) : (
+                            savedWorkspacesList.map(ws => (
+                              <button
+                                key={ws.id}
+                                onClick={() => handleOpenSavedWorkspace(ws.id, ws.name)}
+                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-slate-800 transition"
+                              >
+                                <FolderOpen size={16} className="text-slate-400" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-200 truncate">{ws.name}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {ws.updatedAt?.toDate?.()?.toLocaleDateString() || 'Recently saved'}
+                                  </p>
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex-1 relative">
                       {canvasWorkspaces.map(workspace => (
                         <div
@@ -2359,6 +2649,10 @@ Here is the learner's question: ${message}`;
                             onRegisterMoleculeInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'molecule', handler)}
                             onRegisterProteinInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'protein', handler)}
                             onRegisterReactionInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'reaction', handler)}
+                            onRegisterGetShapesHandler={(handler) => registerWorkspaceHandler(workspace.id, 'getShapes', handler)}
+                            onRegisterSetShapesHandler={(handler) => registerWorkspaceHandler(workspace.id, 'setShapes', handler)}
+                            onShapesChange={(shapes) => handleShapesChange(workspace.id, shapes)}
+                            initialShapes={workspace.shapes}
                           />
                         </div>
                       ))}
@@ -2375,7 +2669,7 @@ Here is the learner's question: ${message}`;
 
               {/* Chat Start Button - Floating */}
               {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
-                <div className="absolute top-4 right-8 z-10 flex flex-col gap-3 items-end">
+                <div className="absolute top-16 right-8 z-10 flex flex-col gap-3 items-end">
                   {/* Gemini Live Share Canvas Button */}
                   {geminiLiveState.connectionState === ConnectionState.CONNECTED && (
                     <DarkButtonWithIcon
@@ -2584,14 +2878,14 @@ Here is the learner's question: ${message}`;
       <GeminiLiveImageLightbox image={expandedImage} onClose={handleCloseLightbox} />
 
       {/* AI Word */}
-      {showAIWord && (
+      <div className={showAIWord ? '' : 'hidden'}>
         <AIWord
           onClose={() => {
             setShowAIWord(false);
             endCurrentFeature();
           }}
         />
-      )}
+      </div>
 
       {/* AI Sheet */}
       {showAISheet && (
@@ -2600,6 +2894,17 @@ Here is the learner's question: ${message}`;
             setShowAISheet(false);
             endCurrentFeature();
           }}
+        />
+      )}
+
+      {/* Immersive Learning */}
+      {showImmersiveLearning && (
+        <ImmersiveLearning
+          onClose={() => {
+            setShowImmersiveLearning(false);
+            endCurrentFeature();
+          }}
+          apiKey={apiKey}
         />
       )}
 

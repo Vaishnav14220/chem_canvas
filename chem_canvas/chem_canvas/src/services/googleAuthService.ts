@@ -7,6 +7,9 @@
  */
 
 // ==========================================
+import { getGoogleClientId } from '../firebase/apiKeys';
+
+// ==========================================
 // Types
 // ==========================================
 
@@ -31,9 +34,6 @@ type AuthStateListener = (state: GoogleAuthState) => void;
 // ==========================================
 // Configuration
 // ==========================================
-
-// Google Cloud Console Client ID - Users need to set this in their environment
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 // Scopes required for Google Docs
 const SCOPES = [
@@ -109,15 +109,29 @@ function loadGoogleScript(): Promise<void> {
  * Initialize the token client
  */
 function initTokenClient(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (!GOOGLE_CLIENT_ID) {
-      reject(new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your environment.'));
+  return new Promise(async (resolve, reject) => {
+    // Try to get Client ID from env or Firestore
+    let clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+    if (!clientId) {
+      try {
+        const fetchedId = await getGoogleClientId();
+        if (fetchedId) {
+          clientId = fetchedId;
+        }
+      } catch (error) {
+        console.warn('Failed to fetch Client ID from Firestore:', error);
+      }
+    }
+
+    if (!clientId) {
+      reject(new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your environment or add it to Firestore "apikey" collection.'));
       return;
     }
 
     try {
       tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
+        client_id: clientId,
         scope: SCOPES,
         callback: async (response) => {
           if (response.error) {
@@ -214,7 +228,7 @@ export async function initGoogleAuth(): Promise<void> {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const user: GoogleUser = JSON.parse(stored);
-      
+
       // Check if token is still valid
       if (user.expiresAt > Date.now()) {
         updateAuthState({
@@ -274,7 +288,7 @@ export function signInWithGoogle(): void {
  */
 export function signOutGoogle(): void {
   const user = authState.user;
-  
+
   if (user?.accessToken) {
     // Revoke the token
     google.accounts.oauth2.revoke(user.accessToken, () => {
@@ -283,7 +297,7 @@ export function signOutGoogle(): void {
   }
 
   localStorage.removeItem(STORAGE_KEY);
-  
+
   updateAuthState({
     isSignedIn: false,
     user: null,
@@ -303,7 +317,7 @@ export function getAuthState(): GoogleAuthState {
  */
 export async function getAccessToken(): Promise<string | null> {
   const user = authState.user;
-  
+
   if (!user) {
     return null;
   }
@@ -349,7 +363,7 @@ export function subscribeToAuthState(listener: AuthStateListener): () => void {
   listeners.add(listener);
   // Immediately call with current state
   listener(authState);
-  
+
   return () => {
     listeners.delete(listener);
   };

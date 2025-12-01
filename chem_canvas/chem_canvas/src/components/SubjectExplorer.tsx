@@ -6,9 +6,9 @@ import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import { executeWithRotation } from '../services/apiKeyRotation';
 import { auth } from '../firebase/config';
-import { 
-  getLearningPreferences, 
-  saveSessionData, 
+import {
+  getLearningPreferences,
+  saveSessionData,
   getAdaptivePrompts,
   type LearningPreferences,
   type SessionData
@@ -684,9 +684,9 @@ const parseDuolingoLearningJourney = (content: string): {
       }
       const acceptableAnswers = altAnswersSegment
         ? altAnswersSegment
-            .split(/[\n,]/)
-            .map(ans => ans.trim())
-            .filter(Boolean)
+          .split(/[\n,]/)
+          .map(ans => ans.trim())
+          .filter(Boolean)
         : [];
 
       bites.push({
@@ -810,14 +810,14 @@ const parseLearningSections = (content: string): {
   const summaryBlock = extractContentBetweenTags(content, 'SUMMARY');
   const summary: JourneySummary | null = summaryBlock
     ? (() => {
-        const lines = summaryBlock.split(/\n+/).map(line => line.trim()).filter(Boolean);
-        const bullets = lines.filter(line => line.startsWith('-')).map(line => line.replace(/^[-*]\s*/, '').trim());
-        const takeaway = lines.find(line => line.toLowerCase().includes('takeaway'));
-        return {
-          bullets: bullets.length > 0 ? bullets : lines,
-          takeaway: takeaway && takeaway.includes(':') ? takeaway.split(':').slice(1).join(':').trim() : undefined,
-        };
-      })()
+      const lines = summaryBlock.split(/\n+/).map(line => line.trim()).filter(Boolean);
+      const bullets = lines.filter(line => line.startsWith('-')).map(line => line.replace(/^[-*]\s*/, '').trim());
+      const takeaway = lines.find(line => line.toLowerCase().includes('takeaway'));
+      return {
+        bullets: bullets.length > 0 ? bullets : lines,
+        takeaway: takeaway && takeaway.includes(':') ? takeaway.split(':').slice(1).join(':').trim() : undefined,
+      };
+    })()
     : null;
 
   return { sections, summary };
@@ -1051,7 +1051,7 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
       }
 
       await refreshSavedSessions(user.uid);
-      
+
       // Auto-load most recent session if user has saved learning journeys
       try {
         const sessions = await getSubjectExplorerSessions(user.uid);
@@ -1062,7 +1062,7 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
             const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
             return dateB - dateA;
           })[0];
-          
+
           // Auto-resume if the session was in learning stage
           if (mostRecent && mostRecent.stage === 'learning' && (mostRecent.lessonBites?.length ?? 0) > 0) {
             console.log('[SubjectExplorer] Auto-resuming learning journey:', mostRecent.id);
@@ -1181,10 +1181,10 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
     }));
     const selectedTopicPayload = selectedTopic
       ? {
-          id: selectedTopic.id,
-          name: selectedTopic.name,
-          ...(selectedTopic.description ? { description: selectedTopic.description } : {}),
-        }
+        id: selectedTopic.id,
+        name: selectedTopic.name,
+        ...(selectedTopic.description ? { description: selectedTopic.description } : {}),
+      }
       : null;
 
     const payload: SubjectExplorerSessionPayload = {
@@ -1717,7 +1717,7 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
     : 0;
   const allLessonBitesComplete = lessonBites.length > 0 && completedBites.size >= lessonBites.length;
   const activeLessonBiteCompleted = activeLessonBite ? completedBites.has(activeLessonBite.id) : false;
-  
+
   // Agent 3: Tutor - Generate adaptive learning path
   const generateLearningPath = async (gapReport: KnowledgeGapReport) => {
     setIsProcessing(true);
@@ -1728,10 +1728,10 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
       const adaptiveGuidelines = learningPreferences
         ? getAdaptivePrompts(learningPreferences)
         : {
-            contentLengthGuideline: 'Keep explanations concise (2-3 short paragraphs).',
-            styleGuidelines: '',
-            moduleTypePreference: '',
-          };
+          contentLengthGuideline: 'Keep explanations concise (2-3 short paragraphs).',
+          styleGuidelines: '',
+          moduleTypePreference: '',
+        };
 
       const scenarioDirectives = getAcademicScenarioDirectives(academicLevel, gapReport.gaps);
 
@@ -1755,35 +1755,35 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
         riskNotice ? `- ${riskNotice}` : '',
         '- Keep every explanation playful, concise, and emoji-friendly.',
         '- Avoid dense paragraphs. Think in quick bites learners can finish in under a minute.',
-    '- Explicitly reference any diagrams, spectra, or figures that should be shown so the UI can surface an image preview.',
-    ...scenarioDirectives,
-  '- Vary activity formats across bites—mix multiple choice, fill-in, and reflection moments. Include at least one bite that is NOT multiple choice.',
+        '- Explicitly reference any diagrams, spectra, or figures that should be shown so the UI can surface an image preview.',
+        ...scenarioDirectives,
+        '- Vary activity formats across bites—mix multiple choice, fill-in, and reflection moments. Include at least one bite that is NOT multiple choice.',
         '',
         'Produce between 3 and 5 lesson bites using ONLY the structure below so the UI can parse it:',
         '[LESSON_BITE]',
         'Title: <fun, motivating bite name with one emoji>',
         'Focus: <the micro-skill being targeted>',
         'Type: <teach | practice | challenge>',
-  'ActivityType: <multiple_choice | fill_blank | reflection>',
+        'ActivityType: <multiple_choice | fill_blank | reflection>',
         'XP: <integer between 10 and 25>',
-  'HeartCost: <1 or 2; use 0 for reflection>',
+        'HeartCost: <1 or 2; use 0 for reflection>',
         'Teach: <1-2 short sentences explaining the idea in plain language>',
         'Prompt: <instruction for the learner to act on the concept>',
-  'Options:',
-  '- <option 1 (<= 12 words)>',
-  '- <option 2>',
-  '- <option 3>',
-  'Answer: <number of the correct option starting at 1 OR the exact fill-in answer>',
-  'AltAnswers: <optional comma-separated list of acceptable responses for fill_blank>',
-  'ReflectionGuide: <one-line coaching cue for reflection bites>',
+        'Options:',
+        '- <option 1 (<= 12 words)>',
+        '- <option 2>',
+        '- <option 3>',
+        'Answer: <number of the correct option starting at 1 OR the exact fill-in answer>',
+        'AltAnswers: <optional comma-separated list of acceptable responses for fill_blank>',
+        'ReflectionGuide: <one-line coaching cue for reflection bites>',
         'Tip: <quick hint shown after an incorrect attempt>',
         'Reward: <excited celebration after success>',
         '[/LESSON_BITE]',
-  '',
-  'Formatting rules by activity type:',
-  '- If ActivityType is multiple_choice: include Options (exactly 3 choices) and Answer as the correct option number.',
-  '- If ActivityType is fill_blank: skip the Options list if you prefer, but Answer must be the correct phrase. AltAnswers may list acceptable synonyms.',
-  '- If ActivityType is reflection: set HeartCost to 0, skip Options/Answer, and provide a ReflectionGuide cue.',
+        '',
+        'Formatting rules by activity type:',
+        '- If ActivityType is multiple_choice: include Options (exactly 3 choices) and Answer as the correct option number.',
+        '- If ActivityType is fill_blank: skip the Options list if you prefer, but Answer must be the correct phrase. AltAnswers may list acceptable synonyms.',
+        '- If ActivityType is reflection: set HeartCost to 0, skip Options/Answer, and provide a ReflectionGuide cue.',
         '',
         'After all lesson bites, finish with a single [SESSION_SUMMARY] block containing:',
         '[SESSION_SUMMARY]',
@@ -1914,35 +1914,35 @@ const SubjectExplorer: React.FC<SubjectExplorerProps> = ({ onClose, apiKey }) =>
   const analyzeDocument = async (file: File) => {
     setIsProcessing(true);
     setProcessingMessage('Analyzing document and extracting topics...');
-    
+
     try {
       let documentText = '';
-      
+
       // Create a URL for the PDF file to be used by the PDF viewer
       if (file.type === 'application/pdf') {
         const fileUrl = URL.createObjectURL(file);
         setDocumentFileUrl(fileUrl);
       }
-      
+
       // Extract text based on file type
       if (file.type === 'application/pdf') {
         console.log('[SubjectExplorer] Processing PDF file...');
         setProcessingMessage('Extracting text from PDF...');
-        
+
         // Convert PDF to base64
         const bytes = await file.arrayBuffer();
         const base64Data = arrayBufferToBase64(bytes);
         console.log('[SubjectExplorer] PDF converted to base64, length:', base64Data.length);
-        
+
         // Use Gemini to extract text from PDF
         const models = ['gemini-2.5-flash', 'gemini-flash-latest'];
-        
+
         for (const modelName of models) {
           try {
             if (apiKey) {
               const genAI = new GoogleGenerativeAI(apiKey);
               const model = genAI.getGenerativeModel({ model: modelName });
-              
+
               const result = await model.generateContent([
                 {
                   inlineData: {
@@ -1960,7 +1960,7 @@ CRITICAL REQUIREMENTS:
 
 Provide the complete text content.`
               ]);
-              
+
               documentText = result.response.text();
               console.log('[SubjectExplorer] PDF text extracted, length:', documentText.length);
               break;
@@ -1972,7 +1972,7 @@ Provide the complete text content.`
             }
           }
         }
-        
+
         if (!documentText) {
           throw new Error('Failed to extract text from PDF');
         }
@@ -1986,7 +1986,7 @@ Provide the complete text content.`
           reader.readAsText(file);
         });
       }
-      
+
       setDocumentContent(documentText);
 
       const fingerprint = await computeDocumentFingerprint(documentText);
@@ -2010,7 +2010,7 @@ Provide the complete text content.`
 
       // Now analyze the extracted text
       setProcessingMessage('Analyzing topics and academic level...');
-      
+
       const schema = {
         type: SchemaType.OBJECT,
         properties: {
@@ -2063,10 +2063,10 @@ Respond with a JSON object containing:
       );
     } catch (error: any) {
       console.error('[SubjectExplorer] Error analyzing document:', error);
-      
+
       // Reset to upload stage on error
       setStage('upload');
-      
+
       // Provide helpful error message and show modal for API key issues
       if (error?.message?.includes('rate limited') || error?.message?.includes('quota')) {
         setFeedbackMessage('⚠️ API rate limit reached. Please add your personal Gemini API key in Settings to continue.');
@@ -2089,7 +2089,7 @@ Respond with a JSON object containing:
   const generateAssessment = async (topic: Topic, assessmentType: string) => {
     setIsProcessing(true);
     setProcessingMessage('Generating assessment...');
-    
+
     try {
       let moduleSchema: any;
       let prompt: string;
@@ -2177,7 +2177,7 @@ Respond with a JSON object for a short_answer module.`;
       });
     } catch (error: any) {
       console.error('[SubjectExplorer] Error generating assessment:', error);
-      
+
       if (error?.message?.includes('rate limited') || error?.message?.includes('quota')) {
         setFeedbackMessage('⚠️ API rate limit reached. Please add your personal Gemini API key in Settings to continue.');
         setShowApiKeyModal(true);
@@ -2194,7 +2194,7 @@ Respond with a JSON object for a short_answer module.`;
   const analyzeAssessmentResults = async (isCorrect: boolean, userResponse: any) => {
     setIsProcessing(true);
     setProcessingMessage('Analyzing your knowledge...');
-    
+
     try {
       const schema = {
         type: SchemaType.OBJECT,
@@ -2242,13 +2242,13 @@ Respond with a structured JSON report.`;
       setKnowledgeGapReport(report);
       setUseFocusedLearningMode(true); // Auto-enable focused mode after assessment
       setStage('learning');
-  await persistSession('assessment', { knowledgeGapReport: report });
-      
+      await persistSession('assessment', { knowledgeGapReport: report });
+
       // Generate initial learning content
       await generateLearningPath(report);
     } catch (error: any) {
       console.error('[SubjectExplorer] Error analyzing results:', error);
-      
+
       if (error?.message?.includes('rate limited') || error?.message?.includes('quota')) {
         setFeedbackMessage('⚠️ API rate limit reached. Please add your personal Gemini API key in Settings to continue.');
         setShowApiKeyModal(true);
@@ -2261,7 +2261,7 @@ Respond with a structured JSON report.`;
     }
   };
 
-  
+
 
   // Agent 3: Tutor - Generate interactive module with AI-driven format selection
   const generateTutorModule = async (gap: KnowledgeGap) => {
@@ -2269,9 +2269,9 @@ Respond with a structured JSON report.`;
       // AI Agent: Module Format Selector
       // Analyzes user's learning history to choose optimal teaching format
       const selectedModuleType = await selectOptimalModuleType(gap);
-      
+
       console.log('[ModuleSelector] Selected format:', selectedModuleType, 'for concept:', gap.concept);
-      
+
       // Track module type usage
       setCurrentSessionData(prev => ({
         ...prev,
@@ -2280,7 +2280,7 @@ Respond with a structured JSON report.`;
 
       // Generate module based on selected type
       let module: InteractiveModule;
-      
+
       switch (selectedModuleType) {
         case 'fill_blanks':
           module = await generateFillBlanksModule(gap);
@@ -2300,7 +2300,7 @@ Respond with a structured JSON report.`;
         default:
           module = await generateFillBlanksModule(gap);
       }
-      
+
       setTutorModules([module]);
       setCurrentTutorModuleIndex(0);
       setFillBlanksAnswers([]);
@@ -2323,7 +2323,7 @@ Respond with a structured JSON report.`;
         wrongAnswers: [],
         biteFeedback: null,
       });
-      
+
       // Track reading time before exercise
       if (readingStartTime > 0) {
         const readingTime = Math.floor((Date.now() - readingStartTime) / 1000);
@@ -2366,13 +2366,13 @@ Respond with a structured JSON report.`;
     try {
       // Build analysis context from user's learning history
       const recentAttempts = currentSessionData.attemptsPerQuestion?.slice(-5) || [];
-      const avgRecentAttempts = recentAttempts.length > 0 
-        ? recentAttempts.reduce((a, b) => a + b, 0) / recentAttempts.length 
+      const avgRecentAttempts = recentAttempts.length > 0
+        ? recentAttempts.reduce((a, b) => a + b, 0) / recentAttempts.length
         : 0;
-      
+
       const recentModules = currentSessionData.moduleTypesUsed?.slice(-3) || [];
       const recentSuccesses = currentSessionData.moduleTypesSucceeded?.slice(-3) || [];
-      
+
       // Determine struggling patterns
       const isStrugglingWithCurrent = avgRecentAttempts > 2;
       const hasSkippedOnTopic = learningPreferences?.skippedQuestions
@@ -2380,7 +2380,7 @@ Respond with a structured JSON report.`;
 
       const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n')
         || '- Align with the specified academic level using rigorous, experiment-driven framing when appropriate.';
-      
+
       // Call Gemini to intelligently select module type
       const analysisPrompt = `You are an AI Teaching Assistant specializing in adaptive learning.
 
@@ -2426,17 +2426,17 @@ Respond with ONLY the format name: fill_blanks, mcq_multi, match_pairs, short_an
 
       const response = await callGeminiWithFallback(analysisPrompt);
       const selectedType = response.toLowerCase().trim();
-      
+
       // Validate response
       const validTypes = ['fill_blanks', 'mcq_multi', 'match_pairs', 'short_answer', 'flashcard'];
       if (validTypes.includes(selectedType)) {
         return selectedType;
       }
-      
+
       // Fallback logic if AI doesn't respond properly
       console.warn('[ModuleSelector] Invalid AI response, using fallback logic');
       return getFallbackModuleType(isStrugglingWithCurrent, hasSkippedOnTopic, recentModules);
-      
+
     } catch (error) {
       console.error('[ModuleSelector] Error in AI selection:', error);
       // Use fallback logic
@@ -2452,19 +2452,19 @@ Respond with ONLY the format name: fill_blanks, mcq_multi, match_pairs, short_an
     recentModules: string[]
   ): string => {
     const lastModule = recentModules[recentModules.length - 1];
-    
+
     // Ensure variety
     const availableTypes = ['fill_blanks', 'mcq_multi', 'match_pairs', 'short_answer', 'flashcard'];
     const notRecentTypes = availableTypes.filter(t => !recentModules.includes(t));
-    
+
     if (isStruggling || skippedCount > 0) {
       // Use easier, more interactive formats
-      const easyTypes = notRecentTypes.filter(t => 
+      const easyTypes = notRecentTypes.filter(t =>
         ['match_pairs', 'mcq_multi', 'flashcard'].includes(t)
       );
       return easyTypes.length > 0 ? easyTypes[0] : 'match_pairs';
     }
-    
+
     // Use variety
     return notRecentTypes.length > 0 ? notRecentTypes[0] : 'fill_blanks';
   };
@@ -2484,7 +2484,7 @@ Respond with ONLY the format name: fill_blanks, mcq_multi, match_pairs, short_an
       required: ['module_type', 'text', 'blanks']
     };
 
-  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+    const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
 
     const prompt = `You are the "Tutor" agent. Create a fill-in-the-blanks exercise to test understanding of: "${gap.concept}"
 
@@ -2529,7 +2529,7 @@ Respond with a JSON object for a fill_blanks module.`;
       required: ['module_type', 'question', 'options', 'correct_ids']
     };
 
-  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+    const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
 
     const prompt = `You are the "Tutor" agent. Create a multiple-choice question to test understanding of: "${gap.concept}"
 
@@ -2587,7 +2587,7 @@ Respond with a JSON object:
       required: ['module_type', 'prompt', 'column_a', 'column_b', 'correct_pairs']
     };
 
-  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+    const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
 
     const prompt = `You are the "Tutor" agent. Create a matching exercise to test understanding of: "${gap.concept}"
 
@@ -2630,7 +2630,7 @@ Respond with a JSON object:
       required: ['module_type', 'question', 'keywords_to_check']
     };
 
-  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+    const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
 
     const prompt = `You are the "Tutor" agent. Create a short-answer question to test deep understanding of: "${gap.concept}"
 
@@ -2665,7 +2665,7 @@ Respond with a JSON object:
       required: ['module_type', 'front', 'back']
     };
 
-  const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
+    const scenarioDirectives = getAcademicScenarioDirectives(academicLevel || '', [gap]).join('\n');
 
     const prompt = `You are the "Tutor" agent. Create a flashcard to help memorize: "${gap.concept}"
 
@@ -2695,7 +2695,7 @@ Respond with a JSON object:
 
     resetSessionState();
     setDocumentName(file.name);
-    
+
     // Validate file type
     const validTypes = ['application/pdf', 'text/plain', 'text/markdown'];
     if (!validTypes.includes(file.type) && !file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
@@ -2703,7 +2703,7 @@ Respond with a JSON object:
       setShowFeedback(true);
       return;
     }
-    
+
     // Analyze the document directly
     await analyzeDocument(file);
   };
@@ -2740,9 +2740,9 @@ Respond with a JSON object:
       const selectedIds = selectedOptions.sort();
       isCorrect = JSON.stringify(correctIds) === JSON.stringify(selectedIds);
       userResponse = selectedOptions;
-      
-      setFeedbackMessage(isCorrect 
-        ? '✓ Correct! Well done!' 
+
+      setFeedbackMessage(isCorrect
+        ? '✓ Correct! Well done!'
         : `✗ Not quite. The correct answers were: ${currentModule.correct_ids.join(', ')}`);
     } else if (currentModule.module_type === 'short_answer') {
       const keywords = currentModule.keywords_to_check;
@@ -2750,7 +2750,7 @@ Respond with a JSON object:
       const foundKeywords = keywords.filter(kw => answer.includes(kw.toLowerCase()));
       isCorrect = foundKeywords.length >= Math.ceil(keywords.length * 0.6);
       userResponse = shortAnswerText;
-      
+
       setFeedbackMessage(isCorrect
         ? '✓ Good answer! You covered the key concepts.'
         : `✗ Your answer is missing some key concepts: ${keywords.filter(kw => !foundKeywords.includes(kw)).join(', ')}`);
@@ -2761,7 +2761,7 @@ Respond with a JSON object:
     }
 
     setShowFeedback(true);
-    
+
     // Wait a moment before analyzing
     setTimeout(() => {
       analyzeAssessmentResults(isCorrect, userResponse);
@@ -2783,19 +2783,19 @@ Respond with a JSON object:
       const fillModule = module as FillBlanks;
       const correctAnswers = fillModule.blanks.map(b => b.toLowerCase().trim());
       const userAnswersLower = fillBlanksAnswers.map(a => (a || '').toLowerCase().trim());
-      
+
       userAnswersLower.forEach((ans, idx) => {
         if (correctAnswers[idx] !== ans) {
           wrongIndices.push(idx);
         }
       });
-      
-      correctCount = userAnswersLower.filter((ans, idx) => 
+
+      correctCount = userAnswersLower.filter((ans, idx) =>
         correctAnswers[idx] === ans
       ).length;
       totalCount = correctAnswers.length;
       isCorrect = correctCount === totalCount;
-      
+
     } else if (module.module_type === 'mcq_multi') {
       const mcqModule = module as MCQMulti;
       const correctIds = mcqModule.correct_ids.sort();
@@ -2803,12 +2803,12 @@ Respond with a JSON object:
       isCorrect = JSON.stringify(correctIds) === JSON.stringify(selectedIds);
       correctCount = isCorrect ? 1 : 0;
       totalCount = 1;
-      
+
     } else if (module.module_type === 'match_pairs') {
       const matchModule = module as MatchPairs;
       correctCount = 0;
       totalCount = matchModule.correct_pairs.length;
-      
+
       matchModule.correct_pairs.forEach((pair, idx) => {
         const userMatch = matchPairsAnswers.get(pair.a);
         if (userMatch === pair.b) {
@@ -2817,9 +2817,9 @@ Respond with a JSON object:
           wrongIndices.push(idx);
         }
       });
-      
+
       isCorrect = correctCount === totalCount;
-      
+
     } else if (module.module_type === 'short_answer') {
       const shortModule = module as ShortAnswer;
       const keywords = shortModule.keywords_to_check;
@@ -2828,29 +2828,29 @@ Respond with a JSON object:
       correctCount = foundKeywords.length;
       totalCount = keywords.length;
       isCorrect = correctCount >= Math.ceil(totalCount * 0.6);
-      
+
     } else if (module.module_type === 'flashcard') {
       // Flashcards are always "correct" when user clicks
       isCorrect = true;
       correctCount = 1;
       totalCount = 1;
     }
-    
+
     const newAttemptCount = attemptCount + 1;
     setAttemptCount(newAttemptCount);
     setWrongAnswers(wrongIndices);
-    
+
     // Update session data
     setCurrentSessionData(prev => ({
       ...prev,
       questionsAttempted: (prev.questionsAttempted || 0) + 1,
-      questionsCorrectFirstTry: newAttemptCount === 1 && isCorrect 
-        ? (prev.questionsCorrectFirstTry || 0) + 1 
+      questionsCorrectFirstTry: newAttemptCount === 1 && isCorrect
+        ? (prev.questionsCorrectFirstTry || 0) + 1
         : (prev.questionsCorrectFirstTry || 0),
       attemptsPerQuestion: [...(prev.attemptsPerQuestion || []), newAttemptCount],
       hintsUsed: (prev.hintsUsed || 0) + (showHint ? 1 : 0),
     }));
-    
+
     if (isCorrect) {
       setUserProgress([...userProgress, { success: true, moduleType: module.module_type }]);
       setFeedbackMessage(`✓ Excellent! You got it ${newAttemptCount === 1 ? 'on the first try' : `after ${newAttemptCount} attempts`}!`);
@@ -2858,14 +2858,14 @@ Respond with a JSON object:
       setShowHint(false);
       setAttemptCount(0);
       setWrongAnswers([]);
-      
+
       // Track successful module type
       setCurrentSessionData(prev => ({
         ...prev,
         moduleTypesSucceeded: [...(prev.moduleTypesSucceeded || []), module.module_type],
         contentWasUnderstood: true,
       }));
-      
+
       // Save session data to Firebase
       const user = auth.currentUser;
       if (user && selectedTopic && currentSessionData) {
@@ -2876,8 +2876,8 @@ Respond with a JSON object:
           contentLengthProvided: currentSessionData.contentLengthProvided || 0,
           contentWasUnderstood: true,
           questionsAttempted: (currentSessionData.questionsAttempted || 0) + 1,
-          questionsCorrectFirstTry: newAttemptCount === 1 
-            ? (currentSessionData.questionsCorrectFirstTry || 0) + 1 
+          questionsCorrectFirstTry: newAttemptCount === 1
+            ? (currentSessionData.questionsCorrectFirstTry || 0) + 1
             : (currentSessionData.questionsCorrectFirstTry || 0),
           questionsSkipped: currentSessionData.questionsSkipped || [],
           hintsUsed: currentSessionData.hintsUsed || 0,
@@ -2888,12 +2888,12 @@ Respond with a JSON object:
           timeSpentOnExercises: Math.floor((Date.now() - sessionStartTime) / 1000),
           timestamp: new Date(),
         });
-        
+
         // Reload preferences for next session
         const updatedPrefs = await getLearningPreferences(user.uid);
         setLearningPreferences(updatedPrefs);
       }
-      
+
       // Check if there are more gaps to address
       if (knowledgeGapReport && knowledgeGapReport.gaps.length > 1) {
         setTimeout(() => {
@@ -2915,13 +2915,13 @@ Respond with a JSON object:
       }
     } else {
       setUserProgress([...userProgress, { success: false, moduleType: module.module_type }]);
-      
+
       // Update session with failed attempt
       setCurrentSessionData(prev => ({
         ...prev,
         contentWasUnderstood: false,
       }));
-      
+
       // Generate contextual hint based on attempt count and module type
       if (newAttemptCount === 1) {
         setFeedbackMessage(`✗ ${correctCount} out of ${totalCount} correct. Try again!`);
@@ -2932,7 +2932,7 @@ Respond with a JSON object:
           ...prev,
           hintsUsed: (prev.hintsUsed || 0) + 1,
         }));
-        
+
         let hintMessage = '';
         if (module.module_type === 'fill_blanks') {
           hintMessage = `💡 Hint: ${wrongIndices.length === 1 ? 'The incorrect answer is' : 'The incorrect answers are'} in position${wrongIndices.length > 1 ? 's' : ''}: ${wrongIndices.map(i => i + 1).join(', ')}. Think about the key concepts from the lesson above.`;
@@ -2945,7 +2945,7 @@ Respond with a JSON object:
           const missingKeywords = shortModule.keywords_to_check.slice(0, 2);
           hintMessage = `💡 Hint: Your answer should include these concepts: ${missingKeywords.join(', ')}`;
         }
-        
+
         setCurrentHint(hintMessage);
         setShowHint(true);
         setFeedbackMessage(`✗ ${correctCount} out of ${totalCount} correct. Check the hint below!`);
@@ -2969,28 +2969,28 @@ Respond with a JSON object:
           const shortModule = module as ShortAnswer;
           hintMessage = `💡 Strong Hint: Make sure to mention: ${shortModule.keywords_to_check.join(', ')}`;
         }
-        
+
         setCurrentHint(hintMessage);
         setShowHint(true);
         setFeedbackMessage(`✗ Still ${correctCount} out of ${totalCount} correct. Here's a stronger hint!`);
         setShowFeedback(true);
       }
-      
+
       // After 4 attempts, offer to show all answers or re-explain
       if (newAttemptCount >= 4) {
         setTimeout(() => {
           const shouldReExplain = confirm('This format seems challenging for you. Would you like me to:\n\nOK = Try a DIFFERENT teaching format (recommended)\nCancel = See answers and continue');
-          
+
           if (shouldReExplain) {
             // Track re-explanation request
             setCurrentSessionData(prev => ({
               ...prev,
               hintsUsed: (prev.hintsUsed || 0) + 1,
             }));
-            
+
             setIsProcessing(true);
             setProcessingMessage('Switching to a different teaching format...');
-            
+
             // Generate a new module with a DIFFERENT format
             if (knowledgeGapReport) {
               generateTutorModule(knowledgeGapReport.gaps[0]).then(() => {
@@ -3034,7 +3034,7 @@ Respond with a JSON object:
 
     const module = tutorModules[currentTutorModuleIndex] as FillBlanks;
     const user = auth.currentUser;
-    
+
     // Track skipped question
     setCurrentSessionData(prev => ({
       ...prev,
@@ -3046,19 +3046,19 @@ Respond with a JSON object:
         },
       ],
     }));
-    
+
     // Move to next gap or finish
     if (knowledgeGapReport && knowledgeGapReport.gaps.length > 1) {
       setFeedbackMessage('⏭️ Question skipped. Let\'s try a different approach...');
       setShowFeedback(true);
-      
+
       setTimeout(() => {
         setShowFeedback(false);
         setFillBlanksAnswers([]);
         setAttemptCount(0);
         setShowHint(false);
         setWrongAnswers([]);
-        
+
         generateLearningPath({
           ...knowledgeGapReport,
           gaps: knowledgeGapReport.gaps.slice(1)
@@ -3067,7 +3067,7 @@ Respond with a JSON object:
     } else {
       setFeedbackMessage('📝 You\'ve completed this session. We\'ll adapt your learning path based on your preferences!');
       setShowFeedback(true);
-      
+
       // Save session even with skipped questions
       if (user && selectedTopic && currentSessionData) {
         await saveSessionData({
@@ -3093,7 +3093,7 @@ Respond with a JSON object:
           timeSpentOnExercises: Math.floor((Date.now() - sessionStartTime) / 1000),
           timestamp: new Date(),
         });
-        
+
         // Reload preferences
         const updatedPrefs = await getLearningPreferences(user.uid);
         setLearningPreferences(updatedPrefs);
@@ -3130,7 +3130,7 @@ Respond with a JSON object:
       <ReactMarkdown
         components={{
           ...components,
-          p: ({node, children, ...props}) => {
+          p: ({ node, children, ...props }) => {
             // Check if paragraph contains math
             const text = String(children);
             if (text.includes('<MATH_INLINE>') || text.includes('<MATH_BLOCK>')) {
@@ -3150,18 +3150,18 @@ Respond with a JSON object:
     const parts: (string | JSX.Element)[] = [];
     let currentIndex = 0;
     let keyCounter = 0;
-    
+
     // Combined regex to find both inline and block math
     const mathRegex = /(\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
     let match;
-    
+
     while ((match = mathRegex.exec(text)) !== null) {
       // Add text before math
       if (match.index > currentIndex) {
         const textBefore = text.substring(currentIndex, match.index);
         parts.push(<span key={`text-${keyCounter++}`} dangerouslySetInnerHTML={{ __html: formatText(textBefore) }} />);
       }
-      
+
       // Add math
       const mathContent = match[0];
       if (mathContent.startsWith('$$')) {
@@ -3169,19 +3169,19 @@ Respond with a JSON object:
       } else {
         parts.push(<InlineMath key={`math-${keyCounter++}`} math={mathContent.slice(1, -1)} />);
       }
-      
+
       currentIndex = match.index + match[0].length;
     }
-    
+
     // Add remaining text
     if (currentIndex < text.length) {
       const remainingText = text.substring(currentIndex);
       parts.push(<span key={`text-${keyCounter++}`} dangerouslySetInnerHTML={{ __html: formatText(remainingText) }} />);
     }
-    
+
     return <>{parts}</>;
   };
-  
+
   // Format text with bold, italic, code
   const formatText = (text: string) => {
     return text
@@ -3195,7 +3195,7 @@ Respond with a JSON object:
     const sections: JSX.Element[] = [];
     let workingContent = content;
     let match;
-    
+
     // Parse CONCEPT_CARD
     const conceptCardRegex = /\[CONCEPT_CARD\]([\s\S]*?)\[\/CONCEPT_CARD\]/g;
     while ((match = conceptCardRegex.exec(content)) !== null) {
@@ -3203,7 +3203,7 @@ Respond with a JSON object:
       const titleMatch = cardContent.match(/Title:\s*(.+)/);
       const descMatch = cardContent.match(/Description:\s*(.+)/);
       const iconMatch = cardContent.match(/Icon:\s*(.+)/);
-      
+
       sections.push(
         <div key={`card-${match.index}`} className="bg-gradient-to-br from-purple-900/40 to-blue-900/40 border-2 border-purple-500/50 rounded-xl p-6 mb-6 hover:scale-[1.02] transition-transform">
           <div className="flex items-start gap-4">
@@ -3217,7 +3217,7 @@ Respond with a JSON object:
       );
     }
     workingContent = workingContent.replace(conceptCardRegex, '');
-    
+
     // Parse DIAGRAM
     const diagramRegex = /\[DIAGRAM\]([\s\S]*?)\[\/DIAGRAM\]/g;
     while ((match = diagramRegex.exec(content)) !== null) {
@@ -3226,13 +3226,13 @@ Respond with a JSON object:
       const descMatch = diagramContent.match(/Description:\s*([\s\S]*?)(?=Steps:|Image:|$)/);
       const stepsMatch = diagramContent.match(/Steps:\s*([\s\S]*?)(?=Image:|$)/);
       const imageMatch = diagramContent.match(/Image:\s*(.+)/);
-      
+
       const type = typeMatch?.[1].trim() || 'process';
       const description = descMatch?.[1].trim() || '';
       const stepsText = stepsMatch?.[1] || '';
       const imageUrl = imageMatch?.[1].trim();
       const steps = stepsText.split('\n').filter(s => s.trim()).map(s => s.replace(/^\d+\.\s*/, '').trim());
-      
+
       sections.push(
         <div key={`diagram-${match.index}`} className="bg-gradient-to-br from-slate-900 to-slate-800 border-2 border-purple-500/30 rounded-xl p-6 mb-6">
           <div className="flex items-center gap-2 mb-4">
@@ -3281,14 +3281,14 @@ Respond with a JSON object:
       );
     }
     workingContent = workingContent.replace(diagramRegex, '');
-    
+
     // Parse EXAMPLE
     const exampleRegex = /\[EXAMPLE\]([\s\S]*?)\[\/EXAMPLE\]/g;
     while ((match = exampleRegex.exec(content)) !== null) {
       const exampleContent = match[1];
       const scenarioMatch = exampleContent.match(/Scenario:\s*([\s\S]*?)(?=Connection:|$)/);
       const connectionMatch = exampleContent.match(/Connection:\s*([\s\S]*?)$/);
-      
+
       sections.push(
         <div key={`example-${match.index}`} className="bg-green-900/20 border-l-4 border-green-500 rounded-r-lg p-5 mb-6">
           <div className="flex items-start gap-3">
@@ -3313,7 +3313,7 @@ Respond with a JSON object:
       );
     }
     workingContent = workingContent.replace(exampleRegex, '');
-    
+
     // Parse INSIGHT
     const insightRegex = /\[INSIGHT\]([\s\S]*?)\[\/INSIGHT\]/g;
     while ((match = insightRegex.exec(content)) !== null) {
@@ -3327,7 +3327,7 @@ Respond with a JSON object:
       );
     }
     workingContent = workingContent.replace(insightRegex, '');
-    
+
     // Parse SUMMARY
     const summaryRegex = /\[SUMMARY\]([\s\S]*?)\[\/SUMMARY\]/g;
     while ((match = summaryRegex.exec(content)) !== null) {
@@ -3341,7 +3341,7 @@ Respond with a JSON object:
       );
     }
     workingContent = workingContent.replace(summaryRegex, '');
-    
+
     // Render remaining content
     if (workingContent.trim()) {
       // Split content by paragraphs and render each with math support
@@ -3356,8 +3356,8 @@ Respond with a JSON object:
               const headingLevel = Math.min(level, 6);
               const HeadingTag = `h${headingLevel}` as keyof JSX.IntrinsicElements;
               const className = level === 1 ? 'text-3xl font-bold text-white mb-4 mt-6' :
-                               level === 2 ? 'text-2xl font-bold text-white mb-3 mt-6' :
-                               'text-xl font-semibold text-white mb-2 mt-4';
+                level === 2 ? 'text-2xl font-bold text-white mb-3 mt-6' :
+                  'text-xl font-semibold text-white mb-2 mt-4';
               return React.createElement(
                 HeadingTag,
                 { key: idx, className },
@@ -3404,489 +3404,459 @@ Respond with a JSON object:
         </div>
       );
     }
-    
+
     return sections;
   };
 
+  // --- Google Site Replication Layout ---
+
+  const [activeTab, setActiveTab] = useState<'source' | 'immersive' | 'slides' | 'audio' | 'mindmap'>('immersive');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Google Fonts & Colors
+  const styles = {
+    fontFamily: '"Google Sans", "Inter", sans-serif',
+    colors: {
+      background: '#FFFFFF',
+      surface: '#F8F9FA',
+      primary: '#1A73E8',
+      text: '#202124',
+      textSecondary: '#5F6368',
+      border: '#DADCE0',
+    }
+  };
+
+  const SidebarItem = ({ id, label, icon, active }: { id: string, label: string, icon: React.ReactNode, active: boolean }) => (
+    <button
+      onClick={() => setActiveTab(id as any)}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-r-full text-sm font-medium transition-colors ${active
+        ? 'bg-[#E8F0FE] text-[#1967D2]'
+        : 'text-[#3C4043] hover:bg-[#F1F3F4]'
+        }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur flex flex-col">
-      <div className="flex-1 overflow-y-auto">
-        <div className="flex w-full flex-col gap-6 px-2 py-6 sm:px-4 lg:px-6">
+    <div className="fixed inset-0 z-50 flex text-[var(--mat-app-text-color)] bg-[#F0F4F9] font-sans">
+      <style>{`
+        :root {
+          --mat-app-background-color: #fff;
+          --mat-app-text-color: #1f1f1f;
+          --mat-sys-primary: #0b57d0;
+          --mat-sys-on-primary: #ffffff;
+          --mat-sys-surface: #f0f4f9;
+          --mat-sys-outline: #747775;
+          --mat-sys-surface-container: #f0f4f9;
+        }
+        .transformation-page-root {
+          background: #fff;
+          border-radius: 24px;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          height: 100%;
+          box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.05);
+        }
+        .transformation-page-header {
+          padding: 20px 32px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid #F1F3F4;
+        }
+        .transformation-page-content {
+          padding: 0 32px;
+          overflow-y: auto;
+          flex: 1;
+        }
+        /* Custom Scrollbar */
+        .transformation-page-content::-webkit-scrollbar {
+          width: 8px;
+        }
+        .transformation-page-content::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .transformation-page-content::-webkit-scrollbar-thumb {
+          background-color: #DADCE0;
+          border-radius: 4px;
+        }
+      `}</style>
+
+      {/* Sidebar (Navigation Drawer) */}
+      <div
+        className={`flex-shrink-0 bg-[#F0F4F9] flex flex-col transition-all duration-300 ${isSidebarOpen ? 'w-[280px]' : 'w-[80px]'
+          }`}
+      >
+        <div className="p-4 flex items-center justify-between mb-2">
+          {isSidebarOpen && (
+            <div className="flex items-center gap-3 px-2">
+              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm">
+                <img src="https://www.gstatic.com/images/branding/googlelogo/svg/googlelogo_clr_74x24px.svg" alt="Google" className="h-4" />
+              </div>
+              <span className="font-medium text-[1.1rem] text-[#444746] tracking-tight">Learn</span>
+            </div>
+          )}
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="p-2 hover:bg-[#E1E3E1] rounded-full text-[#444746] transition-colors mx-auto"
+          >
+            {isSidebarOpen ? <XCircle className="h-6 w-6" /> : <BookOpen className="h-6 w-6" />}
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 space-y-1">
+          <SidebarItem
+            id="source"
+            label="Source Material"
+            icon={<FileText className="h-5 w-5" />}
+            active={activeTab === 'source'}
+          />
+          <SidebarItem
+            id="immersive"
+            label="Immersive Text"
+            icon={<BookOpen className="h-5 w-5" />}
+            active={activeTab === 'immersive'}
+          />
+          <SidebarItem
+            id="slides"
+            label="Slides & Narration"
+            icon={<MonitorPlay className="h-5 w-5" />}
+            active={activeTab === 'slides'}
+          />
+          <SidebarItem
+            id="audio"
+            label="Audio Lesson"
+            icon={<Volume2 className="h-5 w-5" />}
+            active={activeTab === 'audio'}
+          />
+          <SidebarItem
+            id="mindmap"
+            label="Mindmap"
+            icon={<Activity className="h-5 w-5" />}
+            active={activeTab === 'mindmap'}
+          />
+        </div>
+
+        {isSidebarOpen && (
+          <div className="p-4 mt-auto">
+            <div className="bg-[#E1E3E1]/50 rounded-xl p-4 mb-2">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-full bg-[#C2E7FF] flex items-center justify-center text-[#001D35] font-bold text-xs">
+                  {Math.round((xpScore / (xpScore + 100)) * 100)}%
+                </div>
+                <div className="flex-1">
+                  <div className="h-1.5 bg-white rounded-full overflow-hidden">
+                    <div className="h-full bg-[#0B57D0] rounded-full" style={{ width: `${Math.round((xpScore / (xpScore + 100)) * 100)}%` }}></div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-[#444746] font-medium">Daily Goal Progress</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+
+      {/* Main Content Area - The "Card" */}
+      <div className="flex-1 flex flex-col min-w-0 p-4 pl-0 h-full overflow-hidden">
+        <div className="transformation-page-root shadow-sm border border-[#E1E3E1]">
           {/* Header */}
-          <header className="rounded-[32px] border border-white/10 bg-gradient-to-r from-[#0f172a] via-[#312e81] to-[#581c87] px-6 py-5 shadow-[0_30px_60px_-25px_rgba(15,23,42,0.8)]">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div>
-              <h2 className="flex items-center gap-3 text-2xl font-semibold text-white">
-                <Brain className="h-7 w-7 text-purple-200" />
-                Subject Explorer
-              </h2>
-              <p className="text-slate-200 text-sm tracking-wide">Adaptive Multi-Agent Tutoring System</p>
+          <div className="transformation-page-header bg-white">
+            <div className="flex items-center gap-4">
+              <h1 className="text-[1.375rem] font-normal text-[#1f1f1f]">
+                {activeTab === 'immersive' ? 'Immersive Text' :
+                  activeTab === 'source' ? 'Source Material' :
+                    activeTab === 'slides' ? 'Slides & Narration' :
+                      activeTab === 'audio' ? 'Audio Lesson' : 'Mindmap'}
+              </h1>
+              <span className="px-2 py-0.5 rounded bg-[#E8F0FE] text-[#1967D2] text-xs font-medium border border-[#C2E7FF]">Beta</span>
             </div>
-            <button
-              onClick={onClose}
-              className="rounded-2xl border border-white/40 bg-white/10 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-white shadow-inner shadow-white/20 transition hover:bg-white/20"
-            >
-              Close
-            </button>
-          </div>
-          {/* Progress Indicator */}
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-5 py-3">
-            <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-slate-200">
-              <div className={`flex items-center gap-2 ${stage === 'upload' ? 'text-purple-100' : 'text-emerald-200'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'upload' ? 'border-purple-300 bg-purple-500/20' : 'border-emerald-300 bg-emerald-500/20'}`}>
-                  {stage !== 'upload' ? <CheckCircle className="h-5 w-5" /> : <Upload className="h-5 w-5" />}
-                </div>
-                <span className="font-medium">Upload</span>
-              </div>
-              
-              <ArrowRight className="h-4 w-4 text-slate-400" />
-              
-              <div className={`flex items-center gap-2 ${stage === 'topic_selection' ? 'text-purple-100' : stage === 'assessment' || stage === 'learning' ? 'text-emerald-200' : 'text-slate-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'topic_selection' ? 'border-purple-300 bg-purple-500/20' : stage === 'assessment' || stage === 'learning' ? 'border-emerald-300 bg-emerald-500/20' : 'border-slate-500'}`}>
-                  {stage === 'assessment' || stage === 'learning' ? <CheckCircle className="h-5 w-5" /> : <BookOpen className="h-5 w-5" />}
-                </div>
-                <span className="font-medium">Topics</span>
-              </div>
-              
-              <ArrowRight className="h-4 w-4 text-slate-400" />
-              
-              <div className={`flex items-center gap-2 ${stage === 'assessment' ? 'text-purple-100' : stage === 'learning' ? 'text-emerald-200' : 'text-slate-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'assessment' ? 'border-purple-300 bg-purple-500/20' : stage === 'learning' ? 'border-emerald-300 bg-emerald-500/20' : 'border-slate-500'}`}>
-                  {stage === 'learning' ? <CheckCircle className="h-5 w-5" /> : <Target className="h-5 w-5" />}
-                </div>
-                <span className="font-medium">Assess</span>
-              </div>
-              
-              <ArrowRight className="h-4 w-4 text-slate-400" />
-              
-              <div className={`flex items-center gap-2 ${stage === 'learning' ? 'text-purple-100' : 'text-slate-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${stage === 'learning' ? 'border-purple-300 bg-purple-500/20' : 'border-slate-500'}`}>
-                  <Zap className="h-5 w-5" />
-                </div>
-                <span className="font-medium">Learn</span>
-              </div>
-            </div>
-          </div>
-          </header>
 
-          {/* Main Content */}
-          <div className="w-full">
-
-          {/* Loading State */}
-          {isProcessing && (
-            <div className="mb-6 rounded-3xl border border-purple-500/30 bg-slate-900/70 p-8 text-center shadow-xl">
-              <div className="flex flex-col items-center gap-5">
-                <div className="relative h-28 w-28">
-                  <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-purple-400 border-r-blue-400 animate-spin" />
-                  <div className="absolute inset-3 rounded-full bg-slate-950/80 border border-white/10 flex items-center justify-center">
-                    <Sparkles className="h-6 w-6 text-purple-200 animate-pulse" />
-                  </div>
-                  <div className="absolute -bottom-6 left-1/2 flex -translate-x-1/2 gap-1">
-                    {Array.from({ length: 3 }).map((_, index) => (
-                      <span
-                        key={index}
-                        className="h-2.5 w-2.5 rounded-full bg-gradient-to-r from-purple-300 to-blue-300 animate-bounce"
-                        style={{ animationDelay: `${index * 0.18}s` }}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-white text-xl font-semibold">{processingMessage || 'Mixing knowledge reagents...'}</p>
-                  <p className="mt-2 text-sm text-slate-300">{LOADING_TIPS[loadingTipIndex]}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Feedback Messages */}
-          {showFeedback && feedbackMessage && (() => {
-            const messageLower = feedbackMessage.toLowerCase();
-            let variant: 'loading' | 'success' | 'error' | 'info' = 'info';
-            if (messageLower.includes('loading') || messageLower.includes('processing')) {
-              variant = 'loading';
-            } else if (messageLower.includes('✅') || messageLower.includes('✓') || messageLower.includes('success')) {
-              variant = 'success';
-            } else if (messageLower.includes('❌') || messageLower.includes('error') || messageLower.includes('failed')) {
-              variant = 'error';
-            }
-
-            const variantStyles = {
-              loading: {
-                container: 'bg-gradient-to-r from-purple-900/60 to-indigo-900/50 border-purple-500/30 text-white',
-                accent: 'bg-purple-500/30 text-white',
-                icon: <Loader2 className="h-5 w-5 animate-spin" />
-              },
-              success: {
-                container: 'bg-emerald-900/20 border-emerald-500/40 text-emerald-100',
-                accent: 'bg-emerald-500/20 text-emerald-200',
-                icon: <CheckCircle className="h-5 w-5" />
-              },
-              error: {
-                container: 'bg-rose-900/20 border-rose-500/40 text-rose-100',
-                accent: 'bg-rose-500/20 text-rose-200',
-                icon: <AlertCircle className="h-5 w-5" />
-              },
-              info: {
-                container: 'bg-slate-800/70 border-slate-600 text-slate-200',
-                accent: 'bg-slate-600 text-slate-200',
-                icon: <Sparkles className="h-5 w-5" />
-              }
-            }[variant];
-
-            return (
-              <div className={`mb-6 flex items-center gap-3 rounded-2xl border px-4 py-3 ${variantStyles.container}`}>
-                <span className={`flex h-9 w-9 items-center justify-center rounded-full ${variantStyles.accent}`}>
-                  {variantStyles.icon}
-                </span>
-                <p className="font-medium">{feedbackMessage}</p>
-              </div>
-            );
-          })()}
-
-          {/* Stage 1: Upload Document */}
-          {stage === 'upload' && !isProcessing && (
-            <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-8 shadow-xl">
-              {/* API Key Notice */}
-              {!apiKey && (
-                <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/40 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-yellow-200 font-medium mb-1">💡 Tip: Add Your API Key</p>
-                      <p className="text-yellow-300/80 text-sm">
-                        For better reliability and to avoid rate limits, add your personal Gemini API key in Settings. 
-                        Get a free API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-200">Google AI Studio</a>.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              <div className="text-center mb-6">
-                <FileText className="h-16 w-16 text-purple-400 mx-auto mb-4" />
-                <h3 className="text-white text-xl font-bold mb-2">Upload Your Study Material</h3>
-                <p className="text-slate-400">Upload a document to begin your personalized learning journey</p>
-              </div>
-              
-              <label className="flex flex-col items-center justify-center w-full h-64 rounded-3xl border-2 border-dashed border-slate-600/70 bg-slate-900/50 cursor-pointer transition-all hover:border-purple-400 hover:bg-slate-900/80">
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <Upload className="h-12 w-12 text-slate-400 mb-3" />
-                  <p className="mb-2 text-sm text-slate-400">
-                    <span className="font-semibold">Click to upload</span> or drag and drop
-                  </p>
-                  <p className="text-xs text-slate-500">TXT, PDF, or Markdown files</p>
-                </div>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".txt,.pdf,.md"
-                  onChange={handleFileUpload}
-                />
-              </label>
-
-              {/* Document Manager - Load Previous Uploads */}
-              <div className="mt-8">
-                <h4 className="text-white text-lg font-semibold mb-4 flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-blue-400" />
-                  My Saved Documents
-                </h4>
-                <DocumentManager 
-                  onDocumentSelected={(doc) => {
-                    // When user selects a document from their library
-                    setDocumentName(doc.name);
-                    setFeedbackMessage(`📄 Loading "${doc.name}"...`);
-                    setShowFeedback(true);
-                    
-                    // Fetch the document and process it
-                    fetch(doc.url)
-                      .then(res => res.blob())
-                      .then(blob => {
-                        const file = new File([blob], doc.name, { type: 'application/pdf' });
-                        analyzeDocument(file);
-                      })
-                      .catch(err => {
-                        console.error('[SubjectExplorer] Error loading document:', err);
-                        setFeedbackMessage('❌ Failed to load document. Please try again.');
-                        setShowFeedback(true);
-                      });
-                  }}
-                />
-              </div>
-
-              {currentUser ? (
-                <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/60 p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-white text-lg font-semibold flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-purple-300" />
-                      Saved Learning Journeys
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => refreshSavedSessions()}
-                      disabled={savedSessionsLoading}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-slate-600 text-slate-300 hover:border-purple-400/60 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Refresh
-                    </button>
-                  </div>
-
-                  {savedSessionsLoading ? (
-                    <div className="flex items-center gap-2 text-slate-400 text-sm">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading your saved journeys...
-                    </div>
-                  ) : savedSessions.length > 0 ? (
-                    <div className="space-y-3">
-                      {savedSessions.map(session => (
-                        <div
-                          key={session.id}
-                          className="flex flex-col md:flex-row md:items-center gap-3 border border-slate-700/60 rounded-lg p-4 bg-slate-900/40"
-                        >
-                          <div className="flex-1">
-                            <p className="text-white font-semibold">{session.documentName}</p>
-                            <p className="text-slate-400 text-sm mt-1">
-                              {formatStageLabel(session.stage)}
-                              {session.selectedTopic?.name ? ` • ${session.selectedTopic.name}` : ''}
-                              {' '}
-                              • Updated {formatRelativeTime(session.updatedAt)}
-                            </p>
-                            {(session.learningContent || session.documentContent) && (
-                              <p className="text-slate-500 text-xs mt-2">
-                                {toResumeSnippet(session.learningContent || session.documentContent)}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleResumeSession(session)}
-                              disabled={isProcessing || isRestoringSession}
-                              className="inline-flex items-center gap-2 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-400/40 text-purple-200 text-sm rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              Resume
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteSavedSession(session.id)}
-                              className="p-2 rounded-lg border border-red-400/40 text-red-300 hover:bg-red-500/10 transition"
-                              title="Delete saved session"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-slate-400 text-sm">
-                      No saved journeys yet. Upload a document to kick off your first adaptive path.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="mt-6 p-4 bg-slate-700/40 border border-slate-600 rounded-lg text-slate-300 text-sm">
-                  Sign in to save your Gemini tokens and resume your learning journeys without re-uploading documents.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Stage 2: Topic Selection */}
-          {stage === 'topic_selection' && !isProcessing && (
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-              <div className="mb-6">
-                <h3 className="text-white text-xl font-bold mb-2">Select a Topic to Study</h3>
-                <p className="text-slate-400">Choose a topic you'd like to explore from "{documentName}"</p>
-                <div className="mt-2 inline-flex items-center gap-2 bg-blue-900/30 border border-blue-500/30 rounded-full px-3 py-1">
-                  <Award className="h-4 w-4 text-blue-400" />
-                  <span className="text-blue-300 text-sm">Academic Level: {academicLevel}</span>
-                </div>
-              </div>
-              
-              {topics.length === 0 ? (
-                <div className="text-center py-12">
-                  <AlertCircle className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
-                  <h4 className="text-white text-lg font-semibold mb-2">No Topics Found</h4>
-                  <p className="text-slate-400 mb-4">
-                    We couldn't extract topics from your document. This might be due to an API issue.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setStage('upload');
-                      setShowApiKeyModal(true);
-                    }}
-                    className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 rounded-lg font-medium transition-all"
-                  >
-                    Try Again with API Key
-                  </button>
-                </div>
-              ) : (
-                <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {topics.map((topic) => (
-                  <button
-                    key={topic.id}
-                    onClick={() => handleTopicSelect(topic)}
-                    className={`p-6 rounded-lg border-2 text-left transition-all ${
-                      selectedTopic?.id === topic.id
-                        ? 'border-purple-400 bg-purple-900/30'
-                        : 'border-slate-600 bg-slate-700/30 hover:border-purple-400/50'
-                    }`}
-                  >
-                    <h4 className="text-white font-semibold mb-2">{topic.name}</h4>
-                    {selectedTopic?.id === topic.id && (
-                      <CheckCircle className="h-5 w-5 text-purple-400 mt-2" />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {selectedTopic && (
-                <div className="mt-6 pt-6 border-t border-slate-700">
-                  <h4 className="text-white font-semibold mb-4">How would you like to assess your knowledge?</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <button
-                      onClick={() => handleAssessmentTypeSelect('quiz')}
-                      className="p-4 rounded-lg border border-slate-600 bg-slate-700/30 hover:border-green-400 hover:bg-green-900/20 transition-all"
-                    >
-                      <Target className="h-8 w-8 text-green-400 mb-2" />
-                      <p className="text-white font-medium">Quick Quiz</p>
-                    </button>
-                    
-                    <button
-                      onClick={() => handleAssessmentTypeSelect('flashcards')}
-                      className="p-4 rounded-lg border border-slate-600 bg-slate-700/30 hover:border-blue-400 hover:bg-blue-900/20 transition-all"
-                    >
-                      <BookOpen className="h-8 w-8 text-blue-400 mb-2" />
-                      <p className="text-white font-medium">Flashcards</p>
-                    </button>
-                    
-                    <button
-                      onClick={() => handleAssessmentTypeSelect('summary')}
-                      className="p-4 rounded-lg border border-slate-600 bg-slate-700/30 hover:border-yellow-400 hover:bg-yellow-900/20 transition-all"
-                    >
-                      <Lightbulb className="h-8 w-8 text-yellow-400 mb-2" />
-                      <p className="text-white font-medium">Write Summary</p>
-                    </button>
-                  </div>
-                </div>
-              )}
-              </>
-              )}
-            </div>
-          )}
-
-          {/* Stage 3: Assessment */}
-          {stage === 'assessment' && currentModule && !isProcessing && (
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-              <div className="mb-6">
-                <h3 className="text-white text-xl font-bold mb-2">Assessment: {selectedTopic?.name}</h3>
-                <p className="text-slate-400">Let's check your baseline knowledge</p>
-              </div>
-
-              {/* MCQ Multi */}
-              {currentModule.module_type === 'mcq_multi' && (
-                <div>
-                  <h4 className="text-white font-medium mb-4">{currentModule.question}</h4>
-                  <div className="space-y-3">
-                    {currentModule.options.map((option) => (
-                      <label
-                        key={option.id}
-                        className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                          selectedOptions.includes(option.id)
-                            ? 'border-purple-400 bg-purple-900/30'
-                            : 'border-slate-600 bg-slate-700/30 hover:border-slate-500'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedOptions.includes(option.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedOptions([...selectedOptions, option.id]);
-                            } else {
-                              setSelectedOptions(selectedOptions.filter(id => id !== option.id));
-                            }
-                          }}
-                          className="mr-3"
-                        />
-                        <span className="text-white">{option.text}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <p className="text-slate-400 text-sm mt-3 italic">Select all that apply</p>
-                </div>
-              )}
-
-              {/* Flashcard */}
-              {currentModule.module_type === 'flashcard' && (
-                <div className="text-center">
-                  <div className="bg-slate-700 rounded-lg p-8 mb-4 min-h-[200px] flex items-center justify-center cursor-pointer"
-                    onClick={() => setShowFlashcardBack(!showFlashcardBack)}
-                  >
-                    <div className="text-white text-lg">
-                      {showFlashcardBack ? renderMathText(currentModule.back) : renderMathText(currentModule.front)}
-                    </div>
-                  </div>
-                  <p className="text-slate-400 text-sm">Click to flip</p>
-                </div>
-              )}
-
-              {/* Short Answer */}
-              {currentModule.module_type === 'short_answer' && (
-                <div>
-                  <h4 className="text-white font-medium mb-4">{currentModule.question}</h4>
-                  <textarea
-                    value={shortAnswerText}
-                    onChange={(e) => setShortAnswerText(e.target.value)}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg p-4 text-white min-h-[120px] focus:outline-none focus:ring-2 focus:ring-purple-400"
-                    placeholder="Type your answer here..."
-                  />
-                </div>
-              )}
-
+            <div className="flex items-center gap-2">
+              <button className="p-2 hover:bg-[#F1F3F4] rounded-full text-[#444746]" title="Settings">
+                <StickyNote className="h-5 w-5" />
+              </button>
+              <button className="p-2 hover:bg-[#F1F3F4] rounded-full text-[#444746]" title="Share">
+                <Copy className="h-5 w-5" />
+              </button>
+              <div className="h-6 w-[1px] bg-[#DADCE0] mx-2"></div>
               <button
-                onClick={handleSubmitAnswer}
-                disabled={
-                  (currentModule.module_type === 'mcq_multi' && selectedOptions.length === 0) ||
-                  (currentModule.module_type === 'short_answer' && shortAnswerText.trim() === '')
-                }
-                className="mt-6 w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white px-6 py-3 rounded-lg font-medium transition-all disabled:cursor-not-allowed"
+                onClick={onClose}
+                className="p-2 hover:bg-[#FEEFC3] hover:text-[#B06000] rounded-full text-[#444746] transition-colors"
+                title="Close Explorer"
               >
-                Submit Answer
+                <X className="h-6 w-6" />
               </button>
             </div>
-          )}
+          </div>
 
-          {/* Stage 4: Learning Path */}
-          {stage === 'learning' && !isProcessing && (
-            <>
-              {/* FOCUSED LEARNING MODE - Auto-enabled after assessment */}
-              {lessonBites.length > 0 ? (
-                <FocusedLearningSession
-                  lessonBites={lessonBites}
-                  academicLevel={academicLevel}
-                  documentContent={documentContent}
-                  documentName={documentName}
-                  documentFileUrl={documentFileUrl}
-                  onProgressUpdate={(completed: number, total: number) => {
-                    console.log(`Progress: ${completed}/${total}`);
-                  }}
-                />
-              ) : (
-                <div className="text-center py-12">
-                  <p className="text-slate-400">Loading your personalized learning session...</p>
+          {/* Scrollable Content */}
+          <div className="transformation-page-content bg-white">
+            <div className="max-w-[900px] mx-auto py-12">
+
+              {/* Loading State */}
+              {isProcessing && (
+                <div className="flex flex-col items-center justify-center py-32">
+                  <div className="relative h-16 w-16 mb-8">
+                    <svg className="animate-spin h-full w-full text-[#0B57D0]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                  <p className="text-xl text-[#1f1f1f] font-normal">{processingMessage || 'Generating your personalized lesson...'}</p>
+                  <p className="text-[#444746] mt-3 text-sm">{LOADING_TIPS[loadingTipIndex]}</p>
                 </div>
               )}
-            </>
-          )}
+
+              {!isProcessing && (
+                <>
+                  {/* Content based on Active Tab */}
+                  {activeTab === 'immersive' && (
+                    <div className="prose prose-lg max-w-none prose-headings:font-google-sans prose-headings:font-normal prose-headings:text-[#1f1f1f] prose-p:text-[#1f1f1f] prose-p:font-google-sans-text prose-p:leading-8 prose-li:text-[#1f1f1f] prose-strong:text-[#1f1f1f] prose-strong:font-medium">
+
+                      {/* Breadcrumbs / Meta */}
+                      <div className="flex items-center gap-2 text-sm text-[#444746] mb-10 font-medium">
+                        <span className="hover:underline cursor-pointer">{documentName || "Document"}</span>
+                        <span className="text-[#DADCE0]">/</span>
+                        <span className="hover:underline cursor-pointer">{selectedTopic?.name || "Introduction"}</span>
+                      </div>
+
+                      {/* Title */}
+                      <h1 className="text-[2.5rem] leading-[3.25rem] mb-10 text-[#1f1f1f] tracking-tight">
+                        {selectedTopic?.name || "Welcome to Your Learning Journey"}
+                      </h1>
+
+                      {/* Main Text Content */}
+                      {stage === 'upload' ? (
+                        <div className="bg-[#F8F9FA] border border-dashed border-[#DADCE0] rounded-2xl p-16 text-center">
+                          <div className="w-20 h-20 bg-[#E8F0FE] text-[#0B57D0] rounded-full flex items-center justify-center mx-auto mb-6">
+                            <Upload className="h-10 w-10" />
+                          </div>
+                          <h3 className="text-2xl font-normal text-[#1f1f1f] mb-3">Upload a Document to Start</h3>
+                          <p className="text-[#444746] mb-8 max-w-md mx-auto text-lg">
+                            Upload a PDF, text file, or markdown document to generate an immersive learning experience.
+                          </p>
+                          <label className="inline-flex items-center justify-center px-8 py-4 border border-transparent text-base font-medium rounded-full text-white bg-[#0B57D0] hover:bg-[#0842A0] cursor-pointer transition-all shadow-sm hover:shadow-md">
+                            <Upload className="mr-2 h-5 w-5" />
+                            Select File
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".txt,.pdf,.md"
+                              onChange={handleFileUpload}
+                            />
+                          </label>
+
+                          {/* Saved Sessions */}
+                          {savedSessions.length > 0 && (
+                            <div className="mt-16 text-left max-w-2xl mx-auto">
+                              <h4 className="text-sm font-medium text-[#444746] uppercase tracking-wider mb-4 px-2">Recent Journeys</h4>
+                              <div className="grid gap-3">
+                                {savedSessions.map(session => (
+                                  <div key={session.id} className="group flex items-center justify-between p-4 bg-white border border-[#E1E3E1] rounded-xl hover:border-[#0B57D0] hover:shadow-md transition-all cursor-pointer" onClick={() => handleResumeSession(session)}>
+                                    <div className="flex items-center gap-4">
+                                      <div className="w-10 h-10 rounded-full bg-[#E8F0FE] flex items-center justify-center text-[#0B57D0]">
+                                        <BookOpen className="h-5 w-5" />
+                                      </div>
+                                      <div>
+                                        <p className="font-medium text-[#1f1f1f] group-hover:text-[#0B57D0] transition-colors">{session.documentName}</p>
+                                        <p className="text-sm text-[#444746]">{formatRelativeTime(session.updatedAt)}</p>
+                                      </div>
+                                    </div>
+                                    <ArrowRight className="h-5 w-5 text-[#DADCE0] group-hover:text-[#0B57D0] transition-colors" />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-10">
+                          {/* If we have content, render it */}
+                          {learningContent ? (
+                            renderInteractiveLearningContent(learningContent)
+                          ) : (
+                            <div className="text-[#5F6368] italic">
+                              Select a topic from the sidebar or upload a document to begin.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'source' && (
+                    <div className="bg-[#F8F9FA] rounded-2xl p-10 border border-[#E1E3E1] min-h-[600px]">
+                      <h2 className="text-2xl font-normal mb-8 text-[#1f1f1f]">Source Material</h2>
+                      <div className="prose max-w-none text-[#3C4043]">
+                        <pre className="whitespace-pre-wrap font-mono text-sm bg-white p-6 rounded-xl border border-[#E1E3E1]">{documentContent || "No document loaded."}</pre>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Placeholders for other tabs */}
+                  {(activeTab === 'slides' || activeTab === 'audio' || activeTab === 'mindmap') && (
+                    <div className="flex flex-col items-center justify-center py-32 bg-[#F8F9FA] rounded-3xl border border-[#E1E3E1]">
+                      <div className="w-24 h-24 bg-[#E8F0FE] text-[#0B57D0] rounded-full flex items-center justify-center mb-8">
+                        {activeTab === 'slides' ? <MonitorPlay className="h-12 w-12" /> :
+                          activeTab === 'audio' ? <Volume2 className="h-12 w-12" /> :
+                            <Activity className="h-12 w-12" />}
+                      </div>
+                      <h3 className="text-2xl font-normal text-[#1f1f1f] mb-3">
+                        {activeTab === 'slides' ? 'Slides & Narration' :
+                          activeTab === 'audio' ? 'Audio Lesson' : 'Mindmap'}
+                      </h3>
+                      <p className="text-[#444746] text-lg">This feature is coming soon to your learning journey.</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
+
+      {/* Right Panel - Assessment & Tools */}
+      <div className="w-[360px] bg-[#F0F4F9] border-l border-[#E1E3E1] flex flex-col flex-shrink-0 p-4 pl-0">
+        <div className="bg-white rounded-2xl h-full border border-[#E1E3E1] shadow-sm flex flex-col overflow-hidden">
+          <div className="p-6 border-b border-[#F1F3F4] bg-white">
+            <h3 className="font-medium text-[#1f1f1f] flex items-center gap-3 text-lg">
+              <div className="w-8 h-8 rounded-full bg-[#E6F4EA] flex items-center justify-center text-[#137333]">
+                <CheckCircle className="h-5 w-5" />
+              </div>
+              Check your understanding
+            </h3>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 bg-[#FAFAFA]">
+            {/* Quiz / Assessment Content */}
+            {stage === 'assessment' || stage === 'learning' ? (
+              <div className="space-y-6">
+                {/* Progress */}
+                {/* Current Question/Module */}
+                {currentModule ? (
+                  <div className="bg-white rounded-xl border border-[#E1E3E1] shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                    <div className="p-6 border-b border-[#F1F3F4]">
+                      <span className="inline-block px-3 py-1 rounded-full bg-[#E8F0FE] text-[#1967D2] text-xs font-bold uppercase tracking-wide mb-3">
+                        {currentModule.module_type.replace('_', ' ')}
+                      </span>
+                      <p className="font-medium text-[#1f1f1f] text-lg leading-relaxed">
+                        {currentModule.module_type === 'mcq_multi' ? (currentModule as MCQMulti).question :
+                          currentModule.module_type === 'fill_blanks' ? "Fill in the blanks" :
+                            currentModule.module_type === 'match_pairs' ? (currentModule as MatchPairs).prompt :
+                              "Review Card"}
+                      </p>
+                    </div>
+
+                    <div className="p-6 bg-white">
+                      {/* MCQ Options */}
+                      {currentModule.module_type === 'mcq_multi' && (
+                        <div className="space-y-3">
+                          {(currentModule as MCQMulti).options.map(opt => (
+                            <button
+                              key={opt.id}
+                              onClick={() => {
+                                if (selectedOptions.includes(opt.id)) {
+                                  setSelectedOptions(selectedOptions.filter(id => id !== opt.id));
+                                } else {
+                                  setSelectedOptions([...selectedOptions, opt.id]);
+                                }
+                              }}
+                              className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${selectedOptions.includes(opt.id)
+                                ? 'border-[#0B57D0] bg-[#E8F0FE] text-[#0B57D0]'
+                                : 'border-transparent bg-[#F8F9FA] hover:bg-[#E1E3E1] text-[#1f1f1f]'
+                                }`}
+                            >
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selectedOptions.includes(opt.id) ? 'border-[#0B57D0] bg-[#0B57D0]' : 'border-[#747775]'}`}>
+                                {selectedOptions.includes(opt.id) && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                              </div>
+                              {opt.text}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Fill Blanks */}
+                      {currentModule.module_type === 'fill_blanks' && (
+                        <div className="leading-loose text-[#1f1f1f] text-lg">
+                          {(currentModule as FillBlanks).text.split('_____').map((part, i, arr) => (
+                            <React.Fragment key={i}>
+                              {part}
+                              {i < arr.length - 1 && (
+                                <input
+                                  type="text"
+                                  className="mx-1 border-b-2 border-[#747775] focus:border-[#0B57D0] outline-none px-2 py-1 w-32 text-center bg-[#F0F4F9] focus:bg-[#E8F0FE] rounded-t-md transition-colors font-medium text-[#0B57D0]"
+                                  placeholder="?"
+                                  onChange={(e) => {
+                                    const newAnswers = [...fillBlanksAnswers];
+                                    newAnswers[i] = e.target.value;
+                                    setFillBlanksAnswers(newAnswers);
+                                  }}
+                                />
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Feedback Area */}
+                      {showFeedback && (
+                        <div className={`mt-6 p-4 rounded-xl text-sm flex items-start gap-3 ${feedbackMessage.includes('correct') || feedbackMessage.includes('✓')
+                          ? 'bg-[#E6F4EA] text-[#137333]'
+                          : 'bg-[#FEEFC3] text-[#B06000]'
+                          }`}>
+                          {feedbackMessage.includes('correct') || feedbackMessage.includes('✓') ? <CheckCircle className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
+                          <span className="font-medium">{feedbackMessage}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-4 bg-[#F8F9FA] border-t border-[#E1E3E1] flex justify-between items-center">
+                      <button
+                        onClick={handleSkipQuestion}
+                        className="text-[#444746] hover:text-[#1f1f1f] text-sm font-medium px-4 py-2 rounded-full hover:bg-[#E1E3E1] transition-colors"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        onClick={handleSubmitAnswer}
+                        className="bg-[#0B57D0] text-white px-8 py-2.5 rounded-full text-sm font-medium hover:bg-[#0842A0] shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center gap-2"
+                      >
+                        Check Answer
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-16 text-[#444746]">
+                    <div className="w-20 h-20 bg-[#F0F4F9] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#E1E3E1]">
+                      <Sparkles className="h-8 w-8 text-[#DADCE0]" />
+                    </div>
+                    <p className="font-medium">All caught up!</p>
+                    <p className="text-sm mt-1">Continue reading to unlock more questions.</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-20">
+                <div className="w-24 h-24 bg-[#E8F0FE] text-[#0B57D0] rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Target className="h-10 w-10" />
+                </div>
+                <h4 className="text-[#1f1f1f] font-medium mb-3 text-lg">Interactive Assessment</h4>
+                <p className="text-[#444746] text-sm leading-relaxed max-w-[200px] mx-auto">
+                  As you read, questions will appear here to help you check your understanding.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div >
   );
+
 };
 
 export default SubjectExplorer;

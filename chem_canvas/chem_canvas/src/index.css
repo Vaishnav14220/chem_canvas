@@ -1137,3 +1137,67 @@ input[type="range"]::-moz-range-thumb:hover {
   color: rgba(148, 163, 184, 0.95);
 }
 /* Molecule summon animation */
+
+/* Deep Agent Progress Animation */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+    width: 50%;
+  }
+  50% {
+    transform: translateX(0%);
+    width: 100%;
+  }
+  100% {
+    transform: translateX(200%);
+    width: 50%;
+  }
+}
+
+.animate-progress-indeterminate {
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+}
+
+/* Deep Agent Thinking Pulse */
+@keyframes thinking-pulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.animate-thinking-pulse {
+  animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+
+/* Agent Node Glow Effect */
+@keyframes agent-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(139, 92, 246, 0.6), 0 0 35px rgba(139, 92, 246, 0.3);
+  }
+}
+
+.animate-agent-glow {
+  animation: agent-glow 2s ease-in-out infinite;
+}
+
+/* Edge Flow Animation for active connections */
+@keyframes edge-flow-active {
+  0% {
+    stroke-dashoffset: 100;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.edge-active {
+  animation: edge-flow-active 1s linear infinite;
+}

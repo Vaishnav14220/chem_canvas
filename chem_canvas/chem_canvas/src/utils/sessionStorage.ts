@@ -60,7 +60,7 @@ export const loadSession = (): SessionData | null => {
       
       // Check if session is still valid
       if (parsed.expiresAt && Date.now() < parsed.expiresAt) {
-        console.log('Valid session found, expires at:', new Date(parsed.expiresAt));
+        // Removed verbose logging to prevent console spam
         return parsed;
       } else {
         console.log('Session expired, clearing...');

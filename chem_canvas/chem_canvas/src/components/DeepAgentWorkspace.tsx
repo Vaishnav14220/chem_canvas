@@ -10,12 +10,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Brain, 
-  ArrowLeft, 
-  Info, 
-  Settings, 
-  Moon, 
+import {
+  Brain,
+  ArrowLeft,
+  Info,
+  Settings,
+  Moon,
   Sun,
   Maximize2,
   Minimize2,
@@ -27,9 +27,9 @@ import {
   FileText
 } from 'lucide-react';
 import DeepAgentChat from './DeepAgentChat';
-import { 
-  getAvailableTools, 
-  getAvailableSubagents 
+import {
+  getAvailableTools,
+  getAvailableSubagents
 } from '../services/deepAgentService';
 
 interface DeepAgentWorkspaceProps {
@@ -37,9 +37,9 @@ interface DeepAgentWorkspaceProps {
   initialMessage?: string;
 }
 
-const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({ 
-  onBack, 
-  initialMessage 
+const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
+  onBack,
+  initialMessage
 }) => {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -61,18 +61,16 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
   };
 
   return (
-    <div className={`h-screen flex flex-col ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`h-full flex flex-col ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Header */}
-      <header className={`flex-shrink-0 flex items-center justify-between px-4 py-3 border-b ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
+      <header className={`flex-shrink-0 flex items-center justify-between px-4 py-3 border-b ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        }`}>
         <div className="flex items-center space-x-4">
           {onBack && (
             <button
               onClick={onBack}
-              className={`p-2 rounded-lg transition-colors ${
-                isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
-              }`}
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
+                }`}
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -92,85 +90,9 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
 
         <div className="flex items-center space-x-2">
           {/* Tab Navigation */}
-          <nav className="flex items-center space-x-1 mr-4">
-            <button
-              onClick={() => setActiveTab('chat')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === 'chat'
-                  ? 'bg-purple-500 text-white'
-                  : isDarkMode 
-                    ? 'text-gray-400 hover:bg-gray-700' 
-                    : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 inline-block mr-1" />
-              Chat
-            </button>
-            <button
-              onClick={() => setActiveTab('tools')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === 'tools'
-                  ? 'bg-purple-500 text-white'
-                  : isDarkMode 
-                    ? 'text-gray-400 hover:bg-gray-700' 
-                    : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Wrench className="w-4 h-4 inline-block mr-1" />
-              Tools
-            </button>
-            <button
-              onClick={() => setActiveTab('subagents')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === 'subagents'
-                  ? 'bg-purple-500 text-white'
-                  : isDarkMode 
-                    ? 'text-gray-400 hover:bg-gray-700' 
-                    : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Users className="w-4 h-4 inline-block mr-1" />
-              Subagents
-            </button>
-            <button
-              onClick={() => setActiveTab('docs')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === 'docs'
-                  ? 'bg-purple-500 text-white'
-                  : isDarkMode 
-                    ? 'text-gray-400 hover:bg-gray-700' 
-                    : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <FileText className="w-4 h-4 inline-block mr-1" />
-              Docs
-            </button>
-          </nav>
+          {/* Tab Navigation hidden by user request */}
 
-          <button
-            onClick={() => setShowHelp(!showHelp)}
-            className={`p-2 rounded-lg transition-colors ${
-              isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
-            }`}
-          >
-            <HelpCircle className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className={`p-2 rounded-lg transition-colors ${
-              isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
-            }`}
-          >
-            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
-          <button
-            onClick={toggleFullscreen}
-            className={`p-2 rounded-lg transition-colors ${
-              isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
-            }`}
-          >
-            {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-          </button>
+          {/* Utility buttons hidden by user request */}
         </div>
       </header>
 
@@ -178,8 +100,8 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
       <main className="flex-1 overflow-hidden">
         {/* Chat Tab */}
         {activeTab === 'chat' && (
-          <DeepAgentChat 
-            isOpen={true} 
+          <DeepAgentChat
+            isOpen={true}
             initialMessage={initialMessage}
             className="h-full"
           />
@@ -191,27 +113,24 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
             <div className="max-w-4xl mx-auto">
               <h2 className="text-2xl font-bold mb-6">Available Tools</h2>
               <p className={`mb-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Deep Agent has access to specialized chemistry tools that enable it to perform 
+                Deep Agent has access to specialized chemistry tools that enable it to perform
                 complex tasks like molecule lookups, reaction analysis, and more.
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {tools.map((tool: { name: string; description: string }) => (
                   <div
                     key={tool.name}
-                    className={`p-4 rounded-xl border ${
-                      isDarkMode 
-                        ? 'bg-gray-800 border-gray-700' 
-                        : 'bg-white border-gray-200'
-                    }`}
+                    className={`p-4 rounded-xl border ${isDarkMode
+                      ? 'bg-gray-800 border-gray-700'
+                      : 'bg-white border-gray-200'
+                      }`}
                   >
                     <div className="flex items-center space-x-3 mb-2">
-                      <div className={`p-2 rounded-lg ${
-                        isDarkMode ? 'bg-purple-500/20' : 'bg-purple-100'
-                      }`}>
-                        <Wrench className={`w-5 h-5 ${
-                          isDarkMode ? 'text-purple-400' : 'text-purple-600'
-                        }`} />
+                      <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-purple-500/20' : 'bg-purple-100'
+                        }`}>
+                        <Wrench className={`w-5 h-5 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'
+                          }`} />
                       </div>
                       <h3 className="font-semibold">{tool.name.replace(/_/g, ' ')}</h3>
                     </div>
@@ -222,9 +141,8 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
                 ))}
               </div>
 
-              <div className={`mt-8 p-4 rounded-xl ${
-                isDarkMode ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-blue-50 border border-blue-200'
-              }`}>
+              <div className={`mt-8 p-4 rounded-xl ${isDarkMode ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-blue-50 border border-blue-200'
+                }`}>
                 <div className="flex items-start space-x-3">
                   <Info className={`w-5 h-5 mt-0.5 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
                   <div>
@@ -247,27 +165,24 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
             <div className="max-w-4xl mx-auto">
               <h2 className="text-2xl font-bold mb-6">Specialized Subagents</h2>
               <p className={`mb-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Deep Agent can delegate complex subtasks to specialized subagents. Each subagent 
+                Deep Agent can delegate complex subtasks to specialized subagents. Each subagent
                 has its own expertise and tools, allowing for focused and efficient task handling.
               </p>
-              
+
               <div className="space-y-4">
                 {subagents.map((subagent: { name: string; description: string }) => (
                   <div
                     key={subagent.name}
-                    className={`p-6 rounded-xl border ${
-                      isDarkMode 
-                        ? 'bg-gray-800 border-gray-700' 
-                        : 'bg-white border-gray-200'
-                    }`}
+                    className={`p-6 rounded-xl border ${isDarkMode
+                      ? 'bg-gray-800 border-gray-700'
+                      : 'bg-white border-gray-200'
+                      }`}
                   >
                     <div className="flex items-center space-x-3 mb-3">
-                      <div className={`p-3 rounded-xl ${
-                        isDarkMode ? 'bg-gradient-to-r from-purple-500/20 to-blue-500/20' : 'bg-gradient-to-r from-purple-100 to-blue-100'
-                      }`}>
-                        <Users className={`w-6 h-6 ${
-                          isDarkMode ? 'text-purple-400' : 'text-purple-600'
-                        }`} />
+                      <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gradient-to-r from-purple-500/20 to-blue-500/20' : 'bg-gradient-to-r from-purple-100 to-blue-100'
+                        }`}>
+                        <Users className={`w-6 h-6 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'
+                          }`} />
                       </div>
                       <div>
                         <h3 className="font-semibold text-lg">{subagent.name}</h3>
@@ -283,9 +198,8 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
                 ))}
               </div>
 
-              <div className={`mt-8 p-4 rounded-xl ${
-                isDarkMode ? 'bg-purple-500/10 border border-purple-500/30' : 'bg-purple-50 border border-purple-200'
-              }`}>
+              <div className={`mt-8 p-4 rounded-xl ${isDarkMode ? 'bg-purple-500/10 border border-purple-500/30' : 'bg-purple-50 border border-purple-200'
+                }`}>
                 <div className="flex items-start space-x-3">
                   <ListTodo className={`w-5 h-5 mt-0.5 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`} />
                   <div>
@@ -307,7 +221,7 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
           <div className={`h-full overflow-y-auto p-6 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
             <div className="max-w-4xl mx-auto prose prose-lg prose-invert">
               <h2 className="text-2xl font-bold mb-6">Deep Agent Documentation</h2>
-              
+
               <section className="mb-8">
                 <h3 className="text-xl font-semibold mb-3">What is Deep Agent?</h3>
                 <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -324,7 +238,7 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
 
               <section className="mb-8">
                 <h3 className="text-xl font-semibold mb-3">Core Capabilities</h3>
-                
+
                 <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                   <h4 className="font-medium flex items-center gap-2">
                     <ListTodo className="w-5 h-5 text-green-400" />
@@ -401,9 +315,8 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
       {/* Help Modal */}
       {showHelp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`max-w-lg w-full rounded-xl p-6 ${
-            isDarkMode ? 'bg-gray-800' : 'bg-white'
-          }`}>
+          <div className={`max-w-lg w-full rounded-xl p-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'
+            }`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Quick Help</h3>
               <button

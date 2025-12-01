@@ -16,7 +16,13 @@ import ReactFlow, {
   type NodeProps,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Play, Pause, RotateCcw, Settings2, Sparkles, Brain, Palette, Layout, Cpu, Layers, Send, Eye, Code2, FileCode, Loader2, Info, Upload, FileText, X, Gamepad2, Film, ChevronRight, MousePointer, Move3D, ZoomIn, RotateCw, Hand, ArrowLeft } from 'lucide-react';
+import { 
+  Play, Pause, RotateCcw, Settings2, Sparkles, Brain, Palette, Layout, Cpu, Layers, 
+  Send, Eye, Code2, FileCode, Loader2, Info, Upload, FileText, X, Gamepad2, Film, 
+  ChevronRight, MousePointer, Move3D, ZoomIn, RotateCw, Hand, ArrowLeft, Zap, 
+  MessageCircle, Search, Database, CheckCircle, AlertCircle, Clock, Wand2, ImagePlus,
+  Box, ShieldCheck, FlaskConical
+} from 'lucide-react';
 import {
   runSimulationPipeline,
   subscribeToSimulationEvents,
@@ -25,26 +31,388 @@ import {
   type SimulationRequest,
   type SimulationOutput,
 } from '../services/simulationAgentService';
+import {
+  runDeepSimulationPipeline,
+  subscribeToDeepAgentEvents,
+  getDeepSimulationArtifacts,
+  type DeepAgentEvent,
+  type DeepSimulationRequest,
+  type DeepSimulationOutput,
+  type GradeLevel,
+  GRADE_LEVEL_LABELS,
+  SUBAGENTS,
+} from '../services/deepSimulationService';
 import { View } from '../types/studium';
 import { InteractiveCanvas } from './Studium/InteractiveCanvas';
 import { ChatInterface } from './Studium/ChatInterface';
 import { ImageAnalyzer } from './Studium/ImageAnalyzer';
 import { BookOpen, MessageSquare, Image as ImageIcon } from 'lucide-react';
 
+// Built-in fallback simulation HTML shown when no AI-generated simulation exists.
+const FALLBACK_SIMULATION_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>sp3 Hybridization - Demo Lab</title>
+  <style>
+    :root {
+      --bg: radial-gradient(circle at 20% 20%, #f8fafc, #eef2ff 45%, #f8fafc 80%);
+      --panel: rgba(255, 255, 255, 0.78);
+      --border: rgba(148, 163, 184, 0.35);
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #7c3aed;
+      --glow: 0 12px 40px rgba(124, 58, 237, 0.25);
+      --shadow: 0 18px 60px rgba(15, 23, 42, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body, html { margin: 0; height: 100%; font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+    #app { position: relative; width: 100%; height: 100%; }
+    #canvas { position: absolute; inset: 0; }
+    .card {
+      position: absolute;
+      backdrop-filter: blur(10px);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+    }
+    #info { top: 18px; left: 18px; width: 240px; padding: 16px 18px; }
+    #measure { top: 18px; right: 18px; width: 220px; padding: 16px 18px; text-align: right; }
+    .eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; color: var(--muted); margin: 0 0 6px 0; }
+    #info-title { margin: 0 0 6px 0; font-size: 16px; font-weight: 700; }
+    #info-detail { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+    #measure-values div { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: var(--muted); }
+    #measure-values span:last-child { color: var(--text); font-weight: 700; }
+    #headline { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; }
+    .pill { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(124,58,237,0.18); font-weight: 700; color: #111827; }
+    .badge { padding: 7px 12px; border-radius: 999px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16,185,129,0.35); color: #065f46; font-weight: 700; font-size: 12px; }
+    #control-bar {
+      bottom: 24px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+      background: rgba(15, 23, 42, 0.7); color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.08); box-shadow: var(--shadow);
+    }
+    #control-bar button {
+      border: none; background: rgba(255,255,255,0.08); color: #e2e8f0;
+      border-radius: 12px; padding: 10px 12px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px; font-weight: 600;
+      transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    }
+    #control-bar button:hover { transform: translateY(-2px); background: rgba(255,255,255,0.14); box-shadow: var(--glow); }
+    #control-bar label { font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 6px; }
+    #control-bar input[type="range"] { width: 140px; accent-color: #f472b6; }
+    #legend { position: absolute; bottom: 24px; right: 18px; padding: 12px 14px; width: 220px; color: #0f172a; }
+    #legend h4 { margin: 0 0 8px 0; font-size: 13px; color: #111827; }
+    #legend .row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: #475569; }
+    .dot { width: 10px; height: 10px; border-radius: 999px; }
+    #cta { position: absolute; right: 18px; top: 120px; padding: 10px 12px; font-size: 12px; color: #1e293b; border-left: 3px solid #7c3aed; background: rgba(255,255,255,0.9); border-radius: 10px; box-shadow: var(--shadow); }
+    canvas { display: block; outline: none; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <div id="headline">
+      <div class="pill">Investigating sp3 Hybridization</div>
+      <div class="badge">Demo simulation</div>
+    </div>
+    <div id="info" class="card">
+      <p class="eyebrow">Selected Component</p>
+      <h3 id="info-title">Hover or click an atom</h3>
+      <p id="info-detail">Rotate the view to explore the tetrahedral geometry and the four sp3 orbitals.</p>
+    </div>
+    <div id="measure" class="card">
+      <p class="eyebrow">Measurements</p>
+      <div id="measure-values">
+        <div><span class="muted">Bond length</span><span id="bond-length">~1.09 Å</span></div>
+        <div><span class="muted">Bond angle</span><span id="bond-angle">109.5°</span></div>
+      </div>
+    </div>
+    <div id="canvas"></div>
+    <div id="control-bar" class="card">
+      <button id="play" aria-label="Play or pause">
+        <span id="play-icon">⏸</span>
+        <span id="play-label">Pause</span>
+      </button>
+      <button id="reset" aria-label="Reset view">↻ Reset</button>
+      <label for="speed">Rotation
+        <input id="speed" type="range" min="0" max="1.5" value="0.6" step="0.01" />
+      </label>
+      <label><input id="orbitals-toggle" type="checkbox" checked /> Show orbitals</label>
+    </div>
+    <div id="legend" class="card">
+      <h4>Quick guide</h4>
+      <div class="row"><span class="dot" style="background:#2563eb"></span><span>Carbon (sp3 center)</span></div>
+      <div class="row"><span class="dot" style="background:#f8fafc; border:1px solid #cbd5e1"></span><span>Hydrogen</span></div>
+      <div class="row"><span class="dot" style="background:#a855f7"></span><span>Hybrid orbital lobe</span></div>
+      <div class="row"><span class="dot" style="background:#22d3ee"></span><span>Phase ring</span></div>
+    </div>
+    <div id="cta">Tip: left click + drag to orbit · scroll to zoom</div>
+  </div>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    const host = document.getElementById("canvas");
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.shadowMap.enabled = true;
+    host.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#f7f9fc");
+
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+    camera.position.set(6, 4, 8);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 0, 0);
+    controls.minDistance = 2;
+    controls.maxDistance = 20;
+
+    const resize = () => {
+      const { clientWidth, clientHeight } = host;
+      camera.aspect = clientWidth / clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(clientWidth, clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xdfe7ff, 0.7);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+    dir.position.set(6, 8, 5);
+    dir.castShadow = true;
+    scene.add(dir);
+
+    const grid = new THREE.GridHelper(16, 16, "#e2e8f0", "#e2e8f0");
+    grid.position.y = -2;
+    grid.material.opacity = 0.3;
+    grid.material.transparent = true;
+    scene.add(grid);
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const interactive = [];
+    const orbitalMeshes = [];
+
+    const carbon = new THREE.Mesh(
+      new THREE.SphereGeometry(0.7, 48, 48),
+      new THREE.MeshStandardMaterial({ color: "#2563eb", metalness: 0.6, roughness: 0.35 })
+    );
+    carbon.castShadow = true;
+    carbon.receiveShadow = true;
+    carbon.name = "Carbon (sp3 center)";
+    carbon.userData = {
+      label: "Carbon (sp3 center)",
+      detail: "Central atom with four equivalent sp3 orbitals forming sigma bonds.",
+      color: "#2563eb",
+    };
+    group.add(carbon);
+    interactive.push(carbon);
+
+    const positions = [
+      new THREE.Vector3(1, 1, 1),
+      new THREE.Vector3(-1, -1, 1),
+      new THREE.Vector3(-1, 1, -1),
+      new THREE.Vector3(1, -1, -1),
+    ];
+
+    const bondMaterial = new THREE.MeshStandardMaterial({ color: "#94a3b8", metalness: 0.6, roughness: 0.25 });
+    positions.forEach((dirVec, idx) => {
+      const dirNorm = dirVec.clone().normalize();
+      const bondEnd = dirNorm.clone().multiplyScalar(2.8);
+
+      const hydrogen = new THREE.Mesh(
+        new THREE.SphereGeometry(0.38, 32, 32),
+        new THREE.MeshStandardMaterial({ color: "#f8fafc", roughness: 0.25, metalness: 0.1 })
+      );
+      hydrogen.position.copy(bondEnd);
+      hydrogen.castShadow = true;
+      hydrogen.name = "Hydrogen " + (idx + 1);
+      hydrogen.userData = {
+        label: "Hydrogen " + (idx + 1),
+        detail: "Terminal atom completing the sigma bond.",
+        color: "#0f172a",
+      };
+      group.add(hydrogen);
+      interactive.push(hydrogen);
+
+      const bond = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, bondEnd.length(), 24), bondMaterial);
+      bond.position.copy(bondEnd.clone().multiplyScalar(0.5));
+      bond.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), bondEnd.clone().normalize());
+      bond.castShadow = true;
+      group.add(bond);
+
+      const lobe = new THREE.Mesh(
+        new THREE.SphereGeometry(0.6, 48, 48),
+        new THREE.MeshStandardMaterial({
+          color: "#a855f7",
+          emissive: "#a855f7",
+          emissiveIntensity: 0.35,
+          transparent: true,
+          opacity: 0.35,
+        })
+      );
+      lobe.position.copy(dirNorm.clone().multiplyScalar(1.35));
+      lobe.scale.set(1.2, 1.6, 1.2);
+      lobe.lookAt(dirNorm);
+      lobe.name = "Orbital " + (idx + 1);
+      lobe.userData = {
+        label: "sp3 Orbital " + (idx + 1),
+        detail: "Hybrid orbital oriented toward a tetrahedral corner.",
+        color: "#a855f7",
+      };
+      group.add(lobe);
+      interactive.push(lobe);
+      orbitalMeshes.push(lobe);
+
+      const phase = new THREE.Mesh(
+        new THREE.TorusGeometry(0.45, 0.03, 16, 64),
+        new THREE.MeshStandardMaterial({
+          color: "#22d3ee",
+          emissive: "#22d3ee",
+          emissiveIntensity: 0.2,
+          transparent: true,
+          opacity: 0.5,
+        })
+      );
+      phase.position.copy(dirNorm.clone().multiplyScalar(1.75));
+      phase.rotation.x = Math.random() * Math.PI;
+      phase.rotation.y = Math.random() * Math.PI;
+      group.add(phase);
+    });
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let selected = null;
+    const infoTitle = document.getElementById("info-title");
+    const infoDetail = document.getElementById("info-detail");
+    const bondLengthLabel = document.getElementById("bond-length");
+
+    const setInfo = (obj?: THREE.Object3D) => {
+      if (!obj) {
+        infoTitle.textContent = "Hover or click an atom";
+        infoDetail.textContent = "Rotate the view to explore the tetrahedral geometry and the four sp3 orbitals.";
+        bondLengthLabel.textContent = "~1.09 A";
+        return;
+      }
+      const data = obj.userData || {};
+      infoTitle.textContent = data.label || obj.name;
+      infoDetail.textContent = data.detail || "Interactive component selected.";
+      if (obj !== carbon) {
+        const dist = obj.position.length().toFixed(2);
+        bondLengthLabel.textContent = dist + " A";
+      }
+    };
+
+    const updatePointer = (event: PointerEvent) => {
+      const rect = host.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    };
+
+    host.addEventListener("pointermove", (event) => {
+      updatePointer(event);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(interactive, false)[0];
+      if (hit) {
+        document.body.style.cursor = "pointer";
+      } else {
+        document.body.style.cursor = "default";
+      }
+    });
+
+    host.addEventListener("click", (event) => {
+      updatePointer(event);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(interactive, false)[0];
+      if (hit) {
+        selected = hit.object;
+        setInfo(selected);
+      }
+    });
+
+    let playing = true;
+    let rotationSpeed = 0.6;
+    const clock = new THREE.Clock();
+
+    const playBtn = document.getElementById("play");
+    const playIcon = document.getElementById("play-icon");
+    const playLabel = document.getElementById("play-label");
+    playBtn.addEventListener("click", () => {
+      playing = !playing;
+      playIcon.textContent = playing ? "⏸" : "▶";
+      playLabel.textContent = playing ? "Pause" : "Play";
+    });
+
+    const resetBtn = document.getElementById("reset");
+    resetBtn.addEventListener("click", () => {
+      group.rotation.set(0, 0, 0);
+      controls.reset();
+      controls.target.set(0, 0, 0);
+      controls.update();
+      setInfo();
+      selected = null;
+    });
+
+    const speedInput = document.getElementById("speed");
+    speedInput.addEventListener("input", () => {
+      rotationSpeed = parseFloat(speedInput.value);
+    });
+
+    const orbitalsToggle = document.getElementById("orbitals-toggle");
+    orbitalsToggle.addEventListener("change", () => {
+      orbitalMeshes.forEach((o) => (o.visible = orbitalsToggle.checked));
+    });
+
+    const animate = () => {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      if (playing) {
+        group.rotation.y += delta * rotationSpeed;
+        orbitalMeshes.forEach((lobe, i) => {
+          const pulse = 1 + Math.sin(clock.elapsedTime * 2 + i) * 0.06;
+          lobe.scale.set(1.2 * pulse, 1.6 * pulse, 1.2 * pulse);
+        });
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+  </script>
+</body>
+</html>`;
 // Simulation tab type
 type SimulationTab = 'tutorial' | 'interactive';
+
+// Deep Agent Mode toggle
+type AgentMode = 'classic' | 'deep';
 
 // ============================================
 // CUSTOM NODE STYLES - React Flow Landing Style
 // ============================================
 
 // Agent Status Type
-type AgentStatus = 'idle' | 'running' | 'completed' | 'error';
+type AgentStatus = 'idle' | 'thinking' | 'working' | 'running' | 'completed' | 'error';
 
 // Agent Node Component - Represents each agent in the swarm
 const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
   const statusColors: Record<AgentStatus, string> = {
     idle: 'bg-gray-100 border-gray-200',
+    thinking: 'bg-violet-50 border-violet-300 animate-pulse',
+    working: 'bg-blue-50 border-blue-300',
     running: 'bg-blue-50 border-blue-300 animate-pulse',
     completed: 'bg-green-50 border-green-300',
     error: 'bg-red-50 border-red-300',
@@ -52,9 +420,20 @@ const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
 
   const statusDotColors: Record<AgentStatus, string> = {
     idle: 'bg-gray-400',
+    thinking: 'bg-violet-500 animate-pulse',
+    working: 'bg-blue-500 animate-spin',
     running: 'bg-blue-500 animate-ping',
     completed: 'bg-green-500',
     error: 'bg-red-500',
+  };
+
+  const statusLabels: Record<AgentStatus, string> = {
+    idle: 'Waiting',
+    thinking: '🧠 Thinking...',
+    working: '⚙️ Working...',
+    running: '🔄 Processing...',
+    completed: '✓ Done',
+    error: '✗ Error',
   };
 
   const IconComponent = data.icon;
@@ -64,7 +443,7 @@ const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
     <div
       className={`rounded-2xl shadow-lg border-2 transition-all duration-300 ${statusColors[status]} ${selected ? 'ring-2 ring-pink-400 ring-offset-2' : ''
         }`}
-      style={{ minWidth: 220, padding: '20px 24px' }}
+      style={{ minWidth: 240, padding: '20px 24px' }}
     >
       {data.hasInput && (
         <Handle
@@ -76,7 +455,7 @@ const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
       )}
 
       <div className="flex items-start gap-4">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${data.iconBg || 'bg-gradient-to-br from-pink-500 to-purple-500'}`}>
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${data.iconBg || 'bg-gradient-to-br from-pink-500 to-purple-500'} ${status === 'thinking' || status === 'working' ? 'animate-pulse' : ''}`}>
           {IconComponent && <IconComponent className="w-6 h-6 text-white" />}
         </div>
         <div className="flex-1">
@@ -85,12 +464,27 @@ const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
             <div className={`w-2 h-2 rounded-full ${statusDotColors[status]}`} />
           </div>
           <p className="text-xs text-gray-500 leading-relaxed">{data.role}</p>
+          {status !== 'idle' && (
+            <p className={`text-xs mt-1 font-medium ${status === 'completed' ? 'text-green-600' : status === 'error' ? 'text-red-600' : 'text-blue-600'}`}>
+              {statusLabels[status]}
+            </p>
+          )}
         </div>
       </div>
 
       {data.message && (
-        <div className="mt-3 px-3 py-2 bg-white/60 rounded-lg border border-white/40">
-          <p className="text-xs text-gray-600 italic">{data.message}</p>
+        <div className={`mt-3 px-3 py-2 rounded-lg border ${status === 'thinking' ? 'bg-violet-50/60 border-violet-200' : 'bg-white/60 border-white/40'}`}>
+          <p className="text-xs text-gray-600 italic flex items-center gap-1">
+            {status === 'thinking' && <MessageCircle className="w-3 h-3 text-violet-500" />}
+            {data.message}
+          </p>
+        </div>
+      )}
+
+      {/* Progress bar for working state */}
+      {(status === 'working' || status === 'running') && (
+        <div className="mt-3 h-1 bg-gray-200 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 animate-progress-indeterminate" />
         </div>
       )}
 
@@ -106,13 +500,22 @@ const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
   );
 };
 
-// Input Node - Topic/Request Input
+// Grade Level Options for dropdown
+const gradeLevelOptions: { value: GradeLevel; label: string }[] = [
+  { value: 'elementary', label: '🎨 Elementary (K-5)' },
+  { value: 'middle-school', label: '📚 Middle School (6-8)' },
+  { value: 'high-school', label: '🔬 High School (9-12)' },
+  { value: 'undergraduate', label: '🎓 Undergraduate' },
+  { value: 'graduate', label: '🔬 Graduate' },
+];
+
+// Input Node - Topic/Request Input with Grade Selector
 const TopicInputNode: React.FC<NodeProps> = ({ data, selected }) => {
   return (
     <div
       className={`bg-white rounded-2xl shadow-lg border-2 transition-all duration-200 ${selected ? 'border-pink-400 shadow-pink-100' : 'border-gray-100'
         }`}
-      style={{ minWidth: 280, padding: '20px 24px' }}
+      style={{ minWidth: 300, padding: '20px 24px' }}
     >
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center">
@@ -124,6 +527,25 @@ const TopicInputNode: React.FC<NodeProps> = ({ data, selected }) => {
         </div>
       </div>
 
+      {/* Grade Level Selector */}
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">
+          📊 Grade Level
+        </label>
+        <select
+          value={data.gradeLevel || 'high-school'}
+          onChange={(e) => data.onGradeLevelChange?.(e.target.value as GradeLevel)}
+          className="w-full px-3 py-2 text-sm text-gray-800 bg-gradient-to-r from-violet-50 to-pink-50 border border-gray-200 rounded-xl focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 cursor-pointer"
+        >
+          {gradeLevelOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Topic Input */}
       <textarea
         value={data.value || ''}
         onChange={(e) => data.onChange?.(e.target.value)}
@@ -235,10 +657,12 @@ const nodeTypes = {
   artifact: ArtifactNode,
 };
 
-// Initial Agent Workflow Nodes
+// Initial Agent Workflow Nodes - Enhanced Deep Agents (8 Agents)
 const createInitialNodes = (
   topic: string,
+  gradeLevel: GradeLevel,
   onTopicChange: (value: string) => void,
+  onGradeLevelChange: (value: GradeLevel) => void,
   onPreview: () => void,
   outputStatus: 'idle' | 'generating' | 'ready',
   htmlContent: string | null,
@@ -249,52 +673,88 @@ const createInitialNodes = (
     {
       id: 'input',
       type: 'topicInput',
-      position: { x: 50, y: 200 },
+      position: { x: 30, y: 280 },
       data: {
         value: topic,
+        gradeLevel: gradeLevel,
         onChange: onTopicChange,
+        onGradeLevelChange: onGradeLevelChange,
       },
     },
-    // Architect Agent
+    // ===== ROW 1: Initial Processing =====
+    // Prompt Enhancer Agent
     {
-      id: 'architect',
+      id: 'promptEnhancer',
       type: 'agent',
-      position: { x: 400, y: 200 },
+      position: { x: 280, y: 180 },
       data: {
-        label: 'Architect',
-        role: 'Project Manager & Domain Expert',
+        label: '✨ Prompt Enhancer',
+        role: 'Educational Structuring',
+        icon: Wand2,
+        iconBg: 'bg-gradient-to-br from-fuchsia-500 to-pink-500',
+        hasInput: true,
+        hasOutput: true,
+        status: agentStatuses.promptEnhancer || 'idle',
+        message: agentMessages.promptEnhancer,
+      },
+    },
+    // Grounding Researcher Agent
+    {
+      id: 'groundingResearcher',
+      type: 'agent',
+      position: { x: 280, y: 380 },
+      data: {
+        label: '🔬 Grounding Researcher',
+        role: 'Scientific Grounding & Search',
+        icon: FlaskConical,
+        iconBg: 'bg-gradient-to-br from-blue-500 to-cyan-500',
+        hasInput: true,
+        hasOutput: true,
+        status: agentStatuses.groundingResearcher || 'idle',
+        message: agentMessages.groundingResearcher,
+      },
+    },
+    // ===== ROW 2: Design & Images =====
+    // Planner Agent
+    {
+      id: 'planner',
+      type: 'agent',
+      position: { x: 560, y: 120 },
+      data: {
+        label: '🎯 Planner',
+        role: 'Architecture & Specification',
         icon: Brain,
+        iconBg: 'bg-gradient-to-br from-indigo-500 to-violet-600',
+        hasInput: true,
+        hasOutput: true,
+        status: agentStatuses.planner || 'idle',
+        message: agentMessages.planner,
+      },
+    },
+    // Image Generator Agent (Nano Banana)
+    {
+      id: 'imageGenerator',
+      type: 'agent',
+      position: { x: 560, y: 280 },
+      data: {
+        label: '🖼️ Image Generator',
+        role: 'Multi-View Component Images',
+        icon: ImagePlus,
         iconBg: 'bg-gradient-to-br from-violet-500 to-purple-600',
         hasInput: true,
         hasOutput: true,
-        status: agentStatuses.architect || 'idle',
-        message: agentMessages.architect,
-      },
-    },
-    // Visualist Agent
-    {
-      id: 'visualist',
-      type: 'agent',
-      position: { x: 700, y: 80 },
-      data: {
-        label: 'Visualist',
-        role: 'Three.js/WebGL Developer',
-        icon: Palette,
-        iconBg: 'bg-gradient-to-br from-pink-500 to-rose-500',
-        hasInput: true,
-        hasOutput: true,
-        status: agentStatuses.visualist || 'idle',
-        message: agentMessages.visualist,
+        status: agentStatuses.imageGenerator || 'idle',
+        message: agentMessages.imageGenerator,
       },
     },
     // Interface Designer Agent
     {
       id: 'interface',
       type: 'agent',
-      position: { x: 700, y: 220 },
+      position: { x: 560, y: 440 },
       data: {
-        label: 'Interface Designer',
-        role: 'UI/UX Specialist',
+        label: '🎛️ Interface Designer',
+        role: 'PhET-Style UI/UX',
         icon: Layout,
         iconBg: 'bg-gradient-to-br from-cyan-500 to-blue-500',
         hasInput: true,
@@ -303,43 +763,93 @@ const createInitialNodes = (
         message: agentMessages.interface,
       },
     },
-    // Cognitive Engineer Agent
+    // ===== ROW 3: Building =====
+    // Visualist Agent
     {
-      id: 'cognitive',
+      id: 'visualist',
       type: 'agent',
-      position: { x: 700, y: 360 },
+      position: { x: 840, y: 120 },
       data: {
-        label: 'Cognitive Engineer',
-        role: 'Gemini API Integration',
-        icon: Cpu,
+        label: '🎨 Visualist',
+        role: 'Three.js Scene & Animation',
+        icon: Palette,
+        iconBg: 'bg-gradient-to-br from-pink-500 to-rose-500',
+        hasInput: true,
+        hasOutput: true,
+        status: agentStatuses.visualist || 'idle',
+        message: agentMessages.visualist,
+      },
+    },
+    // Component Builder Agent
+    {
+      id: 'componentBuilder',
+      type: 'agent',
+      position: { x: 840, y: 280 },
+      data: {
+        label: '🔧 Component Builder',
+        role: '3D Components from Images',
+        icon: Box,
         iconBg: 'bg-gradient-to-br from-emerald-500 to-teal-500',
         hasInput: true,
         hasOutput: true,
-        status: agentStatuses.cognitive || 'idle',
-        message: agentMessages.cognitive,
+        status: agentStatuses.componentBuilder || 'idle',
+        message: agentMessages.componentBuilder,
+      },
+    },
+    // ===== ROW 4: Quality & Assembly =====
+    // PhET Inspector Agent
+    {
+      id: 'phetInspector',
+      type: 'agent',
+      position: { x: 1120, y: 120 },
+      data: {
+        label: '✅ PhET Inspector',
+        role: 'Quality Assurance & Standards',
+        icon: ShieldCheck,
+        iconBg: 'bg-gradient-to-br from-amber-500 to-orange-500',
+        hasInput: true,
+        hasOutput: true,
+        status: agentStatuses.phetInspector || 'idle',
+        message: agentMessages.phetInspector,
       },
     },
     // Integrator Agent
     {
       id: 'integrator',
       type: 'agent',
-      position: { x: 1000, y: 220 },
+      position: { x: 1120, y: 290 },
       data: {
-        label: 'Integrator',
-        role: 'Final Assembly Specialist',
+        label: '🔗 Integrator',
+        role: 'Final Assembly',
         icon: Layers,
-        iconBg: 'bg-gradient-to-br from-amber-500 to-orange-500',
+        iconBg: 'bg-gradient-to-br from-rose-500 to-red-500',
         hasInput: true,
         hasOutput: true,
         status: agentStatuses.integrator || 'idle',
         message: agentMessages.integrator,
       },
     },
+    // Resolver Agent - NEW
+    {
+      id: 'resolver',
+      type: 'agent',
+      position: { x: 1120, y: 460 },
+      data: {
+        label: '🔧 Resolver',
+        role: 'Error Detection & Auto-Fix',
+        icon: Settings2,
+        iconBg: 'bg-gradient-to-br from-emerald-500 to-teal-500',
+        hasInput: true,
+        hasOutput: true,
+        status: agentStatuses.resolver || 'idle',
+        message: agentMessages.resolver,
+      },
+    },
     // Output Node
     {
       id: 'output',
       type: 'simulationOutput',
-      position: { x: 1300, y: 180 },
+      position: { x: 1400, y: 290 },
       data: {
         status: outputStatus,
         htmlContent,
@@ -348,61 +858,147 @@ const createInitialNodes = (
     },
   ];
 
-// Initial Edges - Agent Workflow Connections
+// Initial Edges - Enhanced Deep Agent Workflow (8 Agents)
 const initialEdges: Edge[] = [
-  // Input to Architect
+  // ===== Input to First Layer =====
   {
-    id: 'e-input-architect',
+    id: 'e-input-promptEnhancer',
     source: 'input',
-    target: 'architect',
+    target: 'promptEnhancer',
     animated: true,
-    style: { stroke: '#a855f7', strokeWidth: 2 },
+    style: { stroke: '#d946ef', strokeWidth: 2 },
+    label: 'Topic',
+    labelStyle: { fontSize: 9, fill: '#6b7280' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
   },
-  // Architect to parallel agents
+  // ===== Prompt Enhancer Flow =====
   {
-    id: 'e-architect-visualist',
-    source: 'architect',
+    id: 'e-promptEnhancer-researcher',
+    source: 'promptEnhancer',
+    target: 'groundingResearcher',
+    style: { stroke: '#06b6d4', strokeWidth: 2 },
+    label: 'enhanced',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
+  },
+  {
+    id: 'e-promptEnhancer-planner',
+    source: 'promptEnhancer',
+    target: 'planner',
+    style: { stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '4,4' },
+    label: 'objectives',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
+  },
+  // ===== Grounding Researcher Flow =====
+  {
+    id: 'e-researcher-imageGen',
+    source: 'groundingResearcher',
+    target: 'imageGenerator',
+    style: { stroke: '#8b5cf6', strokeWidth: 2 },
+    label: 'research',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
+  },
+  {
+    id: 'e-researcher-planner',
+    source: 'groundingResearcher',
+    target: 'planner',
+    style: { stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '4,4' },
+    label: 'facts',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
+  },
+  // ===== Planner Flow =====
+  {
+    id: 'e-planner-visualist',
+    source: 'planner',
     target: 'visualist',
-    style: { stroke: '#d1d5db', strokeWidth: 1.5, strokeDasharray: '5,5' },
+    style: { stroke: '#ec4899', strokeWidth: 2 },
+    label: 'spec',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
   },
   {
-    id: 'e-architect-interface',
-    source: 'architect',
+    id: 'e-planner-interface',
+    source: 'planner',
     target: 'interface',
-    style: { stroke: '#d1d5db', strokeWidth: 1.5, strokeDasharray: '5,5' },
+    style: { stroke: '#0ea5e9', strokeWidth: 2, strokeDasharray: '4,4' },
+    label: 'spec',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
   },
+  // ===== Image Generator Flow =====
   {
-    id: 'e-architect-cognitive',
-    source: 'architect',
-    target: 'cognitive',
-    style: { stroke: '#d1d5db', strokeWidth: 1.5, strokeDasharray: '5,5' },
+    id: 'e-imageGen-componentBuilder',
+    source: 'imageGenerator',
+    target: 'componentBuilder',
+    animated: true,
+    style: { stroke: '#10b981', strokeWidth: 2 },
+    label: 'images',
+    labelStyle: { fontSize: 8, fill: '#10b981' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
   },
-  // Parallel agents to Integrator
+  // ===== Building Flow =====
   {
-    id: 'e-visualist-integrator',
+    id: 'e-visualist-phetInspector',
     source: 'visualist',
-    target: 'integrator',
-    style: { stroke: '#d1d5db', strokeWidth: 1.5, strokeDasharray: '5,5' },
+    target: 'phetInspector',
+    style: { stroke: '#f59e0b', strokeWidth: 2 },
+    label: 'scene',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
+  },
+  {
+    id: 'e-componentBuilder-phetInspector',
+    source: 'componentBuilder',
+    target: 'phetInspector',
+    style: { stroke: '#f59e0b', strokeWidth: 2 },
+    label: 'components',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
   },
   {
     id: 'e-interface-integrator',
     source: 'interface',
     target: 'integrator',
-    style: { stroke: '#d1d5db', strokeWidth: 1.5, strokeDasharray: '5,5' },
+    style: { stroke: '#ef4444', strokeWidth: 2, strokeDasharray: '4,4' },
+    label: 'UI',
+    labelStyle: { fontSize: 8, fill: '#9ca3af' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
   },
+  // ===== PhET Inspector to Integrator =====
   {
-    id: 'e-cognitive-integrator',
-    source: 'cognitive',
+    id: 'e-phetInspector-integrator',
+    source: 'phetInspector',
     target: 'integrator',
-    style: { stroke: '#d1d5db', strokeWidth: 1.5, strokeDasharray: '5,5' },
+    animated: true,
+    style: { stroke: '#ef4444', strokeWidth: 2 },
+    label: 'reviewed',
+    labelStyle: { fontSize: 8, fill: '#ef4444' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
   },
-  // Integrator to Output
+  // ===== Integrator to Resolver =====
   {
-    id: 'e-integrator-output',
+    id: 'e-integrator-resolver',
     source: 'integrator',
+    target: 'resolver',
+    animated: true,
+    style: { stroke: '#10b981', strokeWidth: 2 },
+    label: 'validate',
+    labelStyle: { fontSize: 8, fill: '#10b981' },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+  },
+  // ===== Resolver to Output =====
+  {
+    id: 'e-resolver-output',
+    source: 'resolver',
     target: 'output',
     animated: true,
-    style: { stroke: '#22c55e', strokeWidth: 2 },
+    style: { stroke: '#22c55e', strokeWidth: 3 },
+    label: '✓ fixed & ready',
+    labelStyle: { fontSize: 9, fill: '#22c55e', fontWeight: 600 },
+    labelBgStyle: { fill: 'white', fillOpacity: 0.95 },
   },
 ];
 
@@ -439,14 +1035,19 @@ type ViewMode = 'pipeline' | 'simulation' | 'split';
 const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) => {
   // State
   const [topic, setTopic] = useState('');
+  const [gradeLevel, setGradeLevel] = useState<GradeLevel>('high-school');
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputStatus, setOutputStatus] = useState<'idle' | 'generating' | 'ready'>('idle');
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('pipeline');
+  const [viewMode, setViewMode] = useState<ViewMode>('simulation');
   const [showModelInfo, setShowModelInfo] = useState(false);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatus>>({});
   const [agentMessages, setAgentMessages] = useState<Record<string, string>>({});
   const [eventLog, setEventLog] = useState<SimulationTaskEvent[]>([]);
+  const hasGeneratedHtml = Boolean(htmlContent);
+  const simulationContent = cleanHtmlContent(htmlContent || FALLBACK_SIMULATION_HTML);
+  const hasSimulationContent = Boolean(simulationContent);
+  const displayTopic = (topic || '').trim() || 'sp3 Hybridization';
 
   // Studium State
   const [studiumView, setStudiumView] = useState<View | 'SIMULATION'>('SIMULATION');
@@ -528,7 +1129,9 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
   // Create nodes with current state
   const currentNodes = createInitialNodes(
     topic,
+    gradeLevel,
     setTopic,
+    setGradeLevel,
     () => setViewMode('simulation'),
     outputStatus,
     htmlContent,
@@ -543,47 +1146,121 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
   useEffect(() => {
     setNodes(createInitialNodes(
       topic,
+      gradeLevel,
       setTopic,
+      setGradeLevel,
       () => setViewMode('simulation'),
       outputStatus,
       htmlContent,
       agentStatuses,
       agentMessages
     ));
-  }, [topic, outputStatus, htmlContent, agentStatuses, agentMessages, setNodes]);
+  }, [topic, gradeLevel, outputStatus, htmlContent, agentStatuses, agentMessages, setNodes]);
 
-  // Subscribe to simulation events
+  // Subscribe to deep simulation events
   useEffect(() => {
-    const unsubscribe = subscribeToSimulationEvents((event: SimulationTaskEvent) => {
-      setEventLog(prev => [...prev, event]);
+    const unsubscribe = subscribeToDeepAgentEvents((event: DeepAgentEvent) => {
+      // Store events for log display
+      setEventLog(prev => [...prev, event as any]);
 
-      // Map agent names to node IDs
+      // Map deep agent names to node IDs (updated for 8 agents)
       const agentNodeMap: Record<string, string> = {
-        'Architect': 'architect',
-        'Visualist': 'visualist',
-        'InterfaceDesigner': 'interface',
-        'CognitiveEngineer': 'cognitive',
-        'Integrator': 'integrator',
-        'Planner': 'architect',
-        'Builder': 'integrator',
+        'promptenhancer': 'promptEnhancer',
+        'prompt enhancer': 'promptEnhancer',
+        'groundingresearcher': 'groundingResearcher',
+        'grounding researcher': 'groundingResearcher',
+        'planner': 'planner',
+        'imagegenerator': 'imageGenerator',
+        'image generator': 'imageGenerator',
+        'visualist': 'visualist',
+        'componentbuilder': 'componentBuilder',
+        'component builder': 'componentBuilder',
+        'interface': 'interface',
+        'interface designer': 'interface',
+        'phetinspector': 'phetInspector',
+        'phet inspector': 'phetInspector',
+        'integrator': 'integrator',
+        'resolver': 'resolver',
+        'orchestrator': 'promptEnhancer', // First agent in flow
       };
 
-      const nodeId = agentNodeMap[event.agentName];
+      const nodeId = agentNodeMap[event.agentName.toLowerCase()] || 
+                     agentNodeMap[event.agentId.toLowerCase()] || 
+                     event.agentId.toLowerCase();
 
-      if (event.type === 'agent-start') {
-        setAgentStatuses(prev => ({ ...prev, [nodeId]: 'running' }));
-        setAgentMessages(prev => ({ ...prev, [nodeId]: 'Processing...' }));
-      } else if (event.type === 'agent-complete') {
+      if (event.type === 'agent-thinking') {
+        // When agent starts thinking
+        setAgentStatuses(prev => ({ ...prev, [nodeId]: 'thinking' }));
+        setAgentMessages(prev => ({ ...prev, [nodeId]: event.message || '🧠 Analyzing...' }));
+      } else if (event.type === 'agent-working') {
+        // When agent is actively working
+        setAgentStatuses(prev => ({ ...prev, [nodeId]: 'working' }));
+        setAgentMessages(prev => ({ 
+          ...prev, 
+          [nodeId]: event.message || '⚙️ Working...' 
+        }));
+      } else if (event.type === 'tool-call') {
+        // When tool is being called
+        setAgentStatuses(prev => ({ ...prev, [nodeId]: 'working' }));
+        setAgentMessages(prev => ({ 
+          ...prev, 
+          [nodeId]: `⚙️ ${event.data?.tool || 'Processing'}...` 
+        }));
+      } else if (event.type === 'tool-result') {
+        // Tool/step completed - show step progress
+        const stepInfo = event.data?.artifact?.step && event.data?.artifact?.totalSteps
+          ? `Step ${event.data.artifact.step}/${event.data.artifact.totalSteps}`
+          : '';
         setAgentStatuses(prev => ({ ...prev, [nodeId]: 'completed' }));
-        setAgentMessages(prev => ({ ...prev, [nodeId]: 'Done ✓' }));
+        setAgentMessages(prev => ({ 
+          ...prev, 
+          [nodeId]: stepInfo ? `✓ ${stepInfo}` : '✓ Done' 
+        }));
+      } else if (event.type === 'data-flow') {
+        // Data flowing to next agent
+        const targetId = agentNodeMap[event.data?.targetAgent?.toLowerCase() || ''];
+        if (targetId) {
+          setAgentStatuses(prev => ({ ...prev, [targetId]: 'thinking' }));
+          setAgentMessages(prev => ({ ...prev, [targetId]: '📥 Receiving data...' }));
+        }
+      } else if (event.type === 'subagent-spawn') {
+        // SubAgent has been spawned
+        const targetId = agentNodeMap[event.data?.targetAgent?.toLowerCase() || ''];
+        if (targetId) {
+          setAgentStatuses(prev => ({ ...prev, [targetId]: 'thinking' }));
+          setAgentMessages(prev => ({ ...prev, [targetId]: '🚀 Starting...' }));
+        }
+      } else if (event.type === 'agent-complete' || event.type === 'subagent-complete') {
+        setAgentStatuses(prev => ({ ...prev, [nodeId]: 'completed' }));
+        setAgentMessages(prev => ({ ...prev, [nodeId]: '✓ Complete' }));
       } else if (event.type === 'agent-error') {
         setAgentStatuses(prev => ({ ...prev, [nodeId]: 'error' }));
-        setAgentMessages(prev => ({ ...prev, [nodeId]: 'Error!' }));
+        setAgentMessages(prev => ({ 
+          ...prev, 
+          [nodeId]: event.message || '❌ Error' 
+        }));
       } else if (event.type === 'simulation-ready') {
         setOutputStatus('ready');
-        if (event.data?.htmlContent) {
-          setHtmlContent(event.data.htmlContent);
+        if (event.data?.artifact?.content) {
+          setHtmlContent(event.data.artifact.content);
         }
+        // Mark all 9 agents as completed
+        setAgentStatuses({
+          promptEnhancer: 'completed',
+          groundingResearcher: 'completed',
+          planner: 'completed',
+          imageGenerator: 'completed',
+          visualist: 'completed',
+          componentBuilder: 'completed',
+          interface: 'completed',
+          phetInspector: 'completed',
+          integrator: 'completed',
+          resolver: 'completed',
+        });
+      } else if (event.type === 'workflow-start') {
+        // Reset all statuses
+        setAgentStatuses({});
+        setAgentMessages({});
       }
     });
 
@@ -618,10 +1295,11 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
     setEventLog([]);
 
     try {
-      // Uses shared API key from Firebase automatically
+      // Use the new Deep Simulation Pipeline (8 Specialized Agents)
       // Include PDF content if available for more precise simulation
-      const result = await runSimulationPipeline({
+      const result = await runDeepSimulationPipeline({
         topic,
+        gradeLevel: gradeLevel,
         style: 'interactive',
         complexity: 'medium',
         pdfContent: pdfContent || undefined,
@@ -630,9 +1308,31 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
 
       setHtmlContent(result.htmlContent);
       setOutputStatus('ready');
+      
+      // Mark all agents as completed
+      setAgentStatuses({
+        promptEnhancer: 'completed',
+        groundingResearcher: 'completed',
+        planner: 'completed',
+        imageGenerator: 'completed',
+        visualist: 'completed',
+        componentBuilder: 'completed',
+        interface: 'completed',
+        phetInspector: 'completed',
+        integrator: 'completed',
+        resolver: 'completed',
+      });
     } catch (error) {
-      console.error('Generation error:', error);
+      console.error('Deep Simulation generation error:', error);
       setOutputStatus('idle');
+      
+      // Mark appropriate agents as error
+      setAgentStatuses(prev => ({
+        ...prev,
+        resolver: 'error',
+        integrator: 'error',
+      }));
+      
       alert('Error generating simulation. Please ensure you are logged in and try again.');
     } finally {
       setIsGenerating(false);
@@ -743,10 +1443,10 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
               </button>
               <button
                 onClick={() => setViewMode('simulation')}
-                disabled={!htmlContent}
+                disabled={!hasSimulationContent}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'simulation'
                   ? 'bg-white text-gray-800 shadow-sm'
-                  : htmlContent ? 'text-gray-500 hover:text-gray-700' : 'text-gray-300 cursor-not-allowed'
+                  : hasSimulationContent ? 'text-gray-500 hover:text-gray-700' : 'text-gray-300 cursor-not-allowed'
                   }`}
               >
                 <span className="flex items-center gap-1.5">
@@ -756,10 +1456,10 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
               </button>
               <button
                 onClick={() => setViewMode('split')}
-                disabled={!htmlContent}
+                disabled={!hasSimulationContent}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'split'
                   ? 'bg-white text-gray-800 shadow-sm'
-                  : htmlContent ? 'text-gray-500 hover:text-gray-700' : 'text-gray-300 cursor-not-allowed'
+                  : hasSimulationContent ? 'text-gray-500 hover:text-gray-700' : 'text-gray-300 cursor-not-allowed'
                   }`}
               >
                 <span className="flex items-center gap-1.5">
@@ -843,6 +1543,14 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
                   </>
                 )}
               </button>
+              
+              {/* Grade Level Badge */}
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-violet-50 to-pink-50 border border-violet-200">
+                <span className="text-xs text-gray-500">Level:</span>
+                <span className="text-xs font-semibold text-violet-600">
+                  {GRADE_LEVEL_LABELS[gradeLevel]}
+                </span>
+              </div>
               <button
                 onClick={handleReset}
                 className="p-2 rounded-xl bg-white text-gray-600 shadow-md border border-gray-200 hover:bg-gray-50 transition-all"
@@ -904,9 +1612,21 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
                       nodeColor={(node) => {
                         if (node.type === 'agent') {
                           const status = node.data?.status as AgentStatus;
-                          if (status === 'running') return '#3b82f6';
+                          if (status === 'thinking') return '#8b5cf6';
+                          if (status === 'working' || status === 'running') return '#3b82f6';
                           if (status === 'completed') return '#22c55e';
                           if (status === 'error') return '#ef4444';
+                          // Agent-specific colors when idle
+                          const nodeId = node.id;
+                          if (nodeId === 'promptEnhancer') return '#d946ef';
+                          if (nodeId === 'groundingResearcher') return '#06b6d4';
+                          if (nodeId === 'planner') return '#6366f1';
+                          if (nodeId === 'imageGenerator') return '#8b5cf6';
+                          if (nodeId === 'visualist') return '#ec4899';
+                          if (nodeId === 'componentBuilder') return '#10b981';
+                          if (nodeId === 'interface') return '#0ea5e9';
+                          if (nodeId === 'phetInspector') return '#f59e0b';
+                          if (nodeId === 'integrator') return '#ef4444';
                           return '#9ca3af';
                         }
                         if (node.type === 'topicInput') return '#f97316';
@@ -915,49 +1635,185 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
                       }}
                       maskColor="rgba(255, 255, 255, 0.8)"
                       className="!bg-white/80 !border-gray-200 !rounded-xl !shadow-lg"
-                      style={{ width: 140, height: 90 }}
+                      style={{ width: 160, height: 100 }}
                     />
                   </>
                 )}
 
-                {/* Activity Log Panel */}
+                {/* Activity Log Panel - Enhanced Artifacts View */}
                 <Panel position="bottom-right">
-                  <div className="w-64 max-h-40 overflow-auto px-3 py-2 rounded-xl bg-white/95 border border-gray-100 shadow-lg backdrop-blur-sm">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-2 h-2 rounded-full ${isGenerating ? 'bg-blue-500 animate-pulse' : 'bg-gray-400'}`} />
-                      <span className="text-xs font-semibold text-gray-600">Activity Log</span>
+                  <div className="w-96 max-h-80 overflow-hidden flex flex-col rounded-xl bg-white/95 border border-gray-200 shadow-xl backdrop-blur-sm">
+                    {/* Header */}
+                    <div className="px-3 py-2 bg-gradient-to-r from-violet-50 to-pink-50 border-b border-gray-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${isGenerating ? 'bg-violet-500 animate-pulse' : 'bg-gray-400'}`} />
+                          <span className="text-xs font-bold text-gray-700">🔮 Agent Workflow & Artifacts</span>
+                        </div>
+                        {isGenerating && (
+                          <span className="text-xs text-violet-600 font-medium">
+                            {eventLog.filter(e => e.status === 'completed').length}/8 steps
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="space-y-1">
+                    
+                    {/* Agent Steps List with Artifact Previews */}
+                    <div className="flex-1 overflow-auto p-2 space-y-2">
                       {eventLog.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic">Enter a topic and click Generate...</p>
-                      ) : (
-                        eventLog.slice(-5).map((event, i) => (
-                          <div key={i} className="text-xs text-gray-600 flex items-start gap-2">
-                            <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${event.status === 'completed' ? 'bg-green-500' :
-                              event.status === 'error' ? 'bg-red-500' : 'bg-blue-500'
-                              }`} />
-                            <span className="line-clamp-2">{event.message}</span>
+                        <div className="text-center py-6">
+                          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center">
+                            <Sparkles className="w-6 h-6 text-violet-500" />
                           </div>
-                        ))
+                          <p className="text-sm text-gray-500 font-medium">Ready to Generate</p>
+                          <p className="text-xs text-gray-400 mt-1">Enter a topic and click Generate</p>
+                          <div className="mt-3 flex flex-wrap justify-center gap-1">
+                            {['Enhancer', 'Researcher', 'Planner', 'Image Gen', 'Visualist', 'Builder', 'Inspector', 'Integrator', 'Resolver'].map((agent, i) => (
+                              <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                                {agent}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        eventLog.map((event, i) => {
+                          const artifact = event.data?.artifact;
+                          const hasArtifact = artifact && artifact.content;
+                          const contentPreview = hasArtifact 
+                            ? artifact.content.substring(0, 150).replace(/[\n\r]+/g, ' ').trim()
+                            : null;
+                          
+                          return (
+                            <div 
+                              key={i} 
+                              className={`rounded-lg border transition-all ${
+                                event.status === 'completed' 
+                                  ? 'bg-green-50 border-green-200' 
+                                  : event.status === 'error' 
+                                    ? 'bg-red-50 border-red-200'
+                                    : event.status === 'working' || event.status === 'thinking'
+                                      ? 'bg-blue-50 border-blue-200 animate-pulse'
+                                      : 'bg-gray-50 border-gray-200'
+                              }`}
+                            >
+                              {/* Agent Header */}
+                              <div className="p-2 flex items-start gap-2">
+                                <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                                  event.status === 'completed' ? 'bg-green-500' :
+                                  event.status === 'error' ? 'bg-red-500' : 
+                                  event.status === 'thinking' ? 'bg-violet-500 animate-ping' :
+                                  'bg-blue-500 animate-pulse'
+                                }`} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-semibold text-gray-700">{event.agentName}</span>
+                                    {artifact?.step && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-600 font-medium">
+                                        Step {artifact.step}/{artifact.totalSteps}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-0.5">{event.message}</p>
+                                </div>
+                              </div>
+                              
+                              {/* Artifact Preview */}
+                              {hasArtifact && (
+                                <div className="mx-2 mb-2 p-2 rounded-lg bg-white/80 border border-gray-100">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs font-medium text-gray-700">{artifact.title}</span>
+                                    {artifact.type === 'component-images' && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-600">📸 Images</span>
+                                    )}
+                                    {artifact.type === 'grounding-research' && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">🔬 Research</span>
+                                    )}
+                                    {artifact.type === 'specification' && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-600">📋 Spec</span>
+                                    )}
+                                    {artifact.type === 'threejs-code' && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-pink-100 text-pink-600">🎨 3D Code</span>
+                                    )}
+                                    {artifact.type === 'phet-review' && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-600">✅ Review</span>
+                                    )}
+                                    {artifact.type === 'final-html' && (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-600">🚀 Final</span>
+                                    )}
+                                  </div>
+                                  {contentPreview && (
+                                    <p className="text-xs text-gray-500 line-clamp-2 font-mono bg-gray-50 p-1.5 rounded">
+                                      {contentPreview}...
+                                    </p>
+                                  )}
+                                  {artifact.images && artifact.images.length > 0 && (
+                                    <div className="mt-1.5 flex gap-1">
+                                      {artifact.images.slice(0, 3).map((img, idx) => (
+                                        <div key={idx} className="w-10 h-10 rounded bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                          <ImagePlus className="w-4 h-4 text-gray-400" />
+                                        </div>
+                                      ))}
+                                      {artifact.images.length > 3 && (
+                                        <span className="text-xs text-gray-400 self-center">+{artifact.images.length - 3}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
                 </Panel>
 
-                {/* Agent Legend */}
+                {/* Agent Legend - 9 Agent Pipeline */}
                 {viewMode !== 'split' && (
                   <Panel position="bottom-left">
-                    <div className="px-4 py-3 rounded-xl bg-white/90 border border-gray-100 shadow-lg backdrop-blur-sm">
-                      <p className="text-xs font-semibold text-gray-600 mb-2">Agent Pipeline</p>
-                      <div className="flex gap-3 text-xs text-gray-500">
+                    <div className="px-4 py-3 rounded-xl bg-white/95 border border-gray-200 shadow-lg backdrop-blur-sm">
+                      <p className="text-xs font-bold text-gray-700 mb-2">🤖 9-Agent Deep Pipeline (with Resolver)</p>
+                      <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs text-gray-500">
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-fuchsia-500" /> Prompt Enhancer
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-cyan-500" /> Grounding Research
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-indigo-500" /> Planner
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-violet-500" /> Image Generator
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-pink-500" /> Visualist
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500" /> Component Builder
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-amber-500" /> PhET Inspector
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-rose-500" /> Integrator
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-teal-500" /> Resolver ✨
+                        </span>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-gray-100 flex gap-3 text-xs text-gray-400">
                         <span className="flex items-center gap-1">
-                          <div className="w-2 h-2 rounded-full bg-gray-400" /> Idle
+                          <div className="w-1.5 h-1.5 rounded-full bg-gray-400" /> Idle
                         </span>
                         <span className="flex items-center gap-1">
-                          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" /> Running
+                          <div className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" /> Thinking
                         </span>
                         <span className="flex items-center gap-1">
-                          <div className="w-2 h-2 rounded-full bg-green-500" /> Complete
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Working
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Done
                         </span>
                       </div>
                     </div>
@@ -970,7 +1826,7 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
           {/* Simulation View */}
           {(viewMode === 'simulation' || viewMode === 'split') && (
             <div className={`${viewMode === 'split' ? 'w-2/3' : 'w-full'} h-full flex flex-col bg-gray-900`}>
-              {htmlContent ? (
+              {hasSimulationContent ? (
                 <>
                   {/* Simulation Header with Tabs */}
                   <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
@@ -1007,7 +1863,12 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
                       </div>
 
                       <span className="text-sm text-gray-500">|</span>
-                      <span className="text-sm text-gray-400">{topic}</span>
+                      <span className="text-sm text-gray-400">{displayTopic}</span>
+                      {!hasGeneratedHtml && (
+                        <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                          Demo simulation loaded
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1023,12 +1884,12 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
                       </button>
                       <button
                         onClick={() => {
-                          const cleanedHtml = cleanHtmlContent(htmlContent);
+                          const cleanedHtml = simulationContent;
                           const blob = new Blob([cleanedHtml], { type: 'text/html' });
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement('a');
                           a.href = url;
-                          a.download = `${topic.replace(/\s+/g, '_')}_simulation.html`;
+                          a.download = `${displayTopic.replace(/\s+/g, '_')}_simulation.html`;
                           a.click();
                           URL.revokeObjectURL(url);
                         }}
@@ -1039,7 +1900,7 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
                       </button>
                       <button
                         onClick={() => {
-                          const cleanedHtml = cleanHtmlContent(htmlContent);
+                          const cleanedHtml = simulationContent;
                           const blob = new Blob([cleanedHtml], { type: 'text/html' });
                           const url = URL.createObjectURL(blob);
                           window.open(url, '_blank');
@@ -1055,17 +1916,17 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
                   </div>
 
                   {/* Main Content Area */}
-                  <div className="flex-1 flex overflow-hidden">
-                    {/* Simulation iframe */}
-                    <div className={`flex-1 overflow-hidden relative ${simulationTab === 'tutorial' ? '' : ''}`}>
-                      <iframe
-                        ref={iframeRef}
-                        srcDoc={cleanHtmlContent(htmlContent)}
-                        className="w-full h-full border-0"
-                        sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
-                        allow="accelerometer; autoplay; camera; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen; xr-spatial-tracking"
-                        title="3D Simulation"
-                      />
+                    <div className="flex-1 flex overflow-hidden">
+                      {/* Simulation iframe */}
+                      <div className={`flex-1 overflow-hidden relative ${simulationTab === 'tutorial' ? '' : ''}`}>
+                        <iframe
+                          ref={iframeRef}
+                          srcDoc={simulationContent}
+                          className="w-full h-full border-0"
+                          sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
+                          allow="accelerometer; autoplay; camera; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen; xr-spatial-tracking"
+                          title="3D Simulation"
+                        />
 
                       {/* Tutorial Overlay */}
                       {simulationTab === 'tutorial' && (
@@ -1085,7 +1946,7 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
                               </button>
                             </div>
                             <p className="text-xs text-gray-300 mb-3">
-                              Watch how the simulation works. The 3D model demonstrates the key concepts of <span className="text-pink-400 font-medium">{topic}</span>.
+                              Watch how the simulation works. The 3D model demonstrates the key concepts of <span className="text-pink-400 font-medium">{displayTopic}</span>.
                               Pay attention to the animations and interactions shown.
                             </p>
                             <div className="flex items-center gap-4 text-xs text-gray-400">

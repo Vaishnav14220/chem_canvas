@@ -799,6 +799,73 @@ export interface GeneratedFlashcard {
   tags?: string[];
 }
 
+export const generateImage = async (
+  prompt: string,
+  options?: {
+    aspectRatio?: AspectRatio;
+    imageSize?: ImageSize;
+    numberOfImages?: number;
+  }
+): Promise<string> => {
+  ensureInitialized();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  try {
+    // Use rotation to get a fresh key if needed
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+      }
+
+      // Use the specific model for image generation
+      const modelName = 'gemini-3-pro-image-preview';
+
+      // Configure for image generation with grounding
+      const config = {
+        tools: [{ googleSearch: {} }], // Enable grounding
+        imageConfig: {
+          aspectRatio: options?.aspectRatio || '1:1',
+          imageSize: options?.imageSize || '1K',
+        },
+        responseModalities: ['Image'], // Request only image output
+      };
+
+      console.log(`🎨 Generating image with ${modelName}...`);
+      const response = await genAI!.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: config as any, // Type cast as the SDK types might not be fully updated for this yet
+      });
+
+      // Extract base64 image data
+      // The response structure for images is slightly different
+      const candidates = response.candidates;
+      if (!candidates || candidates.length === 0) {
+        throw new Error('No image candidates returned');
+      }
+
+      const parts = candidates[0].content?.parts;
+      if (!parts || parts.length === 0) {
+        throw new Error('No image parts returned');
+      }
+
+      // Look for inlineData which contains the base64 image
+      const imagePart = parts.find((p: any) => p.inlineData);
+      if (!imagePart || !imagePart.inlineData || !imagePart.inlineData.data) {
+        throw new Error('No image data found in response');
+      }
+
+      return imagePart.inlineData.data;
+    });
+  } catch (error: any) {
+    console.error('Error generating image:', error);
+    throw new Error(`Failed to generate image: ${error.message}`);
+  }
+};
+
 /**
  * Generates a high-quality educational image using Nano Banana Pro (Gemini 3 Pro Image Preview).
  */

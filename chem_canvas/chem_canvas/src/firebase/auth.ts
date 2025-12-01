@@ -6,7 +6,8 @@ import {
   User,
   signInWithPopup,
   GoogleAuthProvider,
-  onAuthStateChanged
+  onAuthStateChanged,
+  signInAnonymously
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './config';
@@ -289,5 +290,41 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
     }, { merge: true });
   } catch (error: any) {
     throw new Error(error.message);
+  }
+};
+
+// Demo login using anonymous authentication
+// This gives demo users a real Firebase Auth UID for Firestore access
+export const signInAsDemo = async (isDemoAdmin: boolean = false): Promise<UserProfile> => {
+  try {
+    // Sign in anonymously to get a real Firebase UID
+    const userCredential = await signInAnonymously(auth);
+    const user = userCredential.user;
+
+    const displayName = isDemoAdmin ? 'Admin User' : 'Demo User';
+    const username = isDemoAdmin ? 'admin' : 'demo';
+    const email = isDemoAdmin ? 'admin@studium.local' : 'demo@studium.local';
+
+    // Create user profile
+    const userProfile: UserProfile = {
+      uid: user.uid,
+      email: email,
+      displayName: displayName,
+      username: username,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    // Save user profile to Firestore
+    await setDoc(doc(db, 'users', user.uid), userProfile);
+
+    // Save session
+    saveSession(userProfile);
+    console.log('Demo user logged in with anonymous auth');
+
+    return userProfile;
+  } catch (error: any) {
+    console.error('Demo sign in error:', error);
+    throw new Error('Failed to sign in as demo user: ' + error.message);
   }
 };

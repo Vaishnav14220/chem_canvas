@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lock, Eye, EyeOff, Atom, GraduationCap, Calendar, BookOpen, Building, RefreshCw, ChevronDown } from 'lucide-react';
-import { registerUser, signInUser, signInWithGoogle, UserProfile } from '../firebase/auth';
+import { registerUser, signInUser, signInWithGoogle, signInAsDemo, UserProfile } from '../firebase/auth';
 import { auth } from '../firebase/config';
 import ProfileCompletion from './ProfileCompletion';
 
@@ -122,29 +122,45 @@ export default function Login({ onLogin }: LoginProps) {
 
     try {
       if (isLogin) {
-        // Handle demo credentials for testing
+        // Handle demo credentials using anonymous authentication
         if (username === 'admin' && password === 'password') {
-          const demoProfile: UserProfile = {
-            uid: 'demo-admin',
-            email: 'admin@studium.local',
-            displayName: 'Admin User',
-            username: 'admin',
-            createdAt: new Date(),
-            updatedAt: new Date()
-          };
-          onLogin(demoProfile);
-          return;
+          try {
+            const demoProfile = await signInAsDemo(true); // isAdmin = true
+            onLogin(demoProfile);
+            return;
+          } catch (demoError) {
+            console.error('Demo admin login error:', demoError);
+            // Fallback to local profile if anonymous auth fails
+            const fallbackProfile: UserProfile = {
+              uid: 'demo-admin',
+              email: 'admin@studium.local',
+              displayName: 'Admin User',
+              username: 'admin',
+              createdAt: new Date(),
+              updatedAt: new Date()
+            };
+            onLogin(fallbackProfile);
+            return;
+          }
         } else if (username === 'demo' && password === 'demo') {
-          const demoProfile: UserProfile = {
-            uid: 'demo-user',
-            email: 'demo@studium.local',
-            displayName: 'Demo User',
-            username: 'demo',
-            createdAt: new Date(),
-            updatedAt: new Date()
-          };
-          onLogin(demoProfile);
-          return;
+          try {
+            const demoProfile = await signInAsDemo(false); // isAdmin = false
+            onLogin(demoProfile);
+            return;
+          } catch (demoError) {
+            console.error('Demo login error:', demoError);
+            // Fallback to local profile if anonymous auth fails
+            const fallbackProfile: UserProfile = {
+              uid: 'demo-user',
+              email: 'demo@studium.local',
+              displayName: 'Demo User',
+              username: 'demo',
+              createdAt: new Date(),
+              updatedAt: new Date()
+            };
+            onLogin(fallbackProfile);
+            return;
+          }
         }
         
         // Firebase sign in

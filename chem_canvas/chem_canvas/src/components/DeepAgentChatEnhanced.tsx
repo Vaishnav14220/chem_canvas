@@ -98,6 +98,7 @@ import { TasksFilesPanel } from './deep-agent/TasksFilesPanel';
 import type { ToolCall, SubAgent, TodoItem, ChatMessage as ChatMessageType, ActiveTask, TaskProgressStep } from './deep-agent/types';
 import { extractTextFromFile } from '../services/researchPaperAgentService';
 import { GoogleDocsExportButton } from './GoogleDocsIntegration';
+import { Task, TaskContent, TaskItem, TaskItemFile, TaskTrigger } from './ui/ai/task';
 import 'katex/dist/katex.min.css';
 
 // ==========================================
@@ -189,7 +190,7 @@ interface WorkflowStepProps {
   step: {
     id: string;
     title: string;
-    type: 'thinking' | 'tool' | 'search' | 'file' | 'subagent' | 'writing';
+    type: 'thinking' | 'tool' | 'search' | 'file' | 'subagent' | 'writing' | 'text';
     status: 'pending' | 'in-progress' | 'completed' | 'error';
     message?: string;
     duration?: number;
@@ -200,62 +201,44 @@ interface WorkflowStepProps {
 const WorkflowStep: React.FC<WorkflowStepProps> = ({ step, isLast }) => {
   const getStepIcon = () => {
     switch (step.type) {
-      case 'thinking': return <Brain className="w-5 h-5" />;
-      case 'tool': return <Wrench className="w-5 h-5" />;
-      case 'search': return <Search className="w-5 h-5" />;
-      case 'file': return <FileText className="w-5 h-5" />;
-      case 'subagent': return <Users className="w-5 h-5" />;
-      case 'writing': return <PenTool className="w-5 h-5" />;
-      default: return <Zap className="w-5 h-5" />;
+      case 'thinking': return <Brain className="w-4 h-4 text-purple-400" />;
+      case 'tool': return <Wrench className="w-4 h-4 text-blue-400" />;
+      case 'search': return <Search className="w-4 h-4 text-green-400" />;
+      case 'file': return <FileText className="w-4 h-4 text-orange-400" />;
+      case 'subagent': return <Users className="w-4 h-4 text-pink-400" />;
+      case 'writing': return <PenTool className="w-4 h-4 text-yellow-400" />;
+      case 'text': return <MessageSquare className="w-4 h-4 text-gray-400" />;
+      default: return <Zap className="w-4 h-4 text-gray-400" />;
     }
   };
 
-  const getStepColor = () => {
-    switch (step.status) {
-      case 'completed': return 'text-green-400 border-green-400 bg-green-400/10';
-      case 'in-progress': return 'text-blue-400 border-blue-400 bg-blue-400/10';
-      case 'error': return 'text-red-400 border-red-400 bg-red-400/10';
-      default: return 'text-gray-500 border-gray-600 bg-gray-800';
-    }
-  };
+  if (step.type === 'file' || (step.message && step.message.includes('file'))) {
+    return (
+      <TaskItem className="mb-2">
+        <span className="inline-flex items-center gap-1">
+          {step.status === 'in-progress' && <Loader2 className="w-3 h-3 animate-spin text-blue-400" />}
+          {step.title}
+          <TaskItemFile>
+            <FileText className="size-4 text-orange-400" />
+            <span>{step.message || 'file'}</span>
+          </TaskItemFile>
+        </span>
+      </TaskItem>
+    );
+  }
 
   return (
-    <div className="flex items-start gap-3">
-      {/* Step Icon */}
-      <div className={`flex-shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center ${getStepColor()}`}>
+    <TaskItem className="mb-2">
+      <div className="flex items-center gap-2">
         {step.status === 'in-progress' ? (
-          <Loader2 className="w-5 h-5 animate-spin" />
+          <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
         ) : (
           getStepIcon()
         )}
+        <span className="text-foreground">{step.title}</span>
+        {step.message && <span className="text-muted-foreground text-xs"> - {step.message}</span>}
       </div>
-
-      {/* Step Content */}
-      <div className="flex-1 min-w-0 pb-4">
-        <div className="flex items-center gap-2">
-          <span className={`font-medium ${step.status === 'in-progress' ? 'text-blue-300' : step.status === 'completed' ? 'text-green-300' : 'text-gray-300'}`}>
-            {step.title}
-          </span>
-          {step.status === 'in-progress' && (
-            <span className="flex items-center gap-1 text-xs text-blue-400 animate-pulse">
-              <Activity className="w-3 h-3" />
-              Processing...
-            </span>
-          )}
-          {step.duration && step.status === 'completed' && (
-            <span className="text-xs text-gray-500">{(step.duration / 1000).toFixed(1)}s</span>
-          )}
-        </div>
-        {step.message && (
-          <p className="text-sm text-gray-400 mt-1 truncate">{step.message}</p>
-        )}
-
-        {/* Connection Line */}
-        {!isLast && (
-          <div className={`absolute left-[19px] top-10 w-0.5 h-full ${step.status === 'completed' ? 'bg-green-400/50' : 'bg-gray-700'}`} />
-        )}
-      </div>
-    </div>
+    </TaskItem>
   );
 };
 
@@ -367,6 +350,28 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
     const unsubscribe = subscribeToTaskEvents((event: TaskEvent) => {
       console.log('Task event:', event);
 
+      const deriveStepTitle = (evt: TaskEvent): string => {
+        if (evt.type === 'tool-call' && evt.data) {
+          const { toolName, args } = evt.data;
+          if (toolName === 'task' && args?.task_description) {
+            return `Task: ${args.task_description.slice(0, 40)}${args.task_description.length > 40 ? '...' : ''}`;
+          }
+          if (toolName === 'write_file' && args?.file_path) {
+            const fileName = args.file_path.split('/').pop() || args.file_path;
+            return `Writing file: ${fileName}`;
+          }
+          if (toolName === 'read_file' && args?.file_path) {
+            const fileName = args.file_path.split('/').pop() || args.file_path;
+            return `Reading file: ${fileName}`;
+          }
+          if (toolName === 'search_web' && args?.query) {
+            return `Searching: ${args.query.slice(0, 30)}${args.query.length > 30 ? '...' : ''}`;
+          }
+          return `Executing ${toolName}...`;
+        }
+        return evt.message || evt.title || 'Working...';
+      };
+
       switch (event.type) {
         case 'task-start':
           setActiveTasks(prev => [...prev, {
@@ -388,7 +393,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
               ...task,
               steps: [...task.steps, {
                 id: `step-${Date.now()}`,
-                title: event.message || event.title || 'Working...',
+                title: deriveStepTitle(event),
                 status: 'in-progress' as const,
                 type: event.type === 'tool-call' ? 'tool' :
                   event.type === 'searching' ? 'search' :
@@ -842,79 +847,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
 
   return (
     <div className={`flex flex-col h-full bg-gray-900 text-white font-sans ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
-        <div className="flex items-center gap-3">
-          {/* Sidebar Toggle */}
-          <button
-            onClick={() => setShowSidebar(!showSidebar)}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-            title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
-          >
-            {showSidebar ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeft className="w-5 h-5" />}
-          </button>
-
-          <div className="p-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg">
-            <Brain className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold">Deep Agent</h2>
-            <p className="text-xs text-gray-400 flex items-center gap-1">
-              Gemini • Tavily • Planning
-              {tavilyConfigured && <CheckCircle2 className="w-3 h-3 text-green-400" />}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Google Docs Export - only show when there's content to export */}
-          {(messages.length > 1 || finalDocument) && (
-            <GoogleDocsExportButton
-              content={finalDocument?.content || messages.map(m => `${m.role}: ${m.content}`).join('\n\n')}
-              title={finalDocument?.title || 'Deep Agent Research'}
-              exportType="deep-agent"
-              conversationHistory={messages.map(m => ({
-                role: m.role,
-                content: m.content,
-                timestamp: m.timestamp
-              }))}
-              variant="icon-only"
-            />
-          )}
-          {finalDocument && (
-            <button
-              onClick={() => setShowFinalDocument(!showFinalDocument)}
-              className="p-2 text-green-400 hover:bg-gray-700 rounded-lg transition-colors"
-              title={showFinalDocument ? "Hide Document" : "Show Document"}
-            >
-              {showFinalDocument ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          )}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-2 hover:bg-gray-700 rounded-lg transition-colors ${tavilyConfigured ? 'text-green-400' : 'text-yellow-400'
-              }`}
-            title="Configure API Keys"
-          >
-            <Key className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleReset}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-            title="Reset conversation"
-          >
-            <RefreshCcw className="w-4 h-4" />
-          </button>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Header removed by user request */}
 
       {/* Tab Navigation */}
       <div className="flex border-b border-gray-700 bg-gray-800/50">
@@ -1468,120 +1401,31 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                         ))}
                       </div>
                     )}
-
-                    {/* SubAgents */}
-                    {subAgents.length > 0 && (
-                      <div className="flex flex-col gap-4 mb-4">
-                        {subAgents.map(subAgent => (
-                          <div key={subAgent.id} className="flex flex-col gap-2">
-                            <SubAgentIndicator
-                              subAgent={subAgent}
-                              onClick={() => toggleSubAgent(subAgent.id)}
-                              isExpanded={isSubAgentExpanded(subAgent.id)}
-                            />
-                            <SubAgentContent
-                              subAgent={subAgent}
-                              isExpanded={isSubAgentExpanded(subAgent.id)}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
+                    {/* Active Tasks Progress */}
                     {/* Active Tasks Progress */}
                     {activeTasks.length > 0 && (
-                      <div className="space-y-2 mb-4">
-                        {activeTasks.map(task => (
-                          <div
-                            key={task.id}
-                            className={`rounded-lg border ${task.status === 'completed'
-                              ? 'bg-green-500/10 border-green-500/30'
-                              : task.status === 'error'
-                                ? 'bg-red-500/10 border-red-500/30'
-                                : 'bg-purple-500/10 border-purple-500/30'
-                              }`}
-                          >
-                            <button
-                              onClick={() => {
-                                setExpandedTasks(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(task.id)) next.delete(task.id);
-                                  else next.add(task.id);
-                                  return next;
-                                });
-                              }}
-                              className="w-full flex items-center justify-between p-3 text-left"
-                            >
-                              <div className="flex items-center gap-2">
-                                {task.status === 'completed' ? (
-                                  <CheckCircle2 className="w-4 h-4 text-green-400" />
-                                ) : task.status === 'error' ? (
-                                  <AlertCircle className="w-4 h-4 text-red-400" />
-                                ) : (
-                                  <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
-                                )}
-                                <span className={`text-sm font-medium ${task.status === 'completed' ? 'text-green-400' :
-                                  task.status === 'error' ? 'text-red-400' : 'text-purple-400'
-                                  }`}>
-                                  {task.title}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  ({task.steps.filter(s => s.status === 'completed').length}/{task.steps.length} steps)
-                                </span>
-                              </div>
-                              {expandedTasks.has(task.id) ? (
-                                <ChevronUp className="w-4 h-4 text-gray-400" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-gray-400" />
-                              )}
-                            </button>
-
-                            {task.status === 'in-progress' && task.steps.length > 0 && (
-                              <div className="px-3 pb-2">
-                                <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-purple-500 transition-all duration-300"
-                                    style={{
-                                      width: `${(task.steps.filter(s => s.status === 'completed').length / task.steps.length) * 100}%`
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-
-                            {expandedTasks.has(task.id) && task.steps.length > 0 && (
-                              <div className="px-3 pb-3 space-y-1">
-                                {task.steps.map((step, idx) => (
-                                  <div
-                                    key={step.id || idx}
-                                    className={`flex items-center gap-2 text-xs p-2 rounded ${step.status === 'completed'
-                                      ? 'bg-gray-800/50 text-gray-400'
-                                      : 'bg-gray-800 text-gray-200'
-                                      }`}
-                                  >
-                                    {step.status === 'completed' ? (
-                                      <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0" />
-                                    ) : step.status === 'error' ? (
-                                      <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
-                                    ) : (
-                                      <Loader2 className="w-3 h-3 text-blue-400 animate-spin flex-shrink-0" />
-                                    )}
-                                    {step.type === 'tool' && <Wrench className="w-3 h-3 text-yellow-400 flex-shrink-0" />}
-                                    {step.type === 'search' && <Globe className="w-3 h-3 text-blue-400 flex-shrink-0" />}
-                                    {step.type === 'file' && <FileText className="w-3 h-3 text-purple-400 flex-shrink-0" />}
-                                    {step.type === 'thinking' && <Brain className="w-3 h-3 text-purple-400 flex-shrink-0" />}
-                                    <span className="truncate">{step.title}</span>
-                                    {step.endTime && step.startTime && (
-                                      <span className="text-gray-500 ml-auto">
-                                        {((step.endTime - step.startTime) / 1000).toFixed(1)}s
-                                      </span>
-                                    )}
+                      <div className="mb-4">
+                        <Task defaultOpen={true} className="border rounded-lg bg-card text-card-foreground shadow-sm">
+                          <TaskTrigger title="Deep Agent Working..." className="px-4 py-3 border-b" />
+                          <TaskContent className="px-4 py-3">
+                            {activeTasks.map((task) => (
+                              <div key={task.id}>
+                                {activeTasks.length > 1 && (
+                                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 mt-2">
+                                    {task.title}
                                   </div>
+                                )}
+                                {task.steps.map((step, idx) => (
+                                  <WorkflowStep
+                                    key={step.id}
+                                    step={step}
+                                    isLast={idx === task.steps.length - 1}
+                                  />
                                 ))}
                               </div>
-                            )}
-                          </div>
-                        ))}
+                            ))}
+                          </TaskContent>
+                        </Task>
                       </div>
                     )}
 
@@ -1848,126 +1692,129 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
               </>
             )}
           </div>
-        )}
+        )
+        }
 
         {/* Artifacts Tab */}
-        {activeTab === 'artifacts' && (
-          <div className="flex-1 flex overflow-hidden">
-            {/* Artifacts List */}
-            <div className="w-1/3 border-r border-gray-700 overflow-y-auto">
-              <div className="p-3 border-b border-gray-700 bg-gray-800/50">
-                <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4" />
-                  All Artifacts ({artifactsList.length})
-                </h3>
-              </div>
-              {artifactsList.length === 0 ? (
-                <div className="p-4 text-center text-gray-500">
-                  <FilePlus className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No artifacts yet</p>
-                  <p className="text-xs mt-1">Artifacts will appear as agents work</p>
+        {
+          activeTab === 'artifacts' && (
+            <div className="flex-1 flex overflow-hidden">
+              {/* Artifacts List */}
+              <div className="w-1/3 border-r border-gray-700 overflow-y-auto">
+                <div className="p-3 border-b border-gray-700 bg-gray-800/50">
+                  <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4" />
+                    All Artifacts ({artifactsList.length})
+                  </h3>
                 </div>
-              ) : (
-                <div className="divide-y divide-gray-700">
-                  {artifactsList.map(artifact => (
-                    <div
-                      key={artifact.id}
-                      onClick={() => setSelectedArtifact(artifact)}
-                      className={`p-3 cursor-pointer hover:bg-gray-800 transition-colors ${selectedArtifact?.id === artifact.id ? 'bg-gray-800 border-l-2 border-purple-500' : ''
-                        }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {getArtifactIcon(artifact.type)}
-                          <span className="text-sm font-medium text-gray-200 truncate">
-                            {artifact.title}
-                          </span>
+                {artifactsList.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500">
+                    <FilePlus className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No artifacts yet</p>
+                    <p className="text-xs mt-1">Artifacts will appear as agents work</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-700">
+                    {artifactsList.map(artifact => (
+                      <div
+                        key={artifact.id}
+                        onClick={() => setSelectedArtifact(artifact)}
+                        className={`p-3 cursor-pointer hover:bg-gray-800 transition-colors ${selectedArtifact?.id === artifact.id ? 'bg-gray-800 border-l-2 border-purple-500' : ''
+                          }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {getArtifactIcon(artifact.type)}
+                            <span className="text-sm font-medium text-gray-200 truncate">
+                              {artifact.title}
+                            </span>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteArtifact(artifact.id);
+                            }}
+                            className="p-1 text-gray-500 hover:text-red-400 hover:bg-gray-700 rounded"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                          <span className="capitalize">{artifact.type}</span>
+                          <span>•</span>
+                          <span>{artifact.agentName}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          {new Date(artifact.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Artifact Content */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {selectedArtifact ? (
+                  <>
+                    <div className="p-3 border-b border-gray-700 bg-gray-800/50 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {getArtifactIcon(selectedArtifact.type)}
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-200">{selectedArtifact.title}</h3>
+                          <p className="text-xs text-gray-500">
+                            by {selectedArtifact.agentName} • {new Date(selectedArtifact.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteArtifact(artifact.id);
-                          }}
-                          className="p-1 text-gray-500 hover:text-red-400 hover:bg-gray-700 rounded"
-                          title="Delete"
+                          onClick={() => navigator.clipboard.writeText(selectedArtifact.content)}
+                          className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
+                          title="Copy"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Copy className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const blob = new Blob([selectedArtifact.content], { type: 'text/markdown' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `${selectedArtifact.title.replace(/[^a-zA-Z0-9]/g, '_')}.md`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
                         </button>
                       </div>
-                      <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                        <span className="capitalize">{artifact.type}</span>
-                        <span>•</span>
-                        <span>{artifact.agentName}</span>
-                      </div>
-                      <div className="text-xs text-gray-600 mt-1">
-                        {new Date(artifact.createdAt).toLocaleString()}
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                      <div className="prose prose-invert prose-sm max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {selectedArtifact.content}
+                        </ReactMarkdown>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-gray-500">
+                    <div className="text-center">
+                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>Select an artifact to view</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-
-            {/* Artifact Content */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {selectedArtifact ? (
-                <>
-                  <div className="p-3 border-b border-gray-700 bg-gray-800/50 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {getArtifactIcon(selectedArtifact.type)}
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-200">{selectedArtifact.title}</h3>
-                        <p className="text-xs text-gray-500">
-                          by {selectedArtifact.agentName} • {new Date(selectedArtifact.createdAt).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => navigator.clipboard.writeText(selectedArtifact.content)}
-                        className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
-                        title="Copy"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          const blob = new Blob([selectedArtifact.content], { type: 'text/markdown' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `${selectedArtifact.title.replace(/[^a-zA-Z0-9]/g, '_')}.md`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
-                        title="Download"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-4">
-                    <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                        {selectedArtifact.content}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-gray-500">
-                  <div className="text-center">
-                    <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p>Select an artifact to view</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+          )
+        }
+      </div >
+    </div >
   );
 };
 

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Globe, Bot, User, Search, ExternalLink, X, Copy, Check } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Globe, Bot, User, Search, ExternalLink, X, Copy, Check, History, ChevronLeft, Trash2, Pin, Plus } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -8,6 +8,7 @@ import 'katex/dist/katex.min.css';
 import { sendStudiumChatMessage } from '../../services/geminiService';
 import { ChatMessage } from '../../types/studium';
 import { Spinner } from './Spinner';
+import { useChatPersistence } from '../../hooks';
 
 const MarkdownText = ({ content }: { content: string }) => (
     <ReactMarkdown
@@ -43,14 +44,49 @@ const MarkdownText = ({ content }: { content: string }) => (
 );
 
 export const ChatInterface: React.FC = () => {
-    const [messages, setMessages] = useState<ChatMessage[]>([
-        {
-            id: 'welcome',
-            role: 'model',
-            text: "Hi! I'm your AI tutor. I can help answer questions or research topics for you using Google Search.",
-            timestamp: Date.now()
-        }
-    ]);
+    // Chat persistence hook for tutor chats
+    const {
+        chats,
+        currentChat,
+        messages: persistedMessages,
+        isLoadingChats,
+        isLoadingMessages,
+        loadChats,
+        loadChat,
+        createNewChat,
+        saveExchange,
+        deleteCurrentChat,
+        clearCurrentChat,
+        pinChat,
+    } = useChatPersistence({
+        chatType: 'tutor',
+        enableRealtime: true,
+        onError: (error) => console.error('Tutor chat persistence error:', error),
+    });
+
+    // UI state
+    const [showHistory, setShowHistory] = useState(false);
+    const welcomeMessage: ChatMessage = {
+        id: 'welcome',
+        role: 'model',
+        text: "Hi! I'm your AI tutor. I can help answer questions or research topics for you using Google Search.",
+        timestamp: Date.now()
+    };
+    
+    const [localMessages, setLocalMessages] = useState<ChatMessage[]>([welcomeMessage]);
+    
+    // Convert persisted messages to ChatMessage format
+    const messages: ChatMessage[] = currentChat 
+        ? persistedMessages.map(m => ({
+            id: m.id,
+            role: m.role === 'user' ? 'user' : 'model',
+            text: m.content,
+            timestamp: m.timestamp?.toDate?.()?.getTime() || Date.now(),
+            sources: m.metadata?.sources as any,
+            groundingMetadata: m.metadata?.groundingMetadata as any,
+        }))
+        : localMessages;
+
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [useSearch, setUseSearch] = useState(false);
@@ -65,17 +101,64 @@ export const ChatInterface: React.FC = () => {
         }
     }, [messages]);
 
+    // Start a new chat
+    const handleNewChat = useCallback(async () => {
+        try {
+            await createNewChat('New Tutor Chat', 'tutor');
+            setShowHistory(false);
+        } catch (error) {
+            console.error('Error creating new chat:', error);
+        }
+    }, [createNewChat]);
+
+    // Load a chat from history
+    const handleLoadChat = useCallback(async (chatId: string) => {
+        try {
+            await loadChat(chatId);
+            setShowHistory(false);
+        } catch (error) {
+            console.error('Error loading chat:', error);
+        }
+    }, [loadChat]);
+
+    // Delete a chat
+    const handleDeleteChat = useCallback(async (chatId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm('Delete this chat?')) return;
+        try {
+            if (currentChat?.id === chatId) {
+                await deleteCurrentChat();
+            }
+            await loadChats();
+        } catch (error) {
+            console.error('Error deleting chat:', error);
+        }
+    }, [currentChat, deleteCurrentChat, loadChats]);
+
+    // Pin a chat
+    const handlePinChat = useCallback(async (chatId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        try {
+            await pinChat(chatId);
+        } catch (error) {
+            console.error('Error pinning chat:', error);
+        }
+    }, [pinChat]);
+
     const handleSend = async () => {
         if (!input.trim() || loading) return;
 
+        const userMessageText = input;
         const userMsg: ChatMessage = {
             id: Date.now().toString(),
             role: 'user',
-            text: input,
+            text: userMessageText,
             timestamp: Date.now()
         };
 
-        setMessages(prev => [...prev, userMsg]);
+        if (!currentChat) {
+            setLocalMessages(prev => [...prev, userMsg]);
+        }
         setInput('');
         setLoading(true);
 
@@ -86,7 +169,7 @@ export const ChatInterface: React.FC = () => {
                 parts: [{ text: m.text }]
             }));
 
-            const response = await sendStudiumChatMessage(userMsg.text, history, useSearch);
+            const response = await sendStudiumChatMessage(userMessageText, history, useSearch);
 
             // Log metadata for debugging
             if (response.groundingMetadata) {
@@ -102,7 +185,17 @@ export const ChatInterface: React.FC = () => {
                 timestamp: Date.now()
             };
 
-            setMessages(prev => [...prev, botMsg]);
+            if (!currentChat) {
+                setLocalMessages(prev => [...prev, botMsg]);
+            }
+
+            // Save to Firebase
+            try {
+                await saveExchange(userMessageText, response.text || "I couldn't generate a response.");
+                console.log('✅ Tutor chat saved to Firebase');
+            } catch (saveError) {
+                console.error('Failed to save tutor chat to Firebase:', saveError);
+            }
         } catch (error) {
             const errorMsg: ChatMessage = {
                 id: (Date.now() + 1).toString(),
@@ -110,7 +203,9 @@ export const ChatInterface: React.FC = () => {
                 text: "Sorry, I encountered an error connecting to the AI service.",
                 timestamp: Date.now()
             };
-            setMessages(prev => [...prev, errorMsg]);
+            if (!currentChat) {
+                setLocalMessages(prev => [...prev, errorMsg]);
+            }
         } finally {
             setLoading(false);
         }
@@ -254,31 +349,127 @@ export const ChatInterface: React.FC = () => {
         }
     };
 
+    // Chat history panel
+    const renderHistoryPanel = () => (
+        <div className="absolute inset-0 z-20 bg-white flex flex-col rounded-2xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50 rounded-t-2xl">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setShowHistory(false)}
+                        className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
+                    >
+                        <ChevronLeft className="h-5 w-5 text-slate-600" />
+                    </button>
+                    <h3 className="text-sm font-semibold text-slate-800">Chat History</h3>
+                </div>
+                <button
+                    onClick={handleNewChat}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
+                >
+                    <Plus size={14} />
+                    New Chat
+                </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {isLoadingChats ? (
+                    <div className="flex items-center justify-center py-8">
+                        <Spinner size="md" color="text-indigo-500" />
+                    </div>
+                ) : chats.length === 0 ? (
+                    <div className="text-center py-8">
+                        <History className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">No chat history yet</p>
+                        <p className="text-xs text-slate-400 mt-1">Start a conversation to save it</p>
+                    </div>
+                ) : (
+                    chats.map((chat) => (
+                        <div
+                            key={chat.id}
+                            onClick={() => handleLoadChat(chat.id)}
+                            className={`p-3 rounded-xl border cursor-pointer transition-colors ${
+                                currentChat?.id === chat.id
+                                    ? 'bg-indigo-50 border-indigo-200'
+                                    : 'bg-white border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50'
+                            }`}
+                        >
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-slate-800 truncate">
+                                        {chat.isPinned && <Pin className="h-3 w-3 inline-block mr-1 text-amber-500" />}
+                                        {chat.title}
+                                    </p>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        {chat.messageCount || 0} messages • {chat.updatedAt?.toDate?.()?.toLocaleDateString() || 'Just now'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={(e) => handlePinChat(chat.id, e)}
+                                        className={`p-1 rounded hover:bg-slate-100 transition-colors ${chat.isPinned ? 'text-amber-500' : 'text-slate-400'}`}
+                                        title={chat.isPinned ? 'Unpin' : 'Pin'}
+                                    >
+                                        <Pin className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                        onClick={(e) => handleDeleteChat(chat.id, e)}
+                                        className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                                        title="Delete"
+                                    >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+
     return (
-        <div className="flex h-[calc(100vh-140px)] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="flex h-[calc(100vh-140px)] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative">
+            {showHistory && renderHistoryPanel()}
+            
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
                 {/* Header */}
                 <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                     <h3 className="font-semibold text-slate-800 flex items-center gap-2">
                         <Bot className="text-indigo-600" size={20} />
-                        AI Assistant
+                        <span className="truncate max-w-[200px]">{currentChat?.title || 'AI Tutor'}</span>
                     </h3>
-                    <button
-                        onClick={() => setUseSearch(!useSearch)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition ${useSearch
-                            ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300'
-                            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                            }`}
-                    >
-                        <Globe size={14} />
-                        Google Search {useSearch ? 'On' : 'Off'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                loadChats();
+                                setShowHistory(true);
+                            }}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600 hover:bg-slate-300 transition"
+                            title="Chat history"
+                        >
+                            <History size={14} />
+                            History
+                        </button>
+                        <button
+                            onClick={() => setUseSearch(!useSearch)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition ${useSearch
+                                ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300'
+                                : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                }`}
+                        >
+                            <Globe size={14} />
+                            Search {useSearch ? 'On' : 'Off'}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-6" ref={scrollRef}>
-                    {messages.map((msg) => (
+                    {isLoadingMessages ? (
+                        <div className="flex items-center justify-center py-8">
+                            <Spinner size="md" color="text-indigo-500" />
+                        </div>
+                    ) : messages.map((msg) => (
                         <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={`max-w-[85%] md:max-w-[90%] rounded-2xl p-4 ${msg.role === 'user'
                                 ? 'bg-indigo-600 text-white rounded-br-none'

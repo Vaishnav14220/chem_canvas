@@ -7,17 +7,18 @@ import {
   PanelLeftClose, PanelRightClose, ChevronLeft, ExternalLink, Globe, Eye,
   LogIn, LogOut, FolderOpen, FilePlus, Save, User, File, Table, Film, Music,
   FileImage, Archive, Code, Home, ArrowLeft, Activity, Target, Zap, Clock,
-  CheckCircle2, AlertCircle, FileCode, Download, Play, Pause, RotateCcw
+  CheckCircle2, AlertCircle, FileCode, Download, Play, Pause, RotateCcw,
+  ClipboardList, Layers, CheckSquare, Network, PieChart
 } from 'lucide-react';
 import { generateContentWithGemini } from '../services/geminiService';
-import { 
-  signInWithGoogle, 
-  signOutGoogle, 
-  isSignedIn as checkIsSignedIn, 
-  getCurrentUser, 
+import {
+  signInWithGoogle,
+  signOutGoogle,
+  isSignedIn as checkIsSignedIn,
+  getCurrentUser,
   subscribeToAuthState,
   initGoogleAuth,
-  type GoogleUser 
+  type GoogleUser
 } from '../services/googleAuthService';
 import {
   listGoogleDocs,
@@ -312,6 +313,16 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     color: 'gray',
     enabled: true,
     category: 'utility'
+  },
+  {
+    id: 'image-generation-agent',
+    name: 'Image Generation Agent',
+    description: 'Generates high-quality, grounded images using Gemini 3 Pro (Nano Banana Pro)',
+    skills: ['Image Generation', 'Visual Research', 'Grounding'],
+    icon: <Image className="h-5 w-5" />,
+    color: 'orange',
+    enabled: true,
+    category: 'utility'
   }
 ];
 
@@ -382,47 +393,51 @@ const AI_ACTIONS: AIAction[] = [
   }
 ];
 
+import LatexDocumentWorkspace from './LatexDocumentWorkspace';
+import DeepAgentWorkspace from './DeepAgentWorkspace';
+import ResearchPaperWorkspace from './ResearchPaperWorkspace';
+
 // ============ MAIN COMPONENT ============
 const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = '' }) => {
   // Panel visibility states
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  
+
   // View state - 'chat' for AI tools, 'editor' for document editor, 'googledoc' for Google Docs
-  const [activeView, setActiveView] = useState<'chat' | 'editor' | 'googledoc'>('chat');
-  
+  const [activeView, setActiveView] = useState<'chat' | 'editor' | 'googledoc' | 'latex' | 'deep-agent' | 'research'>('chat');
+
   // Sources state
   const [sources, setSources] = useState<Source[]>([
-    { id: '1', name: 'Document_1.pdf', type: 'pdf', selected: true },
+    { id: '1', name: 'Document_1.pdf', type: 'pdf', selected: false },
   ]);
   const [selectAllSources, setSelectAllSources] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState(initialContent);
   const [isProcessing, setIsProcessing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  
+
   // Notes state
   const [notes, setNotes] = useState<Note[]>([]);
-  
+
   // Custom prompt
   const [customPrompt, setCustomPrompt] = useState('');
-  
+
   // Document URL state
   const [documentUrl, setDocumentUrl] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
-  
+
   // Notification state
   const [notification, setNotification] = useState<string | null>(null);
-  
+
   // Chat history for side panel
-  const [chatHistory, setChatHistory] = useState<Array<{role: 'user' | 'ai', content: string}>>([]);
-  
+  const [chatHistory, setChatHistory] = useState<Array<{ role: 'user' | 'ai', content: string }>>([]);
+
   // Output text for quick reference
   const [outputText, setOutputText] = useState('');
-  
+
   // Google Auth state
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -430,19 +445,19 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   const [selectedGoogleDoc, setSelectedGoogleDoc] = useState<DocumentInfo | null>(null);
   const [showGoogleDocsModal, setShowGoogleDocsModal] = useState(false);
   const [googleDocContent, setGoogleDocContent] = useState('');
-  
+
   // Import Modal state
   const [showImportModal, setShowImportModal] = useState(false);
   const [importTab, setImportTab] = useState<'google' | 'drive' | 'url' | 'upload'>('google');
   const [importUrl, setImportUrl] = useState('');
-  
+
   // Google Drive browser state
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
   const [driveLoading, setDriveLoading] = useState(false);
-  const [driveFolderStack, setDriveFolderStack] = useState<{id: string; name: string}[]>([{id: 'root', name: 'My Drive'}]);
+  const [driveFolderStack, setDriveFolderStack] = useState<{ id: string; name: string }[]>([{ id: 'root', name: 'My Drive' }]);
   const [driveSearchQuery, setDriveSearchQuery] = useState('');
   const [selectedDriveFiles, setSelectedDriveFiles] = useState<DriveFile[]>([]);
-  
+
   // Google Docs embed mode - 'embed' for iframe, 'content' for text content
   const [googleDocViewMode, setGoogleDocViewMode] = useState<'embed' | 'content'>('embed');
 
@@ -486,7 +501,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   useEffect(() => {
     const unsubscribe = subscribeToTaskEvents((event: TaskEvent) => {
       console.log('📝 Deep Agent Event:', event);
-      
+
       switch (event.type) {
         case 'task-start':
           setDeepAgentTasks(prev => [...prev, {
@@ -498,7 +513,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           }]);
           setIsDeepAgentActive(true);
           break;
-          
+
         case 'thinking':
           setDeepAgentStatus('thinking');
           setDeepAgentSteps(prev => [...prev, {
@@ -508,7 +523,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             timestamp: new Date()
           }]);
           break;
-          
+
         case 'searching':
           setDeepAgentStatus('searching');
           setDeepAgentSteps(prev => [...prev, {
@@ -518,7 +533,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             timestamp: new Date()
           }]);
           break;
-          
+
         case 'writing':
           setDeepAgentStatus('writing');
           setDeepAgentSteps(prev => [...prev, {
@@ -528,7 +543,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             timestamp: new Date()
           }]);
           break;
-          
+
         case 'tool-call':
           {
             const toolName = event.data?.tool || event.data?.toolName || event.title || 'unknown';
@@ -552,17 +567,17 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           break;
 
         case 'tool-result':
-           // Update tool call result
-           if (event.data?.result) {
-             setToolCalls(prev => prev.map((tc, idx) => 
-               idx === prev.length - 1 ? {
-                 ...tc,
-                 result: String(event.data?.result || ''),
-                 status: 'completed'
-               } : tc
-             ));
-           }
-           break;
+          // Update tool call result
+          if (event.data?.result) {
+            setToolCalls(prev => prev.map((tc, idx) =>
+              idx === prev.length - 1 ? {
+                ...tc,
+                result: String(event.data?.result || ''),
+                status: 'completed'
+              } : tc
+            ));
+          }
+          break;
 
         case 'step-start':
           // Track which subagent is currently running
@@ -591,8 +606,8 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             const newTasks = event.data.todos.map((todo: TodoItem) => ({
               id: todo.id,
               title: todo.title,
-              status: todo.status === 'completed' ? 'completed' : 
-                      todo.status === 'in-progress' ? 'in-progress' : 'pending',
+              status: todo.status === 'completed' ? 'completed' :
+                todo.status === 'in-progress' ? 'in-progress' : 'pending',
               startTime: new Date(),
               message: todo.description
             }));
@@ -608,23 +623,23 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             }]);
           }
           break;
-          
+
         case 'artifact-created':
           if (event.data) {
             setArtifacts(prev => [...prev, event.data as Artifact]);
           }
           break;
-          
+
         case 'document-ready':
           if (event.data) {
             setFinalDocument(event.data as FinalDocument);
           }
           setDeepAgentStatus('complete');
           break;
-          
+
         case 'task-complete':
-          setDeepAgentTasks(prev => prev.map(t => 
-            t.id === event.taskId 
+          setDeepAgentTasks(prev => prev.map(t =>
+            t.id === event.taskId
               ? { ...t, status: 'completed' as TaskStatus, endTime: new Date() }
               : t
           ));
@@ -635,10 +650,10 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             timestamp: new Date()
           }]);
           break;
-          
+
         case 'task-error':
-          setDeepAgentTasks(prev => prev.map(t => 
-            t.id === event.taskId 
+          setDeepAgentTasks(prev => prev.map(t =>
+            t.id === event.taskId
               ? { ...t, status: 'error' as TaskStatus, message: event.message }
               : t
           ));
@@ -646,7 +661,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           break;
       }
     });
-    
+
     return () => unsubscribe();
   }, []);
 
@@ -668,9 +683,9 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         console.error('❌ Failed to initialize Google Auth:', error);
       }
     };
-    
+
     initAuth();
-    
+
     // Subscribe to auth state changes
     const unsubscribe = subscribeToAuthState((state) => {
       console.log('🔄 Auth state changed:', { isSignedIn: state.isSignedIn, isLoading: state.isLoading, user: state.user?.email });
@@ -680,12 +695,13 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         console.error('❌ Auth error:', state.error);
       }
       // Load Google Docs when user signs in
-      if (state.isSignedIn && state.user && !state.isLoading) {
+      // Only load if there is no error to avoid infinite loops if popup is blocked
+      if (state.isSignedIn && state.user && !state.isLoading && !state.error) {
         console.log('📄 User signed in, loading Google Docs...');
         loadGoogleDocs();
       }
     });
-    
+
     return unsubscribe;
   }, []);
 
@@ -696,7 +712,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   }, []);
 
   // ==================== GOOGLE AUTH HANDLERS ====================
-  
+
   // Handle Google Sign In
   const handleGoogleSignIn = async () => {
     console.log('🔐 Starting Google Sign In...');
@@ -725,13 +741,13 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   // Load Google Docs
   const loadGoogleDocs = async () => {
     if (!checkIsSignedIn()) return;
-    
+
     setIsGoogleLoading(true);
     try {
       const result = await listGoogleDocs(20);
       if (result.success && result.documents) {
         setGoogleDocs(result.documents);
-        
+
         // Add Google Docs as sources
         const googleSources: Source[] = result.documents.map((doc: DocumentInfo) => ({
           id: `gdoc-${doc.id}`,
@@ -739,7 +755,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           type: 'doc' as const,
           selected: false
         }));
-        
+
         setSources(prev => {
           // Remove old Google Doc sources and add new ones
           const nonGoogleSources = prev.filter(s => !s.id.startsWith('gdoc-'));
@@ -765,25 +781,25 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           if (!document?.body?.content) return '';
           return document.body.content
             .filter((element: any) => element.paragraph)
-            .map((element: any) => 
+            .map((element: any) =>
               element.paragraph.elements
                 ?.map((e: any) => e.textRun?.content || '')
                 .join('') || ''
             )
             .join('');
         };
-        
+
         const content = extractText(result.document);
         setGoogleDocContent(content);
         setSelectedGoogleDoc(doc);
         setActiveView('googledoc');
         setShowGoogleDocsModal(false);
-        
+
         // Add to sources as selected
-        setSources(prev => prev.map(s => 
+        setSources(prev => prev.map(s =>
           s.id === `gdoc-${doc.id}` ? { ...s, selected: true } : s
         ));
-        
+
         showNotification(`✓ Opened: ${doc.name}`);
       } else {
         showNotification('Failed to load document content');
@@ -802,16 +818,16 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       showNotification('Please sign in to Google first');
       return;
     }
-    
+
     setIsGoogleLoading(true);
     try {
       const title = `AI Word Document - ${new Date().toLocaleDateString()}`;
       const result = await createGoogleDoc(title);
-      
+
       if (result.success && result.document) {
         showNotification(`✓ Created: ${title}`);
         await loadGoogleDocs();
-        
+
         // Open the new doc in a new tab
         window.open(`https://docs.google.com/document/d/${result.document.documentId}/edit`, '_blank');
       } else {
@@ -831,17 +847,17 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       showNotification('Please sign in to Google first');
       return;
     }
-    
+
     if (!outputText) {
       showNotification('No output to save');
       return;
     }
-    
+
     setIsGoogleLoading(true);
     try {
       const title = `AI Word Export - ${new Date().toLocaleDateString()}`;
       const result = await createGoogleDoc(title);
-      
+
       if (result.success && result.document) {
         // Update the doc with content
         await updateGoogleDoc(result.document.documentId, outputText);
@@ -872,12 +888,12 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-    
+
     Array.from(files).forEach(file => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const content = e.target?.result as string;
-        
+
         // Add as source
         const newSource: Source = {
           id: Date.now().toString() + Math.random(),
@@ -886,15 +902,15 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           selected: true
         };
         setSources(prev => [...prev, newSource]);
-        
+
         // If text file, also set as input
         if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
           setInputText(prev => prev ? `${prev}\n\n---\n\n${content}` : content);
         }
-        
+
         showNotification(`✓ Imported: ${file.name}`);
       };
-      
+
       if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
         reader.readAsText(file);
       } else {
@@ -909,17 +925,17 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         showNotification(`✓ Added source: ${file.name}`);
       }
     });
-    
+
     setShowImportModal(false);
   };
 
   // Handle URL import
   const handleUrlImport = async () => {
     if (!importUrl.trim()) return;
-    
+
     try {
       setIsGoogleLoading(true);
-      
+
       // Check if it's a Google Doc URL
       const googleDocMatch = importUrl.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9-_]+)/);
       if (googleDocMatch && googleUser) {
@@ -938,7 +954,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           return;
         }
       }
-      
+
       // For other URLs, add as source
       const urlName = importUrl.split('/').pop() || 'Web Document';
       const newSource: Source = {
@@ -962,7 +978,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   // Load Drive files for current folder
   const loadDriveFiles = async (folderId: string = 'root') => {
     if (!googleUser) return;
-    
+
     setDriveLoading(true);
     try {
       const result = await listDriveFiles(folderId);
@@ -971,9 +987,9 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       } else {
         console.error('Drive list error:', result.error);
         if (result.error?.includes('insufficient permissions') || result.error?.includes('403') || result.error?.includes('scope')) {
-             showNotification('Permission denied. Please sign out and sign in again to grant access.');
+          showNotification('Permission denied. Please sign out and sign in again to grant access.');
         } else {
-             showNotification('Failed to load Drive files');
+          showNotification('Failed to load Drive files');
         }
       }
     } catch (error) {
@@ -990,7 +1006,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       loadDriveFiles(driveFolderStack[driveFolderStack.length - 1].id);
       return;
     }
-    
+
     setDriveLoading(true);
     try {
       const result = await searchDriveFiles(driveSearchQuery);
@@ -1043,7 +1059,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   // Import selected Drive files
   const importSelectedDriveFiles = async () => {
     if (selectedDriveFiles.length === 0) return;
-    
+
     setDriveLoading(true);
     try {
       for (const file of selectedDriveFiles) {
@@ -1061,13 +1077,13 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             return [...prev, doc];
           });
         }
-        
+
         // Add as source
         const newSource: Source = {
           id: file.id,
           name: file.name,
-          type: file.mimeType.includes('document') ? 'doc' : 
-                file.mimeType.includes('pdf') ? 'pdf' : 'text',
+          type: file.mimeType.includes('document') ? 'doc' :
+            file.mimeType.includes('pdf') ? 'pdf' : 'text',
           selected: true
         };
         setSources(prev => {
@@ -1075,7 +1091,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           return [...prev, newSource];
         });
       }
-      
+
       showNotification(`✓ Imported ${selectedDriveFiles.length} file(s)`);
       setSelectedDriveFiles([]);
       setShowImportModal(false);
@@ -1121,7 +1137,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
   // Toggle individual source
   const toggleSource = (id: string) => {
-    setSources(sources.map(s => 
+    setSources(sources.map(s =>
       s.id === id ? { ...s, selected: !s.selected } : s
     ));
   };
@@ -1135,6 +1151,12 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       selected: true
     };
     setSources([...sources, newSource]);
+  };
+
+  // Delete source
+  const deleteSource = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSources(sources.filter(s => s.id !== id));
   };
 
   // Check if input is a research request
@@ -1151,49 +1173,49 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   // Helper to clean tool calls and artifacts from content - for display to user
   const cleanMessageContent = (content: string): string => {
     let cleaned = content;
-    
+
     // Remove tool call blocks
     cleaned = cleaned.replace(/```tool\s*[\s\S]*?```/g, '');
     cleaned = cleaned.replace(/\[TOOL:\s*\w+\][\s\S]*?\[\/TOOL\]/g, '');
     cleaned = cleaned.replace(/\[DELEGATE:\s*\S+\][\s\S]*?\[\/DELEGATE\]/g, '');
     cleaned = cleaned.replace(/^\s*\{\s*"tool"\s*:[\s\S]*?\}\s*$/gm, '');
-    
+
     // Remove task status messages (📋 Task X/Y, Task completed, etc.)
     cleaned = cleaned.replace(/📋\s*Task\s*\d+\/\d+:.*?(?=\n\n|$)/gs, '');
     cleaned = cleaned.replace(/Task\s*\d+:?\s*"[^"]*"\s*has\s*(already\s*been\s*)?(completed|done).*?(?=\n\n|---\n|$)/gis, '');
-    
+
     // Remove "I am awaiting/delegated/waiting" messages
     cleaned = cleaned.replace(/I\s+am\s+(currently\s+)?(awaiting|unable\s+to\s+execute|waiting\s+for).*?(?=\n\n|---\n|$)/gis, '');
     cleaned = cleaned.replace(/I\s+have\s+(delegated|initiated|completed).*?(?=\n\n|---\n|$)/gis, '');
     cleaned = cleaned.replace(/Please\s+await.*?(?=\n\n|---\n|$)/gis, '');
     cleaned = cleaned.replace(/Once\s+the\s+(sub-?agent'?s?|subagent'?s?).*?(?=\n\n|---\n|$)/gis, '');
-    
+
     // Remove thinking/thought blocks
     cleaned = cleaned.replace(/<think>.*?<\/think>/gs, '');
     cleaned = cleaned.replace(/<thinking>.*?<\/thinking>/gs, '');
     cleaned = cleaned.replace(/```thought[\s\S]*?```/gs, '');
-    
+
     // Remove research process messages that aren't actual content
     cleaned = cleaned.replace(/---\n📝\s*\*\*Synthesizing.*?\*\*.*?(?=\n\n|$)/gs, '');
     cleaned = cleaned.replace(/---\n📄\s*\*\*Document Synthesizer.*?\*\*.*?(?=\n\n|$)/gs, '');
     cleaned = cleaned.replace(/---\n🛡️\s*\*\*Output Validator.*?\*\*.*?(?=\n\n|$)/gs, '');
     cleaned = cleaned.replace(/---\n✨\s*\*\*Enhancing.*?\*\*.*?(?=\n\n|$)/gs, '');
-    
+
     // Remove "Enhanced Request" block
     cleaned = cleaned.replace(/✨ \*\*Enhancing.*?\*\*[\s\S]*?📝 \*\*Enhanced Request:\*\*[\s\S]*?(?=\n\n)/g, '');
-    
+
     // Remove subagent findings headers (content is in final doc)
     cleaned = cleaned.replace(/\n\*\*(?:deep-researcher|research-agent|academic-researcher|chemistry-researcher|Subagent)\s+findings:\*\*/gi, '\n');
-    
+
     // Remove horizontal rule separators between task blocks
     cleaned = cleaned.replace(/---\n+(?=📋|Task\s*\d+|🔧)/g, '');
-    
+
     // Remove tool execution messages
     cleaned = cleaned.replace(/🔧\s*\*\*[a-z_]+\*\*:.*?(?=\n\n|$)/gis, '');
-    
+
     // Clean up excessive blank lines
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
-    
+
     return cleaned.trim();
   };
 
@@ -1205,6 +1227,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
     setFinalDocument(null);
     setResearchDocId(null);
     setIsDeepAgentActive(true);
+    setActiveView('deep-agent');
     setDeepAgentStatus('thinking');
     setStreamingContent('');
     setIsStreaming(true);
@@ -1223,7 +1246,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
     // Build context from selected sources
     const selectedSourceNames = sources.filter(s => s.selected).map(s => s.name);
-    const contextPrompt = selectedSourceNames.length > 0 
+    const contextPrompt = selectedSourceNames.length > 0
       ? `\n\nContext from sources: ${selectedSourceNames.join(', ')}`
       : '';
 
@@ -1245,7 +1268,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       setMessages(prev => [...prev, assistantMessage]);
 
       let fullContent = '';
-      
+
       // Use streamDeepAgent for real-time updates
       // Append instruction to use latex-formatter-agent
       const enhancedQuery = query + contextPrompt + "\n\nPlease ensure the final output is well-formatted using LaTeX for any math. You may use the latex-formatter-agent to verify the formatting.";
@@ -1255,8 +1278,8 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         setStreamingContent(fullContent);
         // During streaming, show a simplified version (we'll update with final doc content after)
         const displayContent = cleanMessageContent(fullContent);
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMsgId 
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMsgId
             ? { ...msg, content: displayContent }
             : msg
         ));
@@ -1267,18 +1290,18 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
       // Clean content for final document
       const cleanedContent = cleanMessageContent(fullContent);
-      
+
       // Get the final document from the service (if synthesizer created one)
       const serviceFinalDocs = getFinalDocuments();
       const latestServiceDoc = serviceFinalDocs.length > 0 ? serviceFinalDocs[serviceFinalDocs.length - 1] : null;
-      
+
       // Use the service's final document content if available, otherwise use cleaned content
       const finalDocContent = latestServiceDoc?.content || cleanedContent;
       const finalDocTitle = latestServiceDoc?.title || `Research: ${query.substring(0, 50)}...`;
-      
+
       // Update the message with the FINAL cleaned document content
-      setMessages(prev => prev.map(msg => 
-        msg.id === assistantMsgId 
+      setMessages(prev => prev.map(msg =>
+        msg.id === assistantMsgId
           ? { ...msg, content: finalDocContent }
           : msg
       ));
@@ -1316,7 +1339,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           );
           if (docResult.success && docResult.document) {
             setResearchDocId(docResult.document.documentId);
-            
+
             // Add to Google Docs list
             const newDoc: DocumentInfo = {
               id: docResult.document.documentId,
@@ -1326,9 +1349,9 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             };
             setGoogleDocs(prev => [newDoc, ...prev]);
             setSelectedGoogleDoc(newDoc);
-            
+
             showNotification('✓ Research saved to Google Docs!');
-            
+
             // Switch to Google Doc view
             setActiveView('googledoc');
           }
@@ -1342,7 +1365,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       console.error('Deep Agent Error:', error);
       setDeepAgentStatus('idle');
       setIsStreaming(false);
-      
+
       const errorMessage: ChatMessage = {
         id: Date.now().toString(),
         role: 'assistant',
@@ -1411,14 +1434,14 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       content: `[${action.label}]: ${inputText.substring(0, 100)}${inputText.length > 100 ? '...' : ''}`,
       timestamp: new Date()
     };
-    
+
     setMessages(prev => [...prev, userMessage]);
     setChatHistory(prev => [...prev, { role: 'user', content: `${action.label}: ${inputText.substring(0, 100)}...` }]);
     setIsProcessing(true);
 
     try {
       const response = await generateContentWithGemini(action.prompt(inputText));
-      
+
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -1426,7 +1449,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         timestamp: new Date(),
         sources: sources.filter(s => s.selected).map(s => s.name)
       };
-      
+
       setMessages(prev => [...prev, assistantMessage]);
       setChatHistory(prev => [...prev, { role: 'ai', content: response || 'No response generated.' }]);
       setOutputText(response || '');
@@ -1461,7 +1484,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       content: customPrompt,
       timestamp: new Date()
     };
-    
+
     setMessages(prev => [...prev, userMessage]);
     setChatHistory(prev => [...prev, { role: 'user', content: customPrompt }]);
     setIsProcessing(true);
@@ -1469,7 +1492,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
     try {
       const prompt = `${customPrompt}\n\nText to work with:\n${inputText}`;
       const response = await generateContentWithGemini(prompt);
-      
+
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -1477,7 +1500,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         timestamp: new Date(),
         sources: sources.filter(s => s.selected).map(s => s.name)
       };
-      
+
       setMessages(prev => [...prev, assistantMessage]);
       setChatHistory(prev => [...prev, { role: 'ai', content: response || 'No response generated.' }]);
       setOutputText(response || '');
@@ -1509,7 +1532,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       }
       setShowUrlInput(false);
       showNotification('✓ Loading document...');
-      
+
       // Add as source
       const newSource: Source = {
         id: Date.now().toString(),
@@ -1549,14 +1572,14 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
   // Studio tools
   const studioTools: StudioTool[] = [
-    { id: 'audio', label: 'Audio Overview', icon: <Mic className="h-5 w-5" />, action: () => {} },
-    { id: 'video', label: 'Video Overview', icon: <Video className="h-5 w-5" />, action: () => {} },
-    { id: 'mindmap', label: 'Mind Map', icon: <Brain className="h-5 w-5" />, action: () => {} },
-    { id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" />, action: () => {} },
-    { id: 'flashcards', label: 'Flashcards', icon: <BookOpen className="h-5 w-5" />, action: () => {} },
-    { id: 'quiz', label: 'Quiz', icon: <HelpCircle className="h-5 w-5" />, action: () => {} },
-    { id: 'infographic', label: 'Infographic', icon: <Image className="h-5 w-5" />, action: () => {} },
-    { id: 'slides', label: 'Slide deck', icon: <Presentation className="h-5 w-5" />, action: () => {} },
+    { id: 'audio', label: 'Audio Overview', icon: <Mic className="h-5 w-5" />, action: () => { } },
+    { id: 'video', label: 'Video Overview', icon: <Video className="h-5 w-5" />, action: () => { } },
+    { id: 'mindmap', label: 'Mind Map', icon: <Brain className="h-5 w-5" />, action: () => { } },
+    { id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" />, action: () => { } },
+    { id: 'flashcards', label: 'Flashcards', icon: <BookOpen className="h-5 w-5" />, action: () => { } },
+    { id: 'quiz', label: 'Quiz', icon: <HelpCircle className="h-5 w-5" />, action: () => { } },
+    { id: 'infographic', label: 'Infographic', icon: <Image className="h-5 w-5" />, action: () => { } },
+    { id: 'slides', label: 'Slide deck', icon: <Presentation className="h-5 w-5" />, action: () => { } },
   ];
 
   // Get source icon
@@ -1594,32 +1617,29 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         <div className="flex items-center gap-1 bg-[#2d2d2d] rounded-full p-1">
           <button
             onClick={() => setActiveView('chat')}
-            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
-              activeView === 'chat' 
-                ? 'bg-purple-500 text-white' 
-                : 'text-gray-400 hover:text-white'
-            }`}
+            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${activeView === 'chat'
+              ? 'bg-purple-500 text-white'
+              : 'text-gray-400 hover:text-white'
+              }`}
           >
             AI Tools
           </button>
           <button
             onClick={() => setActiveView('editor')}
-            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
-              activeView === 'editor' 
-                ? 'bg-purple-500 text-white' 
-                : 'text-gray-400 hover:text-white'
-            }`}
+            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${activeView === 'editor'
+              ? 'bg-purple-500 text-white'
+              : 'text-gray-400 hover:text-white'
+              }`}
           >
             Editor
           </button>
           {googleUser && (
             <button
               onClick={() => setShowGoogleDocsModal(true)}
-              className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
-                activeView === 'googledoc' 
-                  ? 'bg-purple-500 text-white' 
-                  : 'text-gray-400 hover:text-white'
-              }`}
+              className={`px-4 py-1.5 rounded-full text-sm transition-colors ${activeView === 'googledoc'
+                ? 'bg-purple-500 text-white'
+                : 'text-gray-400 hover:text-white'
+                }`}
             >
               Google Docs
             </button>
@@ -1676,8 +1696,8 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
               Sign in with Google
             </button>
           )}
-          
-          <button 
+
+          <button
             onClick={() => setShowUrlInput(!showUrlInput)}
             className="px-3 py-1.5 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
           >
@@ -1763,7 +1783,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                 </button>
               </div>
             </div>
-            
+
             {/* Modal Body */}
             <div className="p-4 overflow-y-auto max-h-[60vh]">
               {isGoogleLoading ? (
@@ -1804,7 +1824,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                 </div>
               )}
             </div>
-            
+
             {/* Modal Footer */}
             <div className="flex items-center justify-between p-4 border-t border-white/10 bg-[#151515]">
               <p className="text-xs text-gray-500">{googleDocs.length} documents</p>
@@ -1840,16 +1860,15 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                 <X className="h-4 w-4 text-gray-400" />
               </button>
             </div>
-            
+
             {/* Import Tabs */}
             <div className="flex border-b border-white/10">
               <button
                 onClick={() => setImportTab('google')}
-                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-                  importTab === 'google' 
-                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' 
-                    : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
-                }`}
+                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${importTab === 'google'
+                  ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5'
+                  : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
+                  }`}
               >
                 <FileText className="h-4 w-4 inline mr-2" />
                 Google Docs
@@ -1861,39 +1880,36 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                     loadDriveFiles('root');
                   }
                 }}
-                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-                  importTab === 'drive' 
-                    ? 'text-green-400 border-b-2 border-green-400 bg-green-500/5' 
-                    : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
-                }`}
+                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${importTab === 'drive'
+                  ? 'text-green-400 border-b-2 border-green-400 bg-green-500/5'
+                  : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
+                  }`}
               >
                 <FolderOpen className="h-4 w-4 inline mr-2" />
                 Google Drive
               </button>
               <button
                 onClick={() => setImportTab('url')}
-                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-                  importTab === 'url' 
-                    ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-500/5' 
-                    : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
-                }`}
+                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${importTab === 'url'
+                  ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-500/5'
+                  : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
+                  }`}
               >
                 <Link className="h-4 w-4 inline mr-2" />
                 URL
               </button>
               <button
                 onClick={() => setImportTab('upload')}
-                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-                  importTab === 'upload' 
-                    ? 'text-orange-400 border-b-2 border-orange-400 bg-orange-500/5' 
-                    : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
-                }`}
+                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${importTab === 'upload'
+                  ? 'text-orange-400 border-b-2 border-orange-400 bg-orange-500/5'
+                  : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
+                  }`}
               >
                 <Upload className="h-4 w-4 inline mr-2" />
                 Upload
               </button>
             </div>
-            
+
             {/* Modal Body */}
             <div className="p-4 overflow-y-auto max-h-[50vh]">
               {/* Google Docs Tab */}
@@ -1909,7 +1925,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                         className="px-6 py-2.5 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600 transition-colors flex items-center gap-2 mx-auto"
                       >
                         <svg className="h-4 w-4" viewBox="0 0 24 24">
-                          <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                          <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                         </svg>
                         Sign in with Google
                       </button>
@@ -1966,7 +1982,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   )}
                 </div>
               )}
-              
+
               {/* Google Drive Tab */}
               {importTab === 'drive' && (
                 <div className="h-[400px] flex flex-col">
@@ -2017,7 +2033,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                           Search
                         </button>
                       </div>
-                      
+
                       {/* Breadcrumb Navigation */}
                       <div className="flex items-center gap-1 mb-3 px-2 py-1.5 bg-[#2d2d2d] rounded-lg overflow-x-auto">
                         <button
@@ -2031,18 +2047,17 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                             <ChevronRight className="h-4 w-4 text-gray-600 flex-shrink-0" />
                             <button
                               onClick={() => navigateToBreadcrumb(index)}
-                              className={`px-2 py-1 rounded text-sm flex-shrink-0 ${
-                                index === driveFolderStack.length - 1 
-                                  ? 'text-white font-medium' 
-                                  : 'text-gray-400 hover:bg-[#3d3d3d] hover:text-white'
-                              }`}
+                              className={`px-2 py-1 rounded text-sm flex-shrink-0 ${index === driveFolderStack.length - 1
+                                ? 'text-white font-medium'
+                                : 'text-gray-400 hover:bg-[#3d3d3d] hover:text-white'
+                                }`}
                             >
                               {folder.name}
                             </button>
                           </React.Fragment>
                         ))}
                       </div>
-                      
+
                       {/* File List */}
                       <div className="flex-1 overflow-y-auto border border-white/10 rounded-lg bg-[#1a1a1a]">
                         {driveLoading ? (
@@ -2066,18 +2081,17 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                                 <span className="text-gray-400">..</span>
                               </button>
                             )}
-                            
+
                             {/* Files */}
                             {driveFiles.map((file) => {
                               const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
                               const isSelected = selectedDriveFiles.some(f => f.id === file.id);
-                              
+
                               return (
                                 <div
                                   key={file.id}
-                                  className={`flex items-center gap-3 px-4 py-3 hover:bg-[#2d2d2d] transition-colors cursor-pointer ${
-                                    isSelected ? 'bg-green-500/10 border-l-2 border-green-500' : ''
-                                  }`}
+                                  className={`flex items-center gap-3 px-4 py-3 hover:bg-[#2d2d2d] transition-colors cursor-pointer ${isSelected ? 'bg-green-500/10 border-l-2 border-green-500' : ''
+                                    }`}
                                   onClick={() => {
                                     if (isFolder) {
                                       navigateToFolder(file);
@@ -2088,20 +2102,19 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                                 >
                                   {/* Checkbox for non-folders */}
                                   {!isFolder && (
-                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                                      isSelected 
-                                        ? 'bg-green-500 border-green-500' 
-                                        : 'border-gray-600 hover:border-green-400'
-                                    }`}>
+                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${isSelected
+                                      ? 'bg-green-500 border-green-500'
+                                      : 'border-gray-600 hover:border-green-400'
+                                      }`}>
                                       {isSelected && <Check className="h-3 w-3 text-white" />}
                                     </div>
                                   )}
-                                  
+
                                   {/* File icon */}
                                   <div className="flex-shrink-0">
                                     {getFileIcon(file.mimeType)}
                                   </div>
-                                  
+
                                   {/* File info */}
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium truncate">{file.name}</p>
@@ -2110,7 +2123,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                                       {file.size && ` • ${(parseInt(file.size) / 1024).toFixed(1)} KB`}
                                     </p>
                                   </div>
-                                  
+
                                   {/* Folder arrow */}
                                   {isFolder && (
                                     <ChevronRight className="h-5 w-5 text-gray-500" />
@@ -2121,7 +2134,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                           </div>
                         )}
                       </div>
-                      
+
                       {/* Selection Footer */}
                       {selectedDriveFiles.length > 0 && (
                         <div className="flex items-center justify-between mt-3 p-3 bg-green-500/10 rounded-lg border border-green-500/30">
@@ -2157,7 +2170,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   )}
                 </div>
               )}
-              
+
               {/* URL Tab */}
               {importTab === 'url' && (
                 <div className="space-y-4">
@@ -2207,11 +2220,11 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   </div>
                 </div>
               )}
-              
+
               {/* Upload Tab */}
               {importTab === 'upload' && (
                 <div className="space-y-4">
-                  <div 
+                  <div
                     className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center hover:border-orange-500/50 transition-colors cursor-pointer"
                     onClick={() => {
                       const input = document.createElement('input');
@@ -2240,7 +2253,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
       {/* ============ MAIN CONTENT ============ */}
       <div className="flex-1 flex overflow-hidden">
-        
+
         {/* ============ LEFT PANEL - SOURCES ============ */}
         {leftPanelOpen && (
           <aside className="w-72 border-r border-white/10 flex flex-col bg-[#1a1a1a]">
@@ -2264,7 +2277,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                 <Upload className="h-4 w-4" />
                 Import Sources
               </button>
-              
+
               <button
                 onClick={addSource}
                 className="w-full py-2.5 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center justify-center gap-2 transition-colors"
@@ -2272,7 +2285,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                 <Plus className="h-4 w-4" />
                 Add sources
               </button>
-              
+
               {/* Google Docs Button */}
               {googleUser ? (
                 <button
@@ -2293,10 +2306,10 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   ) : (
                     <>
                       <svg className="h-4 w-4" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                       </svg>
                       Connect Google Docs
                     </>
@@ -2343,11 +2356,72 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
               </div>
             )}
 
-            {/* Deep Research Hint */}
+            {/* Quick Create Actions */}
             <div className="px-4 pb-4">
-              <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 text-sm">
-                <span className="text-purple-400">🔎 Try Deep Research</span>
-                <span className="text-gray-400"> for an in-depth report!</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleDeepAgentResearch('Create a quick report about ' + inputText)}
+                  className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 text-left transition-colors group"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <ClipboardList className="h-4 w-4 text-blue-400" />
+                    <span className="text-xs font-medium text-gray-300 group-hover:text-white">Quick Report</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveView('research')}
+                  className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 text-left transition-colors group"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <BookOpen className="h-4 w-4 text-purple-400" />
+                    <span className="text-xs font-medium text-gray-300 group-hover:text-white">Research Paper</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleDeepAgentResearch('Create study notes for ' + inputText)}
+                  className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 text-left transition-colors group"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <StickyNote className="h-4 w-4 text-yellow-400" />
+                    <span className="text-xs font-medium text-gray-300 group-hover:text-white">Study Notes</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleDeepAgentResearch('Create flash cards for ' + inputText)}
+                  className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 text-left transition-colors group"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Layers className="h-4 w-4 text-green-400" />
+                    <span className="text-xs font-medium text-gray-300 group-hover:text-white">Flash Cards</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleDeepAgentResearch('Create a quiz about ' + inputText)}
+                  className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 text-left transition-colors group"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckSquare className="h-4 w-4 text-red-400" />
+                    <span className="text-xs font-medium text-gray-300 group-hover:text-white">Quiz</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleDeepAgentResearch('Create a mind map for ' + inputText)}
+                  className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 text-left transition-colors group"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Network className="h-4 w-4 text-cyan-400" />
+                    <span className="text-xs font-medium text-gray-300 group-hover:text-white">Mind Map</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleDeepAgentResearch('Create an infographic idea for ' + inputText)}
+                  className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 text-left transition-colors group col-span-2"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <PieChart className="h-4 w-4 text-orange-400" />
+                    <span className="text-xs font-medium text-gray-300 group-hover:text-white">Infographic</span>
+                  </div>
+                </button>
               </div>
             </div>
 
@@ -2368,7 +2442,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             {/* Select All */}
             <div className="px-4 py-2 flex items-center gap-2 border-b border-white/5">
               <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-400">
-                <div 
+                <div
                   onClick={handleSelectAll}
                   className={`w-4 h-4 rounded border ${selectAllSources ? 'bg-blue-500 border-blue-500' : 'border-gray-500'} flex items-center justify-center transition-colors`}
                 >
@@ -2385,7 +2459,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   key={source.id}
                   className="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-[#2d2d2d] transition-colors cursor-pointer group"
                 >
-                  <div 
+                  <div
                     onClick={() => toggleSource(source.id)}
                     className={`w-4 h-4 rounded border ${source.selected ? 'bg-blue-500 border-blue-500' : 'border-gray-500'} flex items-center justify-center transition-colors`}
                   >
@@ -2393,8 +2467,12 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   </div>
                   {getSourceIcon(source.type)}
                   <span className="flex-1 text-sm truncate">{source.name}</span>
-                  <button className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#3d3d3d] rounded transition-all">
-                    <MoreHorizontal className="h-4 w-4 text-gray-400" />
+                  <button
+                    onClick={(e) => deleteSource(e, source.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 hover:text-red-400 rounded transition-all"
+                    title="Delete source"
+                  >
+                    <Trash2 className="h-4 w-4 text-gray-400 hover:text-red-400" />
                   </button>
                 </div>
               ))}
@@ -2433,7 +2511,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   </button>
                 </div>
               </div>
-              
+
               {/* Document Editor iframe */}
               <div className="flex-1 relative">
                 <iframe
@@ -2468,22 +2546,20 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   <div className="flex items-center bg-[#2d2d2d] rounded-lg p-0.5">
                     <button
                       onClick={() => setGoogleDocViewMode('embed')}
-                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                        googleDocViewMode === 'embed' 
-                          ? 'bg-blue-500 text-white' 
-                          : 'text-gray-400 hover:text-white'
-                      }`}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${googleDocViewMode === 'embed'
+                        ? 'bg-blue-500 text-white'
+                        : 'text-gray-400 hover:text-white'
+                        }`}
                     >
                       <Eye className="h-3 w-3 inline mr-1" />
                       Embed
                     </button>
                     <button
                       onClick={() => setGoogleDocViewMode('content')}
-                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                        googleDocViewMode === 'content' 
-                          ? 'bg-blue-500 text-white' 
-                          : 'text-gray-400 hover:text-white'
-                      }`}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${googleDocViewMode === 'content'
+                        ? 'bg-blue-500 text-white'
+                        : 'text-gray-400 hover:text-white'
+                        }`}
                     >
                       <FileText className="h-3 w-3 inline mr-1" />
                       Text
@@ -2517,7 +2593,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                   </button>
                 </div>
               </div>
-              
+
               {/* Google Doc Content - Embedded or Text */}
               <div className="flex-1 relative bg-[#1a1a1a]">
                 {googleDocViewMode === 'embed' ? (
@@ -2543,777 +2619,807 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                 )}
               </div>
             </div>
+
+          )}
+
+          {/* ============ LATEX VIEW ============ */}
+          {activeView === 'latex' && (
+            <div className="flex-1 flex flex-col bg-white overflow-hidden">
+              <LatexDocumentWorkspace onBack={() => setActiveView('chat')} />
+            </div>
+          )}
+
+          {/* ============ DEEP AGENT VIEW ============ */}
+          <div className={`flex-1 flex flex-col bg-white overflow-hidden ${activeView === 'deep-agent' ? '' : 'hidden'}`}>
+            <DeepAgentWorkspace onBack={() => setActiveView('chat')} />
+          </div>
+
+          {/* ============ RESEARCH PAPER VIEW ============ */}
+          {activeView === 'research' && (
+            <div className="flex-1 flex flex-col bg-white overflow-hidden">
+              <ResearchPaperWorkspace onBack={() => setActiveView('chat')} />
+            </div>
           )}
 
           {/* ============ CHAT VIEW ============ */}
           {activeView === 'chat' && (
             <>
-          {/* Chat Header */}
-          <div className="p-4 border-b border-white/5 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h2 className="text-sm font-medium text-gray-400">Chat</h2>
-              <button className="p-1 hover:bg-[#2d2d2d] rounded transition-colors">
-                <Settings className="h-4 w-4 text-gray-400" />
-              </button>
-            </div>
-            <button
-              onClick={clearChat}
-              className="p-1 hover:bg-[#2d2d2d] rounded transition-colors"
-              title="Clear chat"
-            >
-              <Trash2 className="h-4 w-4 text-gray-400" />
-            </button>
-          </div>
-
-          {/* Document Title Area */}
-          <div className="p-6 border-b border-white/5">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs text-gray-500">〰️</span>
-            </div>
-            <h1 className="text-2xl font-semibold mb-2">AI Word Assistant</h1>
-            <p className="text-sm text-gray-400">{sources.filter(s => s.selected).length} source{sources.filter(s => s.selected).length !== 1 ? 's' : ''} selected</p>
-            
-            {/* Quick Action Buttons */}
-            <div className="flex gap-2 mt-4">
-              <button 
-                onClick={() => setActiveView('editor')}
-                className="px-4 py-2 rounded-full bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors"
-              >
-                <Eye className="h-4 w-4" />
-                Open Editor
-              </button>
-              <button className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors">
-                <Video className="h-4 w-4" />
-                Video Overview
-              </button>
-              <button className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors">
-                <Mic className="h-4 w-4" />
-                Audio Overview
-              </button>
-              <button className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors">
-                <Brain className="h-4 w-4" />
-                Mind map
-              </button>
-            </div>
-          </div>
-
-          {/* Input Text Area */}
-          <div className="p-4 border-b border-white/5">
-            <div className="p-4 rounded-xl bg-[#2d2d2d] border border-white/5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-500">Input Text / Research Query</span>
-                <span className="text-xs text-gray-500">{inputText.length} chars</span>
-              </div>
-              <textarea
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && e.ctrlKey) {
-                    handleSubmit();
-                  }
-                }}
-                placeholder="Type a research topic (e.g., 'Research the effects of climate change on coral reefs') or paste text to transform..."
-                className="w-full h-32 bg-transparent text-sm text-white placeholder:text-gray-500 resize-none outline-none"
-              />
-              {inputText.trim() && (
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    {isResearchRequest(inputText) ? (
-                      <>
-                        <Brain className="h-4 w-4 text-purple-400" />
-                        <span className="text-purple-400">Deep Research mode detected</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 text-blue-400" />
-                        <span>Quick AI mode</span>
-                      </>
-                    )}
-                  </div>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isProcessing || isDeepAgentActive}
-                    className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
-                  >
-                    {isProcessing || isDeepAgentActive ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                    {isResearchRequest(inputText) ? 'Start Research' : 'Send'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* AI Agents Panel */}
-          <div className="p-4 border-b border-white/5">
-            {/* Header with Config Toggle */}
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Brain className="h-4 w-4 text-purple-400" />
-                <p className="text-sm font-medium">AI Agents</p>
-                <span className="text-xs text-gray-500">({enabledAgents.size} active)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Selection Mode Toggle */}
-                <div className="flex items-center gap-1 bg-[#2d2d2d] rounded-lg p-1">
-                  <button
-                    onClick={() => setAgentSelectionMode('auto')}
-                    className={`px-2 py-1 rounded text-xs transition-colors ${
-                      agentSelectionMode === 'auto' 
-                        ? 'bg-purple-500/30 text-purple-300' 
-                        : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    Auto
-                  </button>
-                  <button
-                    onClick={() => setAgentSelectionMode('manual')}
-                    className={`px-2 py-1 rounded text-xs transition-colors ${
-                      agentSelectionMode === 'manual' 
-                        ? 'bg-purple-500/30 text-purple-300' 
-                        : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    Manual
+              {/* Chat Header */}
+              <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-sm font-medium text-gray-400">Chat</h2>
+                  <button className="p-1 hover:bg-[#2d2d2d] rounded transition-colors">
+                    <Settings className="h-4 w-4 text-gray-400" />
                   </button>
                 </div>
                 <button
-                  onClick={() => setShowAgentConfig(!showAgentConfig)}
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    showAgentConfig ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-[#2d2d2d] text-gray-400'
-                  }`}
-                  title={showAgentConfig ? 'Collapse agents' : 'Expand agents'}
+                  onClick={clearChat}
+                  className="p-1 hover:bg-[#2d2d2d] rounded transition-colors"
+                  title="Clear chat"
                 >
-                  {showAgentConfig ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  <Trash2 className="h-4 w-4 text-gray-400" />
                 </button>
               </div>
-            </div>
 
-            {/* Mode Description */}
-            <p className="text-xs text-gray-500 mb-2">
-              {agentSelectionMode === 'auto' 
-                ? '🤖 AI will automatically select the best agents for your query'
-                : '👆 Click agents to enable/disable them'}
-            </p>
+              {/* Document Title Area */}
+              <div className="p-6 border-b border-white/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-gray-500">〰️</span>
+                </div>
+                <h1 className="text-2xl font-semibold mb-2">AI Word Assistant</h1>
+                <p className="text-sm text-gray-400">{sources.filter(s => s.selected).length} source{sources.filter(s => s.selected).length !== 1 ? 's' : ''} selected</p>
 
-            {/* Compact Agent Grid - Collapsible */}
-            {showAgentConfig ? (
-              /* Expanded View - Show all agents in compact cards */
-              <div className="grid grid-cols-3 lg:grid-cols-4 gap-1.5 max-h-[280px] overflow-y-auto pr-1">
-                {AVAILABLE_AGENTS.map((agent) => {
-                  const isEnabled = enabledAgents.has(agent.id);
-                  const isRunning = activeSubagent === agent.id || 
-                    activeSubagent === agent.name.toLowerCase().replace(/\s+/g, '-') ||
-                    (activeSubagent && agent.id.includes(activeSubagent)) ||
-                    (activeSubagent && activeSubagent.includes(agent.id));
-                  const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
-                    blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
-                    indigo: { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' },
-                    green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
-                    yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-400' },
-                    orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
-                    purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
-                    pink: { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-400' },
-                    cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' },
-                    red: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
-                    gray: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-400' },
-                    violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/30', text: 'text-violet-400' },
-                    emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400' },
-                  };
-                  const colors = colorClasses[agent.color] || colorClasses.gray;
-
-                  return (
-                    <div
-                      key={agent.id}
-                      onClick={() => {
-                        if (agentSelectionMode === 'manual') {
-                          setEnabledAgents(prev => {
-                            const newSet = new Set(prev);
-                            if (newSet.has(agent.id)) {
-                              newSet.delete(agent.id);
-                            } else {
-                              newSet.add(agent.id);
-                            }
-                            return newSet;
-                          });
-                        }
-                      }}
-                      title={agent.description}
-                      className={`relative p-2 rounded-lg border transition-all cursor-pointer ${
-                        isRunning
-                          ? `${colors.bg} ${colors.border} ring-1 ring-offset-1 ring-offset-[#1a1a1a] ${colors.border.replace('border-', 'ring-')}`
-                          : isEnabled 
-                            ? `${colors.bg} ${colors.border}` 
-                            : 'bg-[#2d2d2d] border-white/5 opacity-50'
-                      } ${agentSelectionMode === 'manual' ? 'hover:opacity-100' : ''}`}
-                    >
-                      {/* Running/Enabled Indicator */}
-                      {isRunning ? (
-                        <div className="absolute top-1 right-1">
-                          <Loader2 className={`h-3 w-3 animate-spin ${colors.text}`} />
-                        </div>
-                      ) : isEnabled && (
-                        <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
-                      )}
-                      
-                      {/* Compact Agent Info */}
-                      <div className="flex items-center gap-1.5">
-                        <span className={`${colors.text} flex-shrink-0 ${isRunning ? 'animate-pulse' : ''}`}>
-                          {React.cloneElement(agent.icon as React.ReactElement, { className: 'h-3.5 w-3.5' })}
-                        </span>
-                        <span className="text-[11px] font-medium truncate">
-                          {agent.name.replace('🧠 ', '').replace('📚 ', '').replace('🎯 ', '').replace('🔬 ', '')}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                {/* Quick Action Buttons */}
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => setActiveView('editor')}
+                    className="px-4 py-2 rounded-full bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Open Editor
+                  </button>
+                  <button
+                    onClick={() => setActiveView('deep-agent')}
+                    className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
+                  >
+                    <Brain className="h-4 w-4" />
+                    Deep Agent
+                  </button>
+                  <button
+                    onClick={() => setActiveView('research')}
+                    className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    Research Paper
+                  </button>
+                  <button
+                    onClick={() => setActiveView('latex')}
+                    className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
+                  >
+                    <FileCode className="h-4 w-4" />
+                    LaTeX Agent
+                  </button>
+                </div>
               </div>
-            ) : (
-              /* Collapsed View - Just show count and quick info */
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-gray-500">
-                  {enabledAgents.size} of {AVAILABLE_AGENTS.length} agents active
-                </span>
-                <div className="flex gap-1">
-                  {Array.from(enabledAgents).slice(0, 5).map(id => {
-                    const agent = AVAILABLE_AGENTS.find(a => a.id === id);
-                    if (!agent) return null;
-                    const colorClasses: Record<string, string> = {
-                      blue: 'bg-blue-500/30', indigo: 'bg-indigo-500/30', green: 'bg-green-500/30',
-                      yellow: 'bg-yellow-500/30', orange: 'bg-orange-500/30', purple: 'bg-purple-500/30',
-                      pink: 'bg-pink-500/30', cyan: 'bg-cyan-500/30', red: 'bg-red-500/30',
-                      gray: 'bg-gray-500/30', violet: 'bg-violet-500/30', emerald: 'bg-emerald-500/30',
-                    };
-                    return (
-                      <div key={id} className={`w-5 h-5 rounded flex items-center justify-center ${colorClasses[agent.color] || 'bg-gray-500/30'}`} title={agent.name}>
-                        {React.cloneElement(agent.icon as React.ReactElement, { className: 'h-3 w-3' })}
+
+              {/* Input Text Area */}
+              <div className="p-4 border-b border-white/5">
+                <div className="p-4 rounded-xl bg-[#2d2d2d] border border-white/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-500">Input Text / Research Query</span>
+                    <span className="text-xs text-gray-500">{inputText.length} chars</span>
+                  </div>
+                  <textarea
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.ctrlKey) {
+                        handleSubmit();
+                      }
+                    }}
+                    placeholder="Type a research topic (e.g., 'Research the effects of climate change on coral reefs') or paste text to transform..."
+                    className="w-full h-32 bg-transparent text-sm text-white placeholder:text-gray-500 resize-none outline-none"
+                  />
+                  {inputText.trim() && (
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        {isResearchRequest(inputText) ? (
+                          <>
+                            <Brain className="h-4 w-4 text-purple-400" />
+                            <span className="text-purple-400">Deep Research mode detected</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 text-blue-400" />
+                            <span>Quick AI mode</span>
+                          </>
+                        )}
                       </div>
-                    );
-                  })}
-                  {enabledAgents.size > 5 && (
-                    <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center text-[10px] text-gray-400">
-                      +{enabledAgents.size - 5}
+                      <button
+                        onClick={handleSubmit}
+                        disabled={isProcessing || isDeepAgentActive}
+                        className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+                      >
+                        {isProcessing || isDeepAgentActive ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                        {isResearchRequest(inputText) ? 'Start Research' : 'Send'}
+                      </button>
                     </div>
                   )}
                 </div>
               </div>
-            )}
 
-            {/* Quick Select Buttons - Always visible but compact */}
-            {agentSelectionMode === 'manual' && (
-              <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-white/5 flex-wrap">
-                <button
-                  onClick={() => setEnabledAgents(new Set(AVAILABLE_AGENTS.map(a => a.id)))}
-                  className="px-2 py-1 rounded bg-[#2d2d2d] hover:bg-[#3d3d3d] text-[10px] text-gray-400 hover:text-white"
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setEnabledAgents(new Set())}
-                  className="px-2 py-1 rounded bg-[#2d2d2d] hover:bg-[#3d3d3d] text-[10px] text-gray-400 hover:text-white"
-                >
-                  None
-                </button>
-                <button
-                  onClick={() => setEnabledAgents(new Set(
-                    AVAILABLE_AGENTS.filter(a => a.category === 'advanced').map(a => a.id)
-                  ))}
-                  className="px-2 py-1 rounded bg-violet-500/10 border border-violet-500/30 text-[10px] text-violet-400"
-                >
-                  🧠 Pro
-                </button>
-                <button
-                  onClick={() => setEnabledAgents(new Set(
-                    AVAILABLE_AGENTS.filter(a => a.category === 'chemistry').map(a => a.id)
-                  ))}
-                  className="px-2 py-1 rounded bg-green-500/10 border border-green-500/30 text-[10px] text-green-400"
-                >
-                  Chem
-                </button>
-                <button
-                  onClick={() => setEnabledAgents(new Set(
-                    AVAILABLE_AGENTS.filter(a => a.category === 'research' || a.category === 'writing').map(a => a.id)
-                  ))}
-                  className="px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-400"
-                >
-                  Research
-                </button>
-              </div>
-            )}
-
-            {/* Compact Start Research Button */}
-            <button
-              onClick={() => {
-                if (inputText.trim()) {
-                  const activeAgentsList = Array.from(enabledAgents).join(', ');
-                  const agentInstruction = agentSelectionMode === 'manual' 
-                    ? `\n\n[User has selected these agents: ${activeAgentsList}. Prefer using these agents when delegating tasks.]`
-                    : '';
-                  handleDeepAgentResearch(inputText + agentInstruction);
-                }
-              }}
-              disabled={isProcessing || isDeepAgentActive || !inputText.trim()}
-              className="w-full mt-3 p-2.5 rounded-lg bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-cyan-500/20 hover:from-purple-500/30 hover:via-blue-500/30 hover:to-cyan-500/30 border border-purple-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Brain className="h-4 w-4 text-purple-400" />
-                  <span className="text-sm font-medium text-white">Start Deep Research</span>
-                </div>
-                {isDeepAgentActive ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-purple-400 group-hover:translate-x-1 transition-transform" />
-                )}
-              </div>
-            </button>
-          </div>
-
-          {/* Deep Agent Status Panel */}
-          {(isDeepAgentActive || deepAgentSteps.length > 0) && (
-            <div className="border-b border-white/5 bg-gradient-to-r from-purple-900/10 to-blue-900/10">
-              <div className="p-4">
+              {/* AI Agents Panel */}
+              <div className="p-4 border-b border-white/5">
+                {/* Header with Config Toggle */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <Activity className={`h-4 w-4 ${isDeepAgentActive ? 'text-purple-400 animate-pulse' : 'text-green-400'}`} />
-                    <span className="text-sm font-medium">
-                      {isDeepAgentActive ? 'Deep Agent Working...' : 'Research Complete'}
-                    </span>
+                    <Brain className="h-4 w-4 text-purple-400" />
+                    <p className="text-sm font-medium">AI Agents</p>
+                    <span className="text-xs text-gray-500">({enabledAgents.size} active)</span>
                   </div>
-                  {deepAgentStatus !== 'idle' && (
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${
-                      deepAgentStatus === 'thinking' ? 'bg-yellow-500/20 text-yellow-400' :
-                      deepAgentStatus === 'searching' ? 'bg-blue-500/20 text-blue-400' :
-                      deepAgentStatus === 'writing' ? 'bg-purple-500/20 text-purple-400' :
-                      'bg-green-500/20 text-green-400'
-                    }`}>
-                      {deepAgentStatus === 'thinking' ? '🧠 Thinking' :
-                       deepAgentStatus === 'searching' ? '🔍 Searching' :
-                       deepAgentStatus === 'writing' ? '✍️ Writing' :
-                       '✅ Complete'}
-                    </span>
-                  )}
-                </div>
-                
-                {/* Agent Steps */}
-                <div className="max-h-32 overflow-y-auto space-y-1">
-                  {deepAgentSteps.slice(-5).map((step) => (
-                    <div key={step.id} className="flex items-center gap-2 text-xs">
-                      {step.type === 'thinking' && <Brain className="h-3 w-3 text-yellow-400" />}
-                      {step.type === 'searching' && <Search className="h-3 w-3 text-blue-400" />}
-                      {step.type === 'writing' && <PenLine className="h-3 w-3 text-purple-400" />}
-                      {step.type === 'tool' && <Zap className="h-3 w-3 text-orange-400" />}
-                      {step.type === 'complete' && <CheckCircle2 className="h-3 w-3 text-green-400" />}
-                      <span className="text-gray-400">{step.message}</span>
-                      <span className="text-gray-600 ml-auto">
-                        {step.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </span>
+                  <div className="flex items-center gap-2">
+                    {/* Selection Mode Toggle */}
+                    <div className="flex items-center gap-1 bg-[#2d2d2d] rounded-lg p-1">
+                      <button
+                        onClick={() => setAgentSelectionMode('auto')}
+                        className={`px-2 py-1 rounded text-xs transition-colors ${agentSelectionMode === 'auto'
+                          ? 'bg-purple-500/30 text-purple-300'
+                          : 'text-gray-400 hover:text-white'
+                          }`}
+                      >
+                        Auto
+                      </button>
+                      <button
+                        onClick={() => setAgentSelectionMode('manual')}
+                        className={`px-2 py-1 rounded text-xs transition-colors ${agentSelectionMode === 'manual'
+                          ? 'bg-purple-500/30 text-purple-300'
+                          : 'text-gray-400 hover:text-white'
+                          }`}
+                      >
+                        Manual
+                      </button>
                     </div>
-                  ))}
-                  <div ref={deepAgentStepsRef} />
+                    <button
+                      onClick={() => setShowAgentConfig(!showAgentConfig)}
+                      className={`p-1.5 rounded-lg transition-colors ${showAgentConfig ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-[#2d2d2d] text-gray-400'
+                        }`}
+                      title={showAgentConfig ? 'Collapse agents' : 'Expand agents'}
+                    >
+                      {showAgentConfig ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
-                
-                {/* Tasks Progress */}
-                {deepAgentTasks.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-white/5">
-                    {deepAgentTasks.map((task) => (
-                      <div key={task.id} className="flex items-center gap-2">
-                        {task.status === 'in-progress' && <Loader2 className="h-3 w-3 animate-spin text-purple-400" />}
-                        {task.status === 'completed' && <CheckCircle2 className="h-3 w-3 text-green-400" />}
-                        {task.status === 'error' && <AlertCircle className="h-3 w-3 text-red-400" />}
-                        <span className="text-xs text-gray-300">{task.title}</span>
-                      </div>
-                    ))}
+
+                {/* Mode Description */}
+                <p className="text-xs text-gray-500 mb-2">
+                  {agentSelectionMode === 'auto'
+                    ? '🤖 AI will automatically select the best agents for your query'
+                    : '👆 Click agents to enable/disable them'}
+                </p>
+
+                {/* Compact Agent Grid - Collapsible */}
+                {showAgentConfig ? (
+                  /* Expanded View - Show all agents in compact cards */
+                  <div className="grid grid-cols-3 lg:grid-cols-4 gap-1.5 max-h-[280px] overflow-y-auto pr-1">
+                    {AVAILABLE_AGENTS.map((agent) => {
+                      const isEnabled = enabledAgents.has(agent.id);
+                      const isRunning = activeSubagent === agent.id ||
+                        activeSubagent === agent.name.toLowerCase().replace(/\s+/g, '-') ||
+                        (activeSubagent && agent.id.includes(activeSubagent)) ||
+                        (activeSubagent && activeSubagent.includes(agent.id));
+                      const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
+                        blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
+                        indigo: { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' },
+                        green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
+                        yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-400' },
+                        orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
+                        purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
+                        pink: { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-400' },
+                        cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' },
+                        red: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
+                        gray: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-400' },
+                        violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/30', text: 'text-violet-400' },
+                        emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400' },
+                      };
+                      const colors = colorClasses[agent.color] || colorClasses.gray;
+
+                      return (
+                        <div
+                          key={agent.id}
+                          onClick={() => {
+                            if (agentSelectionMode === 'manual') {
+                              setEnabledAgents(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(agent.id)) {
+                                  newSet.delete(agent.id);
+                                } else {
+                                  newSet.add(agent.id);
+                                }
+                                return newSet;
+                              });
+                            }
+                          }}
+                          title={agent.description}
+                          className={`relative p-2 rounded-lg border transition-all cursor-pointer ${isRunning
+                            ? `${colors.bg} ${colors.border} ring-1 ring-offset-1 ring-offset-[#1a1a1a] ${colors.border.replace('border-', 'ring-')}`
+                            : isEnabled
+                              ? `${colors.bg} ${colors.border}`
+                              : 'bg-[#2d2d2d] border-white/5 opacity-50'
+                            } ${agentSelectionMode === 'manual' ? 'hover:opacity-100' : ''}`}
+                        >
+                          {/* Running/Enabled Indicator */}
+                          {isRunning ? (
+                            <div className="absolute top-1 right-1">
+                              <Loader2 className={`h-3 w-3 animate-spin ${colors.text}`} />
+                            </div>
+                          ) : isEnabled && (
+                            <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
+                          )}
+
+                          {/* Compact Agent Info */}
+                          <div className="flex items-center gap-1.5">
+                            <span className={`${colors.text} flex-shrink-0 ${isRunning ? 'animate-pulse' : ''}`}>
+                              {React.cloneElement(agent.icon as React.ReactElement, { className: 'h-3.5 w-3.5' })}
+                            </span>
+                            <span className="text-[11px] font-medium truncate">
+                              {agent.name.replace('🧠 ', '').replace('📚 ', '').replace('🎯 ', '').replace('🔬 ', '')}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Collapsed View - Just show count and quick info */
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-gray-500">
+                      {enabledAgents.size} of {AVAILABLE_AGENTS.length} agents active
+                    </span>
+                    <div className="flex gap-1">
+                      {Array.from(enabledAgents).slice(0, 5).map(id => {
+                        const agent = AVAILABLE_AGENTS.find(a => a.id === id);
+                        if (!agent) return null;
+                        const colorClasses: Record<string, string> = {
+                          blue: 'bg-blue-500/30', indigo: 'bg-indigo-500/30', green: 'bg-green-500/30',
+                          yellow: 'bg-yellow-500/30', orange: 'bg-orange-500/30', purple: 'bg-purple-500/30',
+                          pink: 'bg-pink-500/30', cyan: 'bg-cyan-500/30', red: 'bg-red-500/30',
+                          gray: 'bg-gray-500/30', violet: 'bg-violet-500/30', emerald: 'bg-emerald-500/30',
+                        };
+                        return (
+                          <div key={id} className={`w-5 h-5 rounded flex items-center justify-center ${colorClasses[agent.color] || 'bg-gray-500/30'}`} title={agent.name}>
+                            {React.cloneElement(agent.icon as React.ReactElement, { className: 'h-3 w-3' })}
+                          </div>
+                        );
+                      })}
+                      {enabledAgents.size > 5 && (
+                        <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center text-[10px] text-gray-400">
+                          +{enabledAgents.size - 5}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
-                
-                {/* Final Document Link */}
-                {finalDocument && researchDocId && (
-                  <div className="mt-3 pt-3 border-t border-white/5">
+
+                {/* Quick Select Buttons - Always visible but compact */}
+                {agentSelectionMode === 'manual' && (
+                  <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-white/5 flex-wrap">
                     <button
-                      onClick={() => {
-                        const doc: DocumentInfo = {
-                          id: researchDocId,
-                          name: finalDocument.title,
-                          modifiedTime: new Date().toISOString(),
-                          webViewLink: `https://docs.google.com/document/d/${researchDocId}/edit`
-                        };
-                        setSelectedGoogleDoc(doc);
-                        setActiveView('googledoc');
-                      }}
-                      className="w-full p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400 text-sm flex items-center gap-2 transition-colors"
+                      onClick={() => setEnabledAgents(new Set(AVAILABLE_AGENTS.map(a => a.id)))}
+                      className="px-2 py-1 rounded bg-[#2d2d2d] hover:bg-[#3d3d3d] text-[10px] text-gray-400 hover:text-white"
                     >
-                      <FileText className="h-4 w-4" />
-                      View Research Document
-                      <ExternalLink className="h-3 w-3 ml-auto" />
+                      All
+                    </button>
+                    <button
+                      onClick={() => setEnabledAgents(new Set())}
+                      className="px-2 py-1 rounded bg-[#2d2d2d] hover:bg-[#3d3d3d] text-[10px] text-gray-400 hover:text-white"
+                    >
+                      None
+                    </button>
+                    <button
+                      onClick={() => setEnabledAgents(new Set(
+                        AVAILABLE_AGENTS.filter(a => a.category === 'advanced').map(a => a.id)
+                      ))}
+                      className="px-2 py-1 rounded bg-violet-500/10 border border-violet-500/30 text-[10px] text-violet-400"
+                    >
+                      🧠 Pro
+                    </button>
+                    <button
+                      onClick={() => setEnabledAgents(new Set(
+                        AVAILABLE_AGENTS.filter(a => a.category === 'chemistry').map(a => a.id)
+                      ))}
+                      className="px-2 py-1 rounded bg-green-500/10 border border-green-500/30 text-[10px] text-green-400"
+                    >
+                      Chem
+                    </button>
+                    <button
+                      onClick={() => setEnabledAgents(new Set(
+                        AVAILABLE_AGENTS.filter(a => a.category === 'research' || a.category === 'writing').map(a => a.id)
+                      ))}
+                      className="px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-400"
+                    >
+                      Research
                     </button>
                   </div>
                 )}
-              </div>
-            </div>
-          )}
 
-          {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="w-16 h-16 rounded-full bg-purple-500/10 flex items-center justify-center mb-4">
-                  <Sparkles className="h-8 w-8 text-purple-400" />
-                </div>
-                <p className="text-gray-400 mb-2">AI responses will appear here</p>
-                <p className="text-sm text-gray-500">Paste text and select an action to begin</p>
-              </div>
-            )}
-            
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`${message.role === 'assistant' ? 'bg-[#2d2d2d] rounded-xl p-4' : ''}`}
-              >
-                {message.role === 'user' ? (
-                  <div className="flex items-start gap-3">
-                    <div className="text-xs text-gray-500">Today • {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                    <p className="text-sm text-gray-300">{message.content}</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed mb-4">
-                      {message.content}
+                {/* Compact Start Research Button */}
+                <button
+                  onClick={() => {
+                    if (inputText.trim()) {
+                      const activeAgentsList = Array.from(enabledAgents).join(', ');
+                      const agentInstruction = agentSelectionMode === 'manual'
+                        ? `\n\n[User has selected these agents: ${activeAgentsList}. Prefer using these agents when delegating tasks.]`
+                        : '';
+                      handleDeepAgentResearch(inputText + agentInstruction);
+                    }
+                  }}
+                  disabled={isProcessing || isDeepAgentActive || !inputText.trim()}
+                  className="w-full mt-3 p-2.5 rounded-lg bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-cyan-500/20 hover:from-purple-500/30 hover:via-blue-500/30 hover:to-cyan-500/30 border border-purple-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-purple-400" />
+                      <span className="text-sm font-medium text-white">Start Deep Research</span>
                     </div>
-                    {message.sources && message.sources.length > 0 && (
-                      <div className="flex items-center gap-2 mb-3">
-                        {message.sources.slice(0, 3).map((source, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-xs"
-                          >
-                            {idx + 1}
+                    {isDeepAgentActive ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-purple-400 group-hover:translate-x-1 transition-transform" />
+                    )}
+                  </div>
+                </button>
+              </div>
+
+              {/* Deep Agent Status Panel */}
+              {(isDeepAgentActive || deepAgentSteps.length > 0) && (
+                <div className="border-b border-white/5 bg-gradient-to-r from-purple-900/10 to-blue-900/10">
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Activity className={`h-4 w-4 ${isDeepAgentActive ? 'text-purple-400 animate-pulse' : 'text-green-400'}`} />
+                        <span className="text-sm font-medium">
+                          {isDeepAgentActive ? 'Deep Agent Working...' : 'Research Complete'}
+                        </span>
+                      </div>
+                      {deepAgentStatus !== 'idle' && (
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${deepAgentStatus === 'thinking' ? 'bg-yellow-500/20 text-yellow-400' :
+                          deepAgentStatus === 'searching' ? 'bg-blue-500/20 text-blue-400' :
+                            deepAgentStatus === 'writing' ? 'bg-purple-500/20 text-purple-400' :
+                              'bg-green-500/20 text-green-400'
+                          }`}>
+                          {deepAgentStatus === 'thinking' ? '🧠 Thinking' :
+                            deepAgentStatus === 'searching' ? '🔍 Searching' :
+                              deepAgentStatus === 'writing' ? '✍️ Writing' :
+                                '✅ Complete'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Agent Steps */}
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {deepAgentSteps.slice(-5).map((step) => (
+                        <div key={step.id} className="flex items-center gap-2 text-xs">
+                          {step.type === 'thinking' && <Brain className="h-3 w-3 text-yellow-400" />}
+                          {step.type === 'searching' && <Search className="h-3 w-3 text-blue-400" />}
+                          {step.type === 'writing' && <PenLine className="h-3 w-3 text-purple-400" />}
+                          {step.type === 'tool' && <Zap className="h-3 w-3 text-orange-400" />}
+                          {step.type === 'complete' && <CheckCircle2 className="h-3 w-3 text-green-400" />}
+                          <span className="text-gray-400">{step.message}</span>
+                          <span className="text-gray-600 ml-auto">
+                            {step.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </span>
+                        </div>
+                      ))}
+                      <div ref={deepAgentStepsRef} />
+                    </div>
+
+                    {/* Tasks Progress */}
+                    {deepAgentTasks.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-white/5">
+                        {deepAgentTasks.map((task) => (
+                          <div key={task.id} className="flex items-center gap-2">
+                            {task.status === 'in-progress' && <Loader2 className="h-3 w-3 animate-spin text-purple-400" />}
+                            {task.status === 'completed' && <CheckCircle2 className="h-3 w-3 text-green-400" />}
+                            {task.status === 'error' && <AlertCircle className="h-3 w-3 text-red-400" />}
+                            <span className="text-xs text-gray-300">{task.title}</span>
+                          </div>
                         ))}
                       </div>
                     )}
-                    <div className="flex items-center gap-2 pt-3 border-t border-white/5">
-                      <button
-                        onClick={() => saveToNote(message.content)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-[#3d3d3d] text-sm text-gray-400 hover:text-white transition-colors"
-                      >
-                        <StickyNote className="h-4 w-4" />
-                        Save to note
-                      </button>
-                      <button
-                        onClick={() => copyToClipboard(message.content)}
-                        className="p-1.5 rounded-lg hover:bg-[#3d3d3d] text-gray-400 hover:text-white transition-colors"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </button>
+
+                    {/* Final Document Link */}
+                    {finalDocument && researchDocId && (
+                      <div className="mt-3 pt-3 border-t border-white/5">
+                        <button
+                          onClick={() => {
+                            const doc: DocumentInfo = {
+                              id: researchDocId,
+                              name: finalDocument.title,
+                              modifiedTime: new Date().toISOString(),
+                              webViewLink: `https://docs.google.com/document/d/${researchDocId}/edit`
+                            };
+                            setSelectedGoogleDoc(doc);
+                            setActiveView('googledoc');
+                          }}
+                          className="w-full p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400 text-sm flex items-center gap-2 transition-colors"
+                        >
+                          <FileText className="h-4 w-4" />
+                          View Research Document
+                          <ExternalLink className="h-3 w-3 ml-auto" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Chat Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="w-16 h-16 rounded-full bg-purple-500/10 flex items-center justify-center mb-4">
+                      <Sparkles className="h-8 w-8 text-purple-400" />
                     </div>
-                  </>
+                    <p className="text-gray-400 mb-2">AI responses will appear here</p>
+                    <p className="text-sm text-gray-500">Paste text and select an action to begin</p>
+                  </div>
                 )}
+
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`${message.role === 'assistant' ? 'bg-[#2d2d2d] rounded-xl p-4' : ''}`}
+                  >
+                    {message.role === 'user' ? (
+                      <div className="flex items-start gap-3">
+                        <div className="text-xs text-gray-500">Today • {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <p className="text-sm text-gray-300">{message.content}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed mb-4">
+                          {message.content}
+                        </div>
+                        {message.sources && message.sources.length > 0 && (
+                          <div className="flex items-center gap-2 mb-3">
+                            {message.sources.slice(0, 3).map((source, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-xs"
+                              >
+                                {idx + 1}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 pt-3 border-t border-white/5">
+                          <button
+                            onClick={() => saveToNote(message.content)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-[#3d3d3d] text-sm text-gray-400 hover:text-white transition-colors"
+                          >
+                            <StickyNote className="h-4 w-4" />
+                            Save to note
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(message.content)}
+                            className="p-1.5 rounded-lg hover:bg-[#3d3d3d] text-gray-400 hover:text-white transition-colors"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+
+                {isProcessing && (
+                  <div className="bg-[#2d2d2d] rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
+                      <span className="text-sm text-gray-400">Processing...</span>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={chatEndRef} />
               </div>
-            ))}
-            
-            {isProcessing && (
-              <div className="bg-[#2d2d2d] rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
-                  <span className="text-sm text-gray-400">Processing...</span>
+
+              {/* Chat Input */}
+              <div className="p-4 border-t border-white/10">
+                <div className="flex items-center gap-3 p-3 rounded-full bg-[#2d2d2d] border border-white/5">
+                  <input
+                    type="text"
+                    value={customPrompt}
+                    onChange={(e) => setCustomPrompt(e.target.value)}
+                    placeholder="Ask a custom question..."
+                    onKeyDown={(e) => e.key === 'Enter' && handleCustomPrompt()}
+                    className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-500"
+                  />
+                  <span className="text-xs text-gray-500">{sources.filter(s => s.selected).length} source{sources.filter(s => s.selected).length !== 1 ? 's' : ''}</span>
+                  <button
+                    onClick={handleCustomPrompt}
+                    disabled={isProcessing || !customPrompt.trim() || !inputText.trim()}
+                    className="p-2 rounded-full bg-purple-500 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Send className="h-4 w-4 text-white" />
+                  </button>
                 </div>
               </div>
-            )}
-            
-            <div ref={chatEndRef} />
-          </div>
-
-          {/* Chat Input */}
-          <div className="p-4 border-t border-white/10">
-            <div className="flex items-center gap-3 p-3 rounded-full bg-[#2d2d2d] border border-white/5">
-              <input
-                type="text"
-                value={customPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-                placeholder="Ask a custom question..."
-                onKeyDown={(e) => e.key === 'Enter' && handleCustomPrompt()}
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-500"
-              />
-              <span className="text-xs text-gray-500">{sources.filter(s => s.selected).length} source{sources.filter(s => s.selected).length !== 1 ? 's' : ''}</span>
-              <button
-                onClick={handleCustomPrompt}
-                disabled={isProcessing || !customPrompt.trim() || !inputText.trim()}
-                className="p-2 rounded-full bg-purple-500 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send className="h-4 w-4 text-white" />
-              </button>
-            </div>
-          </div>
             </>
           )}
         </main>
 
         {/* ============ RIGHT PANEL - STUDIO ============ */}
-        {rightPanelOpen && (
-          <aside className="w-72 border-l border-white/10 flex flex-col bg-[#1a1a1a]">
-            {/* Studio Header */}
-            <div className="p-4 flex items-center justify-between border-b border-white/5">
-              <h2 className="text-sm font-medium text-gray-400">Studio</h2>
-              <button
-                onClick={() => setRightPanelOpen(false)}
-                className="p-1 hover:bg-[#2d2d2d] rounded transition-colors"
-              >
-                <PanelRightClose className="h-4 w-4 text-gray-400" />
-              </button>
-            </div>
-
-            {/* Studio Tools Grid */}
-            <div className="p-4">
-              <div className="grid grid-cols-2 gap-2">
-                {studioTools.map((tool) => (
-                  <button
-                    key={tool.id}
-                    onClick={tool.action}
-                    className="p-3 rounded-xl bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-purple-500/30 text-left transition-all group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-purple-400 group-hover:text-purple-300">{tool.icon}</span>
-                      <PenLine className="h-3 w-3 text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                    <p className="text-xs text-gray-400 mt-2">{tool.label}</p>
-                  </button>
-                ))}
+        {
+          rightPanelOpen && (
+            <aside className="w-72 border-l border-white/10 flex flex-col bg-[#1a1a1a]">
+              {/* Studio Header */}
+              <div className="p-4 flex items-center justify-between border-b border-white/5">
+                <h2 className="text-sm font-medium text-gray-400">Studio</h2>
+                <button
+                  onClick={() => setRightPanelOpen(false)}
+                  className="p-1 hover:bg-[#2d2d2d] rounded transition-colors"
+                >
+                  <PanelRightClose className="h-4 w-4 text-gray-400" />
+                </button>
               </div>
-            </div>
 
-            {/* Artifacts Section */}
-            <div className="flex-1 overflow-y-auto border-t border-white/5">
+              {/* Studio Tools Grid */}
               <div className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-gray-400">Artifacts</h3>
-                  {artifacts.length > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs">
-                      {artifacts.length}
-                    </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {studioTools.map((tool) => (
+                    <button
+                      key={tool.id}
+                      onClick={tool.action}
+                      className="p-3 rounded-xl bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-purple-500/30 text-left transition-all group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-purple-400 group-hover:text-purple-300">{tool.icon}</span>
+                        <PenLine className="h-3 w-3 text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">{tool.label}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Artifacts Section */}
+              <div className="flex-1 overflow-y-auto border-t border-white/5">
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-400">Artifacts</h3>
+                    {artifacts.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs">
+                        {artifacts.length}
+                      </span>
+                    )}
+                  </div>
+
+                  {artifacts.length === 0 && notes.length === 0 ? (
+                    <div className="text-center py-8">
+                      <FileCode className="h-8 w-8 text-gray-600 mx-auto mb-2" />
+                      <p className="text-xs text-gray-500">No artifacts yet</p>
+                      <p className="text-xs text-gray-600">Research outputs will appear here</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Artifacts from Deep Agent */}
+                      {artifacts.map((artifact) => (
+                        <div
+                          key={artifact.id}
+                          onClick={() => {
+                            setSelectedArtifact(artifact);
+                            setShowArtifactModal(true);
+                          }}
+                          className="p-3 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] cursor-pointer transition-colors group border-l-2 border-purple-500"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-2">
+                              {artifact.type === 'research' && <Brain className="h-4 w-4 text-purple-400" />}
+                              {artifact.type === 'document' && <FileText className="h-4 w-4 text-blue-400" />}
+                              {artifact.type === 'code' && <Code className="h-4 w-4 text-green-400" />}
+                              {artifact.type === 'notes' && <StickyNote className="h-4 w-4 text-yellow-400" />}
+                              <span className="text-sm font-medium truncate max-w-[130px]">{artifact.title}</span>
+                            </div>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(artifact.content);
+                                  showNotification('Copied to clipboard');
+                                }}
+                                className="p-1 hover:bg-[#4d4d4d] rounded"
+                              >
+                                <Copy className="h-4 w-4 text-gray-400" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setArtifacts(prev => prev.filter(a => a.id !== artifact.id));
+                                }}
+                                className="p-1 hover:bg-red-500/20 rounded"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-400" />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {artifact.agentName} · {artifact.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      ))}
+
+                      {/* Legacy Notes */}
+                      {notes.map((note) => (
+                        <div
+                          key={note.id}
+                          className="p-3 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] cursor-pointer transition-colors group"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-2">
+                              <StickyNote className="h-4 w-4 text-yellow-500" />
+                              <span className="text-sm font-medium truncate max-w-[150px]">{note.title}</span>
+                            </div>
+                            <button className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#4d4d4d] rounded transition-all">
+                              <MoreHorizontal className="h-3 w-3 text-gray-400" />
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {note.sourceCount} source{note.sourceCount !== 1 ? 's' : ''} · {note.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-                
-                {artifacts.length === 0 && notes.length === 0 ? (
-                  <div className="text-center py-8">
-                    <FileCode className="h-8 w-8 text-gray-600 mx-auto mb-2" />
-                    <p className="text-xs text-gray-500">No artifacts yet</p>
-                    <p className="text-xs text-gray-600">Research outputs will appear here</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {/* Artifacts from Deep Agent */}
-                    {artifacts.map((artifact) => (
-                      <div
-                        key={artifact.id}
-                        onClick={() => {
-                          setSelectedArtifact(artifact);
-                          setShowArtifactModal(true);
-                        }}
-                        className="p-3 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] cursor-pointer transition-colors group border-l-2 border-purple-500"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-2">
-                            {artifact.type === 'research' && <Brain className="h-4 w-4 text-purple-400" />}
-                            {artifact.type === 'document' && <FileText className="h-4 w-4 text-blue-400" />}
-                            {artifact.type === 'code' && <Code className="h-4 w-4 text-green-400" />}
-                            {artifact.type === 'notes' && <StickyNote className="h-4 w-4 text-yellow-400" />}
-                            <span className="text-sm font-medium truncate max-w-[130px]">{artifact.title}</span>
-                          </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(artifact.content);
-                                showNotification('Copied to clipboard');
-                              }}
-                              className="p-1 hover:bg-[#4d4d4d] rounded"
-                            >
-                              <Copy className="h-4 w-4 text-gray-400" />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setArtifacts(prev => prev.filter(a => a.id !== artifact.id));
-                              }}
-                              className="p-1 hover:bg-red-500/20 rounded"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-400" />
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {artifact.agentName} · {artifact.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    ))}
-                    
-                    {/* Legacy Notes */}
-                    {notes.map((note) => (
-                      <div
-                        key={note.id}
-                        className="p-3 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] cursor-pointer transition-colors group"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-2">
-                            <StickyNote className="h-4 w-4 text-yellow-500" />
-                            <span className="text-sm font-medium truncate max-w-[150px]">{note.title}</span>
-                          </div>
-                          <button className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#4d4d4d] rounded transition-all">
-                            <MoreHorizontal className="h-3 w-3 text-gray-400" />
-                          </button>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {note.sourceCount} source{note.sourceCount !== 1 ? 's' : ''} · {note.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
-            </div>
 
-            {/* Add Note Button */}
-            <div className="p-4 border-t border-white/5">
-              <button 
-                onClick={() => {
-                  const newNote: Note = {
-                    id: Date.now().toString(),
-                    title: 'New Note',
-                    content: '',
-                    timestamp: new Date(),
-                    sourceCount: 0
-                  };
-                  setNotes(prev => [...prev, newNote]);
-                }}
-                className="w-full py-2.5 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                Add note
-              </button>
-            </div>
-          </aside>
-        )}
+              {/* Add Note Button */}
+              <div className="p-4 border-t border-white/5">
+                <button
+                  onClick={() => {
+                    const newNote: Note = {
+                      id: Date.now().toString(),
+                      title: 'New Note',
+                      content: '',
+                      timestamp: new Date(),
+                      sourceCount: 0
+                    };
+                    setNotes(prev => [...prev, newNote]);
+                  }}
+                  className="w-full py-2.5 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add note
+                </button>
+              </div>
+            </aside>
+          )
+        }
 
         {/* Toggle Right Panel (when closed) */}
-        {!rightPanelOpen && (
-          <button
-            onClick={() => setRightPanelOpen(true)}
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-l-lg transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4 text-gray-400" />
-          </button>
-        )}
-      </div>
+        {
+          !rightPanelOpen && (
+            <button
+              onClick={() => setRightPanelOpen(true)}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-l-lg transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4 text-gray-400" />
+            </button>
+          )
+        }
+      </div >
 
       {/* ============ ARTIFACT MODAL ============ */}
-      {showArtifactModal && selectedArtifact && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-4xl max-h-[90vh] bg-[#1a1a1a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <div className="flex items-center gap-3">
-                {selectedArtifact.type === 'research' && <Brain className="h-5 w-5 text-purple-400" />}
-                {selectedArtifact.type === 'document' && <FileText className="h-5 w-5 text-blue-400" />}
-                {selectedArtifact.type === 'code' && <Code className="h-5 w-5 text-green-400" />}
-                <div>
-                  <h2 className="text-lg font-medium">{selectedArtifact.title}</h2>
-                  <p className="text-xs text-gray-500">{selectedArtifact.agentName} · {selectedArtifact.createdAt.toLocaleString()}</p>
+      {
+        showArtifactModal && selectedArtifact && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-4xl max-h-[90vh] bg-[#1a1a1a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  {selectedArtifact.type === 'research' && <Brain className="h-5 w-5 text-purple-400" />}
+                  {selectedArtifact.type === 'document' && <FileText className="h-5 w-5 text-blue-400" />}
+                  {selectedArtifact.type === 'code' && <Code className="h-5 w-5 text-green-400" />}
+                  <div>
+                    <h2 className="text-lg font-medium">{selectedArtifact.title}</h2>
+                    <p className="text-xs text-gray-500">{selectedArtifact.agentName} · {selectedArtifact.createdAt.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedArtifact.content);
+                      showNotification('Copied to clipboard');
+                    }}
+                    className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                    title="Copy"
+                  >
+                    <Copy className="h-4 w-4 text-gray-400" />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (googleUser) {
+                        try {
+                          showNotification('Creating Google Doc...');
+                          const result = await createGoogleDocWithContent(
+                            selectedArtifact.title,
+                            selectedArtifact.content,
+                            'markdown'
+                          );
+                          if (result.success && result.document) {
+                            const newDoc: DocumentInfo = {
+                              id: result.document.documentId,
+                              name: result.document.title || selectedArtifact.title,
+                              modifiedTime: new Date().toISOString(),
+                              webViewLink: `https://docs.google.com/document/d/${result.document.documentId}/edit`
+                            };
+                            setGoogleDocs(prev => [newDoc, ...prev]);
+                            setSelectedGoogleDoc(newDoc);
+                            setShowArtifactModal(false);
+                            setActiveView('googledoc');
+                            showNotification('✓ Saved to Google Docs!');
+                          }
+                        } catch (error) {
+                          showNotification('Failed to save to Google Docs');
+                        }
+                      } else {
+                        showNotification('Sign in with Google to save');
+                      }
+                    }}
+                    className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                    title="Save to Google Docs"
+                  >
+                    <Save className="h-4 w-4 text-blue-400" />
+                  </button>
+                  <button
+                    onClick={() => setShowArtifactModal(false)}
+                    className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                  >
+                    <X className="h-4 w-4 text-gray-400" />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(selectedArtifact.content);
-                    showNotification('Copied to clipboard');
-                  }}
-                  className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
-                  title="Copy"
-                >
-                  <Copy className="h-4 w-4 text-gray-400" />
-                </button>
-                <button
-                  onClick={async () => {
-                    if (googleUser) {
-                      try {
-                        showNotification('Creating Google Doc...');
-                        const result = await createGoogleDocWithContent(
-                          selectedArtifact.title,
-                          selectedArtifact.content,
-                          'markdown'
-                        );
-                        if (result.success && result.document) {
-                          const newDoc: DocumentInfo = {
-                            id: result.document.documentId,
-                            name: result.document.title || selectedArtifact.title,
-                            modifiedTime: new Date().toISOString(),
-                            webViewLink: `https://docs.google.com/document/d/${result.document.documentId}/edit`
-                          };
-                          setGoogleDocs(prev => [newDoc, ...prev]);
-                          setSelectedGoogleDoc(newDoc);
-                          setShowArtifactModal(false);
-                          setActiveView('googledoc');
-                          showNotification('✓ Saved to Google Docs!');
-                        }
-                      } catch (error) {
-                        showNotification('Failed to save to Google Docs');
-                      }
-                    } else {
-                      showNotification('Sign in with Google to save');
-                    }
-                  }}
-                  className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
-                  title="Save to Google Docs"
-                >
-                  <Save className="h-4 w-4 text-blue-400" />
-                </button>
-                <button
-                  onClick={() => setShowArtifactModal(false)}
-                  className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
-                >
-                  <X className="h-4 w-4 text-gray-400" />
-                </button>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="prose prose-invert prose-sm max-w-none">
+                  <ReactMarkdown>{selectedArtifact.content}</ReactMarkdown>
+                </div>
               </div>
-            </div>
-            
-            {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="prose prose-invert prose-sm max-w-none">
-                <ReactMarkdown>{selectedArtifact.content}</ReactMarkdown>
-              </div>
-            </div>
-            
-            {/* Modal Footer */}
-            <div className="flex items-center justify-between p-4 border-t border-white/10 bg-[#151515]">
-              <p className="text-xs text-gray-500">
-                {selectedArtifact.content.split(/\s+/).length} words
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setInputText(selectedArtifact.content);
-                    setShowArtifactModal(false);
-                    showNotification('Content loaded to input');
-                  }}
-                  className="px-4 py-2 rounded-lg bg-purple-500/20 text-purple-400 text-sm hover:bg-purple-500/30 transition-colors"
-                >
-                  Use as Input
-                </button>
-                <button
-                  onClick={() => setShowArtifactModal(false)}
-                  className="px-4 py-2 rounded-lg bg-[#2d2d2d] text-sm hover:bg-[#3d3d3d] transition-colors"
-                >
-                  Close
-                </button>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between p-4 border-t border-white/10 bg-[#151515]">
+                <p className="text-xs text-gray-500">
+                  {selectedArtifact.content.split(/\s+/).length} words
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setInputText(selectedArtifact.content);
+                      setShowArtifactModal(false);
+                      showNotification('Content loaded to input');
+                    }}
+                    className="px-4 py-2 rounded-lg bg-purple-500/20 text-purple-400 text-sm hover:bg-purple-500/30 transition-colors"
+                  >
+                    Use as Input
+                  </button>
+                  <button
+                    onClick={() => setShowArtifactModal(false)}
+                    className="px-4 py-2 rounded-lg bg-[#2d2d2d] text-sm hover:bg-[#3d3d3d] transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Footer */}
       <footer className="h-8 flex items-center justify-between px-4 border-t border-white/5 bg-[#1a1a1a]">
@@ -3330,12 +3436,14 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       </footer>
 
       {/* ============ NOTIFICATION TOAST ============ */}
-      {notification && (
-        <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2 px-6 py-3 rounded-full bg-purple-500 text-white font-medium text-sm shadow-lg shadow-purple-500/20 animate-pulse">
-          {notification}
-        </div>
-      )}
-    </div>
+      {
+        notification && (
+          <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2 px-6 py-3 rounded-full bg-purple-500 text-white font-medium text-sm shadow-lg shadow-purple-500/20 animate-pulse">
+            {notification}
+          </div>
+        )
+      }
+    </div >
   );
 };
 

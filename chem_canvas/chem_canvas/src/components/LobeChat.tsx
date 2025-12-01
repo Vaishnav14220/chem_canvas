@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Copy, ThumbsUp, ThumbsDown, RotateCcw } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Bot, User, Copy, ThumbsUp, ThumbsDown, RotateCcw, History, ChevronLeft, Trash2, Pin } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -8,6 +8,7 @@ import * as geminiService from '../services/geminiService';
 import { detectToolCalls, executeToolCalls } from '../services/aiToolOrchestrator';
 import type { AIToolResponse } from '../types';
 import AIToolResponseCard from './AIToolResponseCard';
+import { useChatPersistence } from '../hooks';
 import 'katex/dist/katex.min.css';
 
 interface Message {
@@ -37,7 +38,30 @@ const LobeChat: React.FC<LobeChatProps> = ({ onRequireApiKey, onRequestVideoSear
 - For chemical structures, describe them clearly and suggest SMILES when relevant
 - Provide concise but comprehensive explanations
 - Include safety notes for hazardous reactions or compounds when applicable`;
-  const [messages, setMessages] = useState<Message[]>([
+
+  // Chat persistence hook
+  const {
+    chats,
+    currentChat,
+    messages: persistedMessages,
+    isLoadingChats,
+    isLoadingMessages,
+    loadChats,
+    loadChat,
+    createNewChat,
+    saveExchange,
+    deleteCurrentChat,
+    clearCurrentChat,
+    pinChat,
+  } = useChatPersistence({
+    chatType: 'general',
+    enableRealtime: true,
+    onError: (error) => console.error('Chat persistence error:', error),
+  });
+
+  // UI state
+  const [showHistory, setShowHistory] = useState(false);
+  const [localMessages, setLocalMessages] = useState<Message[]>([
     {
       id: '1',
       content: 'Hello! I\'m ChemAssist, your AI chemistry assistant. Ask me anything about chemistry, molecules, reactions, or scientific concepts!',
@@ -45,6 +69,20 @@ const LobeChat: React.FC<LobeChatProps> = ({ onRequireApiKey, onRequestVideoSear
       timestamp: new Date(),
     },
   ]);
+
+  // Combine persisted messages with local state
+  const messages = currentChat ? persistedMessages.map(m => ({
+    id: m.id,
+    content: m.content,
+    role: m.role as 'user' | 'assistant',
+    timestamp: m.timestamp?.toDate?.() || new Date(),
+    toolResponses: m.toolCalls?.filter(tc => tc.output).map(tc => tc.output as AIToolResponse),
+  })) : localMessages;
+
+  const setMessages = currentChat 
+    ? () => {} // Don't allow direct modification when using persisted chat
+    : setLocalMessages;
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -63,20 +101,72 @@ const LobeChat: React.FC<LobeChatProps> = ({ onRequireApiKey, onRequestVideoSear
     scrollToBottom();
   }, [messages]);
 
+  // Start a new chat
+  const handleNewChat = useCallback(async () => {
+    try {
+      await createNewChat();
+      setShowHistory(false);
+    } catch (error) {
+      console.error('Error creating new chat:', error);
+    }
+  }, [createNewChat]);
+
+  // Load a chat from history
+  const handleLoadChat = useCallback(async (chatId: string) => {
+    try {
+      await loadChat(chatId);
+      setShowHistory(false);
+    } catch (error) {
+      console.error('Error loading chat:', error);
+    }
+  }, [loadChat]);
+
+  // Delete a chat
+  const handleDeleteChat = useCallback(async (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Delete this chat?')) return;
+    try {
+      // If deleting current chat, clear it
+      if (currentChat?.id === chatId) {
+        await deleteCurrentChat();
+      }
+      await loadChats();
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+    }
+  }, [currentChat, deleteCurrentChat, loadChats]);
+
+  // Pin a chat
+  const handlePinChat = useCallback(async (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await pinChat(chatId);
+    } catch (error) {
+      console.error('Error pinning chat:', error);
+    }
+  }, [pinChat]);
+
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
+    const userMessageContent = input;
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: input,
+      content: userMessageContent,
       role: 'user',
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // For local state (when not using persisted chat)
+    if (!currentChat) {
+      setLocalMessages(prev => [...prev, userMessage]);
+    }
+    
     setInput('');
     setIsLoading(true);
     let assistantMessageId: string | null = null;
+    let finalResponse = '';
+    let toolResponses: AIToolResponse[] = [];
 
     try {
       // Check if Gemini API is initialized
@@ -87,14 +177,15 @@ const LobeChat: React.FC<LobeChatProps> = ({ onRequireApiKey, onRequestVideoSear
           role: 'assistant',
           timestamp: new Date(),
         };
-        setMessages(prev => [...prev, errorMessage]);
+        if (!currentChat) {
+          setLocalMessages(prev => [...prev, errorMessage]);
+        }
         setIsLoading(false);
         return;
       }
 
-      let toolResponses: AIToolResponse[] = [];
       try {
-        const plans = await detectToolCalls(userMessage.content);
+        const plans = await detectToolCalls(userMessageContent);
         if (plans.length) {
           toolResponses = await executeToolCalls(plans);
         }
@@ -109,32 +200,48 @@ const LobeChat: React.FC<LobeChatProps> = ({ onRequireApiKey, onRequestVideoSear
         role: 'assistant',
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, placeholderMessage]);
+      
+      if (!currentChat) {
+        setLocalMessages(prev => [...prev, placeholderMessage]);
+      }
 
       // Call Gemini API with streaming updates
-      const aiResponse = await geminiService.streamTextContent(
+      finalResponse = await geminiService.streamTextContent(
         `${RESPONSE_STYLE_PROMPT}
 
-User question: ${userMessage.content}`,
+User question: ${userMessageContent}`,
         (chunk) => {
-          setMessages(prev =>
-            prev.map(message =>
-              message.id === assistantMessageId
-                ? { ...message, content: `${message.content}${chunk}` }
-                : message
-            )
-          );
+          if (!currentChat) {
+            setLocalMessages(prev =>
+              prev.map(message =>
+                message.id === assistantMessageId
+                  ? { ...message, content: `${message.content}${chunk}` }
+                  : message
+              )
+            );
+          }
         },
         { model: 'gemini-2.5-flash' }
       );
 
-      setMessages(prev =>
-        prev.map(message =>
-          message.id === assistantMessageId
-            ? { ...message, content: aiResponse, toolResponses }
-            : message
-        )
-      );
+      if (!currentChat) {
+        setLocalMessages(prev =>
+          prev.map(message =>
+            message.id === assistantMessageId
+              ? { ...message, content: finalResponse, toolResponses }
+              : message
+          )
+        );
+      }
+
+      // Save to Firebase - this will persist the exchange
+      try {
+        await saveExchange(userMessageContent, finalResponse, toolResponses);
+        console.log('✅ Chat saved to Firebase');
+      } catch (saveError) {
+        console.error('Failed to save chat to Firebase:', saveError);
+        // Still show the response even if saving fails
+      }
     } catch (error: any) {
       console.error('Gemini API error:', error);
       const message = error?.message || '';
@@ -149,8 +256,8 @@ User question: ${userMessage.content}`,
         window.alert(message || 'Please add your Gemini API key in Settings to continue.');
         onRequireApiKey?.();
       }
-      if (assistantMessageId) {
-        setMessages(prev => prev.filter(msg => msg.id !== assistantMessageId));
+      if (assistantMessageId && !currentChat) {
+        setLocalMessages(prev => prev.filter(msg => msg.id !== assistantMessageId));
       }
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -158,7 +265,9 @@ User question: ${userMessage.content}`,
         role: 'assistant',
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      if (!currentChat) {
+        setLocalMessages(prev => [...prev, errorMessage]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -175,8 +284,86 @@ User question: ${userMessage.content}`,
     navigator.clipboard.writeText(text);
   };
 
+  // Chat history panel
+  const renderHistoryPanel = () => (
+    <div className="absolute inset-0 z-20 bg-slate-950 flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700 bg-slate-900">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowHistory(false)}
+            className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+          >
+            <ChevronLeft className="h-5 w-5 text-slate-400" />
+          </button>
+          <h3 className="text-sm font-semibold text-slate-100">Chat History</h3>
+        </div>
+        <button
+          onClick={handleNewChat}
+          className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+        >
+          New Chat
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {isLoadingChats ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : chats.length === 0 ? (
+          <div className="text-center py-8">
+            <History className="h-8 w-8 text-slate-600 mx-auto mb-2" />
+            <p className="text-sm text-slate-500">No chat history yet</p>
+            <p className="text-xs text-slate-600 mt-1">Start a conversation to save it</p>
+          </div>
+        ) : (
+          chats.map((chat) => (
+            <div
+              key={chat.id}
+              onClick={() => handleLoadChat(chat.id)}
+              className={`p-3 rounded-xl border cursor-pointer transition-colors ${
+                currentChat?.id === chat.id
+                  ? 'bg-blue-600/20 border-blue-500/50'
+                  : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-100 truncate">
+                    {chat.isPinned && <Pin className="h-3 w-3 inline-block mr-1 text-yellow-500" />}
+                    {chat.title}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {chat.messageCount || 0} messages • {chat.updatedAt?.toDate?.()?.toLocaleDateString() || 'Just now'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => handlePinChat(chat.id, e)}
+                    className={`p-1 rounded hover:bg-slate-700 transition-colors ${chat.isPinned ? 'text-yellow-500' : 'text-slate-500'}`}
+                    title={chat.isPinned ? 'Unpin' : 'Pin'}
+                  >
+                    <Pin className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => handleDeleteChat(chat.id, e)}
+                    className="p-1 rounded hover:bg-red-900/50 text-slate-500 hover:text-red-400 transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col h-full min-h-0 bg-slate-950 text-slate-100">
+    <div className="flex flex-col h-full min-h-0 bg-slate-950 text-slate-100 relative">
+      {showHistory && renderHistoryPanel()}
+      
       {showHeader && (
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-800/70 backdrop-blur">
           <div className="flex items-center space-x-2">
@@ -184,23 +371,81 @@ User question: ${userMessage.content}`,
               <Bot className="h-4 w-4 text-white" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">ChemAssist</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {currentChat?.title || 'ChemAssist'}
+              </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">Gemini 2.5 Flash</p>
             </div>
           </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                loadChats();
+                setShowHistory(true);
+              }}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title="Chat history"
+            >
+              <History className="h-4 w-4 text-slate-500" />
+            </button>
+            <button
+              onClick={async () => {
+                if (currentChat) {
+                  await clearCurrentChat();
+                } else {
+                  setLocalMessages([localMessages[0]]);
+                }
+              }}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title="Clear conversation"
+            >
+              <RotateCcw className="h-4 w-4 text-slate-500" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Chat mode indicator when not showing header */}
+      {!showHeader && (
+        <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-900/50">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                loadChats();
+                setShowHistory(true);
+              }}
+              className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+              title="Chat history"
+            >
+              <History className="h-4 w-4 text-slate-400" />
+            </button>
+            <span className="text-xs text-slate-500">
+              {currentChat ? currentChat.title : 'New Chat'}
+            </span>
+          </div>
           <button
-            onClick={() => setMessages([messages[0]])}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-            title="Clear conversation"
+            onClick={async () => {
+              if (currentChat) {
+                await clearCurrentChat();
+              } else {
+                setLocalMessages([localMessages[0]]);
+              }
+            }}
+            className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+            title="Clear"
           >
-            <RotateCcw className="h-4 w-4 text-slate-500" />
+            <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
           </button>
         </div>
       )}
 
       {/* Messages */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-slate-950/50" ref={messagesContainerRef}>
-        {messages.map((message) => {
+        {isLoadingMessages ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : messages.map((message) => {
           const isUser = message.role === 'user';
           return (
             <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
