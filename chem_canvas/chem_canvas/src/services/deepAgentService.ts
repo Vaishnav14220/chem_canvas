@@ -2934,62 +2934,67 @@ IMPORTANT:
       }
 
       toolIterations++;
-      const toolResults: string[] = [];
 
-      for (const call of toolCalls) {
+      // Execute all tool calls in parallel
+      const toolPromises = toolCalls.map(async (call) => {
         if (!subagent.tools.includes(call.tool)) {
-          toolResults.push(`Tool ${call.tool}: Not available to this subagent.`);
-          continue;
+          return `Tool ${call.tool}: Not available to this subagent.`;
         }
 
         const tool = tools.get(call.tool);
-        if (tool) {
+        if (!tool) {
+          return `Tool ${call.tool}: Not found.`;
+        }
+
+        emitTaskEvent({
+          type: 'tool-call',
+          taskId: `${subagentName}-tool-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          title: call.tool,
+          message: `${subagentName} using ${call.tool}`,
+          status: 'in-progress',
+          data: {
+            tool: call.tool,
+            toolName: call.tool,
+            subagent: subagentName,
+            model: modelName,
+            params: call.params
+          }
+        });
+
+        try {
+          const result = await tool.execute(call.params);
+
           emitTaskEvent({
-            type: 'tool-call',
+            type: 'tool-result',
             taskId: `${subagentName}-tool-${Date.now()}`,
             title: call.tool,
-            message: `${subagentName} using ${call.tool}`,
-            status: 'in-progress',
+            status: 'completed',
             data: {
               tool: call.tool,
-              toolName: call.tool,
-              subagent: subagentName,
               model: modelName,
-              params: call.params
+              success: true
             }
           });
 
-          try {
-            const result = await tool.execute(call.params);
-            toolResults.push(`Tool ${call.tool} result:\n${result}`);
+          return `Tool ${call.tool} result:\n${result}`;
+        } catch (toolError) {
+          emitTaskEvent({
+            type: 'tool-result',
+            taskId: `${subagentName}-tool-${Date.now()}`,
+            title: call.tool,
+            status: 'error',
+            data: {
+              tool: call.tool,
+              model: modelName,
+              error: toolError instanceof Error ? toolError.message : 'Unknown error'
+            }
+          });
 
-            emitTaskEvent({
-              type: 'tool-result',
-              taskId: `${subagentName}-tool-${Date.now()}`,
-              title: call.tool,
-              status: 'completed',
-              data: {
-                tool: call.tool,
-                model: modelName,
-                success: true
-              }
-            });
-          } catch (toolError) {
-            toolResults.push(`Tool ${call.tool} error: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`);
-            emitTaskEvent({
-              type: 'tool-result',
-              taskId: `${subagentName}-tool-${Date.now()}`,
-              title: call.tool,
-              status: 'error',
-              data: {
-                tool: call.tool,
-                model: modelName,
-                error: toolError instanceof Error ? toolError.message : 'Unknown error'
-              }
-            });
-          }
+          return `Tool ${call.tool} error: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`;
         }
-      }
+      });
+
+      const toolResults = await Promise.all(toolPromises);
 
       if (toolResults.length > 0) {
         conversationMessages.push(
@@ -3084,16 +3089,17 @@ const processAgentTurn = async (
   // Process tool calls
   const toolCalls = parseToolCalls(responseText);
   if (toolCalls.length > 0) {
-    const toolResults: string[] = [];
-
-    for (const call of toolCalls) {
+    const toolPromises = toolCalls.map(async (call) => {
       const tool = tools.get(call.tool);
       if (tool) {
         toolsUsed.push(call.tool);
         const result = await tool.execute(call.params);
-        toolResults.push(`Tool ${call.tool} result:\n${result}`);
+        return `Tool ${call.tool} result:\n${result}`;
       }
-    }
+      return '';
+    });
+
+    const toolResults = (await Promise.all(toolPromises)).filter(r => r !== '');
 
     if (toolResults.length > 0) {
       // Get updated response with tool results
@@ -3114,13 +3120,26 @@ const processAgentTurn = async (
 
   // Process delegations
   const delegations = parseDelegations(responseText);
-  for (const delegation of delegations) {
-    subagentsUsed.push(delegation.subagent);
-    const subagentResult = await executeSubagent(delegation.subagent, delegation.task);
-    responseText = responseText.replace(
-      `[DELEGATE: ${delegation.subagent}]${delegation.task}[/DELEGATE]`,
-      `**${delegation.subagent} response:**\n${subagentResult}`
-    );
+  if (delegations.length > 0) {
+    // Execute delegations in parallel
+    const delegationPromises = delegations.map(async (delegation) => {
+      subagentsUsed.push(delegation.subagent);
+      const subagentResult = await executeSubagent(delegation.subagent, delegation.task);
+      return {
+        delegation,
+        result: subagentResult
+      };
+    });
+
+    const results = await Promise.all(delegationPromises);
+
+    // Apply replacements
+    for (const item of results) {
+      responseText = responseText.replace(
+        `[DELEGATE: ${item.delegation.subagent}]${item.delegation.task}[/DELEGATE]`,
+        `**${item.delegation.subagent} response:**\n${item.result}`
+      );
+    }
   }
 
   // Process file operations
