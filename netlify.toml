@@ -1,0 +1,12 @@
+[build]
+  base = "chem_canvas/chem_canvas"
+  command = "npm run build"
+  publish = "chem_canvas/chem_canvas/dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

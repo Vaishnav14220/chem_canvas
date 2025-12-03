@@ -1,0 +1,55 @@
+
+/**
+ * Generate multi-speaker audio from a script
+ */
+export const generateMultiSpeakerAudio = async (
+  script: string,
+  speakers: { name: string; voiceName: string }[]
+): Promise<ArrayBuffer> => {
+  ensureInitialized();
+
+  // The model name for TTS
+  const model = 'gemini-2.5-flash'; 
+
+  const speakerVoiceConfigs = speakers.map(s => ({
+    speaker: s.name,
+    voiceConfig: {
+      prebuiltVoiceConfig: {
+        voiceName: s.voiceName
+      }
+    }
+  }));
+
+  try {
+    const response = await genAI!.models.generateContent({
+      model: model,
+      contents: [{ parts: [{ text: script }] }],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          multiSpeakerVoiceConfig: {
+            speakerVoiceConfigs
+          }
+        }
+      }
+    });
+
+    if (!response.response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
+      throw new Error('No audio data received from Gemini API');
+    }
+
+    // The data is base64 encoded
+    const base64Audio = response.response.candidates[0].content.parts[0].inlineData.data;
+    const binaryString = atob(base64Audio);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+
+  } catch (error) {
+    console.error('Error generating multi-speaker audio:', error);
+    throw error;
+  }
+};

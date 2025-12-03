@@ -1,0 +1,332 @@
+/* Document Editor Container */
+.document-editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Editor Toolbar */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+  border-bottom: 1px solid #dee2e6;
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background-color: #dee2e6;
+  margin: 0 4px;
+}
+
+/* Toolbar Buttons */
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background-color: transparent;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.toolbar-btn:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+}
+
+.toolbar-btn:active {
+  background-color: #dee2e6;
+  transform: translateY(1px);
+}
+
+.toolbar-btn.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.toolbar-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* Toolbar Select */
+.toolbar-select {
+  padding: 6px 12px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background-color: white;
+  color: #495057;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+}
+
+.toolbar-select:hover {
+  border-color: #adb5bd;
+}
+
+.toolbar-select:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Editor Canvas */
+.editor-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: #e9ecef;
+  padding: 20px;
+}
+
+/* Canvas Editor Core Styles */
+.editor-canvas .ce-editor {
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin: 0 auto;
+  min-height: 100%;
+}
+
+.editor-canvas .ce-page {
+  margin: 0 auto 32px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  border-radius: 6px;
+}
+
+/* Page styling */
+.editor-canvas .ce-page {
+  background-color: white;
+  padding: 0;
+}
+
+/* Hide Chinese characters in any generated content */
+.editor-canvas [data-lang="zh"],
+.editor-canvas [lang="zh"],
+.editor-canvas [lang="zh-CN"] {
+  display: none !important;
+}
+
+/* Canvas editor overrides for better integration */
+.ce-editor-container {
+  font-family: 'Segoe UI', 'Arial', sans-serif !important;
+}
+
+.ce-menu-item {
+  font-family: 'Segoe UI', 'Arial', sans-serif !important;
+}
+
+.ce-contextmenu {
+  font-family: 'Segoe UI', 'Arial', sans-serif !important;
+}
+
+/* Scrollbar styling */
+.editor-canvas::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.editor-canvas::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 6px;
+}
+
+.editor-canvas::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+.editor-canvas::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .editor-toolbar {
+    padding: 6px 8px;
+  }
+  
+  .toolbar-btn {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .toolbar-select {
+    min-width: 100px;
+    padding: 4px 8px;
+  }
+  
+  .editor-canvas {
+    padding: 10px;
+  }
+}
+
+/* Print styles */
+@media print {
+  .editor-toolbar {
+    display: none;
+  }
+  
+  .editor-canvas {
+    padding: 0;
+    background-color: white;
+  }
+  
+  .ce-page {
+    box-shadow: none;
+    margin: 0;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .document-editor-container {
+    background-color: #1a1a1a;
+  }
+  
+  .editor-toolbar {
+    background: linear-gradient(to bottom, #2a2a2a, #1f1f1f);
+    border-bottom-color: #3a3a3a;
+  }
+  
+  .toolbar-btn {
+    color: #e0e0e0;
+  }
+  
+  .toolbar-btn:hover {
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
+  }
+  
+  .toolbar-divider {
+    background-color: #3a3a3a;
+  }
+  
+  .toolbar-select {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    border-color: #3a3a3a;
+  }
+  
+  .editor-canvas {
+    background-color: #1a1a1a;
+  }
+}
+
+/* Additional canvas-editor specific overrides */
+.ce-placeholder {
+  color: #999 !important;
+  font-style: italic !important;
+}
+
+.ce-catalog-item {
+  font-family: 'Segoe UI', 'Arial', sans-serif !important;
+}
+
+.ce-footer,
+.ce-header {
+  font-family: 'Segoe UI', 'Arial', sans-serif !important;
+}
+
+/* Context menu overrides to ensure English */
+.ce-contextmenu {
+  font-family: 'Segoe UI', 'Arial', sans-serif !important;
+}
+
+.ce-contextmenu-item {
+  font-family: 'Segoe UI', 'Arial', sans-serif !important;
+}
+
+/* Hide any elements with Chinese characters */
+.ce-contextmenu [lang="zh"],
+.ce-contextmenu [lang="zh-CN"],
+.ce-contextmenu [lang="zh-Hans"],
+.ce-contextmenu [lang="zh-Hant"] {
+  font-family: 'Segoe UI', 'Arial', sans-serif !important;
+}
+
+/* AI feature styles in context menu */
+.ce-contextmenu-item[data-ai="true"] {
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  font-weight: 600;
+}
+
+.ce-contextmenu-item:has([data-ai="true"]):hover {
+  background-color: #f7fafc;
+}
+
+/* Table styles */
+.ce-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.ce-table td,
+.ce-table th {
+  border: 1px solid #dee2e6;
+  padding: 8px;
+}
+
+.ce-table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+/* Code block styles */
+.ce-codeblock {
+  background-color: #f6f8fa;
+  border: 1px solid #d1d5da;
+  border-radius: 4px;
+  padding: 12px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* List styles */
+.ce-list-item {
+  margin: 4px 0;
+}
+
+/* Hyperlink styles */
+.ce-hyperlink {
+  color: #007bff;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ce-hyperlink:hover {
+  color: #0056b3;
+}
+
+/* Image styles */
+.ce-image {
+  max-width: 100%;
+  height: auto;
+}

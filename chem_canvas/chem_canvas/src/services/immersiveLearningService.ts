@@ -1,0 +1,2351 @@
+import { generateTextContent, extractJsonBlock, generateEducationalImage, streamTextContent, generateMultiSpeakerAudio } from './geminiService';
+import { AspectRatio, ImageSize } from '../types/studium';
+import { fetchYouTubeVideos, YouTubeVideo } from './youtubeService';
+import { fetchYouTubeTranscript, getVideoTranscriptWithTimestamps, VideoTranscript } from './youtubeTranscriptService';
+
+/**
+ * Attempts to repair truncated or malformed JSON strings from AI responses.
+ */
+const repairJson = (jsonString: string): string => {
+  let repaired = jsonString.trim();
+
+  // Remove any trailing incomplete strings (unterminated quotes)
+  // Find the last complete property value
+  const lastCompleteIndex = Math.max(
+    repaired.lastIndexOf('",'),
+    repaired.lastIndexOf('"},'),
+    repaired.lastIndexOf('"]'),
+    repaired.lastIndexOf('"}'),
+    repaired.lastIndexOf('" }'),
+    repaired.lastIndexOf('"}]'),
+    repaired.lastIndexOf('}]'),
+    repaired.lastIndexOf('"}]}')
+  );
+
+  if (lastCompleteIndex > 0 && lastCompleteIndex < repaired.length - 10) {
+    // Truncate to last complete value and try to close the JSON properly
+    repaired = repaired.substring(0, lastCompleteIndex + 1);
+  }
+
+  // Count brackets and braces
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (const char of repaired) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{') openBraces++;
+      if (char === '}') openBraces--;
+      if (char === '[') openBrackets++;
+      if (char === ']') openBrackets--;
+    }
+  }
+
+  // Close any unclosed strings first
+  if (inString) {
+    repaired += '"';
+  }
+
+  // Close any unclosed brackets/braces
+  while (openBrackets > 0) {
+    repaired += ']';
+    openBrackets--;
+  }
+  while (openBraces > 0) {
+    repaired += '}';
+    openBraces--;
+  }
+
+  return repaired;
+};
+
+/**
+ * Safely parses JSON with automatic repair for truncated responses.
+ */
+const safeJsonParse = <T>(jsonString: string, fallback: T): T => {
+  try {
+    return JSON.parse(jsonString);
+  } catch (e) {
+    console.warn('Initial JSON parse failed, attempting repair...', e);
+    try {
+      const repaired = repairJson(jsonString);
+      return JSON.parse(repaired);
+    } catch (e2) {
+      console.error('JSON repair also failed:', e2);
+      return fallback;
+    }
+  }
+};
+
+export interface RankedYouTubeVideo extends YouTubeVideo {
+  relevanceScore: number;
+  relevanceReason: string;
+  transcriptSummary?: string;
+}
+
+export interface InteractiveWidget {
+  type: 'reveal' | 'comparison' | 'quiz';
+  data: {
+    title?: string;
+    content?: string; // For reveal
+    beforeLabel?: string; // For comparison
+    afterLabel?: string; // For comparison
+    beforeImagePrompt?: string; // For comparison
+    afterImagePrompt?: string; // For comparison
+    question?: string; // For quiz
+    options?: string[]; // For quiz
+    correctIndex?: number; // For quiz
+    explanation?: string; // For quiz
+  };
+}
+
+export interface ImmersiveSection {
+  id: string;
+  title: string;
+  content: string;
+  imagePrompt?: string;
+  widget?: InteractiveWidget;
+}
+
+export interface ImmersiveContent {
+  title: string;
+  summary?: string;
+  sections: ImmersiveSection[];
+  keyTerms: { term: string; definition: string }[];
+  contextNotes: { paragraphIndex: number; note: string }[];
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswerIndex: number;
+  explanation: string;
+}
+
+export interface MindMapNode {
+  id: string;
+  label: string;
+  children?: MindMapNode[];
+}
+
+export const analyzeDocumentForImmersive = async (text: string): Promise<ImmersiveContent> => {
+  const prompt = `
+    Analyze the following educational text and structure it for an immersive learning experience (Target Audience: High School/Undergraduate).
+    
+    Return a JSON object with the following structure:
+    {
+      "title": "Document Title",
+      "summary": "A brief 2-3 sentence summary of the entire document.",
+      "sections": [
+        { 
+          "id": "unique_id", 
+          "title": "Section Title", 
+          "content": "Full text of the section... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
+          "imagePrompt": "A detailed, photorealistic description of an image that illustrates this section's concept.",
+          "widget": {
+            "type": "reveal" | "comparison" | "quiz",
+            "data": {
+              // For 'reveal':
+              "title": "Did you know?",
+              "content": "Surprising fact or hidden detail...",
+              
+              // For 'comparison' (e.g. Before/After reaction, Healthy/Diseased cell):
+              "beforeLabel": "Reactants",
+              "afterLabel": "Products",
+              "beforeImagePrompt": "Description of state A",
+              "afterImagePrompt": "Description of state B",
+
+              // For 'quiz' (Quick check for understanding):
+              "question": "Quick check: ...?",
+              "options": ["A", "B", "C"],
+              "correctIndex": 0,
+              "explanation": "Why it's correct..."
+            }
+          }
+        }
+      ],
+      "keyTerms": [
+        { "term": "Term to underline", "definition": "Concise definition..." }
+      ],
+      "contextNotes": [
+        { "paragraphIndex": 0, "note": "Interesting fact or context about this part..." }
+      ]
+    }
+
+    Rules:
+    1. Split text into logical sections.
+    2. For EACH section, include ONE interactive widget that best fits the content:
+       - Use 'reveal' for surprising facts or "aha!" moments.
+       - Use 'comparison' for processes, reactions, or before/after scenarios.
+       - Use 'quiz' for complex concepts that need immediate checking.
+    3. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
+    4. Generate high-quality image prompts.
+    5. IMPORTANT: Keep your response concise to avoid truncation. Limit each section's content to 2-3 paragraphs.
+
+    Text to Analyze:
+    ${text.slice(0, 10000)}
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallbackContent: ImmersiveContent = {
+    title: 'Immersive Learning Session',
+    sections: [{
+      id: 'fallback-1',
+      title: 'Document Overview',
+      content: text.slice(0, 500) + '...',
+      imagePrompt: 'An educational illustration representing the main topic'
+    }],
+    keyTerms: [],
+    contextNotes: []
+  };
+
+  return safeJsonParse<ImmersiveContent>(json, fallbackContent);
+};
+
+/**
+ * Streaming version of analyzeDocumentForImmersive.
+ * Streams the response in real-time for a typewriter effect.
+ */
+export const streamAnalyzeDocumentForImmersive = async (
+  text: string,
+  onStreamUpdate: (streamedText: string, isComplete: boolean) => void
+): Promise<ImmersiveContent> => {
+  const prompt = `
+    Analyze the following educational text and structure it for an immersive learning experience (Target Audience: High School/Undergraduate).
+    
+    Return a JSON object with the following structure:
+    {
+      "sections": [
+        { 
+          "id": "unique_id", 
+          "title": "Section Title", 
+          "content": "Full text of the section... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
+          "imagePrompt": "A detailed, photorealistic description of an image that illustrates this section's concept.",
+          "widget": {
+            "type": "reveal" | "comparison" | "quiz",
+            "data": {
+              // For 'reveal':
+              "title": "Did you know?",
+              "content": "Surprising fact or hidden detail...",
+              
+              // For 'comparison' (e.g. Before/After reaction, Healthy/Diseased cell):
+              "beforeLabel": "Reactants",
+              "afterLabel": "Products",
+              "beforeImagePrompt": "Description of state A",
+              "afterImagePrompt": "Description of state B",
+
+              // For 'quiz' (Quick check for understanding):
+              "question": "Quick check: ...?",
+              "options": ["A", "B", "C"],
+              "correctIndex": 0,
+              "explanation": "Why it's correct..."
+            }
+          }
+        }
+      ],
+      "keyTerms": [
+        { "term": "Term to underline", "definition": "Concise definition..." }
+      ],
+      "contextNotes": [
+        { "paragraphIndex": 0, "note": "Interesting fact or context about this part..." }
+      ]
+    }
+
+    Rules:
+    1. Split text into logical sections.
+    2. For EACH section, include ONE interactive widget that best fits the content:
+       - Use 'reveal' for surprising facts or "aha!" moments.
+       - Use 'comparison' for processes, reactions, or before/after scenarios.
+       - Use 'quiz' for complex concepts that need immediate checking.
+    3. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
+    4. Generate high-quality image prompts.
+    5. IMPORTANT: Keep your response concise to avoid truncation. Limit each section's content to 2-3 paragraphs.
+
+    Text to Analyze:
+    ${text.slice(0, 10000)}
+  `;
+
+  const fallbackContent: ImmersiveContent = {
+    title: 'Immersive Learning Session',
+    sections: [{
+      id: 'fallback-1',
+      title: 'Document Overview',
+      content: text.slice(0, 500) + '...',
+      imagePrompt: 'An educational illustration representing the main topic'
+    }],
+    keyTerms: [],
+    contextNotes: []
+  };
+
+  let accumulatedText = '';
+
+  try {
+    console.log('🎯 Starting streamTextContent...');
+    const finalText = await streamTextContent(
+      prompt,
+      (chunk) => {
+        // Accumulate chunks locally and send for display
+        accumulatedText += chunk;
+        console.log(`📦 Chunk received: ${chunk.length} chars, total: ${accumulatedText.length}`);
+        onStreamUpdate(accumulatedText, false);
+      }
+    );
+    console.log('🏁 Stream finished, total length:', finalText.length);
+    // Signal completion with the final text
+    onStreamUpdate(finalText, true);
+
+    const json = extractJsonBlock(finalText);
+    return safeJsonParse<ImmersiveContent>(json, fallbackContent);
+  } catch (error) {
+    console.error('Stream error, falling back to non-streaming:', error);
+    // Fallback to non-streaming if streaming fails
+    const fallbackResponse = await generateTextContent(prompt);
+    onStreamUpdate(fallbackResponse, true);
+
+    const json = extractJsonBlock(fallbackResponse);
+    return safeJsonParse<ImmersiveContent>(json, fallbackContent);
+  }
+};
+
+/**
+ * Generate a single quiz question for a specific paragraph.
+ * Used for the floating "?" button quiz feature.
+ */
+export const generateParagraphQuiz = async (paragraph: string): Promise<QuizQuestion> => {
+  const prompt = `
+    Generate ONE multiple-choice question to test understanding of this specific paragraph:
+    
+    "${paragraph}"
+    
+    Return a JSON object:
+    {
+      "question": "A clear question testing understanding of this specific content",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswerIndex": 0,
+      "explanation": "Brief explanation of why the correct answer is right."
+    }
+
+    Rules:
+    - Question MUST be directly about the content in the paragraph above
+    - Make the question test understanding, not just recall
+    - Keep question and options concise
+    - Include exactly 4 options
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallback: QuizQuestion = {
+    question: 'What is the main concept discussed in this section?',
+    options: ['Understanding the basics', 'Advanced applications', 'Historical context', 'Future implications'],
+    correctAnswerIndex: 0,
+    explanation: 'Please review the paragraph for details.'
+  };
+
+  return safeJsonParse<QuizQuestion>(json, fallback);
+};
+
+export const generateImmersiveQuiz = async (text: string): Promise<QuizQuestion[]> => {
+  const prompt = `
+    Generate a 5-question multiple-choice quiz based on the following text.
+    
+    Return a JSON array of objects:
+    [
+      {
+        "question": "Question text?",
+        "options": ["Option A", "Option B", "Option C", "Option D"],
+        "correctAnswerIndex": 0,
+        "explanation": "Brief explanation of why the correct answer is right."
+      }
+    ]
+
+    Rules:
+    - Include a clear explanation for the correct answer.
+    - Questions should test understanding.
+    - Keep responses concise.
+
+    Text:
+    ${text.slice(0, 8000)}
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallback: QuizQuestion[] = [{
+    question: 'What is the main topic of this document?',
+    options: ['Option A', 'Option B', 'Option C', 'Option D'],
+    correctAnswerIndex: 0,
+    explanation: 'Please review the document for details.'
+  }];
+
+  return safeJsonParse<QuizQuestion[]>(json, fallback);
+};
+
+export const generateAudioScript = async (text: string): Promise<string> => {
+  const prompt = `
+    Convert the following educational text into an engaging audio lesson script.
+    The script should be conversational, like a podcast host explaining the topic to a student.
+    Use clear, spoken-word language.
+    
+    Text:
+    ${text.slice(0, 10000)}
+  `;
+
+  return await generateTextContent(prompt);
+};
+
+export const generateMindMapData = async (text: string): Promise<MindMapNode> => {
+  const prompt = `
+    Create a hierarchical mind map structure from the following text.
+    
+    Return a JSON object representing the root node:
+    {
+      "id": "root",
+      "label": "Main Topic",
+      "children": [
+        { "id": "child1", "label": "Subtopic 1", "children": [...] }
+      ]
+    }
+
+    Text:
+    ${text.slice(0, 8000)}
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallback: MindMapNode = {
+    id: 'root',
+    label: 'Main Topic',
+    children: [{ id: 'child1', label: 'Key Concept 1' }]
+  };
+
+
+
+
+
+  return safeJsonParse<MindMapNode>(json, fallback);
+};
+
+export interface ReactFlowData {
+  nodes: Array<{ id: string; data: { label: string }; position: { x: number; y: number }; type?: string }>;
+  edges: Array<{ id: string; source: string; target: string; type?: string }>;
+}
+
+export const generateReactFlowData = async (text: string): Promise<ReactFlowData> => {
+  const prompt = `
+    Create a hierarchical mind map from the following text and return it as a JSON object suitable for React Flow.
+    
+    Return a JSON object with two arrays: "nodes" and "edges".
+    
+    Structure:
+    {
+      "nodes": [
+        { "id": "1", "data": { "label": "Main Topic" }, "position": { "x": 0, "y": 0 }, "type": "input" },
+        { "id": "2", "data": { "label": "Subtopic" }, "position": { "x": 0, "y": 0 } }
+      ],
+      "edges": [
+        { "id": "e1-2", "source": "1", "target": "2" }
+      ]
+    }
+    
+    Rules:
+    - The root node should have type "input".
+    - All positions can be { x: 0, y: 0 } as we will use an auto-layout algorithm.
+    - Keep labels concise.
+    - Ensure all IDs are unique strings.
+    - Create a logical hierarchy based on the text.
+    
+    Text to analyze:
+    ${text.slice(0, 8000)}
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallback: ReactFlowData = {
+    nodes: [
+      { id: '1', data: { label: 'Main Topic' }, position: { x: 0, y: 0 }, type: 'input' },
+      { id: '2', data: { label: 'Key Concept' }, position: { x: 0, y: 0 } }
+    ],
+    edges: [
+      { id: 'e1-2', source: '1', target: '2' }
+    ]
+  };
+
+  return safeJsonParse<ReactFlowData>(json, fallback);
+};
+
+export const extendMindMapNode = async (nodeLabel: string, context: string = ''): Promise<ReactFlowData> => {
+  const prompt = `
+    You are an AI tutor helping a student explore a mind map.
+    The student wants to expand on the node: "${nodeLabel}".
+    
+    Context of the mind map: "${context.slice(0, 500)}..."
+    
+    Generate 2-3 relevant subtopics or deeper concepts related to "${nodeLabel}".
+    Return a JSON object with "nodes" and "edges" to append to the existing graph.
+    
+    Structure:
+    {
+      "nodes": [
+        { "id": "new_1", "data": { "label": "Subtopic 1" }, "position": { "x": 0, "y": 0 } },
+        { "id": "new_2", "data": { "label": "Subtopic 2" }, "position": { "x": 0, "y": 0 } }
+      ],
+      "edges": [
+        { "id": "e_new_1", "source": "original_node_id_placeholder", "target": "new_1" },
+        { "id": "e_new_2", "source": "original_node_id_placeholder", "target": "new_2" }
+      ]
+    }
+    
+    Rules:
+    - Use "original_node_id_placeholder" as the source for all new edges. The frontend will replace this with the actual ID.
+    - Generate unique IDs for new nodes (e.g., use a random suffix or descriptive name).
+    - Keep labels concise (1-3 words).
+    - Focus on educational value and logical hierarchy.
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallback: ReactFlowData = {
+    nodes: [
+      { id: `fallback_${Date.now()}_1`, data: { label: 'More Info' }, position: { x: 0, y: 0 } },
+      { id: `fallback_${Date.now()}_2`, data: { label: 'Examples' }, position: { x: 0, y: 0 } }
+    ],
+    edges: [
+      { id: `e_fallback_1`, source: 'original_node_id_placeholder', target: `fallback_${Date.now()}_1` },
+      { id: `e_fallback_2`, source: 'original_node_id_placeholder', target: `fallback_${Date.now()}_2` }
+    ]
+  };
+
+  return safeJsonParse<ReactFlowData>(json, fallback);
+};
+
+/**
+ * Generates immersive learning images using Nano Banana Pro (Gemini 3 Pro Image Preview).
+ * Uses 1K resolution (1024x1024) for fast, high-quality educational illustrations.
+ * 
+ * @param prompt - The image prompt describing what to generate
+ * @param aspectRatio - Optional aspect ratio (defaults to 16:9 for widescreen)
+ * @returns Base64 data URL of the generated image
+ */
+export const generateImmersiveImage = async (
+  prompt: string,
+  aspectRatio: AspectRatio = AspectRatio.LANDSCAPE_16_9
+): Promise<string> => {
+  try {
+    // Use Nano Banana Pro for high-quality 1K educational images
+    const imageDataUrl = await generateEducationalImage(
+      prompt,
+      aspectRatio,
+      ImageSize.K1 // 1024px resolution - fast and high quality
+    );
+
+    return imageDataUrl;
+  } catch (error) {
+    console.error('Failed to generate immersive image with Nano Banana Pro:', error);
+
+    // Fallback to Pollinations AI if Gemini fails
+    console.warn('Falling back to Pollinations AI for image generation');
+    const encodedPrompt = encodeURIComponent(prompt);
+    return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&nologo=true`;
+  }
+};
+
+/**
+ * Fetches and ranks YouTube videos based on document content using Gemini 2.5 Flash.
+ * Analyzes video transcripts to determine relevance and returns top 5 most relevant videos.
+ * 
+ * @param documentText - The document text to find relevant videos for
+ * @returns Array of top 5 ranked YouTube videos with relevance scores
+ */
+export const fetchAndRankYouTubeVideos = async (documentText: string): Promise<RankedYouTubeVideo[]> => {
+  try {
+    // Step 1: Extract topic and search terms from document using Gemini
+    const topicPrompt = `
+      Analyze this educational document and extract:
+      1. The main topic/subject
+      2. 3-5 specific search queries that would find good explanatory YouTube videos about this topic
+      
+      Return JSON only:
+      {
+        "mainTopic": "Main topic of the document",
+        "searchQueries": ["query1", "query2", "query3"]
+      }
+      
+      Document excerpt:
+      ${documentText.slice(0, 4000)}
+    `;
+
+    const topicResponse = await generateTextContent(topicPrompt);
+    const topicJson = extractJsonBlock(topicResponse);
+
+    interface TopicResult {
+      mainTopic: string;
+      searchQueries: string[];
+    }
+
+    const fallbackTopic: TopicResult = {
+      mainTopic: 'educational content',
+      searchQueries: ['educational tutorial', 'learning guide']
+    };
+    const topicData = safeJsonParse<TopicResult>(topicJson, fallbackTopic);
+    const searchQueries: string[] = topicData.searchQueries?.length > 0
+      ? topicData.searchQueries
+      : [topicData.mainTopic || 'educational content'];
+
+    console.log('🔍 Searching YouTube for:', searchQueries);
+
+    // Step 2: Fetch videos from YouTube for each query
+    const allVideos: YouTubeVideo[] = [];
+    const seenIds = new Set<string>();
+
+    for (const query of searchQueries.slice(0, 3)) {
+      try {
+        const videos = await fetchYouTubeVideos({ query, maxResults: 8 });
+        for (const video of videos) {
+          if (!seenIds.has(video.id)) {
+            seenIds.add(video.id);
+            allVideos.push(video);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch videos for query:', query, e);
+      }
+    }
+
+    if (allVideos.length === 0) {
+      console.warn('No YouTube videos found');
+      return [];
+    }
+
+    console.log(`📹 Found ${allVideos.length} videos, ranking by relevance...`);
+
+    // Step 3: Sort videos by popularity (subscriber count) and take top 15
+    // NOTE: Transcript fetching is disabled due to CORS restrictions from browser
+    // We'll rank based on title, description, and channel instead
+    const sortedByPopularity = [...allVideos]
+      .sort((a, b) => (b.subscriberCount || 0) - (a.subscriberCount || 0))
+      .slice(0, 15);
+
+    // Step 4: Use Gemini 2.5 Flash to analyze and rank videos based on metadata
+    const analysisPrompt = `
+      You are an educational content curator. Analyze these YouTube videos and rank them by relevance to the given document.
+      
+      DOCUMENT TOPIC AND CONTENT:
+      ${documentText.slice(0, 3000)}
+      
+      YOUTUBE VIDEOS TO RANK:
+      ${sortedByPopularity.map((video, idx) => `
+      VIDEO ${idx + 1}:
+      - Title: ${video.title}
+      - Channel: ${video.channelTitle} (${video.subscriberCount ? video.subscriberCount.toLocaleString() + ' subscribers' : 'Unknown subscribers'})
+      - Description: ${video.description.slice(0, 500)}
+      `).join('\n')}
+      
+      TASK: Select the TOP 5 most relevant videos that would help a student understand the document content.
+      Consider:
+      - Content alignment with document topics
+      - Educational quality (prefer videos with detailed descriptions)
+      - Channel credibility (subscriber count)
+      - Video engagement (view count)
+      
+      Return JSON only (no markdown):
+      {
+        "rankedVideos": [
+          {
+            "videoIndex": 0,
+            "relevanceScore": 95,
+            "relevanceReason": "Brief explanation of why this video is relevant",
+            "expectedContent": "1-2 sentence description of what the video likely teaches based on title/description"
+          }
+        ]
+      }
+      
+      Return exactly 5 videos, ranked from most to least relevant. Keep responses concise.
+    `;
+
+    const analysisResponse = await generateTextContent(analysisPrompt);
+    const analysisJson = extractJsonBlock(analysisResponse);
+
+    interface RankingResult {
+      rankedVideos: Array<{
+        videoIndex: number;
+        relevanceScore: number;
+        relevanceReason: string;
+        expectedContent: string;
+      }>;
+    }
+
+    const fallbackAnalysis: RankingResult = { rankedVideos: [] };
+    const analysisData = safeJsonParse<RankingResult>(analysisJson, fallbackAnalysis);
+
+    // Step 5: Build the ranked video list
+    const rankedVideos: RankedYouTubeVideo[] = [];
+
+    for (const ranking of analysisData.rankedVideos || []) {
+      const idx = ranking.videoIndex;
+      if (idx >= 0 && idx < sortedByPopularity.length) {
+        const video = sortedByPopularity[idx];
+        rankedVideos.push({
+          ...video,
+          relevanceScore: ranking.relevanceScore || 0,
+          relevanceReason: ranking.relevanceReason || '',
+          transcriptSummary: ranking.expectedContent || ''
+        });
+      }
+    }
+
+    // If AI ranking failed, return videos sorted by subscriber count
+    if (rankedVideos.length === 0 && sortedByPopularity.length > 0) {
+      console.log('⚠️ AI ranking failed, falling back to subscriber-based ranking');
+      return sortedByPopularity.slice(0, 5).map((video, idx) => ({
+        ...video,
+        relevanceScore: 80 - idx * 10,
+        relevanceReason: 'Ranked by channel popularity',
+        transcriptSummary: video.description.slice(0, 200) + '...'
+      }));
+    }
+
+    console.log(`🎯 Ranked ${rankedVideos.length} videos`);
+    return rankedVideos.slice(0, 5);
+
+  } catch (error) {
+    console.error('Failed to fetch and rank YouTube videos:', error);
+    return [];
+  }
+};
+
+/**
+ * Video Summary and Key Concepts interface
+ */
+export interface VideoSummary {
+  overview: string;
+  keyPoints: string[];
+  keyConcepts: Array<{
+    title: string;
+    description: string;
+  }>;
+  timestamps?: Array<{
+    time: string;
+    topic: string;
+  }>;
+}
+
+/**
+ * Chat message interface for video discussions
+ */
+export interface VideoChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
+
+/**
+ * Fetches transcript and generates a comprehensive summary for a YouTube video
+ * Uses the Gemini API to analyze the transcript
+ */
+export const generateVideoSummary = async (
+  videoId: string,
+  videoTitle: string,
+  videoDescription: string
+): Promise<VideoSummary> => {
+  console.log(`📺 Generating summary for video: ${videoId}`);
+
+  // Try to fetch the actual transcript
+  let transcriptText: string | null = null;
+
+  try {
+    transcriptText = await fetchYouTubeTranscript(videoId);
+    if (transcriptText) {
+      console.log(`✅ Got transcript: ${transcriptText.length} characters`);
+    }
+  } catch (e) {
+    console.warn('Failed to fetch transcript:', e);
+  }
+
+  // Build the prompt based on available content
+  const contentToAnalyze = transcriptText
+    ? `VIDEO TRANSCRIPT:\n${transcriptText.slice(0, 15000)}`
+    : `VIDEO TITLE: ${videoTitle}\n\nVIDEO DESCRIPTION:\n${videoDescription}`;
+
+  const prompt = `
+    Analyze this YouTube video content and generate a comprehensive educational summary.
+    
+    ${contentToAnalyze}
+    
+    Return a JSON object with the following structure:
+    {
+      "overview": "A 2-3 paragraph comprehensive summary of what the video teaches. Make it engaging and informative for students.",
+      "keyPoints": [
+        "Key point 1 - important takeaway",
+        "Key point 2 - important takeaway",
+        "Key point 3 - important takeaway",
+        "Key point 4 - important takeaway",
+        "Key point 5 - important takeaway"
+      ],
+      "keyConcepts": [
+        {
+          "title": "Concept Name",
+          "description": "Clear explanation of this concept from the video"
+        }
+      ],
+      "timestamps": [
+        {
+          "time": "0:00",
+          "topic": "Introduction"
+        },
+        {
+          "time": "2:30",
+          "topic": "Main concept discussion"
+        }
+      ]
+    }
+    
+    Rules:
+    - Make the overview engaging and educational
+    - Extract 5-7 key points
+    - Identify 4-6 key concepts with clear explanations
+    - ${transcriptText ? 'Include estimated timestamps based on the transcript content' : 'Omit timestamps since we only have the description'}
+    - Keep all text concise but informative
+  `;
+
+  try {
+    const response = await generateTextContent(prompt);
+    const json = extractJsonBlock(response);
+
+    const fallback: VideoSummary = {
+      overview: `This video "${videoTitle}" covers important educational content. ${videoDescription.slice(0, 300)}`,
+      keyPoints: [
+        'Watch the full video for detailed explanations',
+        'Take notes on key concepts presented',
+        'Practice with the examples shown'
+      ],
+      keyConcepts: [
+        {
+          title: 'Main Topic',
+          description: videoDescription.slice(0, 200) || 'Content from this educational video'
+        }
+      ]
+    };
+
+    return safeJsonParse<VideoSummary>(json, fallback);
+  } catch (error) {
+    console.error('Failed to generate video summary:', error);
+    return {
+      overview: `This video "${videoTitle}" provides educational content. ${videoDescription.slice(0, 300)}`,
+      keyPoints: ['Watch the video for the full content'],
+      keyConcepts: []
+    };
+  }
+};
+
+/**
+ * Get the raw transcript text for a video
+ */
+export const getVideoTranscript = async (videoId: string): Promise<string | null> => {
+  try {
+    return await fetchYouTubeTranscript(videoId);
+  } catch (error) {
+    console.error('Failed to get video transcript:', error);
+    return null;
+  }
+};
+
+/**
+ * Chat with AI about a YouTube video
+ * Uses the video transcript and conversation history for context
+ */
+export const chatAboutVideo = async (
+  videoId: string,
+  videoTitle: string,
+  videoDescription: string,
+  userMessage: string,
+  conversationHistory: VideoChatMessage[] = [],
+  transcriptCache?: string | null
+): Promise<string> => {
+  console.log(`💬 Chat about video: ${videoId}`);
+
+  // Get transcript if not cached
+  let transcript = transcriptCache;
+  if (transcript === undefined) {
+    try {
+      transcript = await fetchYouTubeTranscript(videoId);
+    } catch (e) {
+      console.warn('Failed to fetch transcript for chat:', e);
+      transcript = null;
+    }
+  }
+
+  // Build conversation context
+  const historyText = conversationHistory
+    .slice(-6) // Keep last 6 messages for context
+    .map(msg => `${msg.role === 'user' ? 'Student' : 'AI Tutor'}: ${msg.content}`)
+    .join('\n');
+
+  const contextContent = transcript
+    ? `VIDEO TRANSCRIPT (for reference):\n${transcript.slice(0, 10000)}`
+    : `VIDEO TITLE: ${videoTitle}\nVIDEO DESCRIPTION: ${videoDescription}`;
+
+  const prompt = `
+    You are an AI tutor helping a student understand a YouTube educational video.
+    
+    VIDEO CONTEXT:
+    Title: ${videoTitle}
+    ${contextContent}
+    
+    ${historyText ? `CONVERSATION HISTORY:\n${historyText}\n` : ''}
+    
+    STUDENT'S QUESTION:
+    ${userMessage}
+    
+    Instructions:
+    - Answer the student's question based on the video content
+    - Be helpful, clear, and educational
+    - If the question is about something not covered in the video, say so politely
+    - Use examples from the video when possible
+    - Keep your response concise (1-2 short paragraphs max)
+    - If asked to summarize, provide a structured summary
+    - If asked about specific concepts, explain them clearly
+    - Format your response using Markdown (bold, italic, lists, code blocks) for better readability
+    - IMPORTANT: You must complete your answer within 1000 tokens. Do not leave the response incomplete.
+  `;
+
+  try {
+    const response = await generateTextContent(prompt, { maxOutputTokens: 1000 });
+    return response;
+  } catch (error) {
+    console.error('Failed to generate chat response:', error);
+    return "I'm sorry, I encountered an error while processing your question. Please try again.";
+  }
+};
+
+/**
+ * Generate quiz questions based on video content
+ */
+export const generateVideoQuiz = async (
+  videoId: string,
+  videoTitle: string,
+  videoDescription: string,
+  transcriptCache?: string | null
+): Promise<QuizQuestion[]> => {
+  console.log(`📝 Generating quiz for video: ${videoId}`);
+
+  // Get transcript if not cached
+  let transcript = transcriptCache;
+  if (transcript === undefined) {
+    try {
+      transcript = await fetchYouTubeTranscript(videoId);
+    } catch (e) {
+      console.warn('Failed to fetch transcript for quiz:', e);
+      transcript = null;
+    }
+  }
+
+  const contentToAnalyze = transcript
+    ? `VIDEO TRANSCRIPT:\n${transcript.slice(0, 12000)}`
+    : `VIDEO TITLE: ${videoTitle}\n\nVIDEO DESCRIPTION:\n${videoDescription}`;
+
+  const prompt = `
+    Generate a 5-question multiple-choice quiz based on this YouTube video content.
+    
+    ${contentToAnalyze}
+    
+    Return a JSON array:
+    [
+      {
+        "question": "Clear question testing understanding of the video content?",
+        "options": ["Option A", "Option B", "Option C", "Option D"],
+        "correctAnswerIndex": 0,
+        "explanation": "Brief explanation of why this is the correct answer, referencing the video content."
+      }
+    ]
+
+    Rules:
+    - Questions should test understanding, not just recall
+    - Make questions progressively more challenging
+    - Include clear explanations
+    - Base all questions on the actual video content
+  `;
+
+  try {
+    const response = await generateTextContent(prompt);
+    const json = extractJsonBlock(response);
+
+    const fallback: QuizQuestion[] = [{
+      question: `What is the main topic discussed in "${videoTitle}"?`,
+      options: ['Topic A', 'Topic B', 'Topic C', 'Topic D'],
+      correctAnswerIndex: 0,
+      explanation: 'Watch the video for the detailed answer.'
+    }];
+
+    return safeJsonParse<QuizQuestion[]>(json, fallback);
+  } catch (error) {
+    console.error('Failed to generate video quiz:', error);
+    return [];
+  }
+};
+
+/**
+ * Generate flashcards from video content
+ */
+export interface Flashcard {
+  front: string;
+  back: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export const generateVideoFlashcards = async (
+  videoId: string,
+  videoTitle: string,
+  videoDescription: string,
+  transcriptCache?: string | null
+): Promise<Flashcard[]> => {
+  console.log(`🃏 Generating flashcards for video: ${videoId}`);
+
+  // Get transcript if not cached
+  let transcript = transcriptCache;
+  if (transcript === undefined) {
+    try {
+      transcript = await fetchYouTubeTranscript(videoId);
+    } catch (e) {
+      console.warn('Failed to fetch transcript for flashcards:', e);
+      transcript = null;
+    }
+  }
+
+  const contentToAnalyze = transcript
+    ? `VIDEO TRANSCRIPT:\n${transcript.slice(0, 12000)}`
+    : `VIDEO TITLE: ${videoTitle}\n\nVIDEO DESCRIPTION:\n${videoDescription}`;
+
+  const prompt = `
+    Generate educational flashcards based on this YouTube video content.
+    
+    ${contentToAnalyze}
+    
+    Return a JSON array of 8-10 flashcards:
+    [
+      {
+        "front": "Question or term to remember",
+        "back": "Answer or definition",
+        "difficulty": "easy" | "medium" | "hard"
+      }
+    ]
+
+    Rules:
+    - Create a mix of difficulty levels
+    - Front should be concise questions or terms
+    - Back should be clear, memorable answers
+    - Cover the main concepts from the video
+    - Make them useful for studying
+  `;
+
+  try {
+    const response = await generateTextContent(prompt);
+    const json = extractJsonBlock(response);
+
+    const fallback: Flashcard[] = [{
+      front: `What is "${videoTitle}" about?`,
+      back: videoDescription.slice(0, 200) || 'Educational content',
+      difficulty: 'easy'
+    }];
+
+    return safeJsonParse<Flashcard[]>(json, fallback);
+  } catch (error) {
+    console.error('Failed to generate flashcards:', error);
+    return [];
+  }
+};
+
+/**
+ * Generate a podcast script between two speakers
+ */
+export const generatePodcastScript = async (
+  topic: string,
+  context?: string
+): Promise<string> => {
+  console.log(`🎙️ Generating podcast script for topic: ${topic}`);
+
+  const prompt = `
+    Create a podcast script between two speakers: "Host" (Male) and "Expert" (Female).
+    
+    TOPIC: ${topic}
+    ${context ? `CONTEXT:\n${context}` : ''}
+    
+    Instructions:
+    - The conversation should be engaging, educational, and natural.
+    - It should be around 800-1000 words.
+    - Use "Host" and "Expert" as speaker labels.
+    - Format:
+      Host: [Text]
+      Expert: [Text]
+    - Do not include stage directions or sound effects, just the dialogue.
+    - Make it sound like a real podcast with back-and-forth interaction.
+  `;
+
+  try {
+    const response = await generateTextContent(prompt, { maxOutputTokens: 2000 });
+    return response;
+  } catch (error) {
+    console.error('Failed to generate podcast script:', error);
+    throw error;
+  }
+};
+
+
+
+/**
+ * Generate audio from a podcast script
+ */
+export const generatePodcastAudio = async (
+  script: string
+): Promise<ArrayBuffer> => {
+  console.log('🔊 Generating podcast audio...');
+
+  // Format the script for TTS with speaker instructions
+  // The multi-speaker TTS API expects speaker names to match exactly
+  const ttsPrompt = `TTS the following conversation between Host and Expert:
+
+${script}`;
+
+  return await generateMultiSpeakerAudio(ttsPrompt, [
+    { name: 'Host', voiceName: 'Puck' },      // Puck is upbeat, good for host
+    { name: 'Expert', voiceName: 'Aoede' }    // Aoede is breezy, good for expert
+  ]);
+};
+
+// ============ SIMULATION GENERATION ============
+
+/**
+ * Blueprint for a 3D educational web application simulation
+ */
+export interface SimulationBlueprint {
+  force_single_html_file: "true";
+  meta: {
+    topic: string;
+    academic_level: "Elementary" | "Middle School" | "High School" | "University" | "Research / PhD";
+    complexity_rating: number;
+  };
+  visual_design: {
+    theme: "light" | "dark";
+    background_hex: string;
+    accent_hex: string;
+  };
+  simulation_logic: {
+    scene_description: string;
+    preferred_library: "Three.js (Standard)" | "NGL.js / JSmol (Proteins & Chemistry)" | "CircuitJS (Electrical Engineering)" | "MathBox (Complex Calculus/Physics)" | "D3.js (Data Visualization)";
+    camera_type: "OrbitControls" | "FirstPerson" | "Fixed" | "Orthographic (2D Technical)";
+    entities: Array<{
+      name: string;
+      asset_type: "primitive_geometry" | "pdb_id" | "gltf_model_url" | "circuit_netlist" | "mathematical_function";
+      asset_data: string;
+      behavior: string;
+    }>;
+  };
+  interactive_controls: Array<{
+    label: string;
+    control_type: "slider" | "toggle" | "button" | "text_input";
+    variable_affected: string;
+  }>;
+  educational_content: {
+    title: string;
+    summary: string;
+    key_points: string[];
+  };
+}
+
+/**
+ * The JSON Schema for the simulation blueprint - used with Gemini structured output
+ */
+const SIMULATION_BLUEPRINT_SCHEMA = {
+  type: "object",
+  description: "Blueprint for a high-fidelity 3D educational web application based on academic PDF analysis.",
+  properties: {
+    force_single_html_file: {
+      type: "string",
+      description: "STRICT REQUIREMENT: The output must always be a single, self-contained HTML file. Always return the string 'true'.",
+      enum: ["true"]
+    },
+    meta: {
+      type: "object",
+      properties: {
+        topic: { type: "string" },
+        academic_level: {
+          type: "string",
+          enum: ["Elementary", "Middle School", "High School", "University", "Research / PhD"]
+        },
+        complexity_rating: {
+          type: "integer",
+          minimum: 1,
+          maximum: 10
+        }
+      },
+      required: ["topic", "academic_level", "complexity_rating"]
+    },
+    visual_design: {
+      type: "object",
+      properties: {
+        theme: {
+          type: "string",
+          description: "UI theme preference. Dark mode is standard for university-level tools.",
+          enum: ["light", "dark"]
+        },
+        background_hex: { type: "string" },
+        accent_hex: { type: "string" }
+      },
+      required: ["theme", "background_hex", "accent_hex"]
+    },
+    simulation_logic: {
+      type: "object",
+      description: "Logic defining the 3D environment and specialized engines required.",
+      properties: {
+        scene_description: { type: "string" },
+        preferred_library: {
+          type: "string",
+          description: "The specific JS library best suited for this academic topic.",
+          enum: [
+            "Three.js (Standard)",
+            "NGL.js / JSmol (Proteins & Chemistry)",
+            "CircuitJS (Electrical Engineering)",
+            "MathBox (Complex Calculus/Physics)",
+            "D3.js (Data Visualization)"
+          ]
+        },
+        camera_type: {
+          type: "string",
+          enum: ["OrbitControls", "FirstPerson", "Fixed", "Orthographic (2D Technical)"]
+        },
+        entities: {
+          type: "array",
+          description: "List of specific scientific objects or models to load.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              asset_type: {
+                type: "string",
+                description: "Defines if the object is a basic shape, a molecular ID, a 3D model file, or raw data.",
+                enum: ["primitive_geometry", "pdb_id", "gltf_model_url", "circuit_netlist", "mathematical_function"]
+              },
+              asset_data: {
+                type: "string",
+                description: "The specific data required. E.g., '1CRN' for a protein, a URL for a model, or a formula."
+              },
+              behavior: { type: "string" }
+            },
+            required: ["name", "asset_type", "asset_data", "behavior"]
+          }
+        }
+      },
+      required: ["scene_description", "preferred_library", "camera_type", "entities"]
+    },
+    interactive_controls: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          control_type: {
+            type: "string",
+            enum: ["slider", "toggle", "button", "text_input"]
+          },
+          variable_affected: { type: "string" }
+        },
+        required: ["label", "control_type", "variable_affected"]
+      }
+    },
+    educational_content: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        summary: { type: "string" },
+        key_points: {
+          type: "array",
+          items: { type: "string" }
+        }
+      },
+      required: ["title", "summary", "key_points"]
+    }
+  },
+  required: ["force_single_html_file", "meta", "visual_design", "simulation_logic", "interactive_controls", "educational_content"]
+};
+
+/**
+ * Generate a simulation blueprint from document context using Gemini structured output
+ */
+export const generateSimulationBlueprint = async (
+  documentText: string,
+  topic: string
+): Promise<SimulationBlueprint> => {
+  console.log('🎮 Generating simulation blueprint for:', topic);
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `You are an expert educational simulation designer. Analyze the following academic document and create a detailed blueprint for an interactive 3D educational simulation.
+
+DOCUMENT TOPIC: ${topic}
+
+DOCUMENT CONTENT:
+${documentText.substring(0, 15000)}
+
+REQUIREMENTS:
+1. Identify the key concepts that would benefit from visualization
+2. Choose the most appropriate 3D library for the subject matter
+3. Design interactive controls that help students explore the concept
+4. Include educational content that explains what students will learn
+5. Make sure the simulation is engaging and scientifically accurate
+
+Create a blueprint that a developer could use to build a complete educational simulation.`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: SIMULATION_BLUEPRINT_SCHEMA
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Blueprint generation error:', errorText);
+      throw new Error(`Failed to generate blueprint: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const blueprintText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!blueprintText) {
+      throw new Error('No blueprint generated');
+    }
+
+    console.log('✅ Blueprint generated successfully');
+    return JSON.parse(blueprintText) as SimulationBlueprint;
+  } catch (error) {
+    console.error('Failed to generate simulation blueprint:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate HTML simulation code from a blueprint using Gemini 3 Pro
+ */
+export const generateSimulationHTML = async (
+  blueprint: SimulationBlueprint
+): Promise<string> => {
+  console.log('🔨 Generating simulation HTML from blueprint using Gemini 3 Pro...');
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  // Determine which library and setup to use based on blueprint
+  const librarySetup = getLibrarySetup(blueprint.simulation_logic.preferred_library);
+
+  const prompt = `You are an expert web developer. Generate a COMPLETE, working HTML file for this educational simulation.
+
+SIMULATION REQUIREMENTS:
+- Topic: ${blueprint.educational_content.title}
+- Summary: ${blueprint.educational_content.summary}
+- Library: ${blueprint.simulation_logic.preferred_library}
+- Theme: ${blueprint.visual_design.theme} (background: ${blueprint.visual_design.background_hex}, accent: ${blueprint.visual_design.accent_hex})
+- Scene: ${blueprint.simulation_logic.scene_description}
+- Entities: ${blueprint.simulation_logic.entities.map(e => `${e.name}: ${e.behavior}`).join('; ')}
+- Controls: ${blueprint.interactive_controls.map(c => `${c.label} (${c.control_type})`).join(', ')}
+
+CRITICAL INSTRUCTIONS:
+1. Start with <!DOCTYPE html> - output ONLY HTML, no markdown
+2. Use this exact library setup:
+${librarySetup}
+
+3. Create a split layout:
+   - LEFT (70%): Canvas/visualization area with dark background
+   - RIGHT (30%): Info panel with title, description, controls
+
+4. The visualization MUST show something immediately - use simple shapes if complex models fail
+5. All controls must be functional and affect the visualization
+6. Include smooth animations
+
+Generate the complete HTML now:`;
+
+  try {
+    // Use Gemini 3 Pro Preview for best code generation
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            maxOutputTokens: 32000,
+            temperature: 1.0  // Gemini 3 works best at temperature 1.0
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('HTML generation error:', errorText);
+      // Fallback to gemini-2.5-flash if Gemini 3 fails
+      console.log('Falling back to gemini-2.5-flash...');
+      return await generateSimulationHTMLFallback(blueprint, apiKey);
+    }
+
+    const data = await response.json();
+    let htmlContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!htmlContent) {
+      console.log('No HTML from Gemini 3, trying fallback...');
+      return await generateSimulationHTMLFallback(blueprint, apiKey);
+    }
+
+    // Clean up the response - remove markdown code blocks if present
+    htmlContent = cleanHtmlResponse(htmlContent);
+
+    // Validate HTML
+    if (!htmlContent.includes('<html') && !htmlContent.includes('<!DOCTYPE')) {
+      console.log('Invalid HTML structure, trying fallback...');
+      return await generateSimulationHTMLFallback(blueprint, apiKey);
+    }
+
+    console.log('✅ Simulation HTML generated successfully with Gemini 3 Pro, length:', htmlContent.length);
+    return htmlContent;
+  } catch (error) {
+    console.error('Failed to generate simulation HTML with Gemini 3:', error);
+    // Try fallback
+    try {
+      return await generateSimulationHTMLFallback(blueprint, apiKey);
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError);
+      // Return a basic working simulation
+      return generateBasicSimulationHTML(blueprint);
+    }
+  }
+};
+
+/**
+ * Get library-specific setup code
+ */
+const getLibrarySetup = (library: string): string => {
+  switch (library) {
+    case 'Three.js (Standard)':
+      return `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>`;
+
+    case 'CircuitJS (Electrical Engineering)':
+      return `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Circuit visualization using Three.js primitives -->`;
+
+    case 'D3.js (Data Visualization)':
+      return `<script src="https://d3js.org/d3.v7.min.js"></script>`;
+
+    case 'NGL.js / JSmol (Proteins & Chemistry)':
+      return `<script src="https://unpkg.com/ngl@2.0.0-dev.39/dist/ngl.js"></script>`;
+
+    case 'MathBox (Complex Calculus/Physics)':
+      return `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mathbox@2.3.1/build/mathbox-bundle.min.js"></script>`;
+
+    default:
+      return `<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>`;
+  }
+};
+
+/**
+ * Clean HTML response from markdown artifacts
+ */
+const cleanHtmlResponse = (html: string): string => {
+  let cleaned = html.trim();
+
+  // Remove markdown code blocks
+  cleaned = cleaned.replace(/^```html\s*\n?/i, '');
+  cleaned = cleaned.replace(/^```\s*\n?/i, '');
+  cleaned = cleaned.replace(/\n?```\s*$/i, '');
+
+  // Extract HTML if wrapped in other content
+  const htmlMatch = cleaned.match(/<!DOCTYPE html[\s\S]*<\/html>/i) ||
+    cleaned.match(/<html[\s\S]*<\/html>/i);
+  if (htmlMatch) {
+    cleaned = htmlMatch[0];
+  }
+
+  return cleaned;
+};
+
+/**
+ * Fallback HTML generation using gemini-2.5-flash
+ */
+const generateSimulationHTMLFallback = async (
+  blueprint: SimulationBlueprint,
+  apiKey: string
+): Promise<string> => {
+  console.log('🔄 Using fallback generation with gemini-2.5-flash...');
+
+  const prompt = `Generate a simple but working HTML simulation for: "${blueprint.educational_content.title}"
+
+Requirements:
+- Use Three.js from CDN: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js
+- Dark background, rotating 3D shapes representing the concept
+- Info panel on the right with title and description
+- At least one slider control that affects the animation
+
+Output ONLY the HTML code starting with <!DOCTYPE html>:`;
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 16000,
+          temperature: 0.7
+        }
+      })
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Fallback generation failed');
+  }
+
+  const data = await response.json();
+  let htmlContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!htmlContent) {
+    throw new Error('No HTML from fallback');
+  }
+
+  return cleanHtmlResponse(htmlContent);
+};
+
+/**
+ * Generate a basic working simulation when all else fails
+ */
+const generateBasicSimulationHTML = (blueprint: SimulationBlueprint): string => {
+  const theme = blueprint.visual_design.theme;
+  const bgColor = blueprint.visual_design.background_hex || (theme === 'dark' ? '#1a1a2e' : '#ffffff');
+  const accentColor = blueprint.visual_design.accent_hex || '#ff6d01';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${blueprint.educational_content.title}</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex; 
+      height: 100vh; 
+      background: ${bgColor};
+      color: ${theme === 'dark' ? '#fff' : '#333'};
+    }
+    #canvas-container { 
+      flex: 1; 
+      position: relative;
+    }
+    #info-panel {
+      width: 320px;
+      padding: 24px;
+      background: ${theme === 'dark' ? '#16213e' : '#f5f5f5'};
+      overflow-y: auto;
+      border-left: 1px solid ${theme === 'dark' ? '#0f3460' : '#ddd'};
+    }
+    h1 { 
+      font-size: 1.5rem; 
+      margin-bottom: 16px;
+      color: ${accentColor};
+    }
+    p { 
+      line-height: 1.6; 
+      margin-bottom: 16px;
+      opacity: 0.9;
+    }
+    .control-group {
+      margin-bottom: 20px;
+    }
+    .control-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: ${accentColor};
+    }
+    .key-points {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid ${theme === 'dark' ? '#0f3460' : '#ddd'};
+    }
+    .key-points h3 {
+      margin-bottom: 12px;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.7;
+    }
+    .key-points li {
+      margin-bottom: 8px;
+      padding-left: 16px;
+      position: relative;
+    }
+    .key-points li::before {
+      content: '•';
+      position: absolute;
+      left: 0;
+      color: ${accentColor};
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="info-panel">
+    <h1>${blueprint.educational_content.title}</h1>
+    <p>${blueprint.educational_content.summary}</p>
+    
+    <div class="control-group">
+      <label>Animation Speed</label>
+      <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+    </div>
+    
+    <div class="control-group">
+      <label>Scale</label>
+      <input type="range" id="scale" min="0.5" max="2" step="0.1" value="1">
+    </div>
+    
+    <div class="key-points">
+      <h3>Key Learning Points</h3>
+      <ul>
+        ${blueprint.educational_content.key_points.map(p => `<li>${p}</li>`).join('\n        ')}
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // Three.js Setup
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('${bgColor}');
+    
+    const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.z = 5;
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+    
+    // Create objects
+    const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+    const material = new THREE.MeshPhongMaterial({ 
+      color: '${accentColor}',
+      shininess: 100,
+      specular: 0x444444
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+    
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 5, 5);
+    scene.add(directionalLight);
+    
+    const pointLight = new THREE.PointLight(0xffffff, 0.5);
+    pointLight.position.set(-5, -5, 5);
+    scene.add(pointLight);
+    
+    // Controls
+    let speed = 1;
+    let scale = 1;
+    
+    document.getElementById('speed').addEventListener('input', (e) => {
+      speed = parseFloat(e.target.value);
+    });
+    
+    document.getElementById('scale').addEventListener('input', (e) => {
+      scale = parseFloat(e.target.value);
+      mesh.scale.setScalar(scale);
+    });
+    
+    // Animation
+    function animate() {
+      requestAnimationFrame(animate);
+      mesh.rotation.x += 0.01 * speed;
+      mesh.rotation.y += 0.01 * speed;
+      renderer.render(scene, camera);
+    }
+    animate();
+    
+    // Resize handler
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+  </script>
+</body>
+</html>`;
+};
+
+/**
+ * Generate complete simulation (blueprint + HTML) from document context
+ */
+export const generateSimulation = async (
+  documentText: string,
+  topic: string,
+  onProgress?: (stage: string) => void
+): Promise<{ blueprint: SimulationBlueprint; html: string }> => {
+  console.log('🎮 Starting full simulation generation for:', topic);
+
+  // Step 1: Generate blueprint
+  onProgress?.('Analyzing document and creating simulation blueprint...');
+  const blueprint = await generateSimulationBlueprint(documentText, topic);
+
+  // Step 2: Generate HTML from blueprint  
+  onProgress?.('Generating interactive simulation code...');
+  const html = await generateSimulationHTML(blueprint);
+
+  return { blueprint, html };
+};
+
+// ============================================================================
+// ROBOTICS VISION - Gemini Robotics-ER 1.5 Features
+// ============================================================================
+
+export interface DetectedObject {
+  point: [number, number]; // [y, x] normalized 0-1000
+  label: string;
+  confidence?: number;
+}
+
+export interface BoundingBox {
+  box_2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] normalized 0-1000
+  label: string;
+}
+
+export interface TrajectoryPoint {
+  point: [number, number];
+  label: string;
+}
+
+export interface RoboticsAnalysis {
+  objects: DetectedObject[];
+  boundingBoxes?: BoundingBox[];
+  trajectories?: TrajectoryPoint[];
+  sceneDescription?: string;
+  spatialReasoning?: string;
+}
+
+// Gemini Robotics-ER 1.5 for advanced robotics vision capabilities
+const ROBOTICS_MODEL = 'gemini-robotics-er-1.5-preview';
+
+/**
+ * Detect and point to objects in an image using Gemini Robotics-ER
+ */
+export const detectObjectsInImage = async (
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+  maxObjects: number = 15
+): Promise<DetectedObject[]> => {
+  console.log('🤖 Detecting objects with Gemini Robotics-ER...');
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `Point to no more than ${maxObjects} items in the image. The label returned should be an identifying name for the object detected.
+The answer should follow the json format: [{"point": <point>, "label": <label>}, ...]. The points are in [y, x] format normalized to 0-1000.
+If no objects are found, return an empty JSON list [].`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 4096,
+            thinkingConfig: { thinkingBudget: 0 }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Robotics API error response:', errorText);
+      try {
+        const errorJson = JSON.parse(errorText);
+        console.error('Robotics API error details:', errorJson);
+        throw new Error(`Robotics API error: ${response.status} - ${errorJson.error?.message || errorText}`);
+      } catch {
+        throw new Error(`Robotics API error: ${response.status} - ${errorText}`);
+      }
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+
+    // Extract JSON from response
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const objects = JSON.parse(jsonMatch[0]) as DetectedObject[];
+      console.log(`✅ Detected ${objects.length} objects`);
+      return objects;
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Failed to detect objects:', error);
+    throw error;
+  }
+};
+
+/**
+ * Detect objects with bounding boxes
+ */
+export const detectBoundingBoxes = async (
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+  maxObjects: number = 25
+): Promise<BoundingBox[]> => {
+  console.log('🤖 Detecting bounding boxes with Gemini Robotics-ER...');
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `Return bounding boxes as a JSON array with labels. Never return masks or code fencing. Limit to ${maxObjects} objects.
+If an object is present multiple times, name them according to their unique characteristic (colors, size, position, unique characteristics, etc..).
+The format should be as follows: [{"box_2d": [ymin, xmin, ymax, xmax], "label": <label for the object>}] normalized to 0-1000. The values in box_2d must only be integers.
+If no objects are found, return an empty JSON list [].`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 8192,
+            thinkingConfig: { thinkingBudget: 0 }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Bounding box API error response:', errorText);
+      try {
+        const errorJson = JSON.parse(errorText);
+        console.error('Bounding box API error details:', errorJson);
+        throw new Error(`Robotics API error: ${response.status} - ${errorJson.error?.message || errorText}`);
+      } catch {
+        throw new Error(`Robotics API error: ${response.status} - ${errorText}`);
+      }
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const boxes = JSON.parse(jsonMatch[0]) as BoundingBox[];
+      console.log(`✅ Detected ${boxes.length} bounding boxes`);
+      return boxes;
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Failed to detect bounding boxes:', error);
+    throw error;
+  }
+};
+
+/**
+ * Find specific objects by query
+ */
+export const findSpecificObjects = async (
+  imageBase64: string,
+  queries: string[],
+  mimeType: string = 'image/jpeg'
+): Promise<DetectedObject[]> => {
+  console.log('🤖 Finding specific objects:', queries);
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `Get all points matching the following objects: ${queries.join(', ')}.
+The label returned should be an identifying name for the object detected.
+The answer should follow the json format: [{"point": <point>, "label": <label>}, ...]. The points are in [y, x] format normalized to 0-1000.
+If no matching objects are found, return an empty JSON list [].`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 4096,
+            thinkingConfig: { thinkingBudget: 0 }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Robotics API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as DetectedObject[];
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Failed to find specific objects:', error);
+    throw error;
+  }
+};
+
+/**
+ * Find objects by category (e.g., "fruit", "electronics", "furniture")
+ */
+export const findObjectsByCategory = async (
+  imageBase64: string,
+  category: string,
+  mimeType: string = 'image/jpeg'
+): Promise<DetectedObject[]> => {
+  console.log('🤖 Finding objects by category:', category);
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `Get all points for ${category}. The label returned should be an identifying name for the object detected.
+The answer should follow the json format: [{"point": <point>, "label": <label>}, ...]. The points are in [y, x] format normalized to 0-1000.
+If no objects in this category are found, return an empty JSON list [].`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 4096,
+            thinkingConfig: { thinkingBudget: 0 }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Robotics API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as DetectedObject[];
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Failed to find objects by category:', error);
+    throw error;
+  }
+};
+
+/**
+ * Describe the scene and understand spatial relationships
+ */
+export const analyzeSceneSpatially = async (
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+  question?: string
+): Promise<{ description: string; objects: DetectedObject[] }> => {
+  console.log('🤖 Analyzing scene spatially...');
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = question
+    ? `${question}
+
+Point to relevant objects in your response.
+For each object mentioned, provide coordinates in the format: [{"point": [y, x], "label": <label>}] where coordinates are normalized between 0-1000.
+First provide your analysis, then at the end provide a JSON array of all relevant object points.`
+    : `Describe this scene in detail. Identify all visible objects and explain their spatial relationships.
+Point to key objects in the scene.
+At the end, provide a JSON array of detected objects: [{"point": [y, x], "label": <label>}] where coordinates are normalized between 0-1000.`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 8192,
+            // Higher thinking budget for complex reasoning
+            thinkingConfig: { thinkingBudget: 1024 }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Robotics API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Extract description (everything before the JSON array)
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    const description = jsonMatch
+      ? text.substring(0, text.indexOf(jsonMatch[0])).trim()
+      : text;
+
+    let objects: DetectedObject[] = [];
+    if (jsonMatch) {
+      try {
+        objects = JSON.parse(jsonMatch[0]);
+      } catch {
+        console.warn('Could not parse objects from spatial analysis');
+      }
+    }
+
+    return { description, objects };
+  } catch (error) {
+    console.error('Failed to analyze scene spatially:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate trajectory points for moving an object
+ */
+export const generateTrajectory = async (
+  imageBase64: string,
+  fromObject: string,
+  toLocation: string,
+  mimeType: string = 'image/jpeg',
+  numPoints: number = 15
+): Promise<TrajectoryPoint[]> => {
+  console.log('🤖 Generating trajectory from', fromObject, 'to', toLocation);
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `Place a point on the ${fromObject}, then ${numPoints} points for the trajectory of moving the ${fromObject} to ${toLocation}.
+The points should be labeled by order of the trajectory, from '0' (start point) to <n> (final point).
+The answer should follow the json format: [{"point": <point>, "label": <label>}, ...]. The points are in [y, x] format normalized to 0-1000.`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 4096
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Robotics API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as TrajectoryPoint[];
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Failed to generate trajectory:', error);
+    throw error;
+  }
+};
+
+/**
+ * Classify objects with detailed attributes
+ */
+export const classifyObjectsDetailed = async (
+  imageBase64: string,
+  mimeType: string = 'image/jpeg'
+): Promise<{ classifications: { label: string; attributes: string[]; point: [number, number] }[] }> => {
+  console.log('🤖 Classifying objects with detailed attributes...');
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `Identify and classify all visible objects in detail. For each object, provide:
+1. A specific label
+2. Key attributes (color, size, material, state, etc.)
+3. Location point
+
+Return as JSON: [{"label": <name>, "attributes": [<attr1>, <attr2>, ...], "point": [y, x]}] where coordinates are normalized 0-1000.`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 8192,
+            thinkingConfig: { thinkingBudget: 512 }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Robotics API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      return { classifications: JSON.parse(jsonMatch[0]) };
+    }
+
+    return { classifications: [] };
+  } catch (error) {
+    console.error('Failed to classify objects:', error);
+    throw error;
+  }
+};
+
+/**
+ * Answer questions about the scene (Visual QA)
+ */
+export const answerSceneQuestion = async (
+  imageBase64: string,
+  question: string,
+  mimeType: string = 'image/jpeg'
+): Promise<{ answer: string; relevantObjects: DetectedObject[] }> => {
+  console.log('🤖 Answering scene question:', question);
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `${question}
+
+Point to any relevant objects in your answer.
+Provide your response, then at the end include a JSON array of relevant object locations: [{"point": [y, x], "label": <label>}] normalized 0-1000.`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 4096,
+            thinkingConfig: { thinkingBudget: 1024 }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Robotics API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    const answer = jsonMatch
+      ? text.substring(0, text.indexOf(jsonMatch[0])).trim()
+      : text;
+
+    let relevantObjects: DetectedObject[] = [];
+    if (jsonMatch) {
+      try {
+        relevantObjects = JSON.parse(jsonMatch[0]);
+      } catch {
+        console.warn('Could not parse objects from answer');
+      }
+    }
+
+    return { answer, relevantObjects };
+  } catch (error) {
+    console.error('Failed to answer scene question:', error);
+    throw error;
+  }
+};
+
+/**
+ * Count objects of a specific type
+ */
+export const countObjects = async (
+  imageBase64: string,
+  objectType: string,
+  mimeType: string = 'image/jpeg'
+): Promise<{ count: number; objects: DetectedObject[] }> => {
+  console.log('🤖 Counting objects of type:', objectType);
+
+  const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+  const apiKey = await getSharedGeminiApiKey();
+
+  const prompt = `Count all ${objectType} visible in this image. Point to each one.
+Return: {"count": <number>, "objects": [{"point": [y, x], "label": <label>}, ...]} with coordinates normalized 0-1000.`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${ROBOTICS_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 4096,
+            // Higher thinking budget for counting accuracy
+            thinkingConfig: { thinkingBudget: 2048 }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Robotics API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{"count": 0, "objects": []}';
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const result = JSON.parse(jsonMatch[0]);
+      return {
+        count: result.count || 0,
+        objects: result.objects || []
+      };
+    }
+
+    return { count: 0, objects: [] };
+  } catch (error) {
+    console.error('Failed to count objects:', error);
+    throw error;
+  }
+};
