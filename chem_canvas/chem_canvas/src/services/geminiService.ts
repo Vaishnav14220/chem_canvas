@@ -1133,6 +1133,70 @@ export const sendStudiumChatMessage = async (
 };
 
 /**
+ * Fetch grounding sources for a topic using Google Search.
+ * Returns sources with URLs, titles, and snippets.
+ */
+export const fetchGroundingSources = async (
+  query: string
+): Promise<{ 
+  text: string; 
+  sources: Array<{ url: string; title: string; snippet?: string }>;
+  groundingMetadata?: any;
+}> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      const result = await genAI!.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: query,
+        config: {
+          tools: [{ googleSearch: {} }],
+        }
+      });
+
+      const groundingMetadata = result.candidates?.[0]?.groundingMetadata;
+      const chunks = groundingMetadata?.groundingChunks || [];
+      const supports = groundingMetadata?.groundingSupports || [];
+      
+      // Extract unique sources with snippets
+      const sourcesMap = new Map<string, { url: string; title: string; snippet?: string }>();
+      
+      chunks.forEach((chunk: any, idx: number) => {
+        if (chunk.web) {
+          const support = supports.find((s: any) => 
+            s.groundingChunkIndices?.includes(idx)
+          );
+          sourcesMap.set(chunk.web.uri, {
+            url: chunk.web.uri,
+            title: chunk.web.title || new URL(chunk.web.uri).hostname,
+            snippet: support?.segment?.text
+          });
+        }
+      });
+
+      return {
+        text: result.text || '',
+        sources: Array.from(sourcesMap.values()),
+        groundingMetadata
+      };
+    });
+  } catch (error) {
+    console.error("Grounding Search Error:", error);
+    throw error;
+  }
+};
+
+/**
  * General image analysis for uploaded photos.
  */
 export const analyzeUploadedImage = async (file: File, prompt: string): Promise<string> => {

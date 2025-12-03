@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { flushSync } from 'react-dom';
-import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move } from 'lucide-react';
+import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy } from 'lucide-react';
 import LaserCursor from './LaserCursor';
 import HandControlled3DMolecule from './HandControlled3DMolecule';
 import { useHandTracking } from '../hooks/useHandTracking';
@@ -47,6 +47,7 @@ import {
     BoundingBox,
     ReactFlowData
 } from '../services/immersiveLearningService';
+import { fetchGroundingSources } from '../services/geminiService';
 import ReactFlowMindMap from './ReactFlowMindMap';
 
 interface ImmersiveLearningProps {
@@ -166,6 +167,18 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [isLoadingFloatingQuiz, setIsLoadingFloatingQuiz] = useState(false);
     const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
 
+    // PDF Citation Sidebar State
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [showPdfSidebar, setShowPdfSidebar] = useState(false);
+    
+    // Grounding Citation State (like Tutor)
+    const [activeCitation, setActiveCitation] = useState<{ url: string; title: string; snippet?: string; pageNumber?: number; sectionId?: string } | null>(null);
+    const [groundingSources, setGroundingSources] = useState<Array<{ url: string; title: string; snippet?: string }>>([]);
+    const [activeSource, setActiveSource] = useState<{ url: string; title: string; snippet?: string } | null>(null);
+    const [isLoadingGrounding, setIsLoadingGrounding] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     // AI Content State
     const [immersiveContent, setImmersiveContent] = useState<ImmersiveContent | null>(null);
     const [sectionImages, setSectionImages] = useState<{ [key: string]: string }>({});
@@ -234,7 +247,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [isGeneratingSimulation, setIsGeneratingSimulation] = useState(false);
     const [simulationProgress, setSimulationProgress] = useState<string>('');
     const [simulationError, setSimulationError] = useState<string | null>(null);
-    const [isSimulationFullscreen, setIsSimulationFullscreen] = useState(false);
+    const [isSimulationFullscreen, setIsSimulationFullscreen] = useState(true);
     const simulationIframeRef = useRef<HTMLIFrameElement>(null);
     const documentTextRef = useRef<string>(''); // Store document text for simulation generation
 
@@ -1214,6 +1227,12 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         setProcessingStage('uploading');
         setLoadingMessage('Uploading document...');
 
+        // Create PDF URL for sidebar viewer if it's a PDF file
+        if (file.type === 'application/pdf') {
+            const url = URL.createObjectURL(file);
+            setPdfUrl(url);
+        }
+
         try {
             // Stage 1: Extracting text
             setProcessingStage('extracting');
@@ -1599,6 +1618,60 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
             setIsLoadingFloatingQuiz(false);
         }
     };
+
+    // Handler for citation clicks - opens sidebar with grounding source preview (like Tutor)
+    const handleCitationClick = useCallback((source: { url: string; title: string; snippet?: string }, sectionIndex?: number) => {
+        setActiveCitation({ 
+            url: source.url, 
+            title: source.title, 
+            snippet: source.snippet,
+            pageNumber: sectionIndex ? sectionIndex + 1 : undefined,
+            sectionId: undefined 
+        });
+        setShowPdfSidebar(true);
+        setOpenFloatingQuiz(null); // Close quiz if open
+    }, []);
+
+    // Copy snippet to clipboard
+    const handleCopySnippet = useCallback(() => {
+        if (activeCitation?.snippet) {
+            navigator.clipboard.writeText(activeCitation.snippet);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    }, [activeCitation]);
+
+    // Get highlighted URL with text fragment
+    const getHighlightedUrl = useCallback((url: string, snippet?: string) => {
+        if (!snippet) return url;
+        const cleanSnippet = snippet.replace(/[^\w\s,.-]/g, '').trim().substring(0, 100);
+        if (cleanSnippet.length < 5) return url;
+        return `${url}#:~:text=${encodeURIComponent(cleanSnippet)}`;
+    }, []);
+
+    // Fetch grounding sources for a topic (Google Search grounding)
+    const handleFetchGroundingSources = useCallback(async (topic: string) => {
+        setIsLoadingGrounding(true);
+        try {
+            const result = await fetchGroundingSources(
+                `Provide accurate information with citations about: ${topic}. Include scientific or educational sources.`
+            );
+            setGroundingSources(result.sources);
+        } catch (error) {
+            console.error('Failed to fetch grounding sources:', error);
+            setGroundingSources([]);
+        } finally {
+            setIsLoadingGrounding(false);
+        }
+    }, []);
+
+    // Auto-fetch grounding sources when section changes
+    useEffect(() => {
+        const section = immersiveContent?.sections.find(s => s.id === activeSectionId);
+        if (section?.title && activeMode === 'immersive-text') {
+            handleFetchGroundingSources(section.title);
+        }
+    }, [activeSectionId, activeMode, immersiveContent, handleFetchGroundingSources]);
 
     // Floating Quiz Component (Google-style) - Now uses paragraph-specific quiz
     const FloatingQuizPanel = ({ paragraphIndex, onClose }: { paragraphIndex: number; onClose: () => void }) => {
@@ -2029,7 +2102,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                             </div>
 
                             {/* Main Heading with Navigation Arrows */}
-                            <div className="flex items-start justify-between mb-6">
+                            <div className="flex items-start justify-between mb-4">
                                 <h2 className="text-[32px] leading-[1.2] font-medium text-[#1f1f1f] max-w-[700px]">
                                     {activeSection?.title}
                                 </h2>
@@ -2061,7 +2134,47 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 </div>
                             </div>
 
-                            {/* Content paragraphs with floating ? buttons */}
+                            {/* Grounding Sources Bar - Shows all sources with bubble badges */}
+                            {groundingSources.length > 0 && (
+                                <div className="flex items-center gap-2 mb-6 flex-wrap">
+                                    <div className="flex items-center gap-1.5 text-[12px] text-[#5f6368]">
+                                        <Globe className="w-3.5 h-3.5" />
+                                        <span>Sources:</span>
+                                    </div>
+                                    {groundingSources.map((source, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => {
+                                                setActiveSource(source);
+                                                setShowPdfSidebar(true);
+                                            }}
+                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] transition-colors ${
+                                                activeSource?.url === source.url
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                            }`}
+                                            title={source.url}
+                                        >
+                                            <span className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full ${
+                                                activeSource?.url === source.url
+                                                    ? 'bg-white/30 text-white'
+                                                    : 'bg-blue-200 text-blue-700'
+                                            }`}>
+                                                {idx + 1}
+                                            </span>
+                                            <span className="truncate max-w-[120px]">{source.title || new URL(source.url).hostname}</span>
+                                        </button>
+                                    ))}
+                                    {isLoadingGrounding && (
+                                        <div className="flex items-center gap-1.5 text-[12px] text-blue-500">
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                            <span>Finding sources...</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Content paragraphs with floating ? buttons and inline citations */}
                             <div className="space-y-5 mb-8">
                                 {contentParts[0]?.split('\n\n').map((paragraph, pIdx) => (
                                     <div key={pIdx} className="relative group">
@@ -2071,6 +2184,34 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                                     p: ({ children }) => (
                                                         <p className="text-[18px] leading-[1.8] text-[#444746]">
                                                             {children}
+                                                            {/* Grounding Citation Bubbles - Tutor Style */}
+                                                            {pIdx === 0 && groundingSources.length > 0 && (
+                                                                <span className="inline-flex items-center gap-0.5 ml-1">
+                                                                    {groundingSources.slice(0, 3).map((source, srcIdx) => (
+                                                                        <button
+                                                                            key={srcIdx}
+                                                                            onClick={() => {
+                                                                                setActiveSource(source);
+                                                                                setShowPdfSidebar(true);
+                                                                            }}
+                                                                            className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full align-super transition-colors ${
+                                                                                activeSource?.url === source.url
+                                                                                    ? 'bg-indigo-600 text-white'
+                                                                                    : 'text-blue-600 bg-blue-100 hover:bg-blue-200'
+                                                                            }`}
+                                                                            title={source.title}
+                                                                        >
+                                                                            {srcIdx + 1}
+                                                                        </button>
+                                                                    ))}
+                                                                </span>
+                                                            )}
+                                                            {/* Loading indicator for grounding */}
+                                                            {pIdx === 0 && isLoadingGrounding && (
+                                                                <span className="inline-flex items-center ml-1 text-blue-500">
+                                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                                </span>
+                                                            )}
                                                         </p>
                                                     ),
                                                     strong: ({ children }) => {
@@ -3252,7 +3393,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
             case 'simulation':
                 return (
-                    <div className={`flex flex-col h-full bg-white ${isSimulationFullscreen ? 'fixed inset-0 z-[100]' : 'p-6'}`}>
+                    <div className={`flex flex-col bg-white ${isSimulationFullscreen ? 'fixed inset-0 z-[100]' : 'h-full p-6'}`} style={{ height: isSimulationFullscreen ? '100vh' : '100%' }}>
                         {/* Simulation Header */}
                         {!isSimulationFullscreen && (
                             <div className="flex items-center justify-between mb-4">
@@ -3290,10 +3431,19 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
                         {/* Fullscreen Header */}
                         {isSimulationFullscreen && (
-                            <div className="absolute top-4 right-4 z-10">
+                            <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+                                {simulationHTML && (
+                                    <button
+                                        onClick={handleRegenerateSimulation}
+                                        className="px-3 py-1.5 text-[13px] text-white bg-black/50 hover:bg-black/70 rounded-lg transition-colors flex items-center gap-1.5 backdrop-blur-sm"
+                                    >
+                                        <RefreshCw className="w-4 h-4" />
+                                        Regenerate
+                                    </button>
+                                )}
                                 <button
                                     onClick={toggleSimulationFullscreen}
-                                    className="px-3 py-1.5 text-[13px] text-white bg-black/50 hover:bg-black/70 rounded-lg transition-colors flex items-center gap-1.5 backdrop-blur-sm"
+                                    className="px-3 py-1.5 text-[13px] text-white bg-[#ff6d01] hover:bg-[#e56200] rounded-lg transition-colors flex items-center gap-1.5 backdrop-blur-sm"
                                 >
                                     <Minimize2 className="w-4 h-4" />
                                     Exit Fullscreen
@@ -3302,7 +3452,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                         )}
 
                         {/* Simulation Content */}
-                        <div className={`flex-1 ${isSimulationFullscreen ? '' : 'rounded-xl border border-[#e8eaed] overflow-hidden'}`}>
+                        <div className={`flex-1 ${isSimulationFullscreen ? 'h-full' : 'rounded-xl border border-[#e8eaed] overflow-hidden'}`} style={{ height: isSimulationFullscreen ? 'calc(100vh - 60px)' : undefined }}>
                             {/* Initial State - No Simulation */}
                             {!simulationHTML && !isGeneratingSimulation && !simulationError && (
                                 <div className="flex items-center justify-center h-full bg-gradient-to-br from-[#fff3e0] to-[#ffe0b2]">
@@ -3372,10 +3522,10 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 <iframe
                                     ref={simulationIframeRef}
                                     srcDoc={simulationHTML}
-                                    className="w-full h-full border-0"
+                                    className="w-full border-0"
                                     title="Interactive Simulation"
                                     sandbox="allow-scripts allow-same-origin allow-forms"
-                                    style={{ minHeight: isSimulationFullscreen ? '100vh' : '500px' }}
+                                    style={{ height: isSimulationFullscreen ? '100%' : '500px', minHeight: isSimulationFullscreen ? 'calc(100vh - 60px)' : '500px' }}
                                 />
                             )}
                         </div>
@@ -4678,9 +4828,147 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                     </div>
                 </div>
 
-                {/* Right Quiz Panel - Exact Google Style - 320px */}
-                {activeMode === 'immersive-text' && quiz.length > 0 && (
-                    <div className="w-[320px] bg-white border-l border-[#e8eaed] overflow-y-auto flex-shrink-0" ref={quizRef}>
+                {/* Right Sidebar - PDF Viewer OR Grounding Source OR Quiz Panel */}
+                {activeMode === 'immersive-text' && (activeSource ? (
+                    /* Grounding Source Sidebar - Like Tutor Style */
+                    <div className="w-[420px] bg-white border-l border-[#e8eaed] overflow-hidden flex-shrink-0 flex flex-col" ref={quizRef}>
+                        {/* Header */}
+                        <div className="p-4 border-b border-[#e8eaed] flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                                    <Globe className="w-4 h-4 text-white" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-[14px] font-medium text-[#1f1f1f] block truncate">{activeSource.title || 'Source'}</span>
+                                    <span className="text-[11px] text-[#5f6368] truncate block">{new URL(activeSource.url).hostname}</span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setActiveSource(null);
+                                    setShowPdfSidebar(false);
+                                }}
+                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/50 transition-colors"
+                            >
+                                <X className="w-5 h-5 text-[#5f6368]" />
+                            </button>
+                        </div>
+                        
+                        {/* Snippet Preview */}
+                        {activeSource.snippet && (
+                            <div className="p-4 border-b border-[#e8eaed] bg-gray-50">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[12px] font-medium text-[#5f6368] uppercase tracking-wide">Relevant excerpt</span>
+                                    <button
+                                        onClick={() => navigator.clipboard.writeText(activeSource.snippet || '')}
+                                        className="p-1.5 hover:bg-gray-200 rounded-md transition-colors"
+                                        title="Copy snippet"
+                                    >
+                                        <Copy className="w-3.5 h-3.5 text-[#5f6368]" />
+                                    </button>
+                                </div>
+                                <p className="text-[13px] text-[#1f1f1f] leading-relaxed bg-white p-3 rounded-lg border border-[#e8eaed] italic">
+                                    "{activeSource.snippet}"
+                                </p>
+                            </div>
+                        )}
+                        
+                        {/* Source Preview iframe */}
+                        <div className="flex-1 overflow-hidden bg-gray-100">
+                            <iframe
+                                src={activeSource.url}
+                                className="w-full h-full border-0"
+                                title="Source Preview"
+                                sandbox="allow-scripts allow-same-origin"
+                            />
+                        </div>
+                        
+                        {/* Footer with external link */}
+                        <div className="p-3 border-t border-[#e8eaed] bg-white">
+                            <div className="flex items-center justify-between">
+                                <button
+                                    onClick={() => {
+                                        setActiveSource(null);
+                                        setShowPdfSidebar(false);
+                                    }}
+                                    className="px-4 py-2 text-[13px] font-medium text-[#5f6368] hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                    Close
+                                </button>
+                                <a
+                                    href={activeSource.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-4 py-2 text-[13px] font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1.5"
+                                >
+                                    Open in new tab
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                ) : showPdfSidebar && pdfUrl ? (
+                    /* PDF Citation Sidebar */
+                    <div className="w-[420px] bg-white border-l border-[#e8eaed] overflow-hidden flex-shrink-0 flex flex-col" ref={quizRef}>
+                        {/* Header */}
+                        <div className="p-4 border-b border-[#e8eaed] flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                                    <FileText className="w-4 h-4 text-white" />
+                                </div>
+                                <div>
+                                    <span className="text-[14px] font-medium text-[#1f1f1f] block">Source Document</span>
+                                    <span className="text-[11px] text-[#5f6368]">
+                                        {uploadedFileName} {activeCitation && `• Section ${activeCitation.pageNumber}`}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setShowPdfSidebar(false);
+                                    setActiveCitation(null);
+                                }}
+                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/50 transition-colors"
+                            >
+                                <X className="w-5 h-5 text-[#5f6368]" />
+                            </button>
+                        </div>
+                        
+                        {/* PDF Viewer */}
+                        <div className="flex-1 overflow-hidden bg-gray-100">
+                            <iframe
+                                src={`${pdfUrl}#page=${activeCitation?.pageNumber || 1}`}
+                                className="w-full h-full border-0"
+                                title="PDF Viewer"
+                            />
+                        </div>
+                        
+                        {/* Footer with navigation */}
+                        <div className="p-3 border-t border-[#e8eaed] bg-white">
+                            <div className="flex items-center justify-between">
+                                <button
+                                    onClick={() => setShowPdfSidebar(false)}
+                                    className="px-4 py-2 text-[13px] font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                >
+                                    Back to Quiz
+                                </button>
+                                <a
+                                    href={pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-4 py-2 text-[13px] font-medium text-[#5f6368] hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5"
+                                >
+                                    Open in new tab
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                ) : quiz.length > 0 && (
+                    /* Quiz Panel - Original */
+                    <div className="w-[320px] bg-white border-l border-[#e8eaed] overflow-y-auto flex-shrink-0">
                         <div className="p-5">
                             {/* Quiz Header */}
                             <div className="flex items-center justify-between mb-5">
@@ -4778,7 +5066,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                             </div>
                         </div>
                     </div>
-                )}
+                ))}
             </div>
         </div>
     );
