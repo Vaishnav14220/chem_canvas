@@ -73,6 +73,14 @@ const CANVAS_WRITE_OVERRIDE_PHRASES: Array<{ phrase: string; reason: 'answer' | 
   { phrase: 'more similar example', reason: 'example' }
 ];
 
+// Handwriting request detection
+const HANDWRITING_KEYWORDS = ['handwriting', 'handwritten', 'hand written', 'write by hand', 'in handwriting', 'handwrite'];
+const detectHandwritingRequest = (text: string): boolean => {
+  if (!text) return false;
+  const normalized = text.toLowerCase();
+  return HANDWRITING_KEYWORDS.some(keyword => normalized.includes(keyword));
+};
+
 const shouldAutoShareCanvas = (text: string): boolean => {
   if (!text) return false;
   const normalized = text.toLowerCase();
@@ -683,6 +691,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const lastUserMessageRef = useRef<string>('');
   const canvasTextInsertionHandlerRef = useRef<((text: string) => void) | null>(null);
   const canvasMarkdownInsertionHandlerRef = useRef<((payload: { text: string; heading?: string }) => void) | null>(null);
+  const canvasHandwritingHandlerRef = useRef<((text: string) => void) | null>(null);
   const canvasMoleculeInsertionHandlerRef = useRef<((payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) | null>(null);
   const canvasProteinInsertionHandlerRef = useRef<((payload: CanvasProteinPlacementRequest) => Promise<boolean> | boolean) | null>(null);
   const canvasReactionInsertionHandlerRef = useRef<((payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) | null>(null);
@@ -697,6 +706,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const pendingCanvasWriteRef = useRef<{ reason: 'answer' | 'example'; requestedAt: number } | null>(null);
   const canvasWritePerformedThisTurnRef = useRef<boolean>(false);
   const lastAutoShareRef = useRef<{ text: string; timestamp: number }>({ text: '', timestamp: 0 });
+  const isHandwritingRequestRef = useRef<boolean>(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -729,6 +739,10 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
 
   const setCanvasMarkdownInsertionHandler = useCallback((handler: (payload: { text: string; heading?: string }) => void) => {
     canvasMarkdownInsertionHandlerRef.current = handler;
+  }, []);
+
+  const setCanvasHandwritingHandler = useCallback((handler: (text: string) => void) => {
+    canvasHandwritingHandlerRef.current = handler;
   }, []);
 
   const setCanvasMoleculeInsertionHandler = useCallback((handler: (payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) => {
@@ -924,6 +938,62 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
 
     const finalText = trimmedHeading ? `${trimmedHeading}\n\n${clipped}` : clipped;
     canvasTextInsertionHandlerRef.current(finalText);
+    return true;
+  }, []);
+
+  // Push handwritten text to canvas in small chunks - for Gemini Live streaming responses
+  const pushHandwrittenChunkToCanvas = useCallback((text: string): boolean => {
+    if (!text || !text.trim()) {
+      return false;
+    }
+
+    if (!canvasHandwritingHandlerRef.current) {
+      console.warn('Canvas handwriting handler not registered');
+      return false;
+    }
+
+    // Format text for handwriting - add bold markers for key terms
+    // This will be processed by the canvas to highlight important parts
+    canvasHandwritingHandlerRef.current(text.trim());
+    return true;
+  }, []);
+
+  // Push full response as handwriting in chunks - splits response into sentence-based chunks
+  const pushHandwritingToCanvas = useCallback((text: string, chunkSize: number = 200): boolean => {
+    if (!canvasHandwritingHandlerRef.current) {
+      console.warn('Canvas handwriting handler not registered');
+      return false;
+    }
+
+    const cleanText = text.replace(/[#*`]/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    if (!cleanText) {
+      return false;
+    }
+
+    // If short enough, send as single chunk
+    if (cleanText.length <= chunkSize) {
+      canvasHandwritingHandlerRef.current(cleanText);
+      return true;
+    }
+
+    // Split into chunks at sentence boundaries for natural handwriting flow
+    const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+    let currentChunk = '';
+
+    sentences.forEach(sentence => {
+      if ((currentChunk + sentence).length > chunkSize && currentChunk) {
+        canvasHandwritingHandlerRef.current!(currentChunk.trim());
+        currentChunk = sentence;
+      } else {
+        currentChunk += sentence;
+      }
+    });
+
+    // Push remaining chunk
+    if (currentChunk.trim()) {
+      canvasHandwritingHandlerRef.current(currentChunk.trim());
+    }
+
     return true;
   }, []);
 
@@ -1819,6 +1889,11 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 if (userTurnText) {
                   triggerAutoShareCanvas(userTurnText);
                   scheduleCanvasWriteFromUser(userTurnText);
+                  // Detect if user requested handwriting
+                  if (detectHandwritingRequest(userTurnText)) {
+                    isHandwritingRequestRef.current = true;
+                    console.log('[GeminiLive] Handwriting request detected from user input');
+                  }
                 }
                 currentUserIdRef.current = null;
               }
@@ -1861,6 +1936,16 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                   } else {
                     console.warn('Failed to push assistant response to canvas by default');
                   }
+                }
+
+                // Handle handwriting request - push response as handwritten chunks to canvas
+                if (isHandwritingRequestRef.current && trimmedResponse.length > 0) {
+                  console.log('[GeminiLive] Pushing response as handwriting to canvas...');
+                  const handwritingSuccess = pushHandwritingToCanvas(trimmedResponse, 150);
+                  if (handwritingSuccess) {
+                    console.log('[GeminiLive] Successfully pushed handwriting response');
+                  }
+                  isHandwritingRequestRef.current = false; // Reset for next turn
                 }
               }
 
@@ -2022,6 +2107,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     setSelectedVoice,
     setCanvasTextInsertionHandler,
     setCanvasMarkdownInsertionHandler,
+    setCanvasHandwritingHandler,
     setCanvasMoleculeInsertionHandler,
     setCanvasProteinInsertionHandler,
     setCanvasReactionInsertionHandler,
@@ -2029,6 +2115,8 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     setCanvasSurfaceActive,
     setRequestCanvasSnapshot,
     pushTextToCanvas,
+    pushHandwrittenChunkToCanvas,
+    pushHandwritingToCanvas,
     placeMoleculeOnCanvas,
     placeProteinOnCanvas,
     placeReactionOnCanvas,

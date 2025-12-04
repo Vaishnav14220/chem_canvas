@@ -39,6 +39,9 @@ export async function getQuickAnswer(question: string): Promise<string> {
 Keep your answer SHORT (max 2-3 sentences) as it will be displayed as handwritten text on a canvas.
 Focus on the key points only. Use simple, clear language. No bullet points or special formatting.
 
+IMPORTANT: Wrap key terms, formulas, or important concepts in **double asterisks** for emphasis (like **this**).
+Only highlight 1-3 key terms per answer - the most important ones.
+
 Question: ${question}
 
 Answer directly:`

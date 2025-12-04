@@ -30,6 +30,7 @@ import InlineMoleculeSearch from './InlineMoleculeSearch';
 import InlineReactionSearch, { type ReactionSearchResult } from './InlineReactionSearch';
 import PDBViewerEmbed from './PDBViewerEmbed';
 import ChemistryWidgetPanel from './ChemistryWidgetPanel';
+import rough from 'roughjs';
 import { Diff, Hunk, parseDiff } from 'react-diff-view';
 import { createTwoFilesPatch } from 'diff';
 import 'react-diff-view/style/index.css';
@@ -1623,6 +1624,7 @@ export default function Canvas({
     // Text-specific properties
     text?: string;
     isHandwriting?: boolean; // Use handwriting font (Satisfy)
+    highlightRanges?: Array<{ start: number; end: number; color: string }>; // Ranges to highlight
     // Molecule-specific properties
     moleculeData?: MoleculeData & {
       displayName?: string;
@@ -2150,11 +2152,51 @@ export default function Canvas({
   }, []);
 
   // Handler for handwritten text with animated typing effect - single text box
+  // Parse markdown bold (**text**) and return clean text with highlight ranges
+  const parseMarkdownBold = useCallback((text: string): { cleanText: string; highlightRanges: Array<{ start: number; end: number; color: string }> } => {
+    const highlightRanges: Array<{ start: number; end: number; color: string }> = [];
+    let cleanText = '';
+    let i = 0;
+    
+    while (i < text.length) {
+      // Check for ** (bold markers)
+      if (text[i] === '*' && text[i + 1] === '*') {
+        // Find closing **
+        const closeIndex = text.indexOf('**', i + 2);
+        if (closeIndex !== -1) {
+          // Extract bold text
+          const boldText = text.substring(i + 2, closeIndex);
+          const startPos = cleanText.length;
+          cleanText += boldText;
+          const endPos = cleanText.length;
+          
+          // Add highlight range with golden yellow color
+          highlightRanges.push({
+            start: startPos,
+            end: endPos,
+            color: '#ffd54f' // Golden yellow for highlight
+          });
+          
+          i = closeIndex + 2; // Skip past closing **
+          continue;
+        }
+      }
+      
+      cleanText += text[i];
+      i++;
+    }
+    
+    return { cleanText, highlightRanges };
+  }, []);
+
   const handleHandwritingInjection = useCallback((text: string) => {
     if (!text.trim()) return;
 
+    // Parse markdown bold text first
+    const { cleanText: parsedText, highlightRanges: initialRanges } = parseMarkdownBold(text);
+
     // First split by existing newlines, then wrap each paragraph
-    const paragraphs = text.split('\n').filter(p => p.trim());
+    const paragraphs = parsedText.split('\n').filter(p => p.trim());
     const allLines: string[] = [];
     
     paragraphs.forEach((paragraph, pIndex) => {
@@ -2173,6 +2215,22 @@ export default function Canvas({
     
     // Join all lines into a single multiline text
     const fullText = displayLines.join('\n');
+    
+    // Recalculate highlight ranges for the wrapped text
+    // Since we join with \n, we need to map original positions to new positions
+    const adjustedRanges = initialRanges.map(range => {
+      // For now, try to find the highlighted text in the new fullText
+      const highlightedText = parsedText.substring(range.start, range.end);
+      const newStart = fullText.indexOf(highlightedText);
+      if (newStart !== -1) {
+        return {
+          start: newStart,
+          end: newStart + highlightedText.length,
+          color: range.color
+        };
+      }
+      return range;
+    });
     
     const fontSize = 26; // Optimal size for Satisfy font readability
     const lineHeight = fontSize + 12; // Line height for multiline text
@@ -2203,7 +2261,8 @@ export default function Canvas({
       fillColor: 'transparent',
       text: '', // Start empty for animation
       rotation: 0,
-      isHandwriting: true
+      isHandwriting: true,
+      highlightRanges: adjustedRanges // Store highlight ranges
     };
     
     // Add to history ref
@@ -2220,10 +2279,22 @@ export default function Canvas({
       if (currentIndex <= fullText.length) {
         const currentText = fullText.substring(0, currentIndex);
         
+        // Calculate which highlights are currently visible (partial or full)
+        const currentHighlights = adjustedRanges
+          .filter(range => currentIndex > range.start)
+          .map(range => ({
+            ...range,
+            end: Math.min(range.end, currentIndex) // Clip to current position
+          }));
+        
         // Update the shape in the ref with the current partial text
         canvasHistoryRef.current = canvasHistoryRef.current.map(shape => {
           if (shape.id === shapeId) {
-            return { ...shape, text: currentText };
+            return { 
+              ...shape, 
+              text: currentText,
+              highlightRanges: currentHighlights
+            };
           }
           return shape;
         });
@@ -2243,7 +2314,7 @@ export default function Canvas({
     
     // Start animation after a brief delay
     setTimeout(animateTyping, 100);
-  }, [findEmptySpace, wrapTextIntoLines]);
+  }, [findEmptySpace, wrapTextIntoLines, parseMarkdownBold]);
 
   // Register handwriting handler
   useEffect(() => {
@@ -5834,9 +5905,18 @@ export default function Canvas({
     setIsDrawing(false);
   };
 
-  const drawText = (ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string, size: number, isHandwriting?: boolean) => {
+  const drawText = (
+    ctx: CanvasRenderingContext2D, 
+    x: number, 
+    y: number, 
+    text: string, 
+    color: string, 
+    size: number, 
+    isHandwriting?: boolean,
+    highlightRanges?: Array<{ start: number; end: number; color: string }>
+  ) => {
     ctx.save();
-    ctx.fillStyle = color;
+    
     // Use Satisfy font for handwriting, Inter for regular text
     ctx.font = isHandwriting 
       ? `${size}px "Satisfy", cursive` 
@@ -5848,9 +5928,96 @@ export default function Canvas({
     const lines = text.split('\n');
     const lineHeight = size * (isHandwriting ? 1.4 : 1.2); // More spacing for handwriting
 
-    lines.forEach((line, index) => {
-      const lineY = y + (index * lineHeight);
-      ctx.fillText(line, x, lineY);
+    let globalCharIndex = 0;
+
+    // Create roughjs canvas for hand-drawn effects
+    const rc = rough.canvas(ctx.canvas);
+
+    lines.forEach((line, lineIndex) => {
+      const lineY = y + (lineIndex * lineHeight);
+      const lineStartIndex = globalCharIndex;
+      const lineEndIndex = globalCharIndex + line.length;
+
+      // Check if we have highlights for this line
+      const lineHighlights = highlightRanges?.filter(h => 
+        h.start < lineEndIndex && h.end > lineStartIndex
+      ) || [];
+
+      if (lineHighlights.length === 0) {
+        // No highlights, draw normally
+        ctx.fillStyle = color;
+        ctx.fillText(line, x, lineY);
+      } else {
+        // Draw with highlights
+        let currentX = x;
+        let charIndex = 0;
+
+        while (charIndex < line.length) {
+          const globalIdx = lineStartIndex + charIndex;
+          
+          // Find if current position is in a highlight
+          const activeHighlight = lineHighlights.find(h => 
+            globalIdx >= h.start && globalIdx < h.end
+          );
+
+          if (activeHighlight) {
+            // Find end of highlight in this line
+            const highlightEndInLine = Math.min(
+              activeHighlight.end - lineStartIndex,
+              line.length
+            );
+            const highlightText = line.substring(charIndex, highlightEndInLine);
+            
+            // Measure text width for highlight background
+            const textWidth = ctx.measureText(highlightText).width;
+            
+            // Draw highlight using roughjs for hand-drawn effect
+            const highlightHeight = size * 0.85;
+            const highlightY = lineY + size * 0.1;
+            const padding = 4;
+            
+            // Use roughjs rectangle with fill for marker effect
+            rc.rectangle(
+              currentX - padding,
+              highlightY - padding / 2,
+              textWidth + padding * 2,
+              highlightHeight + padding,
+              {
+                fill: activeHighlight.color,
+                fillStyle: 'solid',
+                fillWeight: 2,
+                roughness: 1.5,
+                stroke: 'none',
+                strokeWidth: 0,
+                seed: Math.floor(currentX * 100) // Consistent randomness based on position
+              }
+            );
+            
+            // Draw the text on top
+            ctx.fillStyle = color;
+            ctx.fillText(highlightText, currentX, lineY);
+            
+            currentX += textWidth;
+            charIndex = highlightEndInLine;
+          } else {
+            // Find next highlight start or end of line
+            const nextHighlightStart = lineHighlights
+              .filter(h => h.start > globalIdx)
+              .map(h => h.start - lineStartIndex)
+              .sort((a, b) => a - b)[0] ?? line.length;
+            
+            const normalText = line.substring(charIndex, nextHighlightStart);
+            
+            ctx.fillStyle = color;
+            ctx.fillText(normalText, currentX, lineY);
+            
+            currentX += ctx.measureText(normalText).width;
+            charIndex = nextHighlightStart;
+          }
+        }
+      }
+
+      globalCharIndex += line.length + 1; // +1 for newline
     });
 
     ctx.restore();
@@ -6066,7 +6233,7 @@ export default function Canvas({
         if (textCorrections.length > 0) {
           drawTextWithHighlights(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, textCorrections);
         } else {
-          drawText(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, shape.isHandwriting);
+          drawText(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, shape.isHandwriting, shape.highlightRanges);
         }
       }
 

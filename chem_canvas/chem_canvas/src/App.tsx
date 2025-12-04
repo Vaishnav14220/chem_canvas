@@ -300,6 +300,7 @@ const App: React.FC = () => {
     setCanvasMoleculeInsertionHandler,
     setCanvasProteinInsertionHandler,
     setCanvasReactionInsertionHandler,
+    setCanvasHandwritingHandler,
     setCanvasSurfaceActive
   } = geminiLiveState;
 
@@ -340,9 +341,6 @@ const App: React.FC = () => {
   const workspaceHandlersRef = useRef<Record<string, CanvasWorkspaceHandlers>>({});
   const currentFeatureRef = useRef<{ id: string; start: number } | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
-
-  // Handwriting handler for writing on canvas
-  const [canvasHandwritingHandler, setCanvasHandwritingHandler] = useState<((text: string) => void) | null>(null);
 
   // Workspace persistence states
   const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
@@ -403,12 +401,19 @@ const App: React.FC = () => {
     setCanvasProteinInsertionHandler,
     setCanvasReactionInsertionHandler,
     setCanvasTextInsertionHandler,
+    setCanvasHandwritingHandler,
     setRequestCanvasSnapshot
   ]);
 
   useEffect(() => {
     updateGeminiHandlers();
   }, [activeWorkspaceId, updateGeminiHandlers]);
+
+  // Get current handwriting handler for active workspace
+  const currentHandwritingHandler = useMemo(() => {
+    const handlers = workspaceHandlersRef.current[activeWorkspaceId];
+    return handlers?.handwriting ?? null;
+  }, [activeWorkspaceId]);
 
   const registerWorkspaceHandler = useCallback(
     <K extends keyof CanvasWorkspaceHandlers,>(
@@ -2877,7 +2882,7 @@ Here is the learner's question: ${message}`;
         onCharacterSelect={(character, index) => {
           console.log('Selected:', character.name);
         }}
-        onWriteToCanvas={canvasHandwritingHandler || undefined}
+        onWriteToCanvas={currentHandwritingHandler || undefined}
         isConnected={geminiLiveState.connectionState === ConnectionState.CONNECTED}
         isConnecting={geminiLiveState.connectionState === ConnectionState.CONNECTING}
         isListening={geminiLiveState.isListening}
