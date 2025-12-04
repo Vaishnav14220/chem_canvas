@@ -1622,6 +1622,7 @@ export default function Canvas({
     originalHeight?: number;
     // Text-specific properties
     text?: string;
+    isHandwriting?: boolean; // Use handwriting font (Satisfy)
     // Molecule-specific properties
     moleculeData?: MoleculeData & {
       displayName?: string;
@@ -2082,9 +2083,9 @@ export default function Canvas({
 
     // Split text into lines
     const lines = text.split('\n').filter(line => line.trim());
-    const fontSize = 24;
-    const lineHeight = fontSize + 12;
-    const estimatedWidth = Math.min(600, Math.max(...lines.map(l => l.length * 10)));
+    const fontSize = 28; // Slightly larger for handwriting font
+    const lineHeight = fontSize + 16;
+    const estimatedWidth = Math.min(700, Math.max(...lines.map(l => l.length * 14)));
     const estimatedHeight = lines.length * lineHeight + 40;
 
     // Find empty space
@@ -2106,7 +2107,8 @@ export default function Canvas({
           fillEnabled: false,
           fillColor: 'transparent',
           text: line,
-          rotation: 0
+          rotation: 0,
+          isHandwriting: true // Mark as handwriting to use Satisfy font
         };
         
         addTextShapeToCanvas(textShape);
@@ -5703,16 +5705,19 @@ export default function Canvas({
     setIsDrawing(false);
   };
 
-  const drawText = (ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string, size: number) => {
+  const drawText = (ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string, size: number, isHandwriting?: boolean) => {
     ctx.save();
     ctx.fillStyle = color;
-    ctx.font = `${size}px "Inter", sans-serif`;
+    // Use Satisfy font for handwriting, Inter for regular text
+    ctx.font = isHandwriting 
+      ? `${size}px "Satisfy", cursive` 
+      : `${size}px "Inter", sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
     // Handle multi-line text
     const lines = text.split('\n');
-    const lineHeight = size * 1.2; // Line height with some spacing
+    const lineHeight = size * (isHandwriting ? 1.4 : 1.2); // More spacing for handwriting
 
     lines.forEach((line, index) => {
       const lineY = y + (index * lineHeight);
@@ -5932,7 +5937,7 @@ export default function Canvas({
         if (textCorrections.length > 0) {
           drawTextWithHighlights(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, textCorrections);
         } else {
-          drawText(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size);
+          drawText(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, shape.isHandwriting);
         }
       }
 
