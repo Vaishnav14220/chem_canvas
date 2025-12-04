@@ -1,92 +1,30 @@
-import { getSharedGeminiApiKey, assignRandomApiKey } from '../firebase/apiKeys';
+import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 
 /**
- * Get a precise, concise answer from Gemini 2.5 Flash
+ * Get a precise, concise answer from Gemini 2.0 Flash
  * Optimized for handwriting display - keeps responses short and clear
  */
 export async function getQuickAnswer(question: string): Promise<string> {
+  console.log('🎯 QuickAnswer: Starting for question:', question.substring(0, 50) + '...');
+  
   // Fetch API key from Firebase
-  let apiKey = await getSharedGeminiApiKey();
-  if (!apiKey) {
-    apiKey = await assignRandomApiKey();
+  let apiKey: string;
+  try {
+    apiKey = await getSharedGeminiApiKey();
+    console.log('✅ QuickAnswer: Got API key:', apiKey?.substring(0, 10) + '...');
+  } catch (error) {
+    console.error('❌ QuickAnswer: Failed to get API key:', error);
+    throw new Error("Could not retrieve API key from Firebase");
   }
 
   if (!apiKey) {
     throw new Error("API Key not found. Please ensure you have a valid session.");
   }
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: `You are a helpful chemistry tutor. Answer the following question precisely and concisely. 
-Keep your answer SHORT (max 3-4 sentences) as it will be displayed as handwritten text.
-Focus on the key points only. Use simple, clear language.
-
-Question: ${question}
-
-Provide a direct, precise answer:`
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.3,
-          topK: 20,
-          topP: 0.8,
-          maxOutputTokens: 200,
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error?.message || 'Failed to get answer from Gemini');
-  }
-
-  const data = await response.json();
-  
-  // Extract the text response
-  const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  
-  if (!textResponse) {
-    throw new Error('No response generated');
-  }
-
-  return textResponse.trim();
-}
-
-/**
- * Stream answer from Gemini 2.5 Flash (for longer responses)
- */
-export async function streamQuickAnswer(
-  question: string,
-  onChunk: (text: string) => void,
-  onComplete: (fullText: string) => void,
-  onError: (error: Error) => void
-): Promise<void> {
   try {
-    // Fetch API key from Firebase
-    let apiKey = await getSharedGeminiApiKey();
-    if (!apiKey) {
-      apiKey = await assignRandomApiKey();
-    }
-
-    if (!apiKey) {
-      throw new Error("API Key not found. Please ensure you have a valid session.");
-    }
-
+    console.log('📡 QuickAnswer: Making API request...');
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: {
@@ -97,13 +35,13 @@ export async function streamQuickAnswer(
             {
               parts: [
                 {
-                  text: `You are a helpful chemistry tutor. Answer the following question precisely and concisely.
-Keep your answer SHORT (max 3-4 sentences) as it will be displayed as handwritten text.
-Focus on the key points only. Use simple, clear language.
+                  text: `You are a helpful tutor. Answer the following question precisely and concisely. 
+Keep your answer SHORT (max 2-3 sentences) as it will be displayed as handwritten text on a canvas.
+Focus on the key points only. Use simple, clear language. No bullet points or special formatting.
 
 Question: ${question}
 
-Provide a direct, precise answer:`
+Answer directly:`
                 }
               ]
             }
@@ -112,7 +50,84 @@ Provide a direct, precise answer:`
             temperature: 0.3,
             topK: 20,
             topP: 0.8,
-            maxOutputTokens: 200,
+            maxOutputTokens: 150,
+          },
+        }),
+      }
+    );
+
+    console.log('📡 QuickAnswer: Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ QuickAnswer: API error:', errorText);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ QuickAnswer: Got response data:', JSON.stringify(data).substring(0, 200));
+    
+    // Extract the text response
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!textResponse) {
+      console.error('❌ QuickAnswer: No text in response:', data);
+      throw new Error('No response generated');
+    }
+
+    console.log('✅ QuickAnswer: Final answer:', textResponse.substring(0, 100) + '...');
+    return textResponse.trim();
+  } catch (error) {
+    console.error('❌ QuickAnswer: Error during API call:', error);
+    throw error;
+  }
+}
+
+/**
+ * Stream answer from Gemini 2.0 Flash (for longer responses)
+ */
+export async function streamQuickAnswer(
+  question: string,
+  onChunk: (text: string) => void,
+  onComplete: (fullText: string) => void,
+  onError: (error: Error) => void
+): Promise<void> {
+  try {
+    // Fetch API key from Firebase
+    const apiKey = await getSharedGeminiApiKey();
+
+    if (!apiKey) {
+      throw new Error("API Key not found. Please ensure you have a valid session.");
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `You are a helpful tutor. Answer the following question precisely and concisely.
+Keep your answer SHORT (max 2-3 sentences) as it will be displayed as handwritten text.
+Focus on the key points only. Use simple, clear language. No bullet points or special formatting.
+
+Question: ${question}
+
+Answer directly:`
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.3,
+            topK: 20,
+            topP: 0.8,
+            maxOutputTokens: 150,
           },
         }),
       }
