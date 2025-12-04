@@ -2883,6 +2883,17 @@ Here is the learner's question: ${message}`;
           console.log('Selected:', character.name);
         }}
         onWriteToCanvas={currentHandwritingHandler || undefined}
+        onLiveConnect={() => {
+          // Ensure canvas is visible when Gemini Live connects for handwriting responses
+          // Close any fullscreen panels that might hide the canvas
+          setShowNmrFullscreen(false);
+          setShowSrlCoachWorkspace(false);
+          setShowGeminiLiveWorkspace(false);
+          setShowDocumentEditorCanvas(false);
+          setShowAIWord(false);
+          setShowAISheet(false);
+          console.log('[App] Gemini Live mic connected - canvas ready for handwriting responses');
+        }}
         isConnected={geminiLiveState.connectionState === ConnectionState.CONNECTED}
         isConnecting={geminiLiveState.connectionState === ConnectionState.CONNECTING}
         isListening={geminiLiveState.isListening}

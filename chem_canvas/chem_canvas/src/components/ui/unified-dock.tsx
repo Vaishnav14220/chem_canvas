@@ -197,6 +197,9 @@ interface UnifiedDockProps {
   // Write answer directly to canvas
   onWriteToCanvas?: (text: string) => void;
   
+  // Callback when Gemini Live mic connects - use to open canvas
+  onLiveConnect?: () => void;
+  
   // Gemini Live props
   isConnected?: boolean;
   isConnecting?: boolean;
@@ -230,6 +233,7 @@ export function UnifiedDock({
   onCharacterSelect,
   onMessageSend,
   onWriteToCanvas,
+  onLiveConnect,
   isConnected = false,
   isConnecting = false,
   isListening = false,
@@ -357,6 +361,8 @@ export function UnifiedDock({
       onDisconnect?.();
     } else {
       onConnect?.();
+      // Trigger callback to open canvas when mic connects
+      onLiveConnect?.();
     }
   };
 

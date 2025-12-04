@@ -81,6 +81,46 @@ const detectHandwritingRequest = (text: string): boolean => {
   return HANDWRITING_KEYWORDS.some(keyword => normalized.includes(keyword));
 };
 
+// Filler words/phrases to remove from AI responses for cleaner handwriting
+const FILLER_PATTERNS = [
+  /^(um+|uh+|er+|ah+|hmm+|well+|so+|like+|you know|i mean|basically|actually|literally|honestly|frankly|obviously|clearly|of course|sure|okay|alright|right|yeah|yes|no|anyway|anyhow|anyways)\s*,?\s*/gi,
+  /\s+(um+|uh+|er+|ah+|hmm+)\s+/gi,
+  /^(let me think|let me see|let's see|good question|great question|interesting question|that's a great question|that's interesting)\s*[.,]?\s*/gi,
+  /^(so basically|well basically|okay so|alright so|so yeah|yeah so)\s*,?\s*/gi,
+  /\s*,\s*(you know|i mean|like)\s*,\s*/gi,
+];
+
+// Extract only the key content from AI response - removes filler and keeps important info
+const extractImportantContent = (text: string): string => {
+  if (!text) return '';
+  
+  let cleaned = text;
+  
+  // Remove filler patterns
+  FILLER_PATTERNS.forEach(pattern => {
+    cleaned = cleaned.replace(pattern, ' ');
+  });
+  
+  // Remove excessive whitespace
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  // Remove sentences that are just conversational fluff
+  const sentences = cleaned.split(/(?<=[.!?])\s+/);
+  const importantSentences = sentences.filter(sentence => {
+    const lower = sentence.toLowerCase().trim();
+    // Skip very short sentences that are likely filler
+    if (lower.length < 15) return false;
+    // Skip sentences that are just acknowledgments
+    if (/^(okay|alright|sure|yes|no|right|got it|i see|i understand|that makes sense)[.!?]?$/i.test(lower)) return false;
+    // Skip sentences asking if user understands
+    if (/does that (make sense|help|answer|clarify)/i.test(lower)) return false;
+    if (/let me know if you (need|have|want)/i.test(lower)) return false;
+    return true;
+  });
+  
+  return importantSentences.join(' ').trim();
+};
+
 const shouldAutoShareCanvas = (text: string): boolean => {
   if (!text) return false;
   const normalized = text.toLowerCase();
@@ -1940,11 +1980,18 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
 
                 // ALWAYS push response as handwritten text to canvas when Gemini Live responds
                 // This creates a real-time handwriting effect while the AI is speaking
+                // Filter out filler words - only write important/necessary content
                 if (trimmedResponse.length > 0 && canvasHandwritingHandlerRef.current) {
-                  console.log('[GeminiLive] Auto-pushing response as handwriting to canvas...');
-                  const handwritingSuccess = pushHandwritingToCanvas(trimmedResponse, 120);
-                  if (handwritingSuccess) {
-                    console.log('[GeminiLive] Successfully pushed handwriting response');
+                  const importantContent = extractImportantContent(trimmedResponse);
+                  if (importantContent.length > 20) { // Only write if there's substantial content
+                    console.log('[GeminiLive] Auto-pushing filtered response as handwriting to canvas...');
+                    console.log('[GeminiLive] Original length:', trimmedResponse.length, '-> Filtered length:', importantContent.length);
+                    const handwritingSuccess = pushHandwritingToCanvas(importantContent, 120);
+                    if (handwritingSuccess) {
+                      console.log('[GeminiLive] Successfully pushed handwriting response');
+                    }
+                  } else {
+                    console.log('[GeminiLive] Skipping handwriting - content too short after filtering');
                   }
                 }
                 // Reset handwriting request flag for next turn
