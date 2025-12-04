@@ -2149,7 +2149,7 @@ export default function Canvas({
     return lines;
   }, []);
 
-  // Handler for handwritten text with animated typing effect
+  // Handler for handwritten text with animated typing effect - single text box
   const handleHandwritingInjection = useCallback((text: string) => {
     if (!text.trim()) return;
 
@@ -2168,88 +2168,81 @@ export default function Canvas({
       }
     });
 
-    // Filter out empty lines but track paragraph breaks
+    // Filter out empty lines
     const displayLines = allLines.filter(line => line.trim());
     
+    // Join all lines into a single multiline text
+    const fullText = displayLines.join('\n');
+    
     const fontSize = 26; // Optimal size for Satisfy font readability
-    const lineHeight = fontSize + 20; // More spacing for readability
-    const maxLineWidth = 600; // Max width for text block
+    const lineHeight = fontSize + 12; // Line height for multiline text
     const charWidth = 12; // Approximate char width for Satisfy font at this size
     
-    // Calculate actual max line length in characters
-    const actualMaxWidth = Math.min(
-      maxLineWidth,
-      Math.max(...displayLines.map(l => l.length * charWidth), 300)
-    );
-    const estimatedHeight = displayLines.length * lineHeight + 60;
+    // Calculate dimensions for the text box
+    const maxLineLength = Math.max(...displayLines.map(l => l.length));
+    const textBoxWidth = Math.min(600, Math.max(maxLineLength * charWidth, 300));
+    const textBoxHeight = displayLines.length * lineHeight + 40;
 
     // Find empty space with calculated dimensions
-    const position = findEmptySpace(actualMaxWidth + 40, estimatedHeight);
+    const position = findEmptySpace(textBoxWidth + 40, textBoxHeight);
 
-    // Track shape IDs for animation updates
-    const shapeIds: string[] = [];
-    const baseTime = Date.now();
+    const shapeId = `handwriting-${Date.now()}`;
     
-    // Create initial empty text shapes for each line
-    displayLines.forEach((line, index) => {
-      const shapeId = `handwriting-${baseTime}-${index}`;
-      shapeIds.push(shapeId);
-      const lineWidth = line.length * charWidth;
-      
-      const textShape: Shape = {
-        id: shapeId,
-        type: 'text',
-        startX: position.x + 20,
-        startY: position.y + 30 + (index * lineHeight),
-        endX: position.x + 20 + lineWidth,
-        endY: position.y + 30 + (index * lineHeight) + fontSize,
-        color: '#0ea5e9',
-        strokeColor: '#0ea5e9',
-        size: fontSize,
-        fillEnabled: false,
-        fillColor: 'transparent',
-        text: '', // Start empty for animation
-        rotation: 0,
-        isHandwriting: true
-      };
-      
-      // Add to history ref
-      canvasHistoryRef.current = [...canvasHistoryRef.current, textShape];
-    });
-
+    // Create a single text shape with multiline support
+    const textShape: Shape = {
+      id: shapeId,
+      type: 'text',
+      startX: position.x + 20,
+      startY: position.y + 30,
+      endX: position.x + 20 + textBoxWidth,
+      endY: position.y + 30 + textBoxHeight,
+      color: '#0ea5e9',
+      strokeColor: '#0ea5e9',
+      size: fontSize,
+      fillEnabled: false,
+      fillColor: 'transparent',
+      text: '', // Start empty for animation
+      rotation: 0,
+      isHandwriting: true
+    };
+    
+    // Add to history ref
+    canvasHistoryRef.current = [...canvasHistoryRef.current, textShape];
+    
     // Trigger initial redraw
     setForceRedraw(prev => prev + 1);
 
-    // Animate typing character by character
-    const charDelay = 30; // ms per character - fast but visible
-    const lineDelay = 150; // Extra delay between lines
-    let totalDelay = 50; // Initial delay before starting
-
-    displayLines.forEach((line, lineIndex) => {
-      const shapeId = shapeIds[lineIndex];
-      
-      // Animate each character in the line
-      for (let charIndex = 1; charIndex <= line.length; charIndex++) {
-        const currentText = line.substring(0, charIndex);
+    // Animate typing character by character for the entire text
+    const charDelay = 25; // ms per character - fast but visible
+    let currentIndex = 0;
+    
+    const animateTyping = () => {
+      if (currentIndex <= fullText.length) {
+        const currentText = fullText.substring(0, currentIndex);
         
-        setTimeout(() => {
-          // Update the shape in the ref with the current partial text
-          canvasHistoryRef.current = canvasHistoryRef.current.map(shape => {
-            if (shape.id === shapeId) {
-              return { ...shape, text: currentText };
-            }
-            return shape;
-          });
-          // Trigger redraw
-          setForceRedraw(prev => prev + 1);
-        }, totalDelay);
+        // Update the shape in the ref with the current partial text
+        canvasHistoryRef.current = canvasHistoryRef.current.map(shape => {
+          if (shape.id === shapeId) {
+            return { ...shape, text: currentText };
+          }
+          return shape;
+        });
         
-        totalDelay += charDelay;
+        // Trigger redraw
+        setForceRedraw(prev => prev + 1);
+        
+        currentIndex++;
+        
+        // Add slight extra delay for newlines (like a pause between lines)
+        const nextChar = fullText[currentIndex - 1];
+        const delay = nextChar === '\n' ? charDelay * 4 : charDelay;
+        
+        setTimeout(animateTyping, delay);
       }
-      
-      // Add extra delay between lines
-      totalDelay += lineDelay;
-    });
+    };
+    
+    // Start animation after a brief delay
+    setTimeout(animateTyping, 100);
   }, [findEmptySpace, wrapTextIntoLines]);
 
   // Register handwriting handler
