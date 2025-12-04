@@ -306,7 +306,8 @@ const App: React.FC = () => {
     setCanvasProteinInsertionHandler,
     setCanvasReactionInsertionHandler,
     setCanvasHandwritingHandler,
-    setCanvasSurfaceActive
+    setCanvasSurfaceActive,
+    setExcalidrawOnlyMode
   } = geminiLiveState;
 
   const handleCanvasImageExpand = useCallback(
@@ -428,11 +429,15 @@ const App: React.FC = () => {
         console.log('[App] Routing handwriting to Excalidraw:', text.substring(0, 50) + '...');
         excalidrawCanvasRef.current?.addHandwrittenText(text);
       });
+      // Enable excalidraw-only mode - skip other canvas outputs
+      setExcalidrawOnlyMode(true);
     } else {
       // Restore the default handler when Excalidraw is closed
       updateGeminiHandlers();
+      // Disable excalidraw-only mode - restore normal canvas outputs
+      setExcalidrawOnlyMode(false);
     }
-  }, [showExcalidrawCanvas, setCanvasHandwritingHandler, updateGeminiHandlers]);
+  }, [showExcalidrawCanvas, setCanvasHandwritingHandler, setExcalidrawOnlyMode, updateGeminiHandlers]);
 
   const registerWorkspaceHandler = useCallback(
     <K extends keyof CanvasWorkspaceHandlers,>(

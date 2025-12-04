@@ -737,6 +737,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const canvasReactionInsertionHandlerRef = useRef<((payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) | null>(null);
   const canvasConceptImageInsertionHandlerRef = useRef<((payload: CanvasConceptImagePayload) => Promise<boolean> | boolean) | null>(null);
   const canvasSurfaceActiveRef = useRef<boolean>(false);
+  const excalidrawOnlyModeRef = useRef<boolean>(false); // When true, skip pushTextToCanvas and only use handwriting
 
   const currentInputRef = useRef<string>('');
   const currentOutputRef = useRef<string>('');
@@ -803,6 +804,13 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
 
   const setCanvasSurfaceActive = useCallback((isActive: boolean) => {
     canvasSurfaceActiveRef.current = isActive;
+  }, []);
+
+  // When excalidraw-only mode is enabled, responses only go to handwriting handler (Excalidraw)
+  // and NOT to the regular canvas text/markdown handlers
+  const setExcalidrawOnlyMode = useCallback((enabled: boolean) => {
+    excalidrawOnlyModeRef.current = enabled;
+    console.log('[GeminiLive] Excalidraw-only mode:', enabled ? 'ENABLED' : 'DISABLED');
   }, []);
 
   const stopScreenShare = useCallback(() => {
@@ -1947,7 +1955,8 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 const userLastMsg = lastUserMessageRef.current || '';
                 const shouldTrigger = /explain|show|break down|visualize|steps|how to|derive|mechanism/i.test(userLastMsg);
 
-                if (!learningCanvasUpdatedThisTurnRef.current && completedText.trim().length > 0 && shouldTrigger) {
+                // Skip Learning Canvas updates when in Excalidraw-only mode
+                if (!excalidrawOnlyModeRef.current && !learningCanvasUpdatedThisTurnRef.current && completedText.trim().length > 0 && shouldTrigger) {
                   pushFallbackLearningCanvas(completedText);
                   learningCanvasUpdatedThisTurnRef.current = true;
                 }
@@ -1955,27 +1964,34 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 learningCanvasUpdatedThisTurnRef.current = false;
 
                 const trimmedResponse = completedText.trim();
-                const pendingWrite = pendingCanvasWriteRef.current;
-                if (pendingWrite && trimmedResponse.length > 0) {
-                  const heading = pendingWrite.reason === 'answer' ? 'Solution' : 'Similar Example';
-                  const inserted = pushTextToCanvas(trimmedResponse, heading);
-                  if (inserted) {
-                    canvasWritePerformedThisTurnRef.current = true;
-                  } else {
-                    console.warn('Failed to push assistant response to canvas despite user request');
+                
+                // Skip pushTextToCanvas when in Excalidraw-only mode - only use handwriting handler
+                if (!excalidrawOnlyModeRef.current) {
+                  const pendingWrite = pendingCanvasWriteRef.current;
+                  if (pendingWrite && trimmedResponse.length > 0) {
+                    const heading = pendingWrite.reason === 'answer' ? 'Solution' : 'Similar Example';
+                    const inserted = pushTextToCanvas(trimmedResponse, heading);
+                    if (inserted) {
+                      canvasWritePerformedThisTurnRef.current = true;
+                    } else {
+                      console.warn('Failed to push assistant response to canvas despite user request');
+                    }
+                    pendingCanvasWriteRef.current = null;
+                  } else if (
+                    trimmedResponse.length > 0 &&
+                    canvasSurfaceActiveRef.current &&
+                    !canvasWritePerformedThisTurnRef.current
+                  ) {
+                    const inserted = pushTextToCanvas(trimmedResponse, DEFAULT_AUTO_CANVAS_HEADING);
+                    if (inserted) {
+                      canvasWritePerformedThisTurnRef.current = true;
+                    } else {
+                      console.warn('Failed to push assistant response to canvas by default');
+                    }
                   }
+                } else {
+                  // Clear pending write in excalidraw mode
                   pendingCanvasWriteRef.current = null;
-                } else if (
-                  trimmedResponse.length > 0 &&
-                  canvasSurfaceActiveRef.current &&
-                  !canvasWritePerformedThisTurnRef.current
-                ) {
-                  const inserted = pushTextToCanvas(trimmedResponse, DEFAULT_AUTO_CANVAS_HEADING);
-                  if (inserted) {
-                    canvasWritePerformedThisTurnRef.current = true;
-                  } else {
-                    console.warn('Failed to push assistant response to canvas by default');
-                  }
                 }
 
                 // ALWAYS push response as handwritten text to canvas when Gemini Live responds
@@ -2162,6 +2178,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     setCanvasReactionInsertionHandler,
     setCanvasConceptImageInsertionHandler,
     setCanvasSurfaceActive,
+    setExcalidrawOnlyMode,
     setRequestCanvasSnapshot,
     pushTextToCanvas,
     pushHandwrittenChunkToCanvas,
