@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import {
   motion,
@@ -21,8 +21,11 @@ import {
   Sparkles,
   Image as ImageIcon,
   Send,
-  X
+  X,
+  PenTool
 } from "lucide-react";
+import { getQuickAnswer } from "@/services/quickAnswerService";
+import HandwritingCanvas from "@/components/HandwritingCanvas";
 
 // =============================================================================
 // Dock Base Components (Magic UI style)
@@ -243,6 +246,11 @@ export function UnifiedDock({
   const [isExpanded, setIsExpanded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
+  
+  // Handwriting canvas state
+  const [showHandwriting, setShowHandwriting] = useState(false);
+  const [handwritingText, setHandwritingText] = useState("");
+  const [isLoadingAnswer, setIsLoadingAnswer] = useState(false);
 
   // Audio visualizer effect
   useEffect(() => {
@@ -306,13 +314,42 @@ export function UnifiedDock({
     }
   };
 
-  const handleSendMessage = () => {
-    if (messageInput.trim() && selectedCharacter !== null) {
-      const character = characters[selectedCharacter];
-      onMessageSend?.(messageInput, character);
-      setMessageInput("");
+  // Handle sending message and getting handwritten answer
+  const handleSendMessage = useCallback(async () => {
+    if (!messageInput.trim() || selectedCharacter === null) return;
+    
+    const question = messageInput.trim();
+    const character = characters[selectedCharacter];
+    
+    // Notify parent if callback exists
+    onMessageSend?.(question, character);
+    
+    // Clear input and close popup
+    setMessageInput("");
+    setSelectedCharacter(null);
+    setIsExpanded(false);
+    
+    // Show handwriting canvas with loading state
+    setShowHandwriting(true);
+    setIsLoadingAnswer(true);
+    setHandwritingText("");
+    
+    try {
+      // Get answer from Gemini 2.5 Flash
+      const answer = await getQuickAnswer(question);
+      setHandwritingText(answer);
+    } catch (error) {
+      console.error('Error getting answer:', error);
+      setHandwritingText("Sorry, I couldn't get an answer. Please try again.");
+    } finally {
+      setIsLoadingAnswer(false);
     }
-  };
+  }, [messageInput, selectedCharacter, characters, onMessageSend]);
+
+  const handleCloseHandwriting = useCallback(() => {
+    setShowHandwriting(false);
+    setHandwritingText("");
+  }, []);
 
   const handleConnectionToggle = () => {
     if (isConnected || isConnecting) {
@@ -336,6 +373,10 @@ export function UnifiedDock({
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-2xl">{characters[selectedCharacter].emoji}</span>
                 <span className="font-medium text-sm">{characters[selectedCharacter].name}</span>
+                <div className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400">
+                  <PenTool className="w-3 h-3" />
+                  <span className="text-[10px]">Handwritten</span>
+                </div>
                 <button 
                   onClick={() => { setSelectedCharacter(null); setIsExpanded(false); }}
                   className="ml-auto p-1 rounded-full hover:bg-muted transition-colors"
@@ -349,7 +390,7 @@ export function UnifiedDock({
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder={`Message ${characters[selectedCharacter].name}...`}
+                  placeholder={`Ask a question...`}
                   className="flex-1 bg-muted/50 rounded-lg px-3 py-2 text-sm border-none outline-none focus:ring-2 focus:ring-cyan-500/30"
                   autoFocus
                 />
@@ -357,10 +398,12 @@ export function UnifiedDock({
                   onClick={handleSendMessage}
                   disabled={!messageInput.trim()}
                   className="p-2 rounded-lg bg-cyan-500/20 text-cyan-500 hover:bg-cyan-500/30 disabled:opacity-50 transition-colors"
+                  title="Get handwritten answer"
                 >
                   <Send className="w-4 h-4" />
                 </button>
               </div>
+              <p className="text-[10px] text-slate-500 mt-2">Answer will be written on canvas ✍️</p>
             </div>
           </motion.div>
         )}
@@ -470,6 +513,17 @@ export function UnifiedDock({
           </DockIcon>
         ))}
       </Dock>
+
+      {/* Handwriting Canvas for displaying answers */}
+      <HandwritingCanvas
+        text={handwritingText}
+        isVisible={showHandwriting}
+        onClose={handleCloseHandwriting}
+        isLoading={isLoadingAnswer}
+        fontSize={28}
+        strokeWidth={1.2}
+        color="#22d3ee"
+      />
     </div>
   );
 }
