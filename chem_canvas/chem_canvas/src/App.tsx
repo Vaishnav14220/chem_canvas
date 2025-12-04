@@ -47,6 +47,7 @@ import { ConceptImageRecord, LearningCanvasImage } from './components/GeminiLive
 import EpoxidationLearningExperience from './components/epoxidation/EpoxidationLearningExperience';
 import MessageDockPage from './components/MessageDockPage';
 import { MessageDock, type Character } from './components/ui/message-dock';
+import { UnifiedDock } from './components/ui/unified-dock';
 import type { AIInteraction, InteractionMode } from './types';
 import type { IElement } from '@hufe921/canvas-editor';
 import { captureToolClick, captureFeatureEvent, captureApiKey } from './utils/errorLogger';
@@ -59,6 +60,7 @@ import AISheet from './components/AISheet';
 import SimulationPlayground from './components/SimulationPlayground';
 import GeminiLiveWorkspace from './components/GeminiLiveWorkspace';
 import ImmersiveLearning from './components/ImmersiveLearning';
+import DrawingToolsDock, { type DrawingTool } from './components/DrawingToolsDock';
 import {
   createWorkspace,
   getWorkspaces,
@@ -211,7 +213,7 @@ const App: React.FC = () => {
   const [showPeriodicTable, setShowPeriodicTable] = useState(false);
 
   // Canvas and UI state
-  const [currentTool] = useState('pen');
+  const [currentTool, setCurrentTool] = useState<DrawingTool>('pen');
   const [strokeWidth] = useState(2);
   const [strokeColor] = useState('#00FFFF');
   const [isMolecularMode, setIsMolecularMode] = useState(false);
@@ -2656,6 +2658,14 @@ Here is the learner's question: ${message}`;
                           />
                         </div>
                       ))}
+                      
+                      {/* Drawing Tools Dock - Floating on canvas */}
+                      <DrawingToolsDock
+                        currentTool={currentTool}
+                        onToolChange={setCurrentTool}
+                        position="left"
+                        enableKeyboardShortcuts={true}
+                      />
                     </div>
                   </>
                 )}
@@ -2844,33 +2854,37 @@ Here is the learner's question: ${message}`;
         </div>
       )}
 
-      {/* Message Dock - Always visible */}
-      <MessageDock
-        characters={dockCharacters}
-        onMessageSend={(message, character, index) => {
+      {/* Unified Dock - Combines MessageDock + Gemini Live controls */}
+      <UnifiedDock
+        characters={dockCharacters.slice(1, -1).map(c => ({
+          id: c.id,
+          emoji: c.emoji,
+          name: c.name,
+          online: c.online,
+          backgroundColor: c.backgroundColor?.replace('bg-', 'bg-').replace('-200', '-500/20').replace('-300', '-500/20'),
+        }))}
+        onMessageSend={(message, character) => {
           console.log('Message:', message, 'to', character.name);
         }}
-        onCharacterSelect={(character) => {
+        onCharacterSelect={(character, index) => {
           console.log('Selected:', character.name);
         }}
-        isLiveActive={geminiLiveState.connectionState === ConnectionState.CONNECTED}
-        onSparkleClick={() => {
-          if (geminiLiveState.connectionState === ConnectionState.CONNECTED || geminiLiveState.connectionState === ConnectionState.CONNECTING) {
-            geminiLiveState.disconnect();
-          } else {
-            geminiLiveState.connect();
-          }
-        }}
+        isConnected={geminiLiveState.connectionState === ConnectionState.CONNECTED}
+        isConnecting={geminiLiveState.connectionState === ConnectionState.CONNECTING}
+        isListening={geminiLiveState.isListening}
+        isSpeaking={geminiLiveState.isSpeaking}
+        isScreenSharing={geminiLiveState.isScreenSharing}
+        onConnect={() => geminiLiveState.connect()}
+        onDisconnect={() => geminiLiveState.disconnect()}
+        onStartScreenShare={() => geminiLiveState.startScreenShare()}
+        onStopScreenShare={() => geminiLiveState.stopScreenShare()}
         onShareCanvas={() => geminiLiveState.captureAndSendSnapshot()}
         showShareCanvas={!showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && !showDocumentEditorCanvas}
-        expandedWidth={500}
-        placeholder={(name) => `Send a message to ${name}...`}
-        theme="light"
+        analyser={geminiLiveState.analyser}
       />
-      {/* Gemini Live Overlay */}
+      {/* Gemini Live Overlay - Only handles Learning Canvas now */}
       <GeminiLiveOverlay
         geminiLiveState={geminiLiveState}
-        activeWorkspaceId={activeWorkspaceId}
         onExpandImage={handleCanvasImageExpand}
       />
 

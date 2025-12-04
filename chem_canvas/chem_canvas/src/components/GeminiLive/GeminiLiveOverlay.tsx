@@ -1,94 +1,31 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, PhoneOff, Loader2, X, Maximize2, Minimize2, Sparkles, Activity, GripHorizontal } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { GripHorizontal } from 'lucide-react';
 import { motion, useDragControls } from 'framer-motion';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import GeminiLiveLearningCanvas from './GeminiLiveLearningCanvas';
-import { ConnectionState, LearningCanvasImage } from './types';
+import { LearningCanvasImage } from './types';
 
 interface GeminiLiveOverlayProps {
   geminiLiveState: ReturnType<typeof useGeminiLive>;
-  activeWorkspaceId: string;
   onExpandImage: (image: LearningCanvasImage) => void;
 }
 
-const GeminiLiveOverlay: React.FC<GeminiLiveOverlayProps> = ({ geminiLiveState, activeWorkspaceId, onExpandImage }) => {
+const GeminiLiveOverlay: React.FC<GeminiLiveOverlayProps> = ({ 
+  geminiLiveState, 
+  onExpandImage
+}) => {
   const dragControls = useDragControls();
 
-  // Resize state
+  // Resize state for Learning Canvas
   const [size, setSize] = useState({ width: 900, height: 600 });
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<{ startX: number; startY: number; startWidth: number; startHeight: number } | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
-  const [isWidgetExpanded, setIsWidgetExpanded] = useState(true);
 
   const {
-    connect,
-    disconnect,
-    connectionState,
-    analyser,
     simulationState,
     error,
-    isListening,
-    isSpeaking,
-    startScreenShare,
-    stopScreenShare,
-    isScreenSharing,
     simplifyStep
   } = geminiLiveState;
-
-  const isConnected = connectionState === ConnectionState.CONNECTED;
-  const isConnecting = connectionState === ConnectionState.CONNECTING;
-
-  // Simple visualizer for the widget
-  useEffect(() => {
-    if (!analyser || !canvasRef.current || !isWidgetExpanded) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    const draw = () => {
-      animationRef.current = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const barWidth = (canvas.width / bufferLength) * 2.5;
-      let barHeight;
-      let x = 0;
-
-      for (let i = 0; i < bufferLength; i++) {
-        barHeight = dataArray[i] / 2;
-
-        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        gradient.addColorStop(0, '#22d3ee'); // Cyan
-        gradient.addColorStop(1, '#3b82f6'); // Blue
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-
-        x += barWidth + 1;
-      }
-    };
-
-    draw();
-
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [analyser, isWidgetExpanded]);
-
-  const handleToggleConnection = () => {
-    if (isConnected || isConnecting) {
-      disconnect();
-    } else {
-      connect();
-    }
-  };
 
   // Resize handlers
   const handleResizeStart = (e: React.MouseEvent) => {
@@ -131,100 +68,12 @@ const GeminiLiveOverlay: React.FC<GeminiLiveOverlayProps> = ({ geminiLiveState, 
 
   return (
     <>
-      {/* Floating Voice Widget */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4 pointer-events-none">
-        <div className="pointer-events-auto flex flex-col items-end gap-4">
-          {/* Error Toast */}
-          {error && (
-            <div className="mb-2 max-w-xs rounded-xl border border-red-500/30 bg-red-950/90 px-4 py-3 text-xs text-red-200 shadow-xl backdrop-blur-md">
-              {error}
-            </div>
-          )}
-
-          {/* Main Widget */}
-          <div className={`transition-all duration-300 ease-in-out ${isWidgetExpanded ? 'w-72' : 'w-auto'} rounded-3xl border border-slate-800/60 bg-slate-950/80 shadow-2xl backdrop-blur-xl`}>
-            <div className="flex items-center justify-between p-2 pl-4">
-              <div className="flex items-center gap-3">
-                <div className={`relative flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isConnected ? 'bg-cyan-500/20 text-cyan-300' : 'bg-slate-800 text-slate-400'
-                  }`}>
-                  {isConnecting ? (
-                    <Loader2 className="animate-spin" size={20} />
-                  ) : isConnected ? (
-                    <Activity size={20} className={isSpeaking ? 'animate-pulse text-emerald-400' : ''} />
-                  ) : (
-                    <Mic size={20} />
-                  )}
-                  {isConnected && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500"></span>
-                    </span>
-                  )}
-                </div>
-
-                {isWidgetExpanded && (
-                  <div>
-                    <p className="text-xs font-bold text-slate-200">Gemini Live</p>
-                    <p className="text-[10px] text-slate-400">
-                      {isConnecting ? 'Connecting...' : isConnected ? (isSpeaking ? 'Speaking...' : 'Listening...') : 'Ready to connect'}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-                  className={`p-2 rounded-full transition-all duration-300 ${isScreenSharing
-                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                    : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
-                    }`}
-                  title={isScreenSharing ? "Stop Sharing Screen" : "Share Screen"}
-                >
-                  {isScreenSharing ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      <line x1="8" y1="12" x2="16" y2="12" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                      <line x1="8" y1="21" x2="16" y2="21" />
-                      <line x1="12" y1="17" x2="12" y2="21" />
-                    </svg>
-                  )}
-                </button>
-
-                <button
-                  onClick={handleToggleConnection}
-                  className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${isConnected
-                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                    : 'bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30'
-                    }`}
-                  title={isConnected ? 'Disconnect' : 'Connect'}
-                >
-                  {isConnected ? <PhoneOff size={14} /> : <Mic size={14} />}
-                </button>
-                <button
-                  onClick={() => setIsWidgetExpanded(!isWidgetExpanded)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                >
-                  {isWidgetExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Visualizer Area (only when expanded and connected) */}
-            {isWidgetExpanded && isConnected && (
-              <div className="border-t border-slate-800/50 px-4 py-3">
-                <div className="h-12 w-full overflow-hidden rounded-lg bg-slate-900/50">
-                  <canvas ref={canvasRef} width={250} height={48} className="h-full w-full" />
-                </div>
-              </div>
-            )}
-          </div>
+      {/* Error Toast */}
+      {error && (
+        <div className="fixed bottom-24 right-6 z-50 pointer-events-auto mb-2 max-w-xs rounded-xl border border-red-500/30 bg-red-950/90 px-4 py-3 text-xs text-red-200 shadow-xl backdrop-blur-md">
+          {error}
         </div>
-      </div>
+      )}
 
       {/* Learning Canvas Overlay - Draggable & Resizable */}
       {shouldShowLearningCanvas && (

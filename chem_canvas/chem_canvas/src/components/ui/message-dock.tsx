@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import { useState, useRef, useEffect } from "react";
+import { Mic, PhoneOff, Activity } from "lucide-react";
 
 export interface Character {
   id?: string | number;
@@ -38,6 +39,10 @@ export interface MessageDockProps {
   isLiveActive?: boolean;
   onShareCanvas?: () => void;
   showShareCanvas?: boolean;
+  // Gemini Live status props
+  isListening?: boolean;
+  isSpeaking?: boolean;
+  onDisconnect?: () => void;
 }
 
 const defaultCharacters: Character[] = [
@@ -106,6 +111,10 @@ export function MessageDock({
   isLiveActive = false,
   onShareCanvas,
   showShareCanvas = false,
+  // Gemini Live status
+  isListening = false,
+  isSpeaking = false,
+  onDisconnect,
 }: MessageDockProps) {
   const shouldReduceMotion = useReducedMotion();
   const [expandedCharacter, setExpandedCharacter] = useState<number | null>(
@@ -125,6 +134,22 @@ export function MessageDock({
       }
     }
   }, [hasInitialized]);
+
+  // Update width when live status changes
+  useEffect(() => {
+    if (dockRef.current && hasInitialized) {
+      // Give time for DOM to update
+      const timer = setTimeout(() => {
+        if (dockRef.current) {
+          const width = dockRef.current.offsetWidth;
+          if (width > 0) {
+            setCollapsedWidth(width);
+          }
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isLiveActive, hasInitialized]);
 
   useEffect(() => {
     if (!closeOnClickOutside) return;
@@ -310,6 +335,44 @@ export function MessageDock({
                   <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
                 </svg>
               </motion.button>
+            )}
+
+            {/* Live status indicator */}
+            {isLiveActive && (
+              <motion.div
+                className="relative flex items-center gap-2"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              >
+                <div className="relative w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="relative z-10 flex items-center justify-center">
+                    {isListening ? (
+                      <Mic className="w-4 h-4 text-pink-500 animate-pulse" />
+                    ) : isSpeaking ? (
+                      <Activity className="w-4 h-4 text-cyan-500 animate-pulse" />
+                    ) : (
+                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    )}
+                  </div>
+                  {/* Ping indicator */}
+                  <span className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                  </span>
+                </div>
+                
+                {/* Disconnect button */}
+                <motion.button
+                  className="w-10 h-10 flex items-center justify-center cursor-pointer rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all duration-300 border border-red-500/20"
+                  onClick={onDisconnect}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Disconnect"
+                >
+                  <PhoneOff className="w-4 h-4" />
+                </motion.button>
+              </motion.div>
             )}
           </motion.div>
           )}
