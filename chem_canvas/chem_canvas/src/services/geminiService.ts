@@ -1138,8 +1138,8 @@ export const sendStudiumChatMessage = async (
  */
 export const fetchGroundingSources = async (
   query: string
-): Promise<{ 
-  text: string; 
+): Promise<{
+  text: string;
   sources: Array<{ url: string; title: string; snippet?: string }>;
   groundingMetadata?: any;
 }> => {
@@ -1167,13 +1167,13 @@ export const fetchGroundingSources = async (
       const groundingMetadata = result.candidates?.[0]?.groundingMetadata;
       const chunks = groundingMetadata?.groundingChunks || [];
       const supports = groundingMetadata?.groundingSupports || [];
-      
+
       // Extract unique sources with snippets
       const sourcesMap = new Map<string, { url: string; title: string; snippet?: string }>();
-      
+
       chunks.forEach((chunk: any, idx: number) => {
         if (chunk.web) {
-          const support = supports.find((s: any) => 
+          const support = supports.find((s: any) =>
             s.groundingChunkIndices?.includes(idx)
           );
           sourcesMap.set(chunk.web.uri, {

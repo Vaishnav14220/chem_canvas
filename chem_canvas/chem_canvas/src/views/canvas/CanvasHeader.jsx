@@ -8,7 +8,7 @@ import { useTheme } from '@mui/material/styles'
 import { Avatar, Box, ButtonBase, Typography, Stack, TextField, Button } from '@mui/material'
 
 // icons
-import { IconSettings, IconChevronLeft, IconDeviceFloppy, IconPencil, IconCheck, IconX, IconCode } from '@tabler/icons-react'
+import { Settings, ChevronLeft, Save, Pencil, Check, X, Code } from 'lucide-react'
 
 // project imports
 import Settings from '@/views/settings'
@@ -96,7 +96,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
                         persist: true,
                         action: (key) => (
                             <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                                <IconX />
+                                <X />
                             </Button>
                         )
                     }
@@ -276,7 +276,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
                                     }
                                 }}
                             >
-                                <IconChevronLeft stroke={1.5} size='1.3rem' />
+                                <ChevronLeft strokeWidth={1.5} size='1.3rem' />
                             </Avatar>
                         </ButtonBase>
                     </Box>
@@ -315,7 +315,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
                                                 color='inherit'
                                                 onClick={() => setEditingFlowName(true)}
                                             >
-                                                <IconPencil stroke={1.5} size='1.3rem' />
+                                                <Pencil strokeWidth={1.5} size='1.3rem' />
                                             </Avatar>
                                         </ButtonBase>
                                     </Available>
@@ -359,7 +359,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
                                         color='inherit'
                                         onClick={submitFlowName}
                                     >
-                                        <IconCheck stroke={1.5} size='1.3rem' />
+                                        <Check strokeWidth={1.5} size='1.3rem' />
                                     </Avatar>
                                 </ButtonBase>
                                 <ButtonBase title='Cancel' sx={{ borderRadius: '50%' }}>
@@ -380,7 +380,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
                                         color='inherit'
                                         onClick={() => setEditingFlowName(false)}
                                     >
-                                        <IconX stroke={1.5} size='1.3rem' />
+                                        <X strokeWidth={1.5} size='1.3rem' />
                                     </Avatar>
                                 </ButtonBase>
                             </Stack>
@@ -406,7 +406,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
                                 color='inherit'
                                 onClick={onAPIDialogClick}
                             >
-                                <IconCode stroke={1.5} size='1.3rem' />
+                                <Code strokeWidth={1.5} size='1.3rem' />
                             </Avatar>
                         </ButtonBase>
                     )}
@@ -428,7 +428,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
                                 color='inherit'
                                 onClick={onSaveChatflowClick}
                             >
-                                <IconDeviceFloppy stroke={1.5} size='1.3rem' />
+                                <Save strokeWidth={1.5} size='1.3rem' />
                             </Avatar>
                         </ButtonBase>
                     </Available>
@@ -448,7 +448,7 @@ const CanvasHeader = ({ chatflow, isAgentCanvas, isAgentflowV2, handleSaveFlow, 
                             }}
                             onClick={() => setSettingsOpen(!isSettingsOpen)}
                         >
-                            <IconSettings stroke={1.5} size='1.3rem' />
+                            <Settings strokeWidth={1.5} size='1.3rem' />
                         </Avatar>
                     </ButtonBase>
                 </Box>

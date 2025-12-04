@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useRef, useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
+import useStore from '../store/useStore';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -575,7 +576,8 @@ export type CanvasCommand =
   | { type: 'clear-canvas' }
   | { type: 'export-canvas' }
   | { type: 'toggle-grid' }
-  | { type: 'insert-text'; text: string };
+  | { type: 'insert-text'; text: string }
+  | { type: 'insert-handwriting'; text: string };
 
 export default function Canvas({
   currentTool,
@@ -2151,12 +2153,18 @@ export default function Canvas({
     return lines;
   }, []);
 
+  // Get dark mode state from store
+  const isDarkMode = useStore((state) => state.customization.isDarkMode);
+
   // Handler for handwritten text with animated typing effect - single text box
   // Parse markdown bold (**text**) and return clean text with highlight ranges
   const parseMarkdownBold = useCallback((text: string): { cleanText: string; highlightRanges: Array<{ start: number; end: number; color: string }> } => {
     const highlightRanges: Array<{ start: number; end: number; color: string }> = [];
     let cleanText = '';
     let i = 0;
+    
+    // Use bright yellow highlight for maximum readability
+    const highlightColor = '#fbbf24'; // Amber/gold highlight - high contrast
     
     while (i < text.length) {
       // Check for ** (bold markers)
@@ -2170,11 +2178,11 @@ export default function Canvas({
           cleanText += boldText;
           const endPos = cleanText.length;
           
-          // Add highlight range with golden yellow color
+          // Add highlight range with theme-appropriate color
           highlightRanges.push({
             start: startPos,
             end: endPos,
-            color: '#ffd54f' // Golden yellow for highlight
+            color: highlightColor
           });
           
           i = closeIndex + 2; // Skip past closing **
@@ -2187,7 +2195,7 @@ export default function Canvas({
     }
     
     return { cleanText, highlightRanges };
-  }, []);
+  }, [isDarkMode]);
 
   const handleHandwritingInjection = useCallback((text: string) => {
     if (!text.trim()) return;
@@ -2254,8 +2262,8 @@ export default function Canvas({
       startY: position.y + 30,
       endX: position.x + 20 + textBoxWidth,
       endY: position.y + 30 + textBoxHeight,
-      color: '#0ea5e9',
-      strokeColor: '#0ea5e9',
+      color: '#38bdf8', // Bright sky blue text - easy to read on dark background
+      strokeColor: '#38bdf8',
       size: fontSize,
       fillEnabled: false,
       fillColor: 'transparent',
@@ -5913,7 +5921,8 @@ export default function Canvas({
     color: string, 
     size: number, 
     isHandwriting?: boolean,
-    highlightRanges?: Array<{ start: number; end: number; color: string }>
+    highlightRanges?: Array<{ start: number; end: number; color: string }>,
+    showBox?: boolean // Only show box when dragging/resizing
   ) => {
     ctx.save();
     
@@ -5927,6 +5936,40 @@ export default function Canvas({
     // Handle multi-line text
     const lines = text.split('\n');
     const lineHeight = size * (isHandwriting ? 1.4 : 1.2); // More spacing for handwriting
+
+    // Only draw the box when showBox is true (during dragging/resizing)
+    if (isHandwriting && text.trim() && showBox) {
+      const maxLineWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
+      const totalHeight = lines.length * lineHeight;
+      const padding = 16;
+      const boxX = x - padding;
+      const boxY = y - padding;
+      const boxWidth = maxLineWidth + padding * 2;
+      const boxHeight = totalHeight + padding * 2;
+
+      // Create roughjs canvas for hand-drawn box effect
+      const rc = rough.canvas(ctx.canvas);
+      
+      // Draw hand-drawn rectangle background
+      rc.rectangle(boxX, boxY, boxWidth, boxHeight, {
+        fill: 'rgba(15, 23, 42, 0.85)', // Dark slate background
+        fillStyle: 'solid',
+        stroke: '#3b82f6', // Blue border
+        strokeWidth: 2,
+        roughness: 1.2,
+        seed: Math.floor(x + y) // Consistent hand-drawn look
+      });
+
+      // Draw subtle inner shadow/glow effect
+      ctx.shadowColor = 'rgba(59, 130, 246, 0.3)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      
+      // Reset shadow for text
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+    }
 
     let globalCharIndex = 0;
 
@@ -5993,8 +6036,8 @@ export default function Canvas({
               }
             );
             
-            // Draw the text on top
-            ctx.fillStyle = color;
+            // Draw the text on top in dark color for readability on bright highlight
+            ctx.fillStyle = '#1e293b';
             ctx.fillText(highlightText, currentX, lineY);
             
             currentX += textWidth;
@@ -6230,10 +6273,12 @@ export default function Canvas({
       } else if (shape.type === 'text') {
         // Check if there are corrections for this text shape
         const textCorrections = corrections.filter(c => c.textShapeId === shape.id);
+        // Only show box when this shape is being dragged or resized
+        const showTextBox = (selectedShapeId === shape.id) && (isDraggingShape || isResizing);
         if (textCorrections.length > 0) {
           drawTextWithHighlights(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, textCorrections);
         } else {
-          drawText(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, shape.isHandwriting, shape.highlightRanges);
+          drawText(ctx, shape.startX, shape.startY, shape.text || '', shape.color, shape.size, shape.isHandwriting, shape.highlightRanges, showTextBox);
         }
       }
 
@@ -6242,8 +6287,8 @@ export default function Canvas({
         ctx.restore();
       }
 
-      // Draw selection indicator if shape is selected or hovered
-      if (selectedShapeId === shape.id || hoveredShapeId === shape.id) {
+      // Draw selection indicator only when actively dragging or resizing
+      if ((selectedShapeId === shape.id || hoveredShapeId === shape.id) && (isDraggingShape || isResizing)) {
         // Draw selection box
         ctx.strokeStyle = '#0ea5e9';  // Cyan selection color
         ctx.lineWidth = 3;
@@ -6298,8 +6343,6 @@ export default function Canvas({
         // Draw label
         ctx.fillStyle = '#0ea5e9';
         ctx.font = '12px Arial';
-        // Only show text if selected, to avoid too much clutter on simple hover?
-        // User asked for "controls", text is helpful.
         ctx.fillText('Drag corners to resize', shape.startX, shape.startY - 20);
       }
     }
@@ -6469,6 +6512,9 @@ export default function Canvas({
         case 'insert-text':
           insertTextBlock(detail.text);
           break;
+        case 'insert-handwriting':
+          handleHandwritingInjection(detail.text);
+          break;
         default:
           break;
       }
@@ -6476,7 +6522,7 @@ export default function Canvas({
 
     window.addEventListener('canvas-command', handleCanvasCommand as EventListener);
     return () => window.removeEventListener('canvas-command', handleCanvasCommand as EventListener);
-  }, [clearCanvas, exportCanvas]);
+  }, [clearCanvas, exportCanvas, handleHandwritingInjection]);
 
   const handleZoomIn = () => {
     setZoom(prev => Math.min(prev + 0.1, 3));

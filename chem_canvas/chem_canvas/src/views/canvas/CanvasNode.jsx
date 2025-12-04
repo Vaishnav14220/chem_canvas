@@ -17,7 +17,7 @@ import NodeInfoDialog from '@/ui-component/dialog/NodeInfoDialog'
 
 // const
 import { baseURL } from '@/store/constant'
-import { IconTrash, IconCopy, IconInfoCircle, IconAlertTriangle } from '@tabler/icons-react'
+import { Trash2, Copy, Info, AlertTriangle } from 'lucide-react'
 import { flowContext } from '@/store/context/ReactFlowContext'
 import LlamaindexPNG from '@/assets/images/llamaindex.png'
 
@@ -80,7 +80,7 @@ const CanvasNode = ({ data }) => {
             } else if (componentNode.badge === 'DEPRECATING') {
                 setWarningMessage(
                     componentNode?.deprecateMessage ??
-                        'This node will be deprecated in the next release. Change to a new node tagged with NEW'
+                    'This node will be deprecated in the next release. Change to a new node tagged with NEW'
                 )
             } else if (componentNode.warning) {
                 setWarningMessage(componentNode.warning)
@@ -121,7 +121,7 @@ const CanvasNode = ({ data }) => {
                                 sx={{ height: '35px', width: '35px', '&:hover': { color: theme?.palette.primary.main } }}
                                 color={theme?.customization?.isDarkMode ? theme.colors?.paper : 'inherit'}
                             >
-                                <IconCopy />
+                                <Copy />
                             </IconButton>
                             <IconButton
                                 title='Delete'
@@ -131,7 +131,7 @@ const CanvasNode = ({ data }) => {
                                 sx={{ height: '35px', width: '35px', '&:hover': { color: 'red' } }}
                                 color={theme?.customization?.isDarkMode ? theme.colors?.paper : 'inherit'}
                             >
-                                <IconTrash />
+                                <Trash2 />
                             </IconButton>
                             <IconButton
                                 title='Info'
@@ -142,7 +142,7 @@ const CanvasNode = ({ data }) => {
                                 sx={{ height: '35px', width: '35px', '&:hover': { color: theme?.palette.secondary.main } }}
                                 color={theme?.customization?.isDarkMode ? theme.colors?.paper : 'inherit'}
                             >
-                                <IconInfoCircle />
+                                <Info />
                             </IconButton>
                         </div>
                     }
@@ -201,7 +201,7 @@ const CanvasNode = ({ data }) => {
                                 <>
                                     <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{warningMessage}</span>} placement='top'>
                                         <IconButton sx={{ height: 35, width: 35 }}>
-                                            <IconAlertTriangle size={35} color='orange' />
+                                            <AlertTriangle size={35} color='orange' />
                                         </IconButton>
                                     </Tooltip>
                                 </>
@@ -249,7 +249,7 @@ const CanvasNode = ({ data }) => {
                                     textAlign: 'center',
                                     marginTop:
                                         data.inputParams.filter((param) => param.additionalParams).length ===
-                                        data.inputParams.length + data.inputAnchors.length
+                                            data.inputParams.length + data.inputAnchors.length
                                             ? 20
                                             : 0
                                 }}

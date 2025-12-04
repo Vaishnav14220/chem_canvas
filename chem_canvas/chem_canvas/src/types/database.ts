@@ -212,7 +212,7 @@ export interface DocumentMetadata {
 }
 
 // ============================================
-// SPREADSHEETS (AISheet)
+
 // ============================================
 export interface Spreadsheet {
   id: string;

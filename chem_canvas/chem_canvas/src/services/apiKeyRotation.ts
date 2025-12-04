@@ -85,14 +85,14 @@ class ApiKeyRotationService {
       }
       keyStatus.isAvailable = false;
       keyStatus.failureCount++;
-      
+
       // Use provided retry time or default cooldown
-      const cooldownMs = retryAfterSeconds 
-        ? retryAfterSeconds * 1000 
+      const cooldownMs = retryAfterSeconds
+        ? retryAfterSeconds * 1000
         : this.RATE_LIMIT_COOLDOWN;
-      
+
       keyStatus.rateLimitResetTime = Date.now() + cooldownMs;
-      
+
       const minutes = Math.ceil(cooldownMs / 60000);
       console.warn(`⚠️ API key ${this.maskKey(key)} rate limited. Cooldown: ${minutes} minute(s)`);
       console.log(`🔄 Rotating to next available API key...`);
@@ -106,7 +106,7 @@ class ApiKeyRotationService {
     const keyStatus = this.apiKeys.find(k => k.key === key);
     if (keyStatus) {
       keyStatus.failureCount++;
-      
+
       // If key is expired, disable it permanently
       if (isExpired) {
         keyStatus.isAvailable = false;
@@ -114,7 +114,7 @@ class ApiKeyRotationService {
         console.error(`❌ API key ${this.maskKey(key)} is EXPIRED and needs renewal`);
         return;
       }
-      
+
       // If key fails too many times, temporarily disable it
       if (keyStatus.failureCount >= 3) {
         if (this.apiKeys.length <= 1) {
@@ -140,7 +140,7 @@ class ApiKeyRotationService {
     let available = 0;
     let rateLimited = 0;
     let expired = 0;
-    
+
     this.apiKeys.forEach(k => {
       if (k.isAvailable || (k.rateLimitResetTime && now >= k.rateLimitResetTime)) {
         available++;
@@ -150,7 +150,7 @@ class ApiKeyRotationService {
         rateLimited++;
       }
     });
-    
+
     return {
       total: this.apiKeys.length,
       available,
@@ -193,7 +193,7 @@ export const initializeApiKeyRotation = async (): Promise<void> => {
   try {
     const { getAllApiKeys } = await import('../firebase/apiKeys');
     const firestoreKeys = await getAllApiKeys();
-    
+
     if (firestoreKeys.length > 0) {
       console.log(`✅ Initializing API key rotation with ${firestoreKeys.length} keys from Firestore`);
       apiKeyRotation = new ApiKeyRotationService(firestoreKeys);
@@ -213,17 +213,17 @@ export const initializeApiKeyRotation = async (): Promise<void> => {
  */
 export const addApiKeyToRotation = (apiKey: string): void => {
   if (!apiKey || typeof apiKey !== 'string') return;
-  
+
   const trimmedKey = apiKey.trim();
   const stats = apiKeyRotation.getStats();
-  
+
   // Check if the key is already in the rotation
   const existingKey = apiKeyRotation.getNextKey();
   if (existingKey === trimmedKey) {
     // Key already exists, reset index
     return;
   }
-  
+
   // Reinitialize with the new key if rotation is empty or doesn't have this key
   if (stats.total === 0) {
     console.log(`🔑 Adding API key to rotation service: ${trimmedKey.substring(0, 10)}...`);
@@ -288,7 +288,7 @@ export async function executeWithRotation<T>(
   let lastError: Error | null = null;
   const totalAttempts = effectiveMaxRetries + (userProvidedApiKey ? 1 : 0);
   let userKeyAttempted = false;
-  
+
   for (let attempt = 0; attempt < totalAttempts; attempt++) {
     let apiKey: string | null = null;
     let usingUserKey = false;

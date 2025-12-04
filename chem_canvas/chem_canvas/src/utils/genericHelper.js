@@ -1,5 +1,5 @@
 import { uniq, get, isEqual } from 'lodash'
-import moment from 'moment'
+import dayjs from 'dayjs'
 
 export const getUniqueNodeId = (nodeData, nodes) => {
     let suffix = 0
@@ -505,14 +505,16 @@ const wouldCreateCycle = (sourceId, targetId, reactFlowInstance) => {
     return hasPath(targetId, sourceId)
 }
 
+
+
 export const convertDateStringToDateObject = (dateString) => {
     if (dateString === undefined || !dateString) return undefined
 
-    const date = moment(dateString)
-    if (!date.isValid) return undefined
+    const date = dayjs(dateString)
+    if (!date.isValid()) return undefined
 
     // Sat Sep 24 2022 07:30:14
-    return new Date(date.year(), date.month(), date.date(), date.hours(), date.minutes())
+    return date.toDate()
 }
 
 export const getFileName = (fileBase64) => {
@@ -941,8 +943,8 @@ export const getConfigExamplesForJS = (configData, bodyType, isMultiple, stopNod
             finalStr += !isMultiple
                 ? ``
                 : stopNodeId
-                ? `formData.append("stopNodeId", "${stopNodeId}")\n`
-                : `formData.append("question", "Hey, how are you?")\n`
+                    ? `formData.append("stopNodeId", "${stopNodeId}")\n`
+                    : `formData.append("question", "Hey, how are you?")\n`
     }
     return finalStr
 }
@@ -964,8 +966,8 @@ export const getConfigExamplesForPython = (configData, bodyType, isMultiple, sto
             finalStr += !isMultiple
                 ? `\n`
                 : stopNodeId
-                ? `\n    "stopNodeId": "${stopNodeId}"\n`
-                : `\n    "question": "Hey, how are you?"\n`
+                    ? `\n    "stopNodeId": "${stopNodeId}"\n`
+                    : `\n    "question": "Hey, how are you?"\n`
     }
     return finalStr
 }
@@ -989,10 +991,10 @@ export const getConfigExamplesForCurl = (configData, bodyType, isMultiple, stopN
                 bodyType === 'json'
                     ? ` }`
                     : !isMultiple
-                    ? ``
-                    : stopNodeId
-                    ? ` \\\n     -F "stopNodeId=${stopNodeId}"`
-                    : ` \\\n     -F "question=Hey, how are you?"`
+                        ? ``
+                        : stopNodeId
+                            ? ` \\\n     -F "stopNodeId=${stopNodeId}"`
+                            : ` \\\n     -F "question=Hey, how are you?"`
         else finalStr += bodyType === 'json' ? `, ` : ` \\`
     }
     return finalStr

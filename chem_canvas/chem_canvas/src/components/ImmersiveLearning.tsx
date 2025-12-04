@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { flushSync } from 'react-dom';
-import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy } from 'lucide-react';
+import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon } from 'lucide-react';
 import LaserCursor from './LaserCursor';
 import HandControlled3DMolecule from './HandControlled3DMolecule';
 import { useHandTracking } from '../hooks/useHandTracking';
@@ -49,13 +49,14 @@ import {
 } from '../services/immersiveLearningService';
 import { fetchGroundingSources } from '../services/geminiService';
 import ReactFlowMindMap from './ReactFlowMindMap';
+import { LessonGeneratorActivity } from './LessonGeneratorActivity';
 
 interface ImmersiveLearningProps {
     onClose: () => void;
     apiKey?: string;
 }
 
-type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d';
+type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity';
 
 interface LearningModeCard {
     id: LearningMode;
@@ -153,6 +154,21 @@ const Viewer3DIcon = ({ active }: { active?: boolean }) => (
     </svg>
 );
 
+const ImageActivityIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Image frame */}
+        <rect x="2" y="3" width="20" height="18" rx="2" fill={active ? "#f97316" : "#9aa0a6"} fillOpacity="0.2" stroke={active ? "#f97316" : "#9aa0a6"} strokeWidth="1.5" />
+        {/* Interactive label indicators */}
+        <circle cx="8" cy="10" r="1.5" fill={active ? "#06b6d4" : "#bdc1c6"} />
+        <circle cx="16" cy="14" r="1.5" fill={active ? "#06b6d4" : "#bdc1c6"} />
+        <rect x="5" y="15" width="3" height="2" rx="0.5" fill={active ? "#10b981" : "#bdc1c6"} />
+        <rect x="14" y="8" width="3" height="2" rx="0.5" fill={active ? "#10b981" : "#bdc1c6"} />
+        {/* Question mark in corner */}
+        <circle cx="19" cy="6" r="2" fill={active ? "#f59e0b" : "#bdc1c6"} />
+        <text x="19" y="7" fontSize="2" fill="white" textAnchor="middle" fontWeight="bold">?</text>
+    </svg>
+);
+
 const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }) => {
     const [activeMode, setActiveMode] = useState<LearningMode>('immersive-text');
     const [isLoading, setIsLoading] = useState(false);
@@ -170,7 +186,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     // PDF Citation Sidebar State
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     const [showPdfSidebar, setShowPdfSidebar] = useState(false);
-    
+
     // Grounding Citation State (like Tutor)
     const [activeCitation, setActiveCitation] = useState<{ url: string; title: string; snippet?: string; pageNumber?: number; sectionId?: string } | null>(null);
     const [groundingSources, setGroundingSources] = useState<Array<{ url: string; title: string; snippet?: string }>>([]);
@@ -310,6 +326,11 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const viewer3dLastPinchPositionRef = useRef<{ x: number, y: number } | null>(null);
     const viewer3dLastPinchDistanceRef = useRef<number | null>(null);
     const viewer3dLastPinchYRef = useRef<number | null>(null);
+
+    // Image Activity State
+    const [imageActivityPrompt, setImageActivityPrompt] = useState('');
+    const [generatedImageActivityUrl, setGeneratedImageActivityUrl] = useState<string | null>(null);
+    const [isGeneratingImageActivity, setIsGeneratingImageActivity] = useState(false);
 
     // Keep refs in sync with state
     useEffect(() => {
@@ -1213,7 +1234,8 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         { id: 'mindmap', icon: <MindmapIcon active={activeMode === 'mindmap'} />, label: 'Mindmap', activeColor: '#4285f4', activeBg: '#e8f0fe' },
         { id: 'simulation', icon: <SimulationIcon active={activeMode === 'simulation'} />, label: 'Simulation', activeColor: '#ff6d01', activeBg: '#fff3e0' },
         { id: 'robotics', icon: <RoboticsIcon active={activeMode === 'robotics'} />, label: 'Robotics Vision', activeColor: '#00bcd4', activeBg: '#e0f7fa' },
-        { id: 'viewer3d', icon: <Viewer3DIcon active={activeMode === 'viewer3d'} />, label: '3D Viewer', activeColor: '#7c3aed', activeBg: '#ede9fe' }
+        { id: 'viewer3d', icon: <Viewer3DIcon active={activeMode === 'viewer3d'} />, label: '3D Viewer', activeColor: '#7c3aed', activeBg: '#ede9fe' },
+        { id: 'image-activity', icon: <ImageActivityIcon active={activeMode === 'image-activity'} />, label: 'Image Activity', activeColor: '#f97316', activeBg: '#ffedd5' }
     ];
 
 
@@ -1621,12 +1643,12 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
     // Handler for citation clicks - opens sidebar with grounding source preview (like Tutor)
     const handleCitationClick = useCallback((source: { url: string; title: string; snippet?: string }, sectionIndex?: number) => {
-        setActiveCitation({ 
-            url: source.url, 
-            title: source.title, 
+        setActiveCitation({
+            url: source.url,
+            title: source.title,
             snippet: source.snippet,
             pageNumber: sectionIndex ? sectionIndex + 1 : undefined,
-            sectionId: undefined 
+            sectionId: undefined
         });
         setShowPdfSidebar(true);
         setOpenFloatingQuiz(null); // Close quiz if open
@@ -1855,6 +1877,22 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                 )}
             </div>
         );
+    };
+
+    // Image Activity Handler
+    const handleGenerateImageActivity = async () => {
+        if (!imageActivityPrompt.trim()) return;
+
+        setIsGeneratingImageActivity(true);
+        try {
+            const imageUrl = await generateImmersiveImage(imageActivityPrompt);
+            setGeneratedImageActivityUrl(imageUrl);
+        } catch (error) {
+            console.error('Failed to generate image:', error);
+            // Optional: Add error handling UI state
+        } finally {
+            setIsGeneratingImageActivity(false);
+        }
     };
 
     const renderContent = () => {
@@ -2148,18 +2186,16 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                                 setActiveSource(source);
                                                 setShowPdfSidebar(true);
                                             }}
-                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] transition-colors ${
-                                                activeSource?.url === source.url
+                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] transition-colors ${activeSource?.url === source.url
                                                     ? 'bg-indigo-600 text-white'
                                                     : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                                            }`}
+                                                }`}
                                             title={source.url}
                                         >
-                                            <span className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full ${
-                                                activeSource?.url === source.url
+                                            <span className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full ${activeSource?.url === source.url
                                                     ? 'bg-white/30 text-white'
                                                     : 'bg-blue-200 text-blue-700'
-                                            }`}>
+                                                }`}>
                                                 {idx + 1}
                                             </span>
                                             <span className="truncate max-w-[120px]">{source.title || new URL(source.url).hostname}</span>
@@ -2194,11 +2230,10 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                                                                 setActiveSource(source);
                                                                                 setShowPdfSidebar(true);
                                                                             }}
-                                                                            className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full align-super transition-colors ${
-                                                                                activeSource?.url === source.url
+                                                                            className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full align-super transition-colors ${activeSource?.url === source.url
                                                                                     ? 'bg-indigo-600 text-white'
                                                                                     : 'text-blue-600 bg-blue-100 hover:bg-blue-200'
-                                                                            }`}
+                                                                                }`}
                                                                             title={source.title}
                                                                         >
                                                                             {srcIdx + 1}
@@ -4072,6 +4107,111 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                     </div>
                 );
 
+            case 'image-activity':
+                return (
+                    <div className="flex flex-col h-full bg-white p-8 overflow-y-auto">
+                        <div className="max-w-4xl mx-auto w-full space-y-8">
+                            {/* Header */}
+                            <div className="text-center space-y-4">
+                                <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto">
+                                    <ImageActivityIcon active={true} />
+                                </div>
+                                <h2 className="text-3xl font-google-sans text-[#1f1f1f]">AI Image Studio</h2>
+                                <p className="text-[#444746] text-lg max-w-2xl mx-auto">
+                                    Describe any concept, scene, or diagram, and AI will generate a high-quality educational illustration for you.
+                                </p>
+                            </div>
+
+                            {/* Input Section */}
+                            <div className="bg-[#f8f9fa] p-6 rounded-2xl border border-[#e8eaed] shadow-sm">
+                                <div className="flex flex-col gap-4">
+                                    <label htmlFor="image-prompt" className="text-sm font-medium text-[#1f1f1f] ml-1">
+                                        What would you like to visualize?
+                                    </label>
+                                    <div className="flex gap-3">
+                                        <input
+                                            id="image-prompt"
+                                            type="text"
+                                            value={imageActivityPrompt}
+                                            onChange={(e) => setImageActivityPrompt(e.target.value)}
+                                            placeholder="e.g., A cross-section of a plant cell showing chloroplasts..."
+                                            className="flex-1 px-4 py-3 rounded-xl border border-[#dadce0] focus:border-[#ff8b66] focus:ring-2 focus:ring-[#ff8b66]/20 outline-none transition-all text-[#1f1f1f]"
+                                            onKeyDown={(e) => e.key === 'Enter' && handleGenerateImageActivity()}
+                                        />
+                                        <button
+                                            onClick={handleGenerateImageActivity}
+                                            disabled={!imageActivityPrompt.trim() || isGeneratingImageActivity}
+                                            className="px-6 py-3 bg-[#ff8b66] hover:bg-[#ff7d4d] disabled:bg-[#ffdccf] disabled:cursor-not-allowed text-white rounded-xl font-medium transition-all shadow-sm flex items-center gap-2 min-w-[160px] justify-center"
+                                        >
+                                            {isGeneratingImageActivity ? (
+                                                <>
+                                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                                    <span>Creating...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Sparkles className="w-5 h-5" />
+                                                    <span>Generate</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-[#5f6368] ml-1">
+                                        Tip: Be specific about details, colors, and style for the best results.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Result Display */}
+                            {generatedImageActivityUrl && (
+                                <div className="animate-fade-in space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-lg font-medium text-[#1f1f1f]">Generated Result</h3>
+                                        <button
+                                            onClick={() => {
+                                                const link = document.createElement('a');
+                                                link.href = generatedImageActivityUrl;
+                                                link.download = `ai-generated-${Date.now()}.png`;
+                                                link.click();
+                                            }}
+                                            className="text-[#1a73e8] hover:bg-[#e8f0fe] px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                                        >
+                                            Download Image
+                                        </button>
+                                    </div>
+                                    <div className="aspect-video w-full bg-gray-100 rounded-2xl overflow-hidden border border-[#e8eaed] shadow-md group relative">
+                                        <img
+                                            src={generatedImageActivityUrl}
+                                            alt="AI Generated"
+                                            className="w-full h-full object-contain"
+                                        />
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Empty State / Placeholder */}
+                            {!generatedImageActivityUrl && !isGeneratingImageActivity && (
+                                <div className="border-2 border-dashed border-[#e8eaed] rounded-2xl p-12 flex flex-col items-center justify-center text-center text-[#9aa0a6]">
+                                    <div className="w-16 h-16 bg-[#f1f3f4] rounded-full flex items-center justify-center mb-4">
+                                        <ImageIcon className="w-8 h-8 text-[#bdc1c6]" />
+                                    </div>
+                                    <p>Your generated image will appear here</p>
+                                </div>
+                            )}
+
+                            {/* Loading State Placeholder */}
+                            {isGeneratingImageActivity && !generatedImageActivityUrl && (
+                                <div className="aspect-video w-full bg-[#f8f9fa] rounded-2xl border border-[#e8eaed] flex flex-col items-center justify-center animate-pulse">
+                                    <Loader2 className="w-12 h-12 text-[#ff8b66] animate-spin mb-4" />
+                                    <p className="text-[#5f6368] font-medium">AI is crafting your image...</p>
+                                    <p className="text-xs text-[#9aa0a6] mt-2">This usually takes 5-10 seconds</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+
             case 'viewer3d':
                 return (
                     <div className="flex flex-col h-full bg-white p-6">
@@ -4853,7 +4993,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 <X className="w-5 h-5 text-[#5f6368]" />
                             </button>
                         </div>
-                        
+
                         {/* Snippet Preview */}
                         {activeSource.snippet && (
                             <div className="p-4 border-b border-[#e8eaed] bg-gray-50">
@@ -4872,7 +5012,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 </p>
                             </div>
                         )}
-                        
+
                         {/* Source Preview iframe */}
                         <div className="flex-1 overflow-hidden bg-gray-100">
                             <iframe
@@ -4882,7 +5022,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 sandbox="allow-scripts allow-same-origin"
                             />
                         </div>
-                        
+
                         {/* Footer with external link */}
                         <div className="p-3 border-t border-[#e8eaed] bg-white">
                             <div className="flex items-center justify-between">
@@ -4933,7 +5073,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 <X className="w-5 h-5 text-[#5f6368]" />
                             </button>
                         </div>
-                        
+
                         {/* PDF Viewer */}
                         <div className="flex-1 overflow-hidden bg-gray-100">
                             <iframe
@@ -4942,7 +5082,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 title="PDF Viewer"
                             />
                         </div>
-                        
+
                         {/* Footer with navigation */}
                         <div className="p-3 border-t border-[#e8eaed] bg-white">
                             <div className="flex items-center justify-between">

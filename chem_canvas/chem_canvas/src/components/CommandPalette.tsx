@@ -23,7 +23,6 @@ export default function CommandPalette({ open, onOpenChange, onCommand }: Comman
     { id: 'flashcards', name: 'Create Flashcards', icon: Star, shortcut: '⌘F' },
     { id: 'quiz', name: 'Generate Quiz', icon: HelpCircle, shortcut: '⌘Q' },
     { id: 'ai-word', name: 'AI Word - Smart Document Editor', icon: PenLine, shortcut: '⌘W' },
-    { id: 'ai-sheet', name: 'AI Sheet - Smart Spreadsheet', icon: FileSpreadsheet, shortcut: '⌘S' },
     { id: 'immersive-learning', name: 'Immersive Learning - Google Style', icon: BookOpen, shortcut: '⌘I' },
     { id: 'clear', name: 'Clear Canvas', icon: Trash2, shortcut: '⌘⇧C' },
     { id: 'export', name: 'Export Canvas', icon: Download, shortcut: '⌘E' },

@@ -1,21 +1,21 @@
 // constant
 import {
-    IconLibrary,
-    IconTools,
-    IconFunctionFilled,
-    IconMessageCircleFilled,
-    IconRobot,
-    IconArrowsSplit,
-    IconPlayerPlayFilled,
-    IconSparkles,
-    IconReplaceUser,
-    IconRepeat,
-    IconSubtask,
-    IconNote,
-    IconWorld,
-    IconRelationOneToManyFilled,
-    IconVectorBezier2
-} from '@tabler/icons-react'
+    Library,
+    Wrench,
+    Sigma,
+    MessageCircle,
+    Bot,
+    Split,
+    Play,
+    Sparkles,
+    UserCog,
+    Repeat,
+    ListTodo,
+    StickyNote,
+    Globe,
+    Network,
+    Spline
+} from 'lucide-react'
 
 export const gridSpacing = 3
 export const drawerWidth = 260
@@ -40,77 +40,77 @@ export const ErrorMessage = {
 export const AGENTFLOW_ICONS = [
     {
         name: 'conditionAgentflow',
-        icon: IconArrowsSplit,
+        icon: Split,
         color: '#FFB938'
     },
     {
         name: 'startAgentflow',
-        icon: IconPlayerPlayFilled,
+        icon: Play,
         color: '#7EE787'
     },
     {
         name: 'llmAgentflow',
-        icon: IconSparkles,
+        icon: Sparkles,
         color: '#64B5F6'
     },
     {
         name: 'agentAgentflow',
-        icon: IconRobot,
+        icon: Bot,
         color: '#4DD0E1'
     },
     {
         name: 'humanInputAgentflow',
-        icon: IconReplaceUser,
+        icon: UserCog,
         color: '#6E6EFD'
     },
     {
         name: 'loopAgentflow',
-        icon: IconRepeat,
+        icon: Repeat,
         color: '#FFA07A'
     },
     {
         name: 'directReplyAgentflow',
-        icon: IconMessageCircleFilled,
+        icon: MessageCircle,
         color: '#4DDBBB'
     },
     {
         name: 'customFunctionAgentflow',
-        icon: IconFunctionFilled,
+        icon: Sigma,
         color: '#E4B7FF'
     },
     {
         name: 'toolAgentflow',
-        icon: IconTools,
+        icon: Wrench,
         color: '#d4a373'
     },
     {
         name: 'retrieverAgentflow',
-        icon: IconLibrary,
+        icon: Library,
         color: '#b8bedd'
     },
     {
         name: 'conditionAgentAgentflow',
-        icon: IconSubtask,
+        icon: ListTodo,
         color: '#ff8fab'
     },
     {
         name: 'stickyNoteAgentflow',
-        icon: IconNote,
+        icon: StickyNote,
         color: '#fee440'
     },
     {
         name: 'httpAgentflow',
-        icon: IconWorld,
+        icon: Globe,
         color: '#FF7F7F'
     },
     {
         name: 'iterationAgentflow',
-        icon: IconRelationOneToManyFilled,
+        icon: Network,
         color: '#9C89B8'
     },
     {
         name: 'executeFlowAgentflow',
-        icon: IconVectorBezier2,
+        icon: Spline,
         color: '#a3b18a'
     }
 ]

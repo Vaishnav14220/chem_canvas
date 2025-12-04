@@ -1,6 +1,5 @@
 import PropTypes from 'prop-types'
 import { useContext, useState, memo } from 'react'
-import { useSelector } from 'react-redux'
 
 // material-ui
 import { useTheme, darken, lighten } from '@mui/material/styles'
@@ -9,16 +8,17 @@ import { useTheme, darken, lighten } from '@mui/material/styles'
 import NodeCardWrapper from '@/ui-component/cards/NodeCardWrapper'
 import NodeTooltip from '@/ui-component/tooltip/NodeTooltip'
 import { IconButton, Box } from '@mui/material'
-import { IconCopy, IconTrash } from '@tabler/icons-react'
+import { Copy, Trash2 } from 'lucide-react'
 import { Input } from '@/ui-component/input/Input'
 
 // const
 import { flowContext } from '@/store/context/ReactFlowContext'
+import useStore from '@/store/useStore'
 
 const StickyNote = ({ data }) => {
     const theme = useTheme()
-    const canvas = useSelector((state) => state.canvas)
-    const customization = useSelector((state) => state.customization)
+    const canvas = useStore((state) => state.canvas)
+    const customization = useStore((state) => state.customization)
     const { deleteNode, duplicateNode } = useContext(flowContext)
     const [inputParam] = data.inputParams
 
@@ -85,7 +85,7 @@ const StickyNote = ({ data }) => {
                                     '&:hover': { color: theme?.palette.primary.main }
                                 }}
                             >
-                                <IconCopy />
+                                <Copy />
                             </IconButton>
                             <IconButton
                                 title='Delete'
@@ -99,7 +99,7 @@ const StickyNote = ({ data }) => {
                                     '&:hover': { color: theme?.palette.error.main }
                                 }}
                             >
-                                <IconTrash />
+                                <Trash2 />
                             </IconButton>
                         </div>
                     }

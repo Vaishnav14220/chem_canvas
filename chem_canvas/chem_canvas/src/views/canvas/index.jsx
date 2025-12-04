@@ -2,15 +2,7 @@ import { useEffect, useRef, useState, useCallback, useContext } from 'react'
 import ReactFlow, { addEdge, Controls, Background, useNodesState, useEdgesState } from 'reactflow'
 import 'reactflow/dist/style.css'
 
-import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
-import {
-    REMOVE_DIRTY,
-    SET_DIRTY,
-    SET_CHATFLOW,
-    enqueueSnackbar as enqueueSnackbarAction,
-    closeSnackbar as closeSnackbarAction
-} from '@/store/actions'
 import { omit, cloneDeep } from 'lodash'
 
 // material-ui
@@ -38,7 +30,7 @@ import useConfirm from '@/hooks/useConfirm'
 import { useAuth } from '@/hooks/useAuth'
 
 // icons
-import { IconX, IconRefreshAlert, IconMagnetFilled, IconMagnetOff, IconArtboard, IconArtboardOff } from '@tabler/icons-react'
+import { X, RefreshCw, Magnet, Layout, Grid } from 'lucide-react'
 
 // utils
 import {
@@ -54,6 +46,7 @@ import { usePrompt } from '@/utils/usePrompt'
 
 // const
 import { FLOWISE_CREDENTIAL_ID } from '@/store/constant'
+import useStore from '@/store/useStore'
 
 const nodeTypes = { customNode: CanvasNode, stickyNote: StickyNote }
 const edgeTypes = { buttonedge: ButtonEdge }
@@ -76,18 +69,21 @@ const Canvas = () => {
 
     const { confirm } = useConfirm()
 
-    const dispatch = useDispatch()
-    const customization = useSelector((state) => state.customization)
-    const canvas = useSelector((state) => state.canvas)
+    const customization = useStore((state) => state.customization)
+    const canvas = useStore((state) => state.canvas)
+    const setDirty = useStore((state) => state.setDirty)
+    const removeDirty = useStore((state) => state.removeDirty)
+    const setChatflow = useStore((state) => state.setChatflow)
+
     const [canvasDataStore, setCanvasDataStore] = useState(canvas)
-    const [chatflow, setChatflow] = useState(null)
+    const [chatflow, setChatflowLocal] = useState(null)
     const { reactFlowInstance, setReactFlowInstance } = useContext(flowContext)
 
     // ==============================|| Snackbar ||============================== //
 
     useNotifier()
-    const enqueueSnackbar = (...args) => dispatch(enqueueSnackbarAction(...args))
-    const closeSnackbar = (...args) => dispatch(closeSnackbarAction(...args))
+    const enqueueSnackbar = useStore((state) => state.enqueueSnackbar)
+    const closeSnackbar = useStore((state) => state.closeSnackbar)
 
     // ==============================|| ReactFlow ||============================== //
 
@@ -199,7 +195,7 @@ const Canvas = () => {
                         persist: true,
                         action: (key) => (
                             <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                                <IconX />
+                                <X />
                             </Button>
                         )
                     }
@@ -347,7 +343,7 @@ const Canvas = () => {
     }
 
     const saveChatflowSuccess = () => {
-        dispatch({ type: REMOVE_DIRTY })
+        removeDirty()
         enqueueSnackbar({
             message: `${canvasTitle} saved`,
             options: {
@@ -355,7 +351,7 @@ const Canvas = () => {
                 variant: 'success',
                 action: (key) => (
                     <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                        <IconX />
+                        <X />
                     </Button>
                 )
             }
@@ -371,16 +367,16 @@ const Canvas = () => {
                 persist: true,
                 action: (key) => (
                     <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                        <IconX />
+                        <X />
                     </Button>
                 )
             }
         })
     }
 
-    const setDirty = () => {
-        dispatch({ type: SET_DIRTY })
-    }
+    // const setDirty = () => {
+    //     dispatch({ type: SET_DIRTY })
+    // }
 
     const checkIfUpsertAvailable = (nodes, edges) => {
         const upsertNodeDetails = getUpsertDetails(nodes, edges)
@@ -418,7 +414,7 @@ const Canvas = () => {
             setLasUpdatedDateTime(chatflow.updatedDate)
             setNodes(initialFlow.nodes || [])
             setEdges(initialFlow.edges || [])
-            dispatch({ type: SET_CHATFLOW, chatflow })
+            setChatflow(chatflow)
         } else if (getSpecificChatflowApi.error) {
             errorFailed(`Failed to retrieve ${canvasTitle}: ${getSpecificChatflowApi.error.response.data.message}`)
         }
@@ -430,7 +426,7 @@ const Canvas = () => {
     useEffect(() => {
         if (createNewChatflowApi.data) {
             const chatflow = createNewChatflowApi.data
-            dispatch({ type: SET_CHATFLOW, chatflow })
+            setChatflow(chatflow)
             saveChatflowSuccess()
             window.history.replaceState(state, null, `/${isAgentCanvas ? 'agentcanvas' : 'canvas'}/${chatflow.id}`)
         } else if (createNewChatflowApi.error) {
@@ -443,7 +439,7 @@ const Canvas = () => {
     // Update chatflow successful
     useEffect(() => {
         if (updateChatflowApi.data) {
-            dispatch({ type: SET_CHATFLOW, chatflow: updateChatflowApi.data })
+            setChatflow(updateChatflowApi.data)
             setLasUpdatedDateTime(updateChatflowApi.data.updatedDate)
             saveChatflowSuccess()
         } else if (updateChatflowApi.error) {
@@ -484,7 +480,7 @@ const Canvas = () => {
     }, [getHasChatflowChangedApi.data, getHasChatflowChangedApi.error])
 
     useEffect(() => {
-        setChatflow(canvasDataStore.chatflow)
+        setChatflowLocal(canvasDataStore.chatflow)
         if (canvasDataStore.chatflow) {
             const flowData = canvasDataStore.chatflow.flowData ? JSON.parse(canvasDataStore.chatflow.flowData) : []
             checkIfUpsertAvailable(flowData.nodes || [], flowData.edges || [])
@@ -508,11 +504,8 @@ const Canvas = () => {
                 setNodes([])
                 setEdges([])
             }
-            dispatch({
-                type: SET_CHATFLOW,
-                chatflow: {
-                    name: `Untitled ${canvasTitle}`
-                }
+            setChatflow({
+                name: `Untitled ${canvasTitle}`
             })
         }
 
@@ -520,7 +513,7 @@ const Canvas = () => {
 
         // Clear dirty state before leaving and remove any ongoing test triggers and webhooks
         return () => {
-            setTimeout(() => dispatch({ type: REMOVE_DIRTY }), 0)
+            setTimeout(() => removeDirty(), 0)
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -620,7 +613,7 @@ const Canvas = () => {
                                         title='toggle snapping'
                                         aria-label='toggle snapping'
                                     >
-                                        {isSnappingEnabled ? <IconMagnetFilled /> : <IconMagnetOff />}
+                                        {isSnappingEnabled ? <Magnet fill='currentColor' /> : <Magnet />}
                                     </button>
                                     <button
                                         className='react-flow__controls-button react-flow__controls-interactive'
@@ -630,7 +623,7 @@ const Canvas = () => {
                                         title='toggle background'
                                         aria-label='toggle background'
                                     >
-                                        {isBackgroundEnabled ? <IconArtboard /> : <IconArtboardOff />}
+                                        {isBackgroundEnabled ? <Layout fill='currentColor' /> : <Layout />}
                                     </button>
                                 </Controls>
                                 {isBackgroundEnabled && <Background color='#aaa' gap={16} />}
@@ -652,7 +645,7 @@ const Canvas = () => {
                                         title='Sync Nodes'
                                         onClick={() => syncNodes()}
                                     >
-                                        <IconRefreshAlert />
+                                        <RefreshCw />
                                     </Fab>
                                 )}
                                 {isUpsertButtonEnabled && <VectorStorePopUp chatflowid={chatflowId} />}

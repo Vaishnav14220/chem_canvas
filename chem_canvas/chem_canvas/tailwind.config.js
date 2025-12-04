@@ -50,6 +50,7 @@ export default {
         'blink': 'blink 1s steps(2, start) infinite',
         'slide-in-right': 'slideInRight 0.25s ease-out forwards',
         'fade-in': 'fadeIn 0.2s ease-out forwards',
+        'shine': 'shine var(--duration, 14s) infinite linear',
       },
       keyframes: {
         'spin-reverse': {
@@ -71,6 +72,11 @@ export default {
         fadeIn: {
           '0%': { opacity: 0 },
           '100%': { opacity: 1 },
+        },
+        shine: {
+          '0%': { backgroundPosition: '0% 0%' },
+          '50%': { backgroundPosition: '100% 100%' },
+          '100%': { backgroundPosition: '0% 0%' },
         },
       },
     },

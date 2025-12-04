@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { FileText as FileIcon, ChevronDown, ChevronRight, Search, Filter, Upload, Plus } from 'lucide-react';
+import { FileText as FileIcon, ChevronDown, ChevronRight, Search, Filter, Upload, Sparkles, BookOpen, Zap } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
+import { BlurFade } from './ui/blur-fade';
+import { MagicCard } from './ui/magic-card';
+import { ShineBorder } from './ui/shine-border';
 
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -164,95 +167,155 @@ export default function SourcesPanel({
 
   if (!documentContent && !sources.length) {
     return (
-      <div className="p-4">
-        <div className="text-center py-8">
-          <FileIcon size={48} className="text-gray-500 mx-auto mb-3" />
-          <p className="text-sm text-gray-400">No sources loaded</p>
-          <p className="text-xs text-gray-500 mt-1">Upload documents to see content here</p>
+      <BlurFade delay={0.1} inView>
+        <div className="p-6">
+          <div className="relative overflow-hidden rounded-xl border border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/50 p-8 text-center">
+            <ShineBorder 
+              shineColor={["#3b82f6", "#8b5cf6", "#6366f1"]} 
+              borderWidth={1} 
+              duration={10}
+            />
+            <div className="relative z-10">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 ring-1 ring-blue-500/30">
+                <BookOpen size={28} className="text-blue-400" />
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-white">No sources loaded</h3>
+              <p className="text-sm text-slate-400">Upload documents to see content here</p>
+              <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-500">
+                <Sparkles size={12} className="text-purple-400" />
+                <span>Supports PDF, TXT, and MD files</span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </BlurFade>
     );
   }
 
   const pages = documentContent ? splitContentIntoPages(documentContent) : [];
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-gradient-to-b from-slate-900 to-slate-950">
       {/* Upload and Search Bar */}
-      <div className="p-3 border-b border-gray-700 space-y-3">
-        {/* Upload Button */}
-        <label className="w-full cursor-pointer block">
-          <div className="border border-dashed border-gray-600 hover:border-blue-400 hover:bg-blue-900/20 rounded-lg p-3 transition-all">
-            <div className="flex items-center justify-center gap-2">
-              <Upload size={16} className="text-gray-400" />
-              <span className="text-sm text-gray-400">
-                {isUploading ? 'Uploading...' : 'Upload Document'}
-              </span>
+      <BlurFade delay={0.05} inView>
+        <div className="p-3 border-b border-slate-700/50 space-y-3 bg-slate-900/80 backdrop-blur-sm">
+          {/* Upload Button */}
+          <label className="w-full cursor-pointer block group">
+            <div className="relative overflow-hidden rounded-xl border border-dashed border-slate-600 hover:border-blue-400/70 bg-gradient-to-r from-slate-800/50 to-slate-700/30 p-4 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/10">
+              <div className="flex items-center justify-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/30 group-hover:ring-blue-400/50 transition-all">
+                  <Upload size={18} className="text-blue-400" />
+                </div>
+                <div className="text-left">
+                  <span className="text-sm font-medium text-slate-200 block">
+                    {isUploading ? 'Uploading...' : 'Upload Document'}
+                  </span>
+                  <span className="text-xs text-slate-500">Drop or click to browse</span>
+                </div>
+              </div>
+              {isUploading && (
+                <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 animate-pulse w-full" />
+              )}
             </div>
-          </div>
-          <input
-            type="file"
-            accept=".pdf,.txt,.md"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-        </label>
+            <input
+              type="file"
+              accept=".pdf,.txt,.md"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </label>
 
-        {/* Search Bar */}
-        <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search in sources..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
+          {/* Search Bar */}
+          <div className="relative group">
+            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 group-focus-within:text-blue-400 transition-colors" />
+            <input
+              type="text"
+              placeholder="Search in sources..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-800/80 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+            />
+          </div>
         </div>
-      </div>
+      </BlurFade>
 
       {/* Source Guide */}
-      <div className="p-3 border-b border-gray-700">
-        <button
-          onClick={() => toggleSection('source-guide')}
-          className="w-full flex items-center justify-between text-left hover:bg-gray-700 rounded-lg p-2 transition-colors"
-        >
-          <span className="text-sm font-medium text-white">Source guide</span>
-          {expandedSections.has('source-guide') ? (
-            <ChevronDown size={16} className="text-gray-400" />
-          ) : (
-            <ChevronRight size={16} className="text-gray-400" />
+      <BlurFade delay={0.1} inView>
+        <div className="px-3 py-2 border-b border-slate-700/30">
+          <button
+            onClick={() => toggleSection('source-guide')}
+            className="w-full flex items-center justify-between text-left hover:bg-slate-800/50 rounded-lg px-3 py-2.5 transition-all duration-200 group"
+          >
+            <div className="flex items-center gap-2">
+              <Zap size={14} className="text-amber-400" />
+              <span className="text-sm font-medium text-slate-200">Source guide</span>
+            </div>
+            {expandedSections.has('source-guide') ? (
+              <ChevronDown size={16} className="text-slate-400 group-hover:text-slate-200 transition-colors" />
+            ) : (
+              <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-200 transition-colors" />
+            )}
+          </button>
+          
+          {expandedSections.has('source-guide') && (
+            <BlurFade delay={0.05} inView>
+              <div className="mt-2 ml-4 space-y-1.5 pb-2">
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                  <span>Click highlighted text to see full context</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  <span>Relevance scores show match quality</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="h-1.5 w-1.5 rounded-full bg-purple-400" />
+                  <span>Page numbers help locate information</span>
+                </div>
+              </div>
+            </BlurFade>
           )}
-        </button>
-        
-        {expandedSections.has('source-guide') && (
-          <div className="mt-2 ml-4 text-xs text-gray-400">
-            <p>• Click highlighted text to see full context</p>
-            <p>• Relevance scores show match quality</p>
-            <p>• Page numbers help locate information</p>
-          </div>
-        )}
-      </div>
+        </div>
+      </BlurFade>
 
       {/* Main Document */}
       {documentName && (
         <div className="flex-1 overflow-y-auto">
           <div className="p-3">
             {/* Document Header */}
-            <div className="mb-4">
-              <h4 className="text-sm font-semibold text-white mb-1">{documentName}</h4>
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>📄 Document</span>
-                <span>•</span>
-                <span>{pages.length} pages</span>
-                {filteredHighlights.length > 0 && (
-                  <>
-                    <span>•</span>
-                    <span className="text-blue-400">{filteredHighlights.length} highlights</span>
-                  </>
-                )}
-              </div>
-            </div>
+            <BlurFade delay={0.15} inView>
+              <MagicCard 
+                className="rounded-xl mb-4" 
+                gradientFrom="#3b82f6" 
+                gradientTo="#8b5cf6"
+                gradientSize={150}
+              >
+                <div className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/20 to-purple-500/20 ring-1 ring-blue-500/30">
+                      <FileIcon size={18} className="text-blue-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-semibold text-white truncate">{documentName}</h4>
+                      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-slate-400">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800/80 ring-1 ring-slate-700/50">
+                          📄 Document
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800/80 ring-1 ring-slate-700/50">
+                          {pages.length} pages
+                        </span>
+                        {filteredHighlights.length > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 ring-1 ring-blue-500/30 text-blue-400">
+                            <Sparkles size={10} />
+                            {filteredHighlights.length} highlights
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </MagicCard>
+            </BlurFade>
 
             {/* Document Content with Highlights */}
             <div className="space-y-3">
@@ -262,18 +325,25 @@ export default function SourcesPanel({
                 );
 
                 return (
-                  <div key={pageIndex} className="border border-gray-700 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-blue-400">Page {page.number}</span>
-                      {pageHighlights.length > 0 && (
-                        <span className="text-xs text-yellow-400">{pageHighlights.length} matches</span>
-                      )}
+                  <BlurFade key={pageIndex} delay={0.1 + pageIndex * 0.03} inView>
+                    <div className="relative overflow-hidden rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 hover:border-slate-600/50 transition-all duration-200 hover:shadow-lg hover:shadow-slate-900/50">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 ring-1 ring-blue-500/30 text-xs font-medium text-blue-400">
+                          Page {page.number}
+                        </span>
+                        {pageHighlights.length > 0 && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 ring-1 ring-amber-500/30 text-xs font-medium text-amber-400">
+                            <Sparkles size={10} />
+                            {pageHighlights.length} matches
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="text-xs text-slate-300 leading-relaxed max-h-48 overflow-y-auto custom-scrollbar">
+                        {highlightText(page.content, pageHighlights)}
+                      </div>
                     </div>
-                    
-                    <div className="text-xs text-gray-300 leading-relaxed">
-                      {highlightText(page.content, pageHighlights)}
-                    </div>
-                  </div>
+                  </BlurFade>
                 );
               })}
             </div>
@@ -283,48 +353,66 @@ export default function SourcesPanel({
 
       {/* Additional Sources */}
       {sources.length > 1 && (
-        <div className="border-t border-gray-700 p-3">
-          <h5 className="text-sm font-medium text-gray-300 mb-2">Additional Sources</h5>
-          <div className="space-y-2">
-            {sources.slice(1).map((source) => (
-              <div key={source.id} className="flex items-center gap-2 p-2 bg-gray-700 rounded-lg">
-                <FileIcon size={14} className="text-gray-400" />
-                <span className="text-xs text-gray-300 truncate">{source.name}</span>
-              </div>
-            ))}
+        <BlurFade delay={0.2} inView>
+          <div className="border-t border-slate-700/50 p-3 bg-slate-900/50">
+            <h5 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+              <BookOpen size={14} className="text-purple-400" />
+              Additional Sources
+            </h5>
+            <div className="space-y-2">
+              {sources.slice(1).map((source, index) => (
+                <BlurFade key={source.id} delay={0.05 * index} inView>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/30 hover:border-slate-600/50 transition-all group cursor-pointer">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-700/50 group-hover:bg-slate-700 transition-colors">
+                      <FileIcon size={14} className="text-slate-400 group-hover:text-slate-200" />
+                    </div>
+                    <span className="text-xs text-slate-300 truncate group-hover:text-white transition-colors">{source.name}</span>
+                  </div>
+                </BlurFade>
+              ))}
+            </div>
           </div>
-        </div>
+        </BlurFade>
       )}
 
       {/* Highlight Summary */}
       {filteredHighlights.length > 0 && (
-        <div className="border-t border-gray-700 p-3 bg-gray-750">
-          <div className="flex items-center gap-2 mb-2">
-            <Filter size={14} className="text-blue-400" />
-            <span className="text-xs font-medium text-white">Query Matches</span>
-          </div>
-          <div className="space-y-1">
-            {filteredHighlights.slice(0, 3).map((highlight, index) => (
-              <div key={index} className="text-xs text-gray-300 p-2 bg-gray-800 rounded border border-yellow-400/20">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-yellow-400 font-medium">
-                    {Math.round(highlight.relevanceScore * 100)}% match
-                  </span>
-                  {highlight.pageNumber && (
-                    <span className="text-blue-400">Page {highlight.pageNumber}</span>
-                  )}
-                </div>
-                <p className="line-clamp-2">{highlight.text}</p>
+        <BlurFade delay={0.25} inView>
+          <div className="border-t border-slate-700/50 p-3 bg-gradient-to-t from-slate-900 to-slate-800/50">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/10 ring-1 ring-amber-500/30">
+                <Filter size={12} className="text-amber-400" />
               </div>
-            ))}
-            {filteredHighlights.length > 3 && (
-              <p className="text-xs text-gray-400 text-center">
-                +{filteredHighlights.length - 3} more matches
-              </p>
-            )}
+              <span className="text-xs font-semibold text-white">Query Matches</span>
+              <span className="ml-auto text-xs text-slate-500">{filteredHighlights.length} total</span>
+            </div>
+            <div className="space-y-2">
+              {filteredHighlights.slice(0, 3).map((highlight, index) => (
+                <BlurFade key={index} delay={0.05 * index} inView>
+                  <div className="relative overflow-hidden rounded-lg p-3 bg-slate-800/50 border border-amber-500/20 hover:border-amber-500/40 transition-all">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 text-xs font-medium text-amber-400">
+                        <Zap size={10} />
+                        {Math.round(highlight.relevanceScore * 100)}% match
+                      </span>
+                      {highlight.pageNumber && (
+                        <span className="text-xs text-blue-400">Page {highlight.pageNumber}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">{highlight.text}</p>
+                  </div>
+                </BlurFade>
+              ))}
+              {filteredHighlights.length > 3 && (
+                <p className="text-xs text-slate-500 text-center py-2 bg-slate-800/30 rounded-lg">
+                  +{filteredHighlights.length - 3} more matches
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        </BlurFade>
       )}
     </div>
   );
 }
+

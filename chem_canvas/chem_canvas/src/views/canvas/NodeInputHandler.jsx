@@ -1,7 +1,6 @@
 import PropTypes from 'prop-types'
 import { Handle, Position, useUpdateNodeInternals } from 'reactflow'
 import { useEffect, useRef, useState, useContext } from 'react'
-import { useSelector, useDispatch } from 'react-redux'
 import { cloneDeep } from 'lodash'
 import showdown from 'showdown'
 import parser from 'html-react-parser'
@@ -22,9 +21,7 @@ import {
     DialogActions
 } from '@mui/material'
 import { useGridApiContext } from '@mui/x-data-grid'
-import IconAutoFixHigh from '@mui/icons-material/AutoFixHigh'
-import { tooltipClasses } from '@mui/material/Tooltip'
-import { IconWand, IconVariable, IconArrowsMaximize, IconEdit, IconAlertTriangle, IconBulb, IconRefresh, IconX } from '@tabler/icons-react'
+import { Wand2, Variable, Maximize, Edit, AlertTriangle, Lightbulb, RefreshCw, X } from 'lucide-react'
 import { Tabs } from '@mui/base/Tabs'
 import Autocomplete, { autocompleteClasses } from '@mui/material/Autocomplete'
 
@@ -78,7 +75,7 @@ import useNotifier from '@/utils/useNotifier'
 
 // const
 import { baseURL, FLOWISE_CREDENTIAL_ID } from '@/store/constant'
-import { closeSnackbar as closeSnackbarAction, enqueueSnackbar as enqueueSnackbarAction } from '@/store/actions'
+import useStore from '@/store/useStore'
 
 const EDITABLE_OPTIONS = ['selectedTool', 'selectedAssistant']
 
@@ -122,15 +119,14 @@ const NodeInputHandler = ({
     onCustomDataChange
 }) => {
     const theme = useTheme()
-    const customization = useSelector((state) => state.customization)
+    const customization = useStore((state) => state.customization)
     const ref = useRef(null)
     const { reactFlowInstance, deleteEdge, onNodeDataChange } = useContext(flowContext)
     const updateNodeInternals = useUpdateNodeInternals()
 
     useNotifier()
-    const dispatch = useDispatch()
-    const enqueueSnackbar = (...args) => dispatch(enqueueSnackbarAction(...args))
-    const closeSnackbar = (...args) => dispatch(closeSnackbarAction(...args))
+    const enqueueSnackbar = useStore((state) => state.enqueueSnackbar)
+    const closeSnackbar = useStore((state) => state.closeSnackbar)
 
     const [position, setPosition] = useState(0)
     const [showExpandDialog, setShowExpandDialog] = useState(false)
@@ -590,7 +586,7 @@ const NodeInputHandler = ({
                 variant: 'warning',
                 action: (key) => (
                     <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                        <IconX />
+                        <X />
                     </Button>
                 )
             }
@@ -606,7 +602,7 @@ const NodeInputHandler = ({
                     variant: 'error',
                     action: (key) => (
                         <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                            <IconX />
+                            <X />
                         </Button>
                     )
                 }
@@ -646,7 +642,7 @@ const NodeInputHandler = ({
                             variant: 'success',
                             action: (key) => (
                                 <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                                    <IconX />
+                                    <X />
                                 </Button>
                             )
                         }
@@ -663,7 +659,7 @@ const NodeInputHandler = ({
                         persist: true,
                         action: (key) => (
                             <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                                <IconX />
+                                <X />
                             </Button>
                         )
                     }
@@ -694,7 +690,7 @@ const NodeInputHandler = ({
                             variant: 'success',
                             action: (key) => (
                                 <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                                    <IconX />
+                                    <X />
                                 </Button>
                             )
                         }
@@ -711,7 +707,7 @@ const NodeInputHandler = ({
                         persist: true,
                         action: (key) => (
                             <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                                <IconX />
+                                <X />
                             </Button>
                         )
                     }
@@ -839,7 +835,7 @@ const NodeInputHandler = ({
                                         sx={{ borderRadius: 25, width: '100%', mb: 2, mt: 0 }}
                                         variant='outlined'
                                         onClick={() => onShowPromptHubButtonClicked()}
-                                        endIcon={<IconAutoFixHigh />}
+                                        endIcon={<Wand2 />}
                                     >
                                         Langchain Hub
                                     </Button>
@@ -885,7 +881,7 @@ const NodeInputHandler = ({
                                     color='secondary'
                                     onClick={() => onInputHintDialogClicked(inputParam.hint)}
                                 >
-                                    <IconBulb />
+                                    <Lightbulb />
                                 </IconButton>
                             )}
                             {inputParam.hint && isAdditionalParams && (
@@ -917,7 +913,7 @@ const NodeInputHandler = ({
                                     color='secondary'
                                     onClick={() => generateDocStoreToolDesc(data.inputs['documentStore'])}
                                 >
-                                    <IconWand />
+                                    <Wand2 />
                                 </IconButton>
                             )}
                             {inputParam.generateInstruction && (
@@ -932,7 +928,7 @@ const NodeInputHandler = ({
                                     color='secondary'
                                     onClick={() => generateInstruction()}
                                 >
-                                    <IconWand />
+                                    <Wand2 />
                                 </IconButton>
                             )}
                             {((inputParam.type === 'string' && inputParam.rows) || inputParam.type === 'code') && (
@@ -949,7 +945,7 @@ const NodeInputHandler = ({
                                         onExpandDialogClicked(data.inputs[inputParam.name] ?? inputParam.default ?? '', inputParam)
                                     }
                                 >
-                                    <IconArrowsMaximize />
+                                    <Maximize />
                                 </IconButton>
                             )}
                         </div>
@@ -1079,7 +1075,7 @@ const NodeInputHandler = ({
 
                         {(inputParam.type === 'string' || inputParam.type === 'password' || inputParam.type === 'number') &&
                             (inputParam?.acceptVariable &&
-                            (window.location.href.includes('v2/agentcanvas') || window.location.href.includes('v2/marketplace')) ? (
+                                (window.location.href.includes('v2/agentcanvas') || window.location.href.includes('v2/marketplace')) ? (
                                 <RichInput
                                     key={data.inputs[inputParam.name]}
                                     placeholder={inputParam.placeholder}
@@ -1196,7 +1192,7 @@ const NodeInputHandler = ({
                                             size='small'
                                             onClick={() => editAsyncOption(inputParam.name, data.inputs[inputParam.name])}
                                         >
-                                            <IconEdit />
+                                            <Edit />
                                         </IconButton>
                                     )}
                                     {inputParam.refresh && (
@@ -1206,7 +1202,7 @@ const NodeInputHandler = ({
                                             size='small'
                                             onClick={() => setReloadTimestamp(Date.now().toString())}
                                         >
-                                            <IconRefresh />
+                                            <RefreshCw />
                                         </IconButton>
                                     )}
                                 </div>
@@ -1266,9 +1262,8 @@ const NodeInputHandler = ({
                         {inputParam.loadConfig && data && data.inputs && data.inputs[inputParam.name] && (
                             <>
                                 <ConfigInput
-                                    key={`${data.id}_${JSON.stringify(data.inputs[inputParam.name])}_${arrayIndex}_${
-                                        parentParamForArray?.name
-                                    }`}
+                                    key={`${data.id}_${JSON.stringify(data.inputs[inputParam.name])}_${arrayIndex}_${parentParamForArray?.name
+                                        }`}
                                     data={data}
                                     inputParam={inputParam}
                                     disabled={disabled}
@@ -1415,7 +1410,7 @@ const NodeInputHandler = ({
                                 persist: true,
                                 action: (key) => (
                                     <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
-                                        <IconX />
+                                        <X />
                                     </Button>
                                 )
                             }

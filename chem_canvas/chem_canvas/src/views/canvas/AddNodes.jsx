@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, memo } from 'react'
-import { useSelector, useDispatch } from 'react-redux'
 import PropTypes from 'prop-types'
 
 // material-ui
@@ -26,7 +25,7 @@ import {
     Tab,
     Tabs
 } from '@mui/material'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import { ChevronDown, Plus, Search, Minus, X, Sparkles } from 'lucide-react'
 
 // third-party
 import PerfectScrollbar from 'react-perfect-scrollbar'
@@ -38,14 +37,14 @@ import { StyledFab } from '@/ui-component/button/StyledFab'
 import AgentflowGeneratorDialog from '@/ui-component/dialog/AgentflowGeneratorDialog'
 
 // icons
-import { IconPlus, IconSearch, IconMinus, IconX, IconSparkles } from '@tabler/icons-react'
+
 import LlamaindexPNG from '@/assets/images/llamaindex.png'
 import LangChainPNG from '@/assets/images/langchain.png'
 import utilNodesPNG from '@/assets/images/utilNodes.png'
 
 // const
 import { baseURL, AGENTFLOW_ICONS } from '@/store/constant'
-import { SET_COMPONENT_NODES } from '@/store/actions'
+import useStore from '@/store/useStore'
 
 // ==============================|| ADD NODES||============================== //
 function a11yProps(index) {
@@ -72,8 +71,8 @@ const blacklistForChatflowCanvas = {
 
 const AddNodes = ({ nodesData, node, isAgentCanvas, isAgentflowv2, onFlowGenerated }) => {
     const theme = useTheme()
-    const customization = useSelector((state) => state.customization)
-    const dispatch = useDispatch()
+    const customization = useStore((state) => state.customization)
+    const setComponentNodes = useStore((state) => state.setComponentNodes)
 
     const [searchValue, setSearchValue] = useState('')
     const [nodes, setNodes] = useState({})
@@ -381,7 +380,7 @@ const AddNodes = ({ nodesData, node, isAgentCanvas, isAgentflowv2, onFlowGenerat
     useEffect(() => {
         if (nodesData) {
             groupByCategory(nodesData)
-            dispatch({ type: SET_COMPONENT_NODES, componentNodes: nodesData })
+            setComponentNodes(nodesData)
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -417,7 +416,7 @@ const AddNodes = ({ nodesData, node, isAgentCanvas, isAgentflowv2, onFlowGenerat
                 title='Add Node'
                 onClick={handleToggle}
             >
-                {open ? <IconMinus /> : <IconPlus />}
+                {open ? <Minus /> : <Plus />}
             </StyledFab>
             {isAgentflowv2 && (
                 <StyledFab
@@ -435,7 +434,7 @@ const AddNodes = ({ nodesData, node, isAgentCanvas, isAgentflowv2, onFlowGenerat
                     aria-label='generate'
                     title='Generate Agentflow'
                 >
-                    <IconSparkles />
+                    <Sparkles />
                 </StyledFab>
             )}
 
@@ -484,7 +483,7 @@ const AddNodes = ({ nodesData, node, isAgentCanvas, isAgentflowv2, onFlowGenerat
                                             placeholder='Search nodes'
                                             startAdornment={
                                                 <InputAdornment position='start'>
-                                                    <IconSearch stroke={1.5} size='1rem' color={theme.palette.grey[500]} />
+                                                    <Search strokeWidth={1.5} size={16} color={theme.palette.grey[500]} />
                                                 </InputAdornment>
                                             }
                                             endAdornment={
@@ -499,7 +498,7 @@ const AddNodes = ({ nodesData, node, isAgentCanvas, isAgentflowv2, onFlowGenerat
                                                     }}
                                                     title='Clear Search'
                                                 >
-                                                    <IconX
+                                                    <X
                                                         stroke={1.5}
                                                         size='1rem'
                                                         onClick={() => filterSearch('')}
@@ -595,7 +594,7 @@ const AddNodes = ({ nodesData, node, isAgentCanvas, isAgentflowv2, onFlowGenerat
                                                             disableGutters
                                                         >
                                                             <AccordionSummary
-                                                                expandIcon={<ExpandMoreIcon />}
+                                                                expandIcon={<ChevronDown />}
                                                                 aria-controls={`nodes-accordian-${category}`}
                                                                 id={`nodes-accordian-header-${category}`}
                                                             >
@@ -705,9 +704,9 @@ const AddNodes = ({ nodesData, node, isAgentCanvas, isAgentflowv2, onFlowGenerat
                                                                                                             background:
                                                                                                                 node.badge === 'DEPRECATING'
                                                                                                                     ? theme.palette.warning
-                                                                                                                          .main
+                                                                                                                        .main
                                                                                                                     : theme.palette.teal
-                                                                                                                          .main,
+                                                                                                                        .main,
                                                                                                             color:
                                                                                                                 node.badge !== 'DEPRECATING'
                                                                                                                     ? 'white'

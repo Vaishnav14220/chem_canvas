@@ -6,7 +6,7 @@ import PropTypes from 'prop-types'
 // Material
 import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material'
 import { TableViewOnly } from '@/ui-component/table/Table'
-import { IconBook2 } from '@tabler/icons-react'
+import { BookOpen } from 'lucide-react'
 import { useTheme } from '@mui/material/styles'
 
 // Store
@@ -205,7 +205,7 @@ const NodeInfoDialog = ({ show, dialogProps, onCancel }) => {
                                 onClick={() => {
                                     window.open(dialogProps.data.documentation, '_blank', 'noopener,noreferrer')
                                 }}
-                                startIcon={<IconBook2 />}
+                                startIcon={<BookOpen />}
                             >
                                 Documentation
                             </Button>
