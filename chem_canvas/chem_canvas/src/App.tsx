@@ -126,6 +126,7 @@ type CanvasWorkspace = {
 type CanvasWorkspaceHandlers = {
   snapshot?: () => Promise<string | null>;
   text?: (text: string) => void;
+  handwriting?: (text: string) => void;
   markdown?: (payload: { text: string; heading?: string }) => void;
   molecule?: CanvasMoleculeInsertionHandler;
   protein?: CanvasProteinInsertionHandler;
@@ -340,6 +341,9 @@ const App: React.FC = () => {
   const currentFeatureRef = useRef<{ id: string; start: number } | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
 
+  // Handwriting handler for writing on canvas
+  const [canvasHandwritingHandler, setCanvasHandwritingHandler] = useState<((text: string) => void) | null>(null);
+
   // Workspace persistence states
   const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
@@ -374,6 +378,7 @@ const App: React.FC = () => {
   const noopMoleculeHandler = useCallback(async () => false, []);
   const noopProteinHandler = useCallback(async () => false, []);
   const noopReactionHandler = useCallback(async () => false, []);
+  const noopHandwritingHandler = useCallback(() => { }, []);
 
   const updateGeminiHandlers = useCallback(() => {
     const handlers = workspaceHandlersRef.current[activeWorkspaceId];
@@ -383,6 +388,7 @@ const App: React.FC = () => {
     setCanvasMoleculeInsertionHandler(handlers?.molecule ?? noopMoleculeHandler);
     setCanvasProteinInsertionHandler(handlers?.protein ?? noopProteinHandler);
     setCanvasReactionInsertionHandler(handlers?.reaction ?? noopReactionHandler);
+    setCanvasHandwritingHandler(() => handlers?.handwriting ?? noopHandwritingHandler);
   }, [
     activeWorkspaceId,
     noopMarkdownHandler,
@@ -391,6 +397,7 @@ const App: React.FC = () => {
     noopReactionHandler,
     noopSnapshotHandler,
     noopTextHandler,
+    noopHandwritingHandler,
     setCanvasMarkdownInsertionHandler,
     setCanvasMoleculeInsertionHandler,
     setCanvasProteinInsertionHandler,
@@ -2647,6 +2654,7 @@ Here is the learner's question: ${message}`;
                             onDocumentAddToChat={handleAddDocumentToChat}
                             onRegisterSnapshotHandler={(handler) => registerWorkspaceHandler(workspace.id, 'snapshot', handler)}
                             onRegisterTextInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'text', handler)}
+                            onRegisterHandwritingHandler={(handler) => registerWorkspaceHandler(workspace.id, 'handwriting', handler)}
                             onRegisterMarkdownInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'markdown', handler)}
                             onRegisterMoleculeInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'molecule', handler)}
                             onRegisterProteinInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'protein', handler)}
@@ -2869,6 +2877,7 @@ Here is the learner's question: ${message}`;
         onCharacterSelect={(character, index) => {
           console.log('Selected:', character.name);
         }}
+        onWriteToCanvas={canvasHandwritingHandler || undefined}
         isConnected={geminiLiveState.connectionState === ConnectionState.CONNECTED}
         isConnecting={geminiLiveState.connectionState === ConnectionState.CONNECTING}
         isListening={geminiLiveState.isListening}

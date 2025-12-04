@@ -25,7 +25,6 @@ import {
   PenTool
 } from "lucide-react";
 import { getQuickAnswer } from "@/services/quickAnswerService";
-import HandwritingCanvas from "@/components/HandwritingCanvas";
 
 // =============================================================================
 // Dock Base Components (Magic UI style)
@@ -195,6 +194,9 @@ interface UnifiedDockProps {
   onCharacterSelect?: (character: Character, index: number) => void;
   onMessageSend?: (message: string, character: Character) => void;
   
+  // Write answer directly to canvas
+  onWriteToCanvas?: (text: string) => void;
+  
   // Gemini Live props
   isConnected?: boolean;
   isConnecting?: boolean;
@@ -227,6 +229,7 @@ export function UnifiedDock({
   characters = defaultCharacters,
   onCharacterSelect,
   onMessageSend,
+  onWriteToCanvas,
   isConnected = false,
   isConnecting = false,
   isListening = false,
@@ -247,9 +250,7 @@ export function UnifiedDock({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
   
-  // Handwriting canvas state
-  const [showHandwriting, setShowHandwriting] = useState(false);
-  const [handwritingText, setHandwritingText] = useState("");
+  // Loading state for getting answer
   const [isLoadingAnswer, setIsLoadingAnswer] = useState(false);
 
   // Audio visualizer effect
@@ -314,7 +315,7 @@ export function UnifiedDock({
     }
   };
 
-  // Handle sending message and getting handwritten answer
+  // Handle sending message and writing answer directly to canvas
   const handleSendMessage = useCallback(async () => {
     if (!messageInput.trim() || selectedCharacter === null) return;
     
@@ -329,27 +330,27 @@ export function UnifiedDock({
     setSelectedCharacter(null);
     setIsExpanded(false);
     
-    // Show handwriting canvas with loading state
-    setShowHandwriting(true);
+    // Show loading state
     setIsLoadingAnswer(true);
-    setHandwritingText("");
     
     try {
       // Get answer from Gemini 2.5 Flash
       const answer = await getQuickAnswer(question);
-      setHandwritingText(answer);
+      
+      // Write answer directly to canvas (smart placement)
+      if (onWriteToCanvas) {
+        onWriteToCanvas(answer);
+      }
     } catch (error) {
       console.error('Error getting answer:', error);
-      setHandwritingText("Sorry, I couldn't get an answer. Please try again.");
+      // Write error message to canvas
+      if (onWriteToCanvas) {
+        onWriteToCanvas("Sorry, I couldn't get an answer. Please try again.");
+      }
     } finally {
       setIsLoadingAnswer(false);
     }
-  }, [messageInput, selectedCharacter, characters, onMessageSend]);
-
-  const handleCloseHandwriting = useCallback(() => {
-    setShowHandwriting(false);
-    setHandwritingText("");
-  }, []);
+  }, [messageInput, selectedCharacter, characters, onMessageSend, onWriteToCanvas]);
 
   const handleConnectionToggle = () => {
     if (isConnected || isConnecting) {
@@ -514,16 +515,20 @@ export function UnifiedDock({
         ))}
       </Dock>
 
-      {/* Handwriting Canvas for displaying answers */}
-      <HandwritingCanvas
-        text={handwritingText}
-        isVisible={showHandwriting}
-        onClose={handleCloseHandwriting}
-        isLoading={isLoadingAnswer}
-        fontSize={28}
-        strokeWidth={1.2}
-        color="#22d3ee"
-      />
+      {/* Loading indicator when getting answer */}
+      {isLoadingAnswer && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2"
+        >
+          <div className="bg-background/95 backdrop-blur-xl rounded-xl border border-border/50 shadow-2xl px-4 py-2 flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+            <span className="text-sm text-slate-300">Writing answer on canvas...</span>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

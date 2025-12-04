@@ -556,6 +556,7 @@ interface CanvasProps {
   onDocumentAddToChat?: (payload: { documentId: string }) => void;
   onRegisterSnapshotHandler?: (handler: () => Promise<string | null>) => void;
   onRegisterTextInjectionHandler?: (handler: (text: string) => void) => void;
+  onRegisterHandwritingHandler?: (handler: (text: string) => void) => void;
   onRegisterMoleculeInjectionHandler?: (handler: CanvasMoleculeInsertionHandler) => void;
   onRegisterProteinInjectionHandler?: (handler: CanvasProteinInsertionHandler) => void;
   onRegisterReactionInjectionHandler?: (handler: CanvasReactionInsertionHandler) => void;
@@ -587,6 +588,7 @@ export default function Canvas({
   onDocumentAddToChat,
   onRegisterSnapshotHandler,
   onRegisterTextInjectionHandler,
+  onRegisterHandwritingHandler,
   onRegisterMoleculeInjectionHandler,
   onRegisterProteinInjectionHandler,
   onRegisterReactionInjectionHandler,
@@ -2007,6 +2009,117 @@ export default function Canvas({
   const handleExternalTextInjection = useCallback((content: string) => {
     insertTextBlock(content, { autoPlacement: true });
   }, [insertTextBlock]);
+
+  // Find empty space on canvas for handwriting placement
+  const findEmptySpace = useCallback((textWidth: number, textHeight: number): { x: number; y: number } => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 50, y: 50 };
+
+    const canvasWidth = canvas.width / zoom;
+    const canvasHeight = canvas.height / zoom;
+    const padding = 30;
+
+    // Get bounding boxes of all existing shapes
+    const occupiedAreas = canvasHistoryRef.current.map(shape => {
+      const width = Math.abs(shape.endX - shape.startX) || 200;
+      const height = Math.abs(shape.endY - shape.startY) || 200;
+      return {
+        left: Math.min(shape.startX, shape.endX) - padding,
+        top: Math.min(shape.startY, shape.endY) - padding,
+        right: Math.max(shape.startX, shape.endX) + width + padding,
+        bottom: Math.max(shape.startY, shape.endY) + height + padding,
+      };
+    });
+
+    // Function to check if a position overlaps with any occupied area
+    const isOccupied = (x: number, y: number, w: number, h: number) => {
+      return occupiedAreas.some(area => 
+        !(x + w < area.left || x > area.right || y + h < area.top || y > area.bottom)
+      );
+    };
+
+    // Strategy 1: Try to place below the lowest shape
+    if (occupiedAreas.length > 0) {
+      const lowestBottom = Math.max(...occupiedAreas.map(a => a.bottom));
+      if (lowestBottom + textHeight + padding < canvasHeight) {
+        const x = padding;
+        const y = lowestBottom + padding;
+        if (!isOccupied(x, y, textWidth, textHeight)) {
+          return { x, y };
+        }
+      }
+    }
+
+    // Strategy 2: Try to place to the right of existing content
+    if (occupiedAreas.length > 0) {
+      const rightmostRight = Math.max(...occupiedAreas.map(a => a.right));
+      if (rightmostRight + textWidth + padding < canvasWidth) {
+        const x = rightmostRight + padding;
+        const y = padding;
+        if (!isOccupied(x, y, textWidth, textHeight)) {
+          return { x, y };
+        }
+      }
+    }
+
+    // Strategy 3: Grid-based search for empty space
+    const gridSize = 100;
+    for (let y = padding; y < canvasHeight - textHeight; y += gridSize) {
+      for (let x = padding; x < canvasWidth - textWidth; x += gridSize) {
+        if (!isOccupied(x, y, textWidth, textHeight)) {
+          return { x, y };
+        }
+      }
+    }
+
+    // Fallback: Place at bottom-left corner
+    return { x: padding, y: canvasHeight - textHeight - padding };
+  }, [zoom]);
+
+  // Handler for handwritten text with animated effect
+  const handleHandwritingInjection = useCallback((text: string) => {
+    if (!text.trim()) return;
+
+    // Split text into lines
+    const lines = text.split('\n').filter(line => line.trim());
+    const fontSize = 24;
+    const lineHeight = fontSize + 12;
+    const estimatedWidth = Math.min(600, Math.max(...lines.map(l => l.length * 10)));
+    const estimatedHeight = lines.length * lineHeight + 40;
+
+    // Find empty space
+    const position = findEmptySpace(estimatedWidth, estimatedHeight);
+
+    // Create text shapes for each line with slight delay for animation effect
+    lines.forEach((line, index) => {
+      setTimeout(() => {
+        const textShape: Shape = {
+          id: `handwriting-${Date.now()}-${index}`,
+          type: 'text',
+          startX: position.x,
+          startY: position.y + (index * lineHeight),
+          endX: position.x + estimatedWidth,
+          endY: position.y + (index * lineHeight) + fontSize,
+          color: '#22d3ee', // Cyan color for handwriting
+          strokeColor: '#22d3ee',
+          size: fontSize,
+          fillEnabled: false,
+          fillColor: 'transparent',
+          text: line,
+          rotation: 0
+        };
+        
+        addTextShapeToCanvas(textShape);
+      }, index * 150); // 150ms delay between each line for animation effect
+    });
+  }, [findEmptySpace, addTextShapeToCanvas]);
+
+  // Register handwriting handler
+  useEffect(() => {
+    if (onRegisterHandwritingHandler) {
+      onRegisterHandwritingHandler(handleHandwritingInjection);
+    }
+  }, [handleHandwritingInjection, onRegisterHandwritingHandler]);
 
   const handleExternalMarkdownInjection = useCallback((payload: { text: string; heading?: string }) => {
     if (!payload?.text?.trim()) {
