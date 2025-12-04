@@ -2149,7 +2149,7 @@ export default function Canvas({
     return lines;
   }, []);
 
-  // Handler for handwritten text with animated effect
+  // Handler for handwritten text with animated typing effect
   const handleHandwritingInjection = useCallback((text: string) => {
     if (!text.trim()) return;
 
@@ -2186,32 +2186,71 @@ export default function Canvas({
     // Find empty space with calculated dimensions
     const position = findEmptySpace(actualMaxWidth + 40, estimatedHeight);
 
-    // Create text shapes for each line with animation
+    // Track shape IDs for animation updates
+    const shapeIds: string[] = [];
+    const baseTime = Date.now();
+    
+    // Create initial empty text shapes for each line
     displayLines.forEach((line, index) => {
-      setTimeout(() => {
-        const lineWidth = line.length * charWidth;
-        
-        const textShape: Shape = {
-          id: `handwriting-${Date.now()}-${index}`,
-          type: 'text',
-          startX: position.x + 20, // Left padding
-          startY: position.y + 30 + (index * lineHeight), // Top padding
-          endX: position.x + 20 + lineWidth,
-          endY: position.y + 30 + (index * lineHeight) + fontSize,
-          color: '#0ea5e9', // Sky-500 - nice readable blue
-          strokeColor: '#0ea5e9',
-          size: fontSize,
-          fillEnabled: false,
-          fillColor: 'transparent',
-          text: line,
-          rotation: 0,
-          isHandwriting: true // Use Satisfy font
-        };
-        
-        addTextShapeToCanvas(textShape);
-      }, index * 120); // Slightly faster animation
+      const shapeId = `handwriting-${baseTime}-${index}`;
+      shapeIds.push(shapeId);
+      const lineWidth = line.length * charWidth;
+      
+      const textShape: Shape = {
+        id: shapeId,
+        type: 'text',
+        startX: position.x + 20,
+        startY: position.y + 30 + (index * lineHeight),
+        endX: position.x + 20 + lineWidth,
+        endY: position.y + 30 + (index * lineHeight) + fontSize,
+        color: '#0ea5e9',
+        strokeColor: '#0ea5e9',
+        size: fontSize,
+        fillEnabled: false,
+        fillColor: 'transparent',
+        text: '', // Start empty for animation
+        rotation: 0,
+        isHandwriting: true
+      };
+      
+      // Add to history ref
+      canvasHistoryRef.current = [...canvasHistoryRef.current, textShape];
     });
-  }, [findEmptySpace, addTextShapeToCanvas, wrapTextIntoLines]);
+
+    // Trigger initial redraw
+    setForceRedraw(prev => prev + 1);
+
+    // Animate typing character by character
+    const charDelay = 30; // ms per character - fast but visible
+    const lineDelay = 150; // Extra delay between lines
+    let totalDelay = 50; // Initial delay before starting
+
+    displayLines.forEach((line, lineIndex) => {
+      const shapeId = shapeIds[lineIndex];
+      
+      // Animate each character in the line
+      for (let charIndex = 1; charIndex <= line.length; charIndex++) {
+        const currentText = line.substring(0, charIndex);
+        
+        setTimeout(() => {
+          // Update the shape in the ref with the current partial text
+          canvasHistoryRef.current = canvasHistoryRef.current.map(shape => {
+            if (shape.id === shapeId) {
+              return { ...shape, text: currentText };
+            }
+            return shape;
+          });
+          // Trigger redraw
+          setForceRedraw(prev => prev + 1);
+        }, totalDelay);
+        
+        totalDelay += charDelay;
+      }
+      
+      // Add extra delay between lines
+      totalDelay += lineDelay;
+    });
+  }, [findEmptySpace, wrapTextIntoLines]);
 
   // Register handwriting handler
   useEffect(() => {
