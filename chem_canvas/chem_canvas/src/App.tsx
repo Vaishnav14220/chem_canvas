@@ -58,6 +58,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import AIWord from './components/AIWord';
 import AISheet from './components/AISheet';
 import SimulationPlayground from './components/SimulationPlayground';
+import { ExcalidrawCanvas, type ExcalidrawCanvasRef } from './components/ExcalidrawCanvas';
 import GeminiLiveWorkspace from './components/GeminiLiveWorkspace';
 import ImmersiveLearning from './components/ImmersiveLearning';
 import DrawingToolsDock, { type DrawingTool } from './components/DrawingToolsDock';
@@ -288,8 +289,12 @@ const App: React.FC = () => {
   const [showAISheet, setShowAISheet] = useState(false);
   const [showSimulationPlayground, setShowSimulationPlayground] = useState(false);
   const [showImmersiveLearning, setShowImmersiveLearning] = useState(false);
+  const [showExcalidrawCanvas, setShowExcalidrawCanvas] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
+  
+  // Ref for ExcalidrawCanvas to add handwriting text
+  const excalidrawCanvasRef = useRef<ExcalidrawCanvasRef>(null);
 
   // Initialize global Gemini Live state
   const geminiLiveState = useGeminiLive(apiKey);
@@ -414,6 +419,20 @@ const App: React.FC = () => {
     const handlers = workspaceHandlersRef.current[activeWorkspaceId];
     return handlers?.handwriting ?? null;
   }, [activeWorkspaceId]);
+
+  // Route handwriting to Excalidraw canvas when it's open
+  useEffect(() => {
+    if (showExcalidrawCanvas && excalidrawCanvasRef.current) {
+      // Set up handler that pushes text to Excalidraw
+      setCanvasHandwritingHandler((text: string) => {
+        console.log('[App] Routing handwriting to Excalidraw:', text.substring(0, 50) + '...');
+        excalidrawCanvasRef.current?.addHandwrittenText(text);
+      });
+    } else {
+      // Restore the default handler when Excalidraw is closed
+      updateGeminiHandlers();
+    }
+  }, [showExcalidrawCanvas, setCanvasHandwritingHandler, updateGeminiHandlers]);
 
   const registerWorkspaceHandler = useCallback(
     <K extends keyof CanvasWorkspaceHandlers,>(
@@ -2892,7 +2911,9 @@ Here is the learner's question: ${message}`;
           setShowDocumentEditorCanvas(false);
           setShowAIWord(false);
           setShowAISheet(false);
-          console.log('[App] Gemini Live mic connected - canvas ready for handwriting responses');
+          // Open the Excalidraw canvas for handwritten responses
+          setShowExcalidrawCanvas(true);
+          console.log('[App] Gemini Live mic connected - Excalidraw canvas opened for handwriting responses');
         }}
         isConnected={geminiLiveState.connectionState === ConnectionState.CONNECTED}
         isConnecting={geminiLiveState.connectionState === ConnectionState.CONNECTING}
@@ -2900,7 +2921,11 @@ Here is the learner's question: ${message}`;
         isSpeaking={geminiLiveState.isSpeaking}
         isScreenSharing={geminiLiveState.isScreenSharing}
         onConnect={() => geminiLiveState.connect()}
-        onDisconnect={() => geminiLiveState.disconnect()}
+        onDisconnect={() => {
+          geminiLiveState.disconnect();
+          // Optionally close the Excalidraw canvas when disconnecting
+          // setShowExcalidrawCanvas(false);
+        }}
         onStartScreenShare={() => geminiLiveState.startScreenShare()}
         onStopScreenShare={() => geminiLiveState.stopScreenShare()}
         onShareCanvas={() => geminiLiveState.captureAndSendSnapshot()}
@@ -2911,6 +2936,14 @@ Here is the learner's question: ${message}`;
       <GeminiLiveOverlay
         geminiLiveState={geminiLiveState}
         onExpandImage={handleCanvasImageExpand}
+      />
+
+      {/* Excalidraw Canvas for Gemini Live handwritten responses */}
+      <ExcalidrawCanvas
+        ref={excalidrawCanvasRef}
+        isOpen={showExcalidrawCanvas}
+        onClose={() => setShowExcalidrawCanvas(false)}
+        title="Gemini Live Notes"
       />
 
       {/* Image Lightbox */}

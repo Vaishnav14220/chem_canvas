@@ -17,6 +17,7 @@
     "@blocknote/react": "^0.41.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@excalidraw/excalidraw": "^0.18.0",
     "@google/genai": "^1.30.0",
     "@google/generative-ai": "^0.24.1",
     "@hufe921/canvas-editor": "^0.9.119",
