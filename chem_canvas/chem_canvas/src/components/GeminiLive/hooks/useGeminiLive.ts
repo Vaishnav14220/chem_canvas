@@ -1938,15 +1938,17 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                   }
                 }
 
-                // Handle handwriting request - push response as handwritten chunks to canvas
-                if (isHandwritingRequestRef.current && trimmedResponse.length > 0) {
-                  console.log('[GeminiLive] Pushing response as handwriting to canvas...');
-                  const handwritingSuccess = pushHandwritingToCanvas(trimmedResponse, 150);
+                // ALWAYS push response as handwritten text to canvas when Gemini Live responds
+                // This creates a real-time handwriting effect while the AI is speaking
+                if (trimmedResponse.length > 0 && canvasHandwritingHandlerRef.current) {
+                  console.log('[GeminiLive] Auto-pushing response as handwriting to canvas...');
+                  const handwritingSuccess = pushHandwritingToCanvas(trimmedResponse, 120);
                   if (handwritingSuccess) {
                     console.log('[GeminiLive] Successfully pushed handwriting response');
                   }
-                  isHandwritingRequestRef.current = false; // Reset for next turn
                 }
+                // Reset handwriting request flag for next turn
+                isHandwritingRequestRef.current = false;
               }
 
               currentInputRef.current = '';
