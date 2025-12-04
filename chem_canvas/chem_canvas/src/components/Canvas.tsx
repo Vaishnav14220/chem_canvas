@@ -2011,19 +2011,20 @@ export default function Canvas({
     insertTextBlock(content, { autoPlacement: true });
   }, [insertTextBlock]);
 
-  // Find empty space on canvas for handwriting placement
+  // Find empty space on canvas for handwriting placement - intelligent positioning
   const findEmptySpace = useCallback((textWidth: number, textHeight: number): { x: number; y: number } => {
     const canvas = canvasRef.current;
-    if (!canvas) return { x: 50, y: 50 };
+    if (!canvas) return { x: 100, y: 100 };
 
     const canvasWidth = canvas.width / zoom;
     const canvasHeight = canvas.height / zoom;
-    const padding = 30;
+    const padding = 40; // More padding for better readability
+    const minMargin = 60; // Minimum margin from edges
 
-    // Get bounding boxes of all existing shapes
+    // Get bounding boxes of all existing shapes with extra padding
     const occupiedAreas = canvasHistoryRef.current.map(shape => {
       const width = Math.abs(shape.endX - shape.startX) || 200;
-      const height = Math.abs(shape.endY - shape.startY) || 200;
+      const height = Math.abs(shape.endY - shape.startY) || 50;
       return {
         left: Math.min(shape.startX, shape.endX) - padding,
         top: Math.min(shape.startY, shape.endY) - padding,
@@ -2039,82 +2040,178 @@ export default function Canvas({
       );
     };
 
-    // Strategy 1: Try to place below the lowest shape
+    // Function to check if position is within canvas bounds
+    const isInBounds = (x: number, y: number, w: number, h: number) => {
+      return x >= minMargin && 
+             y >= minMargin && 
+             x + w <= canvasWidth - minMargin && 
+             y + h <= canvasHeight - minMargin;
+    };
+
+    // Strategy 1: Try center-right area first (good for reading flow)
+    const centerY = canvasHeight / 2 - textHeight / 2;
+    const rightAreaX = canvasWidth * 0.55;
+    if (isInBounds(rightAreaX, centerY, textWidth, textHeight) && 
+        !isOccupied(rightAreaX, centerY, textWidth, textHeight)) {
+      return { x: rightAreaX, y: centerY };
+    }
+
+    // Strategy 2: Try below existing content with left alignment
     if (occupiedAreas.length > 0) {
       const lowestBottom = Math.max(...occupiedAreas.map(a => a.bottom));
-      if (lowestBottom + textHeight + padding < canvasHeight) {
-        const x = padding;
-        const y = lowestBottom + padding;
-        if (!isOccupied(x, y, textWidth, textHeight)) {
-          return { x, y };
-        }
+      if (isInBounds(minMargin, lowestBottom + padding, textWidth, textHeight) &&
+          !isOccupied(minMargin, lowestBottom + padding, textWidth, textHeight)) {
+        return { x: minMargin, y: lowestBottom + padding };
       }
     }
 
-    // Strategy 2: Try to place to the right of existing content
+    // Strategy 3: Try top-right corner (common empty area)
+    const topRightX = canvasWidth - textWidth - minMargin;
+    if (isInBounds(topRightX, minMargin, textWidth, textHeight) &&
+        !isOccupied(topRightX, minMargin, textWidth, textHeight)) {
+      return { x: topRightX, y: minMargin };
+    }
+
+    // Strategy 4: Try to place to the right of existing content
     if (occupiedAreas.length > 0) {
       const rightmostRight = Math.max(...occupiedAreas.map(a => a.right));
-      if (rightmostRight + textWidth + padding < canvasWidth) {
-        const x = rightmostRight + padding;
-        const y = padding;
+      if (isInBounds(rightmostRight + padding, minMargin, textWidth, textHeight) &&
+          !isOccupied(rightmostRight + padding, minMargin, textWidth, textHeight)) {
+        return { x: rightmostRight + padding, y: minMargin };
+      }
+    }
+
+    // Strategy 5: Smart grid-based search - prioritize areas away from content
+    const gridSize = 80;
+    let bestPosition: { x: number; y: number; score: number } | null = null;
+
+    for (let y = minMargin; y < canvasHeight - textHeight - minMargin; y += gridSize) {
+      for (let x = minMargin; x < canvasWidth - textWidth - minMargin; x += gridSize) {
         if (!isOccupied(x, y, textWidth, textHeight)) {
-          return { x, y };
+          // Calculate score based on distance from occupied areas
+          const minDist = occupiedAreas.length > 0
+            ? Math.min(...occupiedAreas.map(area => {
+                const centerX = (area.left + area.right) / 2;
+                const centerY = (area.top + area.bottom) / 2;
+                return Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+              }))
+            : 1000;
+          
+          // Prefer positions that are not too far from center but away from content
+          const centerDist = Math.sqrt(
+            Math.pow(x + textWidth/2 - canvasWidth/2, 2) + 
+            Math.pow(y + textHeight/2 - canvasHeight/2, 2)
+          );
+          const score = minDist - centerDist * 0.3; // Balance between distance and centering
+
+          if (!bestPosition || score > bestPosition.score) {
+            bestPosition = { x, y, score };
+          }
         }
       }
     }
 
-    // Strategy 3: Grid-based search for empty space
-    const gridSize = 100;
-    for (let y = padding; y < canvasHeight - textHeight; y += gridSize) {
-      for (let x = padding; x < canvasWidth - textWidth; x += gridSize) {
-        if (!isOccupied(x, y, textWidth, textHeight)) {
-          return { x, y };
-        }
-      }
+    if (bestPosition) {
+      return { x: bestPosition.x, y: bestPosition.y };
     }
 
-    // Fallback: Place at bottom-left corner
-    return { x: padding, y: canvasHeight - textHeight - padding };
+    // Fallback: Place at a safe default position
+    return { x: minMargin, y: canvasHeight - textHeight - minMargin };
   }, [zoom]);
+
+  // Smart text wrapping function - wraps text into lines of ~10-13 words
+  const wrapTextIntoLines = useCallback((text: string, maxWordsPerLine: number = 12): string[] => {
+    const words = text.trim().split(/\s+/);
+    const lines: string[] = [];
+    let currentLine: string[] = [];
+
+    for (const word of words) {
+      currentLine.push(word);
+      
+      // Check if we should start a new line
+      // Prefer breaking at punctuation or after 10-13 words
+      const shouldBreak = 
+        currentLine.length >= maxWordsPerLine ||
+        (currentLine.length >= 10 && /[,;:]$/.test(word)) ||
+        (currentLine.length >= 8 && /[.!?]$/.test(word));
+      
+      if (shouldBreak) {
+        lines.push(currentLine.join(' '));
+        currentLine = [];
+      }
+    }
+
+    // Add remaining words
+    if (currentLine.length > 0) {
+      lines.push(currentLine.join(' '));
+    }
+
+    return lines;
+  }, []);
 
   // Handler for handwritten text with animated effect
   const handleHandwritingInjection = useCallback((text: string) => {
     if (!text.trim()) return;
 
-    // Split text into lines
-    const lines = text.split('\n').filter(line => line.trim());
-    const fontSize = 28; // Slightly larger for handwriting font
-    const lineHeight = fontSize + 16;
-    const estimatedWidth = Math.min(700, Math.max(...lines.map(l => l.length * 14)));
-    const estimatedHeight = lines.length * lineHeight + 40;
+    // First split by existing newlines, then wrap each paragraph
+    const paragraphs = text.split('\n').filter(p => p.trim());
+    const allLines: string[] = [];
+    
+    paragraphs.forEach((paragraph, pIndex) => {
+      // Wrap paragraph into lines of 10-13 words
+      const wrappedLines = wrapTextIntoLines(paragraph, 12);
+      allLines.push(...wrappedLines);
+      
+      // Add empty line between paragraphs (except last)
+      if (pIndex < paragraphs.length - 1) {
+        allLines.push('');
+      }
+    });
 
-    // Find empty space
-    const position = findEmptySpace(estimatedWidth, estimatedHeight);
+    // Filter out empty lines but track paragraph breaks
+    const displayLines = allLines.filter(line => line.trim());
+    
+    const fontSize = 26; // Optimal size for Satisfy font readability
+    const lineHeight = fontSize + 20; // More spacing for readability
+    const maxLineWidth = 600; // Max width for text block
+    const charWidth = 12; // Approximate char width for Satisfy font at this size
+    
+    // Calculate actual max line length in characters
+    const actualMaxWidth = Math.min(
+      maxLineWidth,
+      Math.max(...displayLines.map(l => l.length * charWidth), 300)
+    );
+    const estimatedHeight = displayLines.length * lineHeight + 60;
 
-    // Create text shapes for each line with slight delay for animation effect
-    lines.forEach((line, index) => {
+    // Find empty space with calculated dimensions
+    const position = findEmptySpace(actualMaxWidth + 40, estimatedHeight);
+
+    // Create text shapes for each line with animation
+    displayLines.forEach((line, index) => {
       setTimeout(() => {
+        const lineWidth = line.length * charWidth;
+        
         const textShape: Shape = {
           id: `handwriting-${Date.now()}-${index}`,
           type: 'text',
-          startX: position.x,
-          startY: position.y + (index * lineHeight),
-          endX: position.x + estimatedWidth,
-          endY: position.y + (index * lineHeight) + fontSize,
-          color: '#22d3ee', // Cyan color for handwriting
-          strokeColor: '#22d3ee',
+          startX: position.x + 20, // Left padding
+          startY: position.y + 30 + (index * lineHeight), // Top padding
+          endX: position.x + 20 + lineWidth,
+          endY: position.y + 30 + (index * lineHeight) + fontSize,
+          color: '#0ea5e9', // Sky-500 - nice readable blue
+          strokeColor: '#0ea5e9',
           size: fontSize,
           fillEnabled: false,
           fillColor: 'transparent',
           text: line,
           rotation: 0,
-          isHandwriting: true // Mark as handwriting to use Satisfy font
+          isHandwriting: true // Use Satisfy font
         };
         
         addTextShapeToCanvas(textShape);
-      }, index * 150); // 150ms delay between each line for animation effect
+      }, index * 120); // Slightly faster animation
     });
-  }, [findEmptySpace, addTextShapeToCanvas]);
+  }, [findEmptySpace, addTextShapeToCanvas, wrapTextIntoLines]);
 
   // Register handwriting handler
   useEffect(() => {
