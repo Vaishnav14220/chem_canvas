@@ -411,6 +411,9 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     // LocalStorage key for persisting immersive learning content
     const STORAGE_KEY = 'immersive_learning_content';
 
+    // Track if we need to continue generating missing content after restore
+    const [needsContinueGeneration, setNeedsContinueGeneration] = useState(false);
+
     // Load saved content from localStorage on mount
     useEffect(() => {
         try {
@@ -450,9 +453,25 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                     setPdfUrl(parsed.pdfUrl);
                 }
 
+                // Restore additional generated content
+                if (parsed.quiz && parsed.quiz.length > 0) {
+                    setQuiz(parsed.quiz);
+                }
+                if (parsed.audioScript) {
+                    setAudioScript(parsed.audioScript);
+                }
+                if (parsed.reactFlowData) {
+                    setReactFlowData(parsed.reactFlowData);
+                }
+                if (parsed.relevantVideos && parsed.relevantVideos.length > 0) {
+                    setRelevantVideos(parsed.relevantVideos);
+                }
+
                 // Set mode to immersive-text if we have content
                 if (parsed.immersiveContent) {
                     setActiveMode('immersive-text');
+                    // Flag to continue generating any missing components
+                    setNeedsContinueGeneration(true);
                 }
                 
                 console.log('✅ Content restored successfully!');
@@ -463,6 +482,137 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
             localStorage.removeItem(STORAGE_KEY);
         }
     }, []);
+
+    // Continue generating missing components after restore
+    useEffect(() => {
+        if (!needsContinueGeneration || !immersiveContent || !documentTextRef.current) {
+            return;
+        }
+
+        // Reset the flag immediately to prevent multiple runs
+        setNeedsContinueGeneration(false);
+
+        const text = documentTextRef.current;
+        const missingComponents: string[] = [];
+
+        // Check what's missing and needs to be generated
+        const needsImages = Object.keys(sectionImages).length === 0 && 
+                           immersiveContent.sections.some(s => s.imagePrompt);
+        const needsQuiz = quiz.length === 0;
+        const needsAudio = !audioScript;
+        const needsMindMap = !reactFlowData;
+        const needsVideos = relevantVideos.length === 0;
+
+        if (needsImages) missingComponents.push('images');
+        if (needsQuiz) missingComponents.push('quiz');
+        if (needsAudio) missingComponents.push('audio script');
+        if (needsMindMap) missingComponents.push('mind map');
+        if (needsVideos) missingComponents.push('videos');
+
+        if (missingComponents.length === 0) {
+            console.log('✅ All components already generated, nothing to continue.');
+            return;
+        }
+
+        console.log(`🔄 Continuing generation of missing components: ${missingComponents.join(', ')}`);
+
+        // Generate missing images
+        const generateMissingImages = async () => {
+            if (!needsImages) return;
+            
+            const MAX_IMAGES_PER_PAGE = 1;
+            let imagesGenerated = 0;
+            const sectionsWithImages = immersiveContent.sections.filter(s => s.imagePrompt);
+            
+            if (sectionsWithImages.length > 0) {
+                const loadingState: { [key: string]: boolean } = {};
+                loadingState[sectionsWithImages[0].id] = true;
+                setLoadingImages(loadingState);
+            }
+
+            for (const section of immersiveContent.sections) {
+                if (imagesGenerated >= MAX_IMAGES_PER_PAGE) break;
+                if (section.imagePrompt && !sectionImages[section.id]) {
+                    try {
+                        console.log(`🖼️ Generating missing image for section: ${section.id}`);
+                        const imageUrl = await generateImmersiveImage(section.imagePrompt);
+                        setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
+                        setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                        imagesGenerated++;
+                    } catch (e) {
+                        console.error("Failed to generate image for section", section.id, e);
+                        setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                    }
+                }
+            }
+        };
+
+        // Generate missing quiz
+        const generateMissingQuiz = async () => {
+            if (!needsQuiz) return;
+            try {
+                console.log('📝 Generating missing quiz...');
+                const generatedQuiz = await generateImmersiveQuiz(text);
+                setQuiz(generatedQuiz);
+            } catch (e) {
+                console.error('Failed to generate quiz:', e);
+            }
+        };
+
+        // Generate missing audio script
+        const generateMissingAudio = async () => {
+            if (!needsAudio) return;
+            try {
+                console.log('🎙️ Generating missing audio script...');
+                const script = await generateAudioScript(text);
+                setAudioScript(script);
+            } catch (e) {
+                console.error('Failed to generate audio script:', e);
+            }
+        };
+
+        // Generate missing mind map
+        const generateMissingMindMap = async () => {
+            if (!needsMindMap) return;
+            try {
+                console.log('🗺️ Generating missing mind map...');
+                const data = await generateReactFlowData(text);
+                setReactFlowData(data);
+            } catch (e) {
+                console.error('Failed to generate mind map:', e);
+            }
+        };
+
+        // Fetch missing videos
+        const fetchMissingVideos = async () => {
+            if (!needsVideos) return;
+            setIsLoadingVideos(true);
+            try {
+                console.log('🎬 Fetching missing YouTube videos...');
+                const videos = await fetchAndRankYouTubeVideos(text);
+                setRelevantVideos(videos);
+                console.log('Found relevant videos:', videos.length);
+            } catch (e) {
+                console.warn('Failed to fetch YouTube videos:', e);
+            } finally {
+                setIsLoadingVideos(false);
+            }
+        };
+
+        // Run all missing component generation in parallel
+        Promise.all([
+            generateMissingImages(),
+            generateMissingQuiz(),
+            generateMissingAudio(),
+            generateMissingMindMap(),
+            fetchMissingVideos()
+        ]).then(() => {
+            console.log('✅ All missing components generated!');
+        }).catch(e => {
+            console.error('Some component generation failed:', e);
+        });
+
+    }, [needsContinueGeneration, immersiveContent, sectionImages, quiz, audioScript, reactFlowData, relevantVideos]);
 
     // Save content to localStorage whenever it changes
     useEffect(() => {
@@ -477,6 +627,11 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                     activeSectionId,
                     uploadedFileName,
                     pdfUrl,
+                    // Also save generated content
+                    quiz,
+                    audioScript,
+                    reactFlowData,
+                    relevantVideos,
                     savedAt: new Date().toISOString()
                 };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
@@ -490,7 +645,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                 }
             }
         }
-    }, [immersiveContent, sectionImages, widgetImages, activeSectionId, uploadedFileName, pdfUrl]);
+    }, [immersiveContent, sectionImages, widgetImages, activeSectionId, uploadedFileName, pdfUrl, quiz, audioScript, reactFlowData, relevantVideos]);
 
     // Keep refs in sync with state
     useEffect(() => {
