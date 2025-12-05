@@ -338,6 +338,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [simulationHTML, setSimulationHTML] = useState<string | null>(null);
     const [isGeneratingSimulation, setIsGeneratingSimulation] = useState(false);
     const [simulationProgress, setSimulationProgress] = useState<string>('');
+    const [simulationProgressSteps, setSimulationProgressSteps] = useState<{step: string, status: 'pending' | 'active' | 'done'}[]>([]);
     const [simulationError, setSimulationError] = useState<string | null>(null);
     const [isSimulationFullscreen, setIsSimulationFullscreen] = useState(true);
     const simulationIframeRef = useRef<HTMLIFrameElement>(null);
@@ -825,6 +826,17 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         setIsGeneratingSimulation(true);
         setSimulationError(null);
         setSimulationProgress('Initializing simulation generation...');
+        
+        // Initialize progress steps
+        setSimulationProgressSteps([
+            { step: 'Connecting to Gemini AI', status: 'active' },
+            { step: 'Analyzing document content', status: 'pending' },
+            { step: 'Designing simulation blueprint', status: 'pending' },
+            { step: 'Setting up physics engine', status: 'pending' },
+            { step: 'Generating 3D visualization', status: 'pending' },
+            { step: 'Adding interactive controls', status: 'pending' },
+            { step: 'Finalizing simulation', status: 'pending' }
+        ]);
 
         try {
             const topic = immersiveContent.title || 'Educational Simulation';
@@ -832,9 +844,61 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
             const result = await generateSimulation(
                 documentTextRef.current,
                 topic,
-                (stage) => setSimulationProgress(stage)
+                (stage) => {
+                    setSimulationProgress(stage);
+                    // Update progress steps based on stage message
+                    setSimulationProgressSteps(prev => {
+                        const updated = [...prev];
+                        // Mark steps as done based on progress
+                        if (stage.toLowerCase().includes('connect') || stage.toLowerCase().includes('initial')) {
+                            updated[0] = { ...updated[0], status: 'done' };
+                            updated[1] = { ...updated[1], status: 'active' };
+                        }
+                        if (stage.toLowerCase().includes('analyz') || stage.toLowerCase().includes('document')) {
+                            updated[0] = { ...updated[0], status: 'done' };
+                            updated[1] = { ...updated[1], status: 'done' };
+                            updated[2] = { ...updated[2], status: 'active' };
+                        }
+                        if (stage.toLowerCase().includes('blueprint') || stage.toLowerCase().includes('design')) {
+                            updated[0] = { ...updated[0], status: 'done' };
+                            updated[1] = { ...updated[1], status: 'done' };
+                            updated[2] = { ...updated[2], status: 'done' };
+                            updated[3] = { ...updated[3], status: 'active' };
+                        }
+                        if (stage.toLowerCase().includes('physics') || stage.toLowerCase().includes('logic')) {
+                            updated[0] = { ...updated[0], status: 'done' };
+                            updated[1] = { ...updated[1], status: 'done' };
+                            updated[2] = { ...updated[2], status: 'done' };
+                            updated[3] = { ...updated[3], status: 'done' };
+                            updated[4] = { ...updated[4], status: 'active' };
+                        }
+                        if (stage.toLowerCase().includes('visual') || stage.toLowerCase().includes('html') || stage.toLowerCase().includes('3d')) {
+                            updated[0] = { ...updated[0], status: 'done' };
+                            updated[1] = { ...updated[1], status: 'done' };
+                            updated[2] = { ...updated[2], status: 'done' };
+                            updated[3] = { ...updated[3], status: 'done' };
+                            updated[4] = { ...updated[4], status: 'done' };
+                            updated[5] = { ...updated[5], status: 'active' };
+                        }
+                        if (stage.toLowerCase().includes('control') || stage.toLowerCase().includes('interact')) {
+                            updated[0] = { ...updated[0], status: 'done' };
+                            updated[1] = { ...updated[1], status: 'done' };
+                            updated[2] = { ...updated[2], status: 'done' };
+                            updated[3] = { ...updated[3], status: 'done' };
+                            updated[4] = { ...updated[4], status: 'done' };
+                            updated[5] = { ...updated[5], status: 'done' };
+                            updated[6] = { ...updated[6], status: 'active' };
+                        }
+                        if (stage.toLowerCase().includes('final') || stage.toLowerCase().includes('complete')) {
+                            return updated.map(s => ({ ...s, status: 'done' as const }));
+                        }
+                        return updated;
+                    });
+                }
             );
 
+            // Mark all steps as done
+            setSimulationProgressSteps(prev => prev.map(s => ({ ...s, status: 'done' as const })));
             setSimulationBlueprint(result.blueprint);
             setSimulationHTML(result.html);
             setSimulationProgress('');
@@ -843,6 +907,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
             console.error('Failed to generate simulation:', error);
             setSimulationError(error.message || 'Failed to generate simulation');
             setSimulationProgress('');
+            setSimulationProgressSteps([]);
         } finally {
             setIsGeneratingSimulation(false);
         }
@@ -852,6 +917,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         setSimulationBlueprint(null);
         setSimulationHTML(null);
         setSimulationError(null);
+        setSimulationProgressSteps([]);
         // Will trigger regeneration when user clicks generate button
     };
 
@@ -4736,20 +4802,71 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 </div>
                             )}
 
-                            {/* Loading State */}
+                            {/* Loading State - Terminal Style with WarpBackground */}
                             {isGeneratingSimulation && (
-                                <div className="flex items-center justify-center h-full bg-gradient-to-br from-[#fff3e0] to-[#ffe0b2]">
-                                    <div className="text-center max-w-md px-6">
-                                        <div className="w-20 h-20 mx-auto mb-6 bg-white rounded-2xl shadow-lg flex items-center justify-center">
-                                            <Loader2 className="w-10 h-10 text-[#ff6d01] animate-spin" />
-                                        </div>
-                                        <h3 className="text-[20px] font-medium text-[#1f1f1f] mb-2">Creating Your Simulation</h3>
-                                        <p className="text-[14px] text-[#5f6368] mb-4">{simulationProgress}</p>
-                                        <div className="w-64 mx-auto h-1.5 bg-white/50 rounded-full overflow-hidden">
-                                            <div className="h-full bg-[#ff6d01] rounded-full animate-pulse" style={{ width: '60%' }} />
-                                        </div>
+                                <WarpBackground 
+                                    className="flex-1 flex items-center justify-center h-full border-0 p-0 bg-slate-950"
+                                    perspective={150}
+                                    beamsPerSide={4}
+                                    beamSize={4}
+                                    beamDelayMax={2}
+                                    beamDuration={4}
+                                    gridColor="rgba(255, 109, 1, 0.15)"
+                                >
+                                    {/* Terminal Display - Centered */}
+                                    <div className="relative z-10 w-full max-w-3xl mx-auto px-8">
+                                        <Terminal className="w-full max-w-none shadow-2xl backdrop-blur-sm">
+                                            {/* Command line with typing */}
+                                            <div className="flex items-center gap-2 text-slate-400 mb-3">
+                                                <span className="text-orange-400">➜</span>
+                                                <span className="text-amber-400">~/simulation</span>
+                                                <span className="text-slate-500">$</span>
+                                                <TypingAnimation className="text-slate-300" duration={25} delay={0}>
+                                                    gemini generate --mode 3d-simulation
+                                                </TypingAnimation>
+                                            </div>
+                                            
+                                            {/* Dynamic Progress Steps */}
+                                            {simulationProgressSteps.map((step, idx) => (
+                                                <AnimatedSpan key={idx} delay={800 + (idx * 600)} className="text-slate-300">
+                                                    {step.status === 'done' && (
+                                                        <><span className="text-green-400">✔</span> {step.step}</>
+                                                    )}
+                                                    {step.status === 'active' && (
+                                                        <><span className="text-orange-400 animate-pulse">●</span> {step.step}...</>
+                                                    )}
+                                                    {step.status === 'pending' && (
+                                                        <><span className="text-slate-600">○</span> <span className="text-slate-500">{step.step}</span></>
+                                                    )}
+                                                </AnimatedSpan>
+                                            ))}
+                                            
+                                            {/* Current Status */}
+                                            {simulationProgress && (
+                                                <AnimatedSpan delay={5000} className="text-amber-400 flex items-center gap-2 mt-2">
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                    <span>{simulationProgress}</span>
+                                                </AnimatedSpan>
+                                            )}
+                                            
+                                            {/* Progress bar */}
+                                            <AnimatedSpan delay={5200} className="mt-4 pt-3 border-t border-slate-800">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-slate-500 text-xs">Progress:</span>
+                                                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[200px]">
+                                                        <div 
+                                                            className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500"
+                                                            style={{ width: `${Math.round((simulationProgressSteps.filter(s => s.status === 'done').length / simulationProgressSteps.length) * 100)}%` }}
+                                                        />
+                                                    </div>
+                                                    <span className="text-amber-400 text-xs font-mono">
+                                                        {Math.round((simulationProgressSteps.filter(s => s.status === 'done').length / simulationProgressSteps.length) * 100)}%
+                                                    </span>
+                                                </div>
+                                            </AnimatedSpan>
+                                        </Terminal>
                                     </div>
-                                </div>
+                                </WarpBackground>
                             )}
 
                             {/* Error State */}
