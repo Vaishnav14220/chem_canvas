@@ -11,6 +11,10 @@ import 'katex/dist/katex.min.css';
 import { Terminal, AnimatedSpan, TypingAnimation, ProgressTerminal } from './ui/terminal';
 import { Highlighter } from './ui/highlighter';
 import { WarpBackground } from './ui/warp-background';
+import { MessageDock, type Character } from './ui/message-dock';
+import GeminiLiveOverlay from './GeminiLive/GeminiLiveOverlay';
+import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
+import { ConnectionState, LearningCanvasImage } from './GeminiLive/types';
 import {
     analyzeDocumentForImmersive,
     streamAnalyzeDocumentForImmersive,
@@ -178,6 +182,265 @@ const ImageActivityIcon = ({ active }: { active?: boolean }) => (
 );
 
 const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }) => {
+    // Initialize Gemini Live
+    const geminiLiveState = useGeminiLive(apiKey || '');
+    
+    // Dock characters for MessageDock
+    const dockCharacters: Character[] = [
+        { emoji: "✨", name: "Sparkle", online: false, backgroundColor: "bg-amber-200", gradientColors: "#fde68a, #fffbeb" },
+        { emoji: "🧙‍♂️", name: "Wizard", online: true, backgroundColor: "bg-emerald-200 dark:bg-emerald-300", gradientColors: "#a7f3d0, #ecfdf5" },
+        { emoji: "🦄", name: "Unicorn", online: true, backgroundColor: "bg-violet-200 dark:bg-violet-300", gradientColors: "#c4b5fd, #f5f3ff" },
+        { emoji: "🐵", name: "Monkey", online: true, backgroundColor: "bg-amber-200 dark:bg-amber-300", gradientColors: "#fde68a, #fffbeb" },
+        { emoji: "🤖", name: "Robot", online: false, backgroundColor: "bg-rose-200 dark:bg-rose-300", gradientColors: "#fecaca, #fef2f2" },
+    ];
+
+    // Handler for expanding learning canvas images
+    const handleCanvasImageExpand = useCallback((image: LearningCanvasImage) => {
+        if (!image || image.status !== 'complete' || !image.url) {
+            return;
+        }
+        console.log('Canvas image expanded:', image);
+    }, []);
+
+    // ========== WORKSPACE MANAGEMENT (NotebookLM-style) ==========
+    interface SavedWorkspace {
+        id: string;
+        name: string;
+        description: string;
+        createdAt: number;
+        updatedAt: number;
+        thumbnailEmoji: string;
+        documentFileName: string;
+        documentText: string;
+        immersiveContent: ImmersiveContent | null;
+        sectionImages: { [key: string]: string };
+        widgetImages: { [key: string]: { before: string; after: string } };
+        quiz: QuizQuestion[];
+        audioScript: string | null;
+        reactFlowData: ReactFlowData | null;
+        relevantVideos: RankedYouTubeVideo[];
+        pdfUrl: string | null;
+        activeSectionId: string | null;
+    }
+
+    const WORKSPACES_STORAGE_KEY = 'immersive_learning_workspaces';
+    const ACTIVE_WORKSPACE_KEY = 'immersive_learning_active_workspace';
+
+    const [savedWorkspaces, setSavedWorkspaces] = useState<SavedWorkspace[]>([]);
+    const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+    const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
+    const [showWorkspaceManager, setShowWorkspaceManager] = useState(true);
+    const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+    const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState('');
+
+    // Load workspaces from localStorage on mount
+    useEffect(() => {
+        try {
+            const savedData = localStorage.getItem(WORKSPACES_STORAGE_KEY);
+            if (savedData) {
+                const workspaces = JSON.parse(savedData) as SavedWorkspace[];
+                setSavedWorkspaces(workspaces.sort((a, b) => b.updatedAt - a.updatedAt));
+            }
+            
+            // Check if there's an active workspace to restore
+            const activeId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+            if (activeId) {
+                setActiveWorkspaceId(activeId);
+                setShowWorkspaceManager(false);
+            }
+        } catch (error) {
+            console.error('Failed to load workspaces:', error);
+        } finally {
+            setIsLoadingWorkspaces(false);
+        }
+    }, []);
+
+    // Generate intelligent workspace name using Gemini
+    const generateWorkspaceName = async (documentText: string, fileName: string): Promise<{ name: string; description: string; emoji: string }> => {
+        try {
+            const prompt = `Based on this educational document content, generate a concise, descriptive name for a learning workspace.
+            
+Document filename: ${fileName}
+Document excerpt: ${documentText.slice(0, 2000)}
+
+Return ONLY a JSON object with:
+{
+  "name": "Short descriptive name (3-5 words max)",
+  "description": "One sentence describing the main topic",
+  "emoji": "A single relevant emoji for the topic"
+}`;
+
+            const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + (apiKey || ''), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: 'application/json' }
+                })
+            });
+
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const parsed = JSON.parse(text);
+            return {
+                name: parsed.name || fileName.replace(/\.[^/.]+$/, ''),
+                description: parsed.description || 'Learning workspace',
+                emoji: parsed.emoji || '📚'
+            };
+        } catch (error) {
+            console.error('Failed to generate workspace name:', error);
+            return {
+                name: fileName.replace(/\.[^/.]+$/, ''),
+                description: 'Learning workspace',
+                emoji: '📚'
+            };
+        }
+    };
+
+    // Save current state as a new workspace
+    const saveCurrentAsWorkspace = async () => {
+        if (!immersiveContent || !documentTextRef.current) return;
+
+        setIsCreatingWorkspace(true);
+        try {
+            const { name, description, emoji } = await generateWorkspaceName(documentTextRef.current, uploadedFileName);
+            
+            const workspace: SavedWorkspace = {
+                id: `workspace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                name,
+                description,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                thumbnailEmoji: emoji,
+                documentFileName: uploadedFileName,
+                documentText: documentTextRef.current,
+                immersiveContent,
+                sectionImages,
+                widgetImages,
+                quiz,
+                audioScript,
+                reactFlowData,
+                relevantVideos,
+                pdfUrl,
+                activeSectionId
+            };
+
+            const updatedWorkspaces = [workspace, ...savedWorkspaces];
+            setSavedWorkspaces(updatedWorkspaces);
+            setActiveWorkspaceId(workspace.id);
+            localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
+            localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
+            
+            console.log('✅ Workspace saved:', workspace.name);
+        } catch (error) {
+            console.error('Failed to save workspace:', error);
+        } finally {
+            setIsCreatingWorkspace(false);
+        }
+    };
+
+    // Update existing workspace
+    const updateWorkspace = useCallback(() => {
+        if (!activeWorkspaceId || !immersiveContent) return;
+
+        const updatedWorkspaces = savedWorkspaces.map(ws => {
+            if (ws.id === activeWorkspaceId) {
+                return {
+                    ...ws,
+                    updatedAt: Date.now(),
+                    immersiveContent,
+                    sectionImages,
+                    widgetImages,
+                    quiz,
+                    audioScript,
+                    reactFlowData,
+                    relevantVideos,
+                    pdfUrl,
+                    activeSectionId
+                };
+            }
+            return ws;
+        });
+
+        setSavedWorkspaces(updatedWorkspaces);
+        localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
+    }, [activeWorkspaceId, immersiveContent, sectionImages, widgetImages, quiz, audioScript, reactFlowData, relevantVideos, pdfUrl, activeSectionId, savedWorkspaces]);
+
+    // Auto-save workspace when content changes
+    useEffect(() => {
+        if (activeWorkspaceId && immersiveContent) {
+            const timeoutId = setTimeout(() => {
+                updateWorkspace();
+            }, 2000); // Debounce saves
+            return () => clearTimeout(timeoutId);
+        }
+    }, [activeWorkspaceId, immersiveContent, sectionImages, quiz, audioScript, reactFlowData, updateWorkspace]);
+
+    // Open a saved workspace
+    const openWorkspace = (workspace: SavedWorkspace) => {
+        console.log('📂 Opening workspace:', workspace.name);
+        
+        // Restore all state
+        documentTextRef.current = workspace.documentText;
+        setUploadedFileName(workspace.documentFileName);
+        setImmersiveContent(workspace.immersiveContent);
+        setSectionImages(workspace.sectionImages || {});
+        setWidgetImages(workspace.widgetImages || {});
+        setQuiz(workspace.quiz || []);
+        setAudioScript(workspace.audioScript);
+        setReactFlowData(workspace.reactFlowData);
+        setRelevantVideos(workspace.relevantVideos || []);
+        setPdfUrl(workspace.pdfUrl);
+        setActiveSectionId(workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || null);
+        
+        setActiveWorkspaceId(workspace.id);
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
+        setShowWorkspaceManager(false);
+        setActiveMode('immersive-text');
+    };
+
+    // Delete a workspace
+    const deleteWorkspace = (workspaceId: string) => {
+        const updatedWorkspaces = savedWorkspaces.filter(ws => ws.id !== workspaceId);
+        setSavedWorkspaces(updatedWorkspaces);
+        localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
+        
+        if (activeWorkspaceId === workspaceId) {
+            setActiveWorkspaceId(null);
+            localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+            // Clear current state
+            setImmersiveContent(null);
+            documentTextRef.current = '';
+            setUploadedFileName('');
+            setShowWorkspaceManager(true);
+        }
+    };
+
+    // Create new workspace (clear current and show upload)
+    const createNewWorkspace = () => {
+        setActiveWorkspaceId(null);
+        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+        setImmersiveContent(null);
+        documentTextRef.current = '';
+        setUploadedFileName('');
+        setSectionImages({});
+        setWidgetImages({});
+        setQuiz([]);
+        setAudioScript(null);
+        setReactFlowData(null);
+        setRelevantVideos([]);
+        setPdfUrl(null);
+        setShowWorkspaceManager(false);
+        setActiveMode('source');
+    };
+
+    // Filter workspaces by search
+    const filteredWorkspaces = savedWorkspaces.filter(ws => 
+        ws.name.toLowerCase().includes(workspaceSearchQuery.toLowerCase()) ||
+        ws.description.toLowerCase().includes(workspaceSearchQuery.toLowerCase()) ||
+        ws.documentFileName.toLowerCase().includes(workspaceSearchQuery.toLowerCase())
+    );
+
     const [activeMode, setActiveMode] = useState<LearningMode>('immersive-text');
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState('');
@@ -1822,8 +2085,14 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                 generateAudioAsync(),
                 generateMindMapAsync(),
                 fetchVideosAsync()
-            ]).then(() => {
+            ]).then(async () => {
                 console.log('✅ All background content generation complete!');
+                // Save as new workspace after all content is generated
+                // Note: We need to call saveCurrentAsWorkspace after state updates
+                // Use a small delay to ensure state is updated
+                setTimeout(async () => {
+                    await saveCurrentAsWorkspace();
+                }, 1000);
             }).catch(e => {
                 console.error('Some background tasks failed:', e);
             });
@@ -2941,30 +3210,160 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                     );
                 }
 
-                // Show upload UI when not loading
+                // NotebookLM-style Workspace Manager UI
                 return (
-                    <div className="flex flex-col items-center justify-center h-full space-y-6 p-8">
-                        <div className="text-center space-y-3 max-w-md">
-                            <div className="w-16 h-16 bg-[#fff0e0] rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <FileText className="w-8 h-8 text-[#ff8b66]" />
+                    <div className="flex flex-col h-full bg-gradient-to-br from-[#fafafa] to-[#f0f4f8] overflow-hidden">
+                        {/* Header */}
+                        <div className="px-8 pt-8 pb-4">
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h1 className="text-3xl font-semibold text-[#1f1f1f] flex items-center gap-3">
+                                        <span className="text-4xl">📚</span>
+                                        Learn Your Way
+                                    </h1>
+                                    <p className="text-[#5f6368] mt-1">Your AI-powered learning workspaces</p>
+                                </div>
+                                <button
+                                    onClick={createNewWorkspace}
+                                    className="px-5 py-2.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-full font-medium transition-all shadow-md hover:shadow-lg flex items-center gap-2"
+                                >
+                                    <span className="text-lg">+</span>
+                                    New Workspace
+                                </button>
                             </div>
-                            <h2 className="text-2xl font-google-sans text-[#1f1f1f]">Upload Material</h2>
-                            <p className="text-[#444746]">Upload your documents to generate an immersive learning experience.</p>
+
+                            {/* Search Bar */}
+                            <div className="relative max-w-xl">
+                                <input
+                                    type="text"
+                                    value={workspaceSearchQuery}
+                                    onChange={(e) => setWorkspaceSearchQuery(e.target.value)}
+                                    placeholder="Search your workspaces..."
+                                    className="w-full px-4 py-3 pl-11 bg-white border border-[#e0e0e0] rounded-full text-[15px] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/20 transition-all shadow-sm"
+                                />
+                                <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#5f6368]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </div>
                         </div>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".txt,.md,.pdf,.docx"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                        />
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="px-6 py-3 bg-[#ff8b66] hover:bg-[#ff8b66]/90 text-white rounded-full font-medium transition-all shadow-sm hover:shadow-md flex items-center gap-2"
-                        >
-                            <Upload className="w-5 h-5" />
-                            <span>Select File</span>
-                        </button>
+
+                        {/* Workspaces Grid */}
+                        <div className="flex-1 overflow-y-auto px-8 pb-8">
+                            {isLoadingWorkspaces ? (
+                                <div className="flex items-center justify-center h-64">
+                                    <Loader2 className="w-8 h-8 text-[#1a73e8] animate-spin" />
+                                </div>
+                            ) : filteredWorkspaces.length === 0 && !workspaceSearchQuery ? (
+                                /* Empty State - First Time User */
+                                <div className="flex flex-col items-center justify-center h-full py-16">
+                                    <div className="w-32 h-32 bg-gradient-to-br from-[#e8f0fe] to-[#d2e3fc] rounded-3xl flex items-center justify-center mb-6 shadow-lg">
+                                        <span className="text-6xl">✨</span>
+                                    </div>
+                                    <h2 className="text-2xl font-semibold text-[#1f1f1f] mb-3">Welcome to Learn Your Way</h2>
+                                    <p className="text-[#5f6368] text-center max-w-md mb-8">
+                                        Upload your study materials and let AI create an immersive, personalized learning experience for you.
+                                    </p>
+                                    <div className="flex flex-col items-center gap-4">
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept=".txt,.md,.pdf,.docx"
+                                            onChange={handleFileUpload}
+                                            className="hidden"
+                                        />
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="px-8 py-4 bg-gradient-to-r from-[#ff8b66] to-[#ff6d01] hover:from-[#ff7a50] hover:to-[#e56200] text-white rounded-2xl font-medium transition-all shadow-lg hover:shadow-xl flex items-center gap-3 text-lg"
+                                        >
+                                            <Upload className="w-6 h-6" />
+                                            <span>Upload Your First Document</span>
+                                        </button>
+                                        <p className="text-sm text-[#5f6368]">Supports PDF, TXT, MD, DOCX</p>
+                                    </div>
+                                </div>
+                            ) : filteredWorkspaces.length === 0 && workspaceSearchQuery ? (
+                                /* No Search Results */
+                                <div className="flex flex-col items-center justify-center h-64">
+                                    <span className="text-5xl mb-4">🔍</span>
+                                    <p className="text-[#5f6368]">No workspaces found matching "{workspaceSearchQuery}"</p>
+                                </div>
+                            ) : (
+                                /* Workspaces Grid */
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
+                                    {/* Create New Card */}
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="group h-48 rounded-2xl border-2 border-dashed border-[#dadce0] hover:border-[#1a73e8] bg-white/50 hover:bg-[#e8f0fe]/30 transition-all flex flex-col items-center justify-center gap-3"
+                                    >
+                                        <div className="w-14 h-14 rounded-2xl bg-[#e8f0fe] group-hover:bg-[#1a73e8] transition-colors flex items-center justify-center">
+                                            <Upload className="w-7 h-7 text-[#1a73e8] group-hover:text-white transition-colors" />
+                                        </div>
+                                        <span className="font-medium text-[#1a73e8]">Upload Document</span>
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept=".txt,.md,.pdf,.docx"
+                                            onChange={handleFileUpload}
+                                            className="hidden"
+                                        />
+                                    </button>
+
+                                    {/* Workspace Cards */}
+                                    {filteredWorkspaces.map((workspace) => (
+                                        <div
+                                            key={workspace.id}
+                                            className="group relative h-48 rounded-2xl bg-white border border-[#e0e0e0] hover:border-[#1a73e8] hover:shadow-lg transition-all cursor-pointer overflow-hidden"
+                                            onClick={() => openWorkspace(workspace)}
+                                        >
+                                            {/* Gradient Top Bar */}
+                                            <div className="h-2 bg-gradient-to-r from-[#ff8b66] via-[#1a73e8] to-[#34a853]" />
+                                            
+                                            {/* Content */}
+                                            <div className="p-4">
+                                                {/* Emoji & Title */}
+                                                <div className="flex items-start gap-3 mb-2">
+                                                    <span className="text-3xl">{workspace.thumbnailEmoji}</span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <h3 className="font-semibold text-[#1f1f1f] truncate">{workspace.name}</h3>
+                                                        <p className="text-sm text-[#5f6368] line-clamp-2 mt-1">{workspace.description}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* File Info */}
+                                                <div className="flex items-center gap-2 mt-3 text-xs text-[#5f6368]">
+                                                    <FileText className="w-3.5 h-3.5" />
+                                                    <span className="truncate">{workspace.documentFileName}</span>
+                                                </div>
+
+                                                {/* Last Updated */}
+                                                <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
+                                                    <span className="text-xs text-[#5f6368]">
+                                                        {new Date(workspace.updatedAt).toLocaleDateString('en-US', { 
+                                                            month: 'short', 
+                                                            day: 'numeric',
+                                                            year: workspace.updatedAt < Date.now() - 365 * 24 * 60 * 60 * 1000 ? 'numeric' : undefined
+                                                        })}
+                                                    </span>
+                                                    
+                                                    {/* Delete Button */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (confirm('Delete this workspace?')) {
+                                                                deleteWorkspace(workspace.id);
+                                                            }
+                                                        }}
+                                                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-red-50 text-[#5f6368] hover:text-red-500 transition-all"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 );
 
@@ -6115,14 +6514,30 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
             {/* Top Header Bar - Exact Google Style - Height 50px */}
             <header className="bg-white h-[50px] px-5 flex items-center justify-between border-b border-[#e8eaed]">
-                {/* Left: Logo */}
-                <div className="flex items-center gap-2">
-                    <span className="text-[22px] font-medium text-[#1f1f1f]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
-                        Learn Your Way
-                    </span>
-                    <span className="text-[10px] text-[#5f6368] border border-[#dadce0] rounded px-1.5 py-0.5 uppercase tracking-wide font-medium">
-                        Experiment
-                    </span>
+                {/* Left: Logo & Workspaces */}
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[22px] font-medium text-[#1f1f1f]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
+                            Learn Your Way
+                        </span>
+                        <span className="text-[10px] text-[#5f6368] border border-[#dadce0] rounded px-1.5 py-0.5 uppercase tracking-wide font-medium">
+                            Experiment
+                        </span>
+                    </div>
+                    {/* My Workspaces Button */}
+                    {immersiveContent && (
+                        <button
+                            onClick={() => {
+                                setActiveMode('source');
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                            My Workspaces
+                        </button>
+                    )}
                 </div>
 
                 {/* Center: Interest pill */}
@@ -6444,6 +6859,37 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                     </div>
                 ) : null)}
             </div>
+
+            {/* Message Dock - Fixed at bottom */}
+            <MessageDock
+                characters={dockCharacters}
+                onMessageSend={(message, character) => {
+                    console.log('Message:', message, 'to', character.name);
+                }}
+                onCharacterSelect={(character) => {
+                    console.log('Selected:', character.name);
+                }}
+                expandedWidth={500}
+                placeholder={(name) => `Send a message to ${name}...`}
+                theme="light"
+                isLiveActive={geminiLiveState.connectionState === ConnectionState.CONNECTED}
+                isListening={geminiLiveState.isListening}
+                isSpeaking={geminiLiveState.isSpeaking}
+                onDisconnect={() => geminiLiveState.disconnect()}
+                onSparkleClick={() => {
+                    if (geminiLiveState.connectionState === ConnectionState.CONNECTED) {
+                        geminiLiveState.disconnect();
+                    } else {
+                        geminiLiveState.connect();
+                    }
+                }}
+            />
+
+            {/* Gemini Live Overlay - For Learning Canvas */}
+            <GeminiLiveOverlay
+                geminiLiveState={geminiLiveState}
+                onExpandImage={handleCanvasImageExpand}
+            />
         </div>
     );
 };
