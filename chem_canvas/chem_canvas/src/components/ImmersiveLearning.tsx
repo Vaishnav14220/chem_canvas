@@ -3020,7 +3020,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                 return (
                     <div className="flex w-full min-h-full">
                         {/* Main Content - Single scrollable area */}
-                        <div className={`flex-1 py-10 px-12 relative overflow-y-auto transition-all duration-300 ${openFloatingQuiz !== null ? 'pr-[380px]' : ''}`}>
+                        <div className={`flex-1 py-10 px-12 relative overflow-y-auto transition-all duration-300`}>
                             {/* Section Title Header */}
                             <div className="text-[13px] text-[#5f6368] mb-1 font-medium">
                                 {activeSection?.title}
@@ -3914,135 +3914,6 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 </div>
                             )}
                         </div>
-
-                        {/* Right Sidebar - Paragraph Quiz (Google Style) */}
-                        {openFloatingQuiz !== null && (
-                            <div className="w-[340px] bg-white border-l border-[#e8eaed] flex-shrink-0 overflow-y-auto fixed right-0 top-[140px] bottom-0 z-40 shadow-lg animate-slide-in-right">
-                                {/* Header */}
-                                <div className="sticky top-0 bg-white border-b border-[#e8eaed] p-4">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-6 h-6 rounded bg-[#1a73e8] flex items-center justify-center">
-                                                <span className="text-white text-xs font-bold">?</span>
-                                            </div>
-                                            <span className="text-[14px] font-medium text-[#1f1f1f]">Check your understanding</span>
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                setOpenFloatingQuiz(null);
-                                                setFloatingQuizData(null);
-                                                setFloatingQuizAnswer(null);
-                                            }}
-                                            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#f1f3f4] transition-colors"
-                                        >
-                                            <X className="w-5 h-5 text-[#5f6368]" />
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Loading State */}
-                                {isLoadingFloatingQuiz && (
-                                    <div className="p-6 flex flex-col items-center justify-center min-h-[200px]">
-                                        <Loader2 className="w-8 h-8 text-[#1a73e8] animate-spin mb-3" />
-                                        <p className="text-[14px] text-[#5f6368] text-center">Generating question...</p>
-                                    </div>
-                                )}
-
-                                {/* Quiz Content */}
-                                {!isLoadingFloatingQuiz && floatingQuizData && (
-                                    <div className="p-4">
-                                        {/* Question */}
-                                        <p className="text-[15px] text-[#1f1f1f] leading-relaxed mb-5">
-                                            {floatingQuizData.question}
-                                        </p>
-
-                                        {/* Options */}
-                                        <div className="space-y-2">
-                                            {floatingQuizData.options.map((option, idx) => {
-                                                const isSelected = floatingQuizAnswer === option;
-                                                const isCorrect = idx === floatingQuizData.correctAnswerIndex;
-                                                const showResult = floatingQuizAnswer !== null;
-
-                                                let bgColor = 'bg-[#f8f9fa] hover:bg-[#f1f3f4]';
-                                                let borderColor = 'border-transparent';
-                                                let textColor = 'text-[#1f1f1f]';
-
-                                                if (showResult && isCorrect) {
-                                                    bgColor = 'bg-[#ceead6]';
-                                                    borderColor = 'border-[#34a853]';
-                                                    textColor = 'text-[#137333]';
-                                                } else if (showResult && isSelected && !isCorrect) {
-                                                    bgColor = 'bg-[#fad2cf]';
-                                                    borderColor = 'border-[#ea4335]';
-                                                    textColor = 'text-[#c5221f]';
-                                                } else if (isSelected && !showResult) {
-                                                    borderColor = 'border-[#1a73e8]';
-                                                    bgColor = 'bg-[#e8f0fe]';
-                                                }
-
-                                                return (
-                                                    <button
-                                                        key={idx}
-                                                        onClick={() => setFloatingQuizAnswer(option)}
-                                                        disabled={floatingQuizAnswer !== null}
-                                                        className={`w-full text-left px-4 py-3 rounded-xl border ${borderColor} ${bgColor} ${textColor} transition-all duration-150 text-[14px] font-medium`}
-                                                    >
-                                                        <span className="font-semibold mr-2">{String.fromCharCode(65 + idx)}.</span>
-                                                        {option}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {/* Feedback */}
-                                        {floatingQuizAnswer !== null && floatingQuizData && (
-                                            <div className="mt-4 p-4 bg-[#f8f9fa] rounded-xl">
-                                                <p className={`text-[14px] font-medium ${floatingQuizData.options.indexOf(floatingQuizAnswer) === floatingQuizData.correctAnswerIndex ? 'text-[#137333]' : 'text-[#c5221f]'}`}>
-                                                    {floatingQuizData.options.indexOf(floatingQuizAnswer) === floatingQuizData.correctAnswerIndex
-                                                        ? "✓ That's right!"
-                                                        : "✗ Not quite."}
-                                                </p>
-                                                {floatingQuizData.explanation && (
-                                                    <p className="text-[13px] text-[#5f6368] mt-2 leading-relaxed italic">
-                                                        {floatingQuizData.explanation}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* Navigation Buttons */}
-                                        {floatingQuizAnswer !== null && (
-                                            <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-[#e8eaed]">
-                                                <button
-                                                    onClick={() => {
-                                                        setFloatingQuizAnswer(null);
-                                                        setOpenFloatingQuiz(null);
-                                                        setFloatingQuizData(null);
-                                                    }}
-                                                    className="px-4 py-2 text-[13px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors"
-                                                >
-                                                    Close
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        // Reset for new question on same paragraph
-                                                        setFloatingQuizAnswer(null);
-                                                        // Trigger regeneration
-                                                        if (openFloatingQuiz !== null) {
-                                                            const paragraph = contentParts[0]?.split('\n\n')[openFloatingQuiz] || '';
-                                                            handleOpenFloatingQuiz(paragraph, openFloatingQuiz);
-                                                        }
-                                                    }}
-                                                    className="px-4 py-2 text-[13px] text-white bg-[#1a73e8] hover:bg-[#1557b0] rounded-lg transition-colors"
-                                                >
-                                                    New Question
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
                     </div>
                 );
 
