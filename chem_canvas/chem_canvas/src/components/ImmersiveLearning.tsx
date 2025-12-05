@@ -6491,7 +6491,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                             </div>
                         </div>
                     </div>
-                ))}
+                ) : null)}
             </div>
         </div>
     );
