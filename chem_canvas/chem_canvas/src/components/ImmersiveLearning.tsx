@@ -408,6 +408,90 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [generatedImageActivityUrl, setGeneratedImageActivityUrl] = useState<string | null>(null);
     const [isGeneratingImageActivity, setIsGeneratingImageActivity] = useState(false);
 
+    // LocalStorage key for persisting immersive learning content
+    const STORAGE_KEY = 'immersive_learning_content';
+
+    // Load saved content from localStorage on mount
+    useEffect(() => {
+        try {
+            const savedData = localStorage.getItem(STORAGE_KEY);
+            if (savedData) {
+                const parsed = JSON.parse(savedData);
+                console.log('📂 Restoring saved immersive learning content...');
+                
+                // Restore immersive content
+                if (parsed.immersiveContent) {
+                    setImmersiveContent(parsed.immersiveContent);
+                    if (parsed.immersiveContent.sections?.length > 0) {
+                        setActiveSectionId(parsed.activeSectionId || parsed.immersiveContent.sections[0].id);
+                    }
+                }
+                
+                // Restore document text
+                if (parsed.documentText) {
+                    documentTextRef.current = parsed.documentText;
+                }
+                
+                // Restore images
+                if (parsed.sectionImages) {
+                    setSectionImages(parsed.sectionImages);
+                }
+                if (parsed.widgetImages) {
+                    setWidgetImages(parsed.widgetImages);
+                }
+                
+                // Restore file name
+                if (parsed.uploadedFileName) {
+                    setUploadedFileName(parsed.uploadedFileName);
+                }
+
+                // Restore PDF URL if available
+                if (parsed.pdfUrl) {
+                    setPdfUrl(parsed.pdfUrl);
+                }
+
+                // Set mode to immersive-text if we have content
+                if (parsed.immersiveContent) {
+                    setActiveMode('immersive-text');
+                }
+                
+                console.log('✅ Content restored successfully!');
+            }
+        } catch (error) {
+            console.error('Failed to load saved content:', error);
+            // Clear corrupted data
+            localStorage.removeItem(STORAGE_KEY);
+        }
+    }, []);
+
+    // Save content to localStorage whenever it changes
+    useEffect(() => {
+        // Only save if we have actual content
+        if (immersiveContent && immersiveContent.sections?.length > 0) {
+            try {
+                const dataToSave = {
+                    immersiveContent,
+                    documentText: documentTextRef.current,
+                    sectionImages,
+                    widgetImages,
+                    activeSectionId,
+                    uploadedFileName,
+                    pdfUrl,
+                    savedAt: new Date().toISOString()
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+                console.log('💾 Content saved to localStorage');
+            } catch (error) {
+                console.error('Failed to save content:', error);
+                // If storage is full, try to clear old data
+                if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+                    console.warn('Storage quota exceeded, clearing old data...');
+                    localStorage.removeItem(STORAGE_KEY);
+                }
+            }
+        }
+    }, [immersiveContent, sectionImages, widgetImages, activeSectionId, uploadedFileName, pdfUrl]);
+
     // Keep refs in sync with state
     useEffect(() => {
         viewer3dInteractionModeRef.current = viewer3dInteractionMode;
@@ -1319,6 +1403,16 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
+
+        // Clear previous content when uploading a new file
+        console.log('📤 New file upload - clearing previous content...');
+        setImmersiveContent(null);
+        setSectionImages({});
+        setWidgetImages({});
+        setActiveSectionId('');
+        documentTextRef.current = '';
+        // Clear localStorage when uploading new file
+        localStorage.removeItem(STORAGE_KEY);
 
         setIsLoading(true);
         setUploadedFileName(file.name);
