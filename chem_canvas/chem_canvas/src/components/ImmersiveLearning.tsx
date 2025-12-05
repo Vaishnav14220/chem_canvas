@@ -2335,7 +2335,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                             ? isCorrect(idx)
                                                 ? 'bg-green-100 border-green-400 text-green-700'
                                                 : 'bg-red-100 border-red-400 text-red-700'
-                                            : 'bg-white border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'
+                                            : 'bg-white border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-gray-800 placeholder-gray-400'
                                     }`}
                                     placeholder="..."
                                 />
@@ -2415,12 +2415,12 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                             ? 'bg-green-100 border-green-400 text-green-700'
                                             : matches[idx] !== undefined
                                             ? 'bg-red-100 border-red-400 text-red-700'
-                                            : 'bg-gray-100 border-gray-300'
+                                            : 'bg-gray-100 border-gray-300 text-gray-700'
                                         : selectedLeft === idx
-                                        ? 'bg-teal-100 border-teal-500 ring-2 ring-teal-200'
+                                        ? 'bg-teal-100 border-teal-500 ring-2 ring-teal-200 text-teal-800'
                                         : matches[idx] !== undefined
-                                        ? 'bg-teal-50 border-teal-300'
-                                        : 'bg-white border-gray-200 hover:border-teal-400'
+                                        ? 'bg-teal-50 border-teal-300 text-teal-700'
+                                        : 'bg-white border-gray-200 hover:border-teal-400 text-gray-800'
                                 }`}
                             >
                                 {item}
@@ -2438,10 +2438,10 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 disabled={submitted}
                                 className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${
                                     submitted
-                                        ? 'bg-gray-50 border-gray-200'
+                                        ? 'bg-gray-50 border-gray-200 text-gray-700'
                                         : selectedLeft !== null
-                                        ? 'bg-white border-gray-200 hover:border-teal-400 hover:bg-teal-50 cursor-pointer'
-                                        : 'bg-gray-50 border-gray-200'
+                                        ? 'bg-white border-gray-200 hover:border-teal-400 hover:bg-teal-50 cursor-pointer text-gray-800'
+                                        : 'bg-gray-50 border-gray-200 text-gray-700'
                                 }`}
                             >
                                 <span className="text-teal-600 font-bold mr-2">{String.fromCharCode(65 + idx)}.</span>
@@ -2520,8 +2520,8 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                         ? 'bg-green-100 border-green-400 text-green-700'
                                         : 'bg-red-100 border-red-400 text-red-700'
                                     : draggedIdx === idx
-                                    ? 'bg-amber-100 border-amber-500 scale-105 shadow-lg'
-                                    : 'bg-white border-gray-200 hover:border-amber-400'
+                                    ? 'bg-amber-100 border-amber-500 scale-105 shadow-lg text-amber-800'
+                                    : 'bg-white border-gray-200 hover:border-amber-400 text-gray-800'
                             }`}
                         >
                             <span className="w-6 h-6 bg-amber-200 rounded-full flex items-center justify-center text-sm font-bold text-amber-700">
@@ -2688,11 +2688,11 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 value={matches[labelIdx] ?? ''}
                                 onChange={(e) => handleMatch(labelIdx, Number(e.target.value))}
                                 disabled={submitted}
-                                className={`flex-1 p-2 rounded-lg border-2 font-medium ${
+                                className={`flex-1 p-2 rounded-lg border-2 font-medium text-gray-800 ${
                                     submitted
                                         ? matches[labelIdx] === labelIdx
-                                            ? 'bg-green-50 border-green-400'
-                                            : 'bg-red-50 border-red-400'
+                                            ? 'bg-green-50 border-green-400 text-green-700'
+                                            : 'bg-red-50 border-red-400 text-red-700'
                                         : 'bg-white border-gray-200 focus:border-pink-400'
                                 }`}
                             >
