@@ -97,7 +97,7 @@ export interface RankedYouTubeVideo extends YouTubeVideo {
 }
 
 export interface InteractiveWidget {
-  type: 'reveal' | 'comparison' | 'quiz';
+  type: 'reveal' | 'comparison' | 'quiz' | 'fill-blank' | 'matching' | 'ordering' | 'labeling' | 'true-false' | 'reflection';
   data: {
     title?: string;
     content?: string; // For reveal
@@ -109,6 +109,25 @@ export interface InteractiveWidget {
     options?: string[]; // For quiz
     correctIndex?: number; // For quiz
     explanation?: string; // For quiz
+    // For fill-blank:
+    sentence?: string; // Sentence with {{BLANK}} markers
+    answers?: string[]; // Correct answers for each blank
+    // For matching:
+    leftItems?: string[];
+    rightItems?: string[];
+    correctPairs?: number[]; // Index mapping left to right
+    // For ordering:
+    items?: string[];
+    correctOrder?: number[];
+    orderingContext?: string;
+    // For labeling:
+    labels?: string[];
+    descriptions?: string[];
+    // For true-false:
+    statements?: { text: string; isTrue: boolean; explanation: string }[];
+    // For reflection:
+    reflectionPrompt?: string;
+    sampleResponse?: string;
   };
 }
 
@@ -145,6 +164,13 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
   const prompt = `
     Analyze the following educational text and structure it for an immersive learning experience (Target Audience: High School/Undergraduate).
     
+    CRITICAL MARKDOWN FORMATTING REQUIREMENTS:
+    - Use **double asterisks** around KEY TERMS and IMPORTANT WORDS that should be highlighted (e.g., **chemical kinetics**, **rate of reaction**)
+    - Use *single asterisks* around EMPHASIS PHRASES or IMPORTANT SENTENCES that should be underlined (e.g., *This is a crucial concept to understand*)
+    - Every paragraph MUST have at least 2-3 bold terms and 1-2 emphasized phrases
+    - Bold terms should be scientific terms, key concepts, proper nouns, and important vocabulary
+    - Emphasized text should be important explanations, key insights, or sentences the student should pay attention to
+    
     Return a JSON object with the following structure:
     {
       "title": "Document Title",
@@ -153,26 +179,54 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
         { 
           "id": "unique_id", 
           "title": "Section Title", 
-          "content": "Full text of the section... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
-          "imagePrompt": "A detailed, photorealistic description of an image that illustrates this section's concept.",
+          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. AT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
+          "imagePrompt": null,
           "widget": {
-            "type": "reveal" | "comparison" | "quiz",
+            "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection",
             "data": {
               // For 'reveal':
               "title": "Did you know?",
               "content": "Surprising fact or hidden detail...",
               
-              // For 'comparison' (e.g. Before/After reaction, Healthy/Diseased cell):
-              "beforeLabel": "Reactants",
-              "afterLabel": "Products",
-              "beforeImagePrompt": "Description of state A",
-              "afterImagePrompt": "Description of state B",
-
-              // For 'quiz' (Quick check for understanding):
+              // For 'fill-blank' (fill in the blanks exercise):
+              "title": "Complete the sentence",
+              "sentence": "The process of {{BLANK}} converts {{BLANK}} into energy.",
+              "answers": ["photosynthesis", "sunlight"],
+              
+              // For 'matching' (match items from two columns):
+              "title": "Match the terms",
+              "leftItems": ["Term 1", "Term 2", "Term 3"],
+              "rightItems": ["Definition A", "Definition B", "Definition C"],
+              "correctPairs": [0, 1, 2],
+              
+              // For 'ordering' (arrange items in correct sequence):
+              "title": "Arrange in order",
+              "orderingContext": "Steps of the process",
+              "items": ["Step 1", "Step 2", "Step 3"],
+              "correctOrder": [0, 1, 2],
+              
+              // For 'labeling' (match labels to descriptions):
+              "title": "Label the parts",
+              "labels": ["Part A", "Part B"],
+              "descriptions": ["Description of A", "Description of B"],
+              
+              // For 'true-false' (evaluate statements):
+              "title": "True or False?",
+              "statements": [
+                { "text": "Statement 1", "isTrue": true, "explanation": "Why..." },
+                { "text": "Statement 2", "isTrue": false, "explanation": "Why..." }
+              ],
+              
+              // For 'quiz' (multiple choice):
               "question": "Quick check: ...?",
               "options": ["A", "B", "C"],
               "correctIndex": 0,
-              "explanation": "Why it's correct..."
+              "explanation": "Why it's correct...",
+              
+              // For 'reflection' (open-ended thinking prompt):
+              "title": "Reflect & Think",
+              "reflectionPrompt": "How might this concept apply to...?",
+              "sampleResponse": "A good response might consider..."
             }
           }
         }
@@ -187,13 +241,23 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
 
     Rules:
     1. Split text into logical sections.
-    2. For EACH section, include ONE interactive widget that best fits the content:
+    2. IMPORTANT: Each section's content MUST have AT LEAST 4 substantial paragraphs with detailed explanations.
+    3. CRITICAL: Use markdown formatting throughout:
+       - Wrap key terms in **double asterisks** for highlighting (minimum 3 per paragraph)
+       - Wrap important phrases/sentences in *single asterisks* for underlining (minimum 1 per paragraph)
+       - Example: "The **rate of reaction** depends on *several critical factors that we must understand*."
+    4. For EACH section, include ONE interactive widget. PREFER interactive activities over images:
+       - Use 'fill-blank' for key concepts and definitions.
+       - Use 'matching' for terminology and relationships.
+       - Use 'ordering' for processes, sequences, or steps.
+       - Use 'labeling' for parts and their functions.
+       - Use 'true-false' for common misconceptions.
+       - Use 'quiz' for complex concepts that need checking.
        - Use 'reveal' for surprising facts or "aha!" moments.
-       - Use 'comparison' for processes, reactions, or before/after scenarios.
-       - Use 'quiz' for complex concepts that need immediate checking.
-    3. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
-    4. Generate high-quality image prompts.
-    5. IMPORTANT: Keep your response concise to avoid truncation. Limit each section's content to 2-3 paragraphs.
+       - Use 'reflection' for deeper thinking prompts.
+    5. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
+    6. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
+    7. Focus on rich, detailed text content and engaging interactive activities instead of images.
 
     Text to Analyze:
     ${text.slice(0, 10000)}
@@ -228,32 +292,67 @@ export const streamAnalyzeDocumentForImmersive = async (
   const prompt = `
     Analyze the following educational text and structure it for an immersive learning experience (Target Audience: High School/Undergraduate).
     
+    CRITICAL MARKDOWN FORMATTING REQUIREMENTS:
+    - Use **double asterisks** around KEY TERMS and IMPORTANT WORDS that should be highlighted (e.g., **chemical kinetics**, **rate of reaction**)
+    - Use *single asterisks* around EMPHASIS PHRASES or IMPORTANT SENTENCES that should be underlined (e.g., *This is a crucial concept to understand*)
+    - Every paragraph MUST have at least 2-3 bold terms and 1-2 emphasized phrases
+    - Bold terms should be scientific terms, key concepts, proper nouns, and important vocabulary
+    - Emphasized text should be important explanations, key insights, or sentences the student should pay attention to
+    
     Return a JSON object with the following structure:
     {
       "sections": [
         { 
           "id": "unique_id", 
           "title": "Section Title", 
-          "content": "Full text of the section... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
-          "imagePrompt": "A detailed, photorealistic description of an image that illustrates this section's concept.",
+          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. AT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
+          "imagePrompt": null,
           "widget": {
-            "type": "reveal" | "comparison" | "quiz",
+            "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection",
             "data": {
               // For 'reveal':
               "title": "Did you know?",
               "content": "Surprising fact or hidden detail...",
               
-              // For 'comparison' (e.g. Before/After reaction, Healthy/Diseased cell):
-              "beforeLabel": "Reactants",
-              "afterLabel": "Products",
-              "beforeImagePrompt": "Description of state A",
-              "afterImagePrompt": "Description of state B",
-
-              // For 'quiz' (Quick check for understanding):
+              // For 'fill-blank' (fill in the blanks exercise):
+              "title": "Complete the sentence",
+              "sentence": "The process of {{BLANK}} converts {{BLANK}} into energy.",
+              "answers": ["photosynthesis", "sunlight"],
+              
+              // For 'matching' (match items from two columns):
+              "title": "Match the terms",
+              "leftItems": ["Term 1", "Term 2", "Term 3"],
+              "rightItems": ["Definition A", "Definition B", "Definition C"],
+              "correctPairs": [0, 1, 2],
+              
+              // For 'ordering' (arrange items in correct sequence):
+              "title": "Arrange in order",
+              "orderingContext": "Steps of the process",
+              "items": ["Step 1", "Step 2", "Step 3"],
+              "correctOrder": [0, 1, 2],
+              
+              // For 'labeling' (match labels to descriptions):
+              "title": "Label the parts",
+              "labels": ["Part A", "Part B"],
+              "descriptions": ["Description of A", "Description of B"],
+              
+              // For 'true-false' (evaluate statements):
+              "title": "True or False?",
+              "statements": [
+                { "text": "Statement 1", "isTrue": true, "explanation": "Why..." },
+                { "text": "Statement 2", "isTrue": false, "explanation": "Why..." }
+              ],
+              
+              // For 'quiz' (multiple choice):
               "question": "Quick check: ...?",
               "options": ["A", "B", "C"],
               "correctIndex": 0,
-              "explanation": "Why it's correct..."
+              "explanation": "Why it's correct...",
+              
+              // For 'reflection' (open-ended thinking prompt):
+              "title": "Reflect & Think",
+              "reflectionPrompt": "How might this concept apply to...?",
+              "sampleResponse": "A good response might consider..."
             }
           }
         }
@@ -268,13 +367,23 @@ export const streamAnalyzeDocumentForImmersive = async (
 
     Rules:
     1. Split text into logical sections.
-    2. For EACH section, include ONE interactive widget that best fits the content:
+    2. IMPORTANT: Each section's content MUST have AT LEAST 4 substantial paragraphs with detailed explanations.
+    3. CRITICAL: Use markdown formatting throughout:
+       - Wrap key terms in **double asterisks** for highlighting (minimum 3 per paragraph)
+       - Wrap important phrases/sentences in *single asterisks* for underlining (minimum 1 per paragraph)
+       - Example: "The **rate of reaction** depends on *several critical factors that we must understand*."
+    4. For EACH section, include ONE interactive widget. PREFER interactive activities over images:
+       - Use 'fill-blank' for key concepts and definitions.
+       - Use 'matching' for terminology and relationships.
+       - Use 'ordering' for processes, sequences, or steps.
+       - Use 'labeling' for parts and their functions.
+       - Use 'true-false' for common misconceptions.
+       - Use 'quiz' for complex concepts that need checking.
        - Use 'reveal' for surprising facts or "aha!" moments.
-       - Use 'comparison' for processes, reactions, or before/after scenarios.
-       - Use 'quiz' for complex concepts that need immediate checking.
-    3. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
-    4. Generate high-quality image prompts.
-    5. IMPORTANT: Keep your response concise to avoid truncation. Limit each section's content to 2-3 paragraphs.
+       - Use 'reflection' for deeper thinking prompts.
+    5. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
+    6. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
+    7. Focus on rich, detailed text content and engaging interactive activities instead of images.
 
     Text to Analyze:
     ${text.slice(0, 10000)}
@@ -358,6 +467,221 @@ export const generateParagraphQuiz = async (paragraph: string): Promise<QuizQues
   };
 
   return safeJsonParse<QuizQuestion>(json, fallback);
+};
+
+/**
+ * Enhanced term exploration - generates rich interactive content for clicked terms
+ */
+export interface EnhancedTermInfo {
+  term: string;
+  definition: string;
+  deepDive: string; // Detailed explanation
+  analogy: string; // Real-world analogy to understand the concept
+  brainTeaser: {
+    question: string;
+    hint: string;
+    answer: string;
+  };
+  quickQuiz: {
+    question: string;
+    options: string[];
+    correctIndex: number;
+    explanation: string;
+  };
+  funFact: string;
+  realWorldExample: string;
+  relatedTerms: string[];
+  memoryTrick: string; // Mnemonic or memory aid
+}
+
+export const generateEnhancedTermInfo = async (
+  term: string,
+  definition: string,
+  documentContext: string
+): Promise<EnhancedTermInfo> => {
+  const prompt = `
+    You are an expert educator. Create rich, interactive learning content for the term "${term}".
+    
+    Context from document: "${documentContext.slice(0, 2000)}"
+    Basic definition: "${definition}"
+    
+    Return a JSON object with engaging educational content:
+    {
+      "term": "${term}",
+      "definition": "Enhanced, clear definition",
+      "deepDive": "2-3 paragraph detailed explanation that goes beyond the basic definition. Explain WHY this matters and HOW it works.",
+      "analogy": "A creative real-world analogy that makes this concept click. Use everyday objects or experiences.",
+      "brainTeaser": {
+        "question": "A thought-provoking puzzle or riddle related to this concept",
+        "hint": "A helpful hint without giving away the answer",
+        "answer": "The answer with brief explanation"
+      },
+      "quickQuiz": {
+        "question": "A challenging but fair question about this term",
+        "options": ["Option A", "Option B", "Option C", "Option D"],
+        "correctIndex": 0,
+        "explanation": "Why this is the correct answer"
+      },
+      "funFact": "An interesting, surprising fact related to this term that students will remember",
+      "realWorldExample": "A specific real-world application or example where this concept is used",
+      "relatedTerms": ["term1", "term2", "term3"],
+      "memoryTrick": "A mnemonic device, acronym, or memory trick to remember this concept"
+    }
+    
+    Rules:
+    - Make content engaging and memorable, not dry textbook style
+    - Use conversational language suitable for students
+    - The brain teaser should make students THINK, not just recall
+    - The analogy should create an "aha!" moment
+    - Keep the fun fact genuinely interesting
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallback: EnhancedTermInfo = {
+    term,
+    definition,
+    deepDive: `${term} is an important concept. ${definition}`,
+    analogy: `Think of ${term} like a key that unlocks understanding of this topic.`,
+    brainTeaser: {
+      question: `If you had to explain ${term} to a 5-year-old, what would you say?`,
+      hint: 'Focus on the core idea, not technical details.',
+      answer: definition
+    },
+    quickQuiz: {
+      question: `What is the main purpose of ${term}?`,
+      options: ['Understanding concepts', 'Memorizing facts', 'Solving problems', 'All of the above'],
+      correctIndex: 3,
+      explanation: 'This term helps in multiple ways.'
+    },
+    funFact: `The term "${term}" has been fundamental to understanding this subject!`,
+    realWorldExample: `${term} is used in many real-world applications.`,
+    relatedTerms: [],
+    memoryTrick: `Remember: ${term.charAt(0).toUpperCase()} stands for ${term}!`
+  };
+
+  return safeJsonParse<EnhancedTermInfo>(json, fallback);
+};
+
+/**
+ * Generate a brainstorming activity for a section
+ */
+export interface BrainstormActivity {
+  title: string;
+  scenario: string;
+  challenge: string;
+  hints: string[];
+  possibleApproaches: string[];
+  expertInsight: string;
+}
+
+export const generateBrainstormActivity = async (
+  sectionContent: string,
+  sectionTitle: string
+): Promise<BrainstormActivity> => {
+  const prompt = `
+    Create an engaging brainstorming activity for students learning about "${sectionTitle}".
+    
+    Section content: "${sectionContent.slice(0, 3000)}"
+    
+    Return a JSON object:
+    {
+      "title": "Catchy activity title (e.g., 'The Innovation Challenge')",
+      "scenario": "A realistic scenario or problem statement that requires applying the concepts learned. Make it relatable and interesting.",
+      "challenge": "The specific challenge or question students need to brainstorm about",
+      "hints": ["Hint 1 to get started", "Hint 2 for deeper thinking", "Hint 3 for advanced exploration"],
+      "possibleApproaches": ["Approach 1", "Approach 2", "Approach 3"],
+      "expertInsight": "What an expert in this field might consider when solving this challenge"
+    }
+    
+    Rules:
+    - Make the scenario engaging and relevant to students
+    - The challenge should require creative thinking, not just recall
+    - Hints should guide without giving away solutions
+    - Include multiple valid approaches to encourage diverse thinking
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallback: BrainstormActivity = {
+    title: 'Think Like an Expert',
+    scenario: `Imagine you need to apply ${sectionTitle} in a real situation.`,
+    challenge: 'How would you approach this problem using what you learned?',
+    hints: ['Start with the basics', 'Consider different perspectives', 'Think about real-world implications'],
+    possibleApproaches: ['Analytical approach', 'Creative approach', 'Collaborative approach'],
+    expertInsight: 'Experts often combine multiple approaches for the best results.'
+  };
+
+  return safeJsonParse<BrainstormActivity>(json, fallback);
+};
+
+/**
+ * Generate a "What If" exploration activity
+ */
+export interface WhatIfActivity {
+  title: string;
+  baseScenario: string;
+  whatIfQuestions: {
+    question: string;
+    thinkingPoints: string[];
+    insight: string;
+  }[];
+}
+
+export const generateWhatIfActivity = async (
+  content: string,
+  topic: string
+): Promise<WhatIfActivity> => {
+  const prompt = `
+    Create a "What If?" exploration activity about "${topic}" to encourage critical thinking.
+    
+    Content context: "${content.slice(0, 2000)}"
+    
+    Return a JSON object:
+    {
+      "title": "Creative What-If title",
+      "baseScenario": "Set up the base scenario that students will explore",
+      "whatIfQuestions": [
+        {
+          "question": "What if [interesting variation]?",
+          "thinkingPoints": ["Consider this...", "Also think about...", "Don't forget..."],
+          "insight": "The key insight from exploring this question"
+        },
+        {
+          "question": "What if [another variation]?",
+          "thinkingPoints": ["Point 1", "Point 2"],
+          "insight": "Another valuable insight"
+        },
+        {
+          "question": "What if [challenging variation]?",
+          "thinkingPoints": ["Advanced consideration 1", "Advanced consideration 2"],
+          "insight": "Deep insight for advanced learners"
+        }
+      ]
+    }
+    
+    Rules:
+    - Make questions genuinely thought-provoking
+    - Progress from simpler to more complex what-if scenarios
+    - Insights should reveal deeper understanding
+  `;
+
+  const response = await generateTextContent(prompt);
+  const json = extractJsonBlock(response);
+
+  const fallback: WhatIfActivity = {
+    title: 'Explore the Possibilities',
+    baseScenario: `Consider the core concepts of ${topic}.`,
+    whatIfQuestions: [{
+      question: 'What if the conditions were different?',
+      thinkingPoints: ['Consider the variables', 'Think about cause and effect'],
+      insight: 'Understanding conditions helps predict outcomes.'
+    }]
+  };
+
+  return safeJsonParse<WhatIfActivity>(json, fallback);
 };
 
 export const generateImmersiveQuiz = async (text: string): Promise<QuizQuestion[]> => {

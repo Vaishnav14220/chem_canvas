@@ -418,13 +418,19 @@ const App: React.FC = () => {
       key: K,
       handler: NonNullable<CanvasWorkspaceHandlers[K]>
     ) => {
+      // Check if the handler has actually changed to prevent infinite loops
+      const currentHandlers = workspaceHandlersRef.current[workspaceId];
+      if (currentHandlers && currentHandlers[key] === handler) {
+        return; // Handler hasn't changed, skip update
+      }
+      
       workspaceHandlersRef.current[workspaceId] = {
         ...(workspaceHandlersRef.current[workspaceId] || {}),
         [key]: handler
       };
-      // Trigger re-computation of currentHandwritingHandler
-      setHandlersVersion(v => v + 1);
+      // Only trigger re-computation if this is the active workspace
       if (workspaceId === activeWorkspaceId) {
+        setHandlersVersion(v => v + 1);
         updateGeminiHandlers();
       }
     },

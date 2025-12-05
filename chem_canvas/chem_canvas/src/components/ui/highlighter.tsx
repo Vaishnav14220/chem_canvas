@@ -63,23 +63,33 @@ export function Highlighter({
       multiline,
     }
 
+    // Clean up any existing annotation first
+    if (annotationRef.current) {
+      try {
+        annotationRef.current.remove()
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }
+
     const annotation = annotate(element, annotationConfig)
-
     annotationRef.current = annotation
-    annotationRef.current.show()
-
-    const resizeObserver = new ResizeObserver(() => {
-      annotation.hide()
-      annotation.show()
+    
+    // Use requestAnimationFrame to avoid blocking
+    requestAnimationFrame(() => {
+      if (annotationRef.current === annotation) {
+        annotation.show()
+      }
     })
 
-    resizeObserver.observe(element)
-    resizeObserver.observe(document.body)
-
     return () => {
-      if (element) {
-        annotate(element, { type: action }).remove()
-        resizeObserver.disconnect()
+      if (annotationRef.current) {
+        try {
+          annotationRef.current.remove()
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        annotationRef.current = null
       }
     }
   }, [
@@ -94,7 +104,7 @@ export function Highlighter({
   ])
 
   return (
-    <span ref={elementRef} className="relative inline-block bg-transparent">
+    <span ref={elementRef} className="relative inline bg-transparent">
       {children}
     </span>
   )

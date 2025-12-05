@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { flushSync } from 'react-dom';
-import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon } from 'lucide-react';
+import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon, Lightbulb, Zap, Target, Award, Eye, EyeOff } from 'lucide-react';
 import LaserCursor from './LaserCursor';
 import HandControlled3DMolecule from './HandControlled3DMolecule';
 import { useHandTracking } from '../hooks/useHandTracking';
@@ -8,13 +8,21 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { Terminal, AnimatedSpan, TypingAnimation, ProgressTerminal } from './ui/terminal';
+import { Highlighter } from './ui/highlighter';
+import { WarpBackground } from './ui/warp-background';
 import {
     analyzeDocumentForImmersive,
     streamAnalyzeDocumentForImmersive,
     generateImmersiveQuiz,
     generateParagraphQuiz,
     generateAudioScript,
-
+    generateEnhancedTermInfo,
+    generateBrainstormActivity,
+    generateWhatIfActivity,
+    EnhancedTermInfo,
+    BrainstormActivity,
+    WhatIfActivity,
 
     generateReactFlowData,
     generateImmersiveImage,
@@ -183,6 +191,9 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [isLoadingFloatingQuiz, setIsLoadingFloatingQuiz] = useState(false);
     const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
 
+    // Terminal Progress State
+    const [terminalSubSteps, setTerminalSubSteps] = useState<string[]>([]);
+
     // PDF Citation Sidebar State
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     const [showPdfSidebar, setShowPdfSidebar] = useState(false);
@@ -194,6 +205,51 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [isLoadingGrounding, setIsLoadingGrounding] = useState(false);
     const [copied, setCopied] = useState(false);
     const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Helper function to match sources to paragraphs based on content similarity
+    const getSourcesForParagraph = useCallback((paragraph: string, allSources: Array<{ url: string; title: string; snippet?: string }>, paragraphIndex: number, totalParagraphs: number): number[] => {
+        if (!allSources.length) return [];
+        
+        const paragraphLower = paragraph.toLowerCase();
+        const matchedIndices: number[] = [];
+        
+        // Check each source for relevance to this paragraph
+        allSources.forEach((source, idx) => {
+            // Check if source snippet or title relates to paragraph content
+            const snippetLower = (source.snippet || '').toLowerCase();
+            const titleLower = (source.title || '').toLowerCase();
+            
+            // Extract key terms from paragraph (words longer than 4 chars)
+            const paragraphTerms = paragraphLower.match(/\b[a-z]{5,}\b/g) || [];
+            
+            // Check for term matches in snippet or title
+            let matchScore = 0;
+            paragraphTerms.forEach(term => {
+                if (snippetLower.includes(term) || titleLower.includes(term)) {
+                    matchScore++;
+                }
+            });
+            
+            // If decent match score, include this source for this paragraph
+            if (matchScore >= 2) {
+                matchedIndices.push(idx);
+            }
+        });
+        
+        // If no specific matches found, distribute sources evenly across paragraphs
+        if (matchedIndices.length === 0 && allSources.length > 0) {
+            // Distribute sources across paragraphs
+            const sourcesPerParagraph = Math.ceil(allSources.length / totalParagraphs);
+            const startIdx = paragraphIndex * sourcesPerParagraph;
+            const endIdx = Math.min(startIdx + sourcesPerParagraph, allSources.length);
+            
+            for (let i = startIdx; i < endIdx; i++) {
+                matchedIndices.push(i);
+            }
+        }
+        
+        return matchedIndices;
+    }, []);
 
     // AI Content State
     const [immersiveContent, setImmersiveContent] = useState<ImmersiveContent | null>(null);
@@ -212,6 +268,26 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [relevantVideos, setRelevantVideos] = useState<RankedYouTubeVideo[]>([]);
     const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
     const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+
+    // Enhanced Term Exploration State
+    const [enhancedTermInfo, setEnhancedTermInfo] = useState<EnhancedTermInfo | null>(null);
+    const [isLoadingEnhancedTerm, setIsLoadingEnhancedTerm] = useState(false);
+    const [enhancedTermTab, setEnhancedTermTab] = useState<'definition' | 'deepDive' | 'brainTeaser' | 'quiz' | 'funFact'>('definition');
+    const [brainTeaserRevealed, setBrainTeaserRevealed] = useState(false);
+    const [enhancedQuizAnswer, setEnhancedQuizAnswer] = useState<number | null>(null);
+
+    // Brainstorm Activity State
+    const [brainstormActivity, setBrainstormActivity] = useState<BrainstormActivity | null>(null);
+    const [isLoadingBrainstorm, setIsLoadingBrainstorm] = useState(false);
+    const [showBrainstormHints, setShowBrainstormHints] = useState<boolean[]>([]);
+    const [showBrainstormApproaches, setShowBrainstormApproaches] = useState(false);
+    const [showBrainstormInsight, setShowBrainstormInsight] = useState(false);
+    const [userBrainstormNotes, setUserBrainstormNotes] = useState('');
+
+    // What-If Activity State
+    const [whatIfActivity, setWhatIfActivity] = useState<WhatIfActivity | null>(null);
+    const [isLoadingWhatIf, setIsLoadingWhatIf] = useState(false);
+    const [revealedWhatIfs, setRevealedWhatIfs] = useState<{ [key: number]: boolean }>({});
 
     // Thoreo-style tabs for slides-narration
     const [videoContentTab, setVideoContentTab] = useState<'summary' | 'key-concepts' | 'transcript'>('summary');
@@ -1248,20 +1324,26 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         setUploadedFileName(file.name);
         setProcessingStage('uploading');
         setLoadingMessage('Uploading document...');
+        setTerminalSubSteps(['Initializing upload...']);
 
         // Create PDF URL for sidebar viewer if it's a PDF file
         if (file.type === 'application/pdf') {
             const url = URL.createObjectURL(file);
             setPdfUrl(url);
+            setTerminalSubSteps(prev => [...prev, 'PDF detected, preparing viewer...']);
         }
 
         try {
             // Stage 1: Extracting text
             setProcessingStage('extracting');
             setLoadingMessage('Extracting text from document...');
+            setTerminalSubSteps(prev => [...prev, 'Loading document parser...']);
 
             const { extractTextFromDocument } = await import('../utils/documentTextExtractor');
+            setTerminalSubSteps(prev => [...prev, 'Parsing document structure...']);
+            
             const { text } = await extractTextFromDocument(file);
+            setTerminalSubSteps(prev => [...prev, `Extracted ${text.length.toLocaleString()} characters`]);
 
             if (!text || text.trim().length === 0) {
                 throw new Error('No text content found in document');
@@ -1273,19 +1355,23 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
             // Stage 2: Analyzing content
             setProcessingStage('analyzing');
             setLoadingMessage('Analyzing document structure...');
+            setTerminalSubSteps(prev => [...prev, 'Identifying key concepts...']);
 
             // Small delay to show the analyzing stage
             await new Promise(resolve => setTimeout(resolve, 500));
+            setTerminalSubSteps(prev => [...prev, 'Mapping content hierarchy...']);
 
             // Stage 3: Start STREAMING content generation - show content as it's generated!
             setProcessingStage('generating');
             setLoadingMessage('Generating immersive content...');
+            setTerminalSubSteps(prev => [...prev, 'Connecting to Gemini AI...', 'Starting content stream...']);
             setIsStreaming(true);
             setShowCursor(true);
             setStreamedText('');
             setActiveMode('immersive-text');
             setIsLoading(false); // Hide main loader, show streaming view
             setProcessingStage('idle'); // Reset processing stage
+            setTerminalSubSteps([]); // Reset terminal sub-steps
 
             console.log('🚀 Starting streaming...');
 
@@ -1321,47 +1407,53 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
             // 2. Start all background tasks IN PARALLEL (non-blocking)
             // These will update state as they complete
 
-            // Background task: Generate images progressively
+            // Background task: Generate images - LIMITED TO 1 IMAGE PER PAGE to reduce costs
             const generateImagesAsync = async () => {
-                // First, mark all sections with imagePrompts as loading
+                // COST OPTIMIZATION: Only generate 1 image for the first section with an imagePrompt
+                // This dramatically reduces API costs while still providing visual context
+                const MAX_IMAGES_PER_PAGE = 1;
+                let imagesGenerated = 0;
+
+                // Find sections with imagePrompts (should only be first section based on new prompt)
+                const sectionsWithImages = analysis.sections.filter(s => s.imagePrompt);
+                
+                // Mark only the first section as loading
                 const loadingState: { [key: string]: boolean } = {};
-                for (const section of analysis.sections) {
-                    if (section.imagePrompt) {
-                        loadingState[section.id] = true;
-                    }
+                if (sectionsWithImages.length > 0 && imagesGenerated < MAX_IMAGES_PER_PAGE) {
+                    loadingState[sectionsWithImages[0].id] = true;
                 }
                 setLoadingImages(loadingState);
 
-                // Now generate images one by one
+                // Generate image ONLY for the first section with an imagePrompt
                 for (const section of analysis.sections) {
+                    if (imagesGenerated >= MAX_IMAGES_PER_PAGE) {
+                        console.log(`🛑 Image limit reached (${MAX_IMAGES_PER_PAGE}). Skipping remaining image generation to save costs.`);
+                        break;
+                    }
+
                     if (section.imagePrompt) {
                         try {
+                            console.log(`🖼️ Generating image ${imagesGenerated + 1}/${MAX_IMAGES_PER_PAGE} for section: ${section.id}`);
                             const imageUrl = await generateImmersiveImage(section.imagePrompt);
                             // Update state progressively as each image loads
                             setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
                             setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                            imagesGenerated++;
                         } catch (e) {
                             console.error("Failed to generate image for section", section.id, e);
                             setLoadingImages(prev => ({ ...prev, [section.id]: false }));
                         }
                     }
 
-                    // Generate widget images if comparison
+                    // DISABLED: comparison widget images to save costs
+                    // Interactive activities are preferred over image-based comparisons
+                    // If comparison widget has image prompts, skip them
                     if (section.widget?.type === 'comparison' && section.widget.data.beforeImagePrompt && section.widget.data.afterImagePrompt) {
-                        try {
-                            const [beforeImg, afterImg] = await Promise.all([
-                                generateImmersiveImage(section.widget.data.beforeImagePrompt),
-                                generateImmersiveImage(section.widget.data.afterImagePrompt)
-                            ]);
-                            setWidgetImages(prev => ({
-                                ...prev,
-                                [section.id]: { before: beforeImg, after: afterImg }
-                            }));
-                        } catch (e) {
-                            console.error("Failed to generate widget images", section.id, e);
-                        }
+                        console.log(`⏭️ Skipping comparison widget images for section ${section.id} to save costs. Use interactive activities instead.`);
                     }
                 }
+                
+                console.log(`✅ Image generation complete. Generated ${imagesGenerated} image(s).`);
             };
 
             // Background task: Generate quiz
@@ -1599,8 +1691,78 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         }
     };
 
-    const handleTermClick = (term: string, definition: string) => {
+    // Enhanced term click handler - shows rich interactive popup
+    const handleTermClick = async (term: string, definition: string) => {
+        // Set basic definition first for instant feedback
         setActiveDefinition({ term, definition });
+        setEnhancedTermInfo(null);
+        setEnhancedTermTab('definition');
+        setBrainTeaserRevealed(false);
+        setEnhancedQuizAnswer(null);
+        
+        // Load enhanced info in background
+        setIsLoadingEnhancedTerm(true);
+        try {
+            const activeSection = immersiveContent?.sections.find(s => s.id === activeSectionId);
+            const context = activeSection?.content || documentTextRef.current || '';
+            const enhanced = await generateEnhancedTermInfo(term, definition, context);
+            setEnhancedTermInfo(enhanced);
+        } catch (error) {
+            console.error('Failed to load enhanced term info:', error);
+        } finally {
+            setIsLoadingEnhancedTerm(false);
+        }
+    };
+
+    // Close enhanced term popup
+    const handleCloseTermPopup = () => {
+        setActiveDefinition(null);
+        setEnhancedTermInfo(null);
+        setEnhancedTermTab('definition');
+        setBrainTeaserRevealed(false);
+        setEnhancedQuizAnswer(null);
+    };
+
+    // Generate brainstorm activity for current section
+    const handleGenerateBrainstorm = async () => {
+        const activeSection = immersiveContent?.sections.find(s => s.id === activeSectionId);
+        if (!activeSection) return;
+
+        setIsLoadingBrainstorm(true);
+        setBrainstormActivity(null);
+        setShowBrainstormHints([]);
+        setShowBrainstormApproaches(false);
+        setShowBrainstormInsight(false);
+        setUserBrainstormNotes('');
+
+        try {
+            const activity = await generateBrainstormActivity(activeSection.content, activeSection.title);
+            setBrainstormActivity(activity);
+            setShowBrainstormHints(new Array(activity.hints.length).fill(false));
+        } catch (error) {
+            console.error('Failed to generate brainstorm activity:', error);
+        } finally {
+            setIsLoadingBrainstorm(false);
+        }
+    };
+
+    // Generate What-If activity for current section
+    const handleGenerateWhatIf = async () => {
+        const activeSection = immersiveContent?.sections.find(s => s.id === activeSectionId);
+        if (!activeSection) return;
+
+        setIsLoadingWhatIf(true);
+        setWhatIfActivity(null);
+        setRevealedWhatIfs({});
+
+        try {
+            const activity = await generateWhatIfActivity(activeSection.content, activeSection.title);
+            setWhatIfActivity(activity);
+        } catch (error) {
+            console.error('Failed to generate what-if activity:', error);
+        } finally {
+            setIsLoadingWhatIf(false);
+        }
     };
 
     const handleQuizAnswer = (questionIndex: number, optionIndex: number) => {
@@ -1879,6 +2041,480 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         );
     };
 
+    // ===== NEW INTERACTIVE WIDGET COMPONENTS =====
+
+    // Fill in the Blank Activity
+    const FillBlankActivity = ({ data }: { data: any }) => {
+        const [answers, setAnswers] = useState<string[]>(Array(data.answers?.length || 0).fill(''));
+        const [submitted, setSubmitted] = useState(false);
+
+        const parts = (data.sentence || '').split('{{BLANK}}');
+        
+        const handleSubmit = () => setSubmitted(true);
+        const handleReset = () => {
+            setAnswers(Array(data.answers?.length || 0).fill(''));
+            setSubmitted(false);
+        };
+
+        const isCorrect = (idx: number) => answers[idx]?.toLowerCase().trim() === data.answers?.[idx]?.toLowerCase().trim();
+        const allCorrect = data.answers?.every((_: string, idx: number) => isCorrect(idx));
+
+        return (
+            <div className="my-8 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
+                        <span className="text-indigo-600 font-bold">✎</span>
+                    </div>
+                    <h4 className="font-bold text-[#1f1f1f]">{data.title || 'Fill in the Blanks'}</h4>
+                </div>
+                <div className="text-lg leading-relaxed text-[#1f1f1f] flex flex-wrap items-center gap-1">
+                    {parts.map((part: string, idx: number) => (
+                        <React.Fragment key={idx}>
+                            <span>{part}</span>
+                            {idx < parts.length - 1 && (
+                                <input
+                                    type="text"
+                                    value={answers[idx] || ''}
+                                    onChange={(e) => {
+                                        const newAnswers = [...answers];
+                                        newAnswers[idx] = e.target.value;
+                                        setAnswers(newAnswers);
+                                    }}
+                                    disabled={submitted}
+                                    className={`inline-block w-32 px-3 py-1 mx-1 rounded-lg border-2 font-medium text-center transition-all ${
+                                        submitted
+                                            ? isCorrect(idx)
+                                                ? 'bg-green-100 border-green-400 text-green-700'
+                                                : 'bg-red-100 border-red-400 text-red-700'
+                                            : 'bg-white border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'
+                                    }`}
+                                    placeholder="..."
+                                />
+                            )}
+                        </React.Fragment>
+                    ))}
+                </div>
+                <div className="mt-4 flex gap-3">
+                    {!submitted ? (
+                        <button onClick={handleSubmit} className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition-all">
+                            Check Answers
+                        </button>
+                    ) : (
+                        <>
+                            <button onClick={handleReset} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all">
+                                Try Again
+                            </button>
+                            <span className={`px-4 py-2 rounded-lg font-medium ${allCorrect ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {allCorrect ? '🎉 Perfect!' : `${data.answers?.filter((_: string, i: number) => isCorrect(i)).length}/${data.answers?.length} correct`}
+                            </span>
+                        </>
+                    )}
+                </div>
+                {submitted && !allCorrect && (
+                    <div className="mt-3 text-sm text-gray-600">
+                        Correct answers: {data.answers?.join(', ')}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // Matching Activity
+    const MatchingActivity = ({ data }: { data: any }) => {
+        const [matches, setMatches] = useState<{ [key: number]: number | null }>({});
+        const [submitted, setSubmitted] = useState(false);
+        const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
+
+        const handleLeftClick = (idx: number) => {
+            if (submitted) return;
+            setSelectedLeft(idx);
+        };
+
+        const handleRightClick = (idx: number) => {
+            if (submitted || selectedLeft === null) return;
+            setMatches(prev => ({ ...prev, [selectedLeft]: idx }));
+            setSelectedLeft(null);
+        };
+
+        const handleSubmit = () => setSubmitted(true);
+        const handleReset = () => {
+            setMatches({});
+            setSubmitted(false);
+            setSelectedLeft(null);
+        };
+
+        const isCorrect = (leftIdx: number) => matches[leftIdx] === data.correctPairs?.[leftIdx];
+        const score = Object.keys(matches).filter(k => isCorrect(Number(k))).length;
+
+        return (
+            <div className="my-8 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-2xl p-6 border border-teal-100">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
+                        <span className="text-teal-600 font-bold">↔</span>
+                    </div>
+                    <h4 className="font-bold text-[#1f1f1f]">{data.title || 'Match the Items'}</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                        {data.leftItems?.map((item: string, idx: number) => (
+                            <button
+                                key={idx}
+                                onClick={() => handleLeftClick(idx)}
+                                className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${
+                                    submitted
+                                        ? isCorrect(idx)
+                                            ? 'bg-green-100 border-green-400 text-green-700'
+                                            : matches[idx] !== undefined
+                                            ? 'bg-red-100 border-red-400 text-red-700'
+                                            : 'bg-gray-100 border-gray-300'
+                                        : selectedLeft === idx
+                                        ? 'bg-teal-100 border-teal-500 ring-2 ring-teal-200'
+                                        : matches[idx] !== undefined
+                                        ? 'bg-teal-50 border-teal-300'
+                                        : 'bg-white border-gray-200 hover:border-teal-400'
+                                }`}
+                            >
+                                {item}
+                                {matches[idx] !== undefined && (
+                                    <span className="ml-2 text-teal-500">→ {String.fromCharCode(65 + matches[idx]!)}</span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="space-y-2">
+                        {data.rightItems?.map((item: string, idx: number) => (
+                            <button
+                                key={idx}
+                                onClick={() => handleRightClick(idx)}
+                                disabled={submitted}
+                                className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${
+                                    submitted
+                                        ? 'bg-gray-50 border-gray-200'
+                                        : selectedLeft !== null
+                                        ? 'bg-white border-gray-200 hover:border-teal-400 hover:bg-teal-50 cursor-pointer'
+                                        : 'bg-gray-50 border-gray-200'
+                                }`}
+                            >
+                                <span className="text-teal-600 font-bold mr-2">{String.fromCharCode(65 + idx)}.</span>
+                                {item}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="mt-4 flex gap-3">
+                    {!submitted ? (
+                        <button onClick={handleSubmit} disabled={Object.keys(matches).length < (data.leftItems?.length || 0)} className="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            Check Matches
+                        </button>
+                    ) : (
+                        <>
+                            <button onClick={handleReset} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all">
+                                Try Again
+                            </button>
+                            <span className={`px-4 py-2 rounded-lg font-medium ${score === data.leftItems?.length ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {score === data.leftItems?.length ? '🎉 Perfect!' : `${score}/${data.leftItems?.length} correct`}
+                            </span>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // Ordering Activity
+    const OrderingActivity = ({ data }: { data: any }) => {
+        const [items, setItems] = useState<string[]>(data.items ? [...data.items].sort(() => Math.random() - 0.5) : []);
+        const [submitted, setSubmitted] = useState(false);
+        const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+
+        const handleDragStart = (idx: number) => setDraggedIdx(idx);
+        const handleDragOver = (e: React.DragEvent, idx: number) => {
+            e.preventDefault();
+            if (draggedIdx === null || draggedIdx === idx) return;
+            const newItems = [...items];
+            const [removed] = newItems.splice(draggedIdx, 1);
+            newItems.splice(idx, 0, removed);
+            setItems(newItems);
+            setDraggedIdx(idx);
+        };
+        const handleDragEnd = () => setDraggedIdx(null);
+
+        const handleSubmit = () => setSubmitted(true);
+        const handleReset = () => {
+            setItems(data.items ? [...data.items].sort(() => Math.random() - 0.5) : []);
+            setSubmitted(false);
+        };
+
+        const correctOrder = data.correctOrder?.map((i: number) => data.items?.[i]) || data.items;
+        const isCorrect = items.every((item, idx) => item === correctOrder[idx]);
+
+        return (
+            <div className="my-8 bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-6 border border-amber-100">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                        <span className="text-amber-600 font-bold">↕</span>
+                    </div>
+                    <h4 className="font-bold text-[#1f1f1f]">{data.title || 'Arrange in Order'}</h4>
+                </div>
+                {data.orderingContext && <p className="text-gray-600 mb-3">{data.orderingContext}</p>}
+                <div className="space-y-2">
+                    {items.map((item, idx) => (
+                        <div
+                            key={`${item}-${idx}`}
+                            draggable={!submitted}
+                            onDragStart={() => handleDragStart(idx)}
+                            onDragOver={(e) => handleDragOver(e, idx)}
+                            onDragEnd={handleDragEnd}
+                            className={`p-3 rounded-lg border-2 transition-all font-medium cursor-move flex items-center gap-3 ${
+                                submitted
+                                    ? item === correctOrder[idx]
+                                        ? 'bg-green-100 border-green-400 text-green-700'
+                                        : 'bg-red-100 border-red-400 text-red-700'
+                                    : draggedIdx === idx
+                                    ? 'bg-amber-100 border-amber-500 scale-105 shadow-lg'
+                                    : 'bg-white border-gray-200 hover:border-amber-400'
+                            }`}
+                        >
+                            <span className="w-6 h-6 bg-amber-200 rounded-full flex items-center justify-center text-sm font-bold text-amber-700">
+                                {idx + 1}
+                            </span>
+                            {item}
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-4 flex gap-3">
+                    {!submitted ? (
+                        <button onClick={handleSubmit} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium transition-all">
+                            Check Order
+                        </button>
+                    ) : (
+                        <>
+                            <button onClick={handleReset} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all">
+                                Try Again
+                            </button>
+                            <span className={`px-4 py-2 rounded-lg font-medium ${isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {isCorrect ? '🎉 Perfect order!' : 'Not quite right'}
+                            </span>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // True/False Activity
+    const TrueFalseActivity = ({ data }: { data: any }) => {
+        const [answers, setAnswers] = useState<{ [key: number]: boolean | null }>({});
+        const [submitted, setSubmitted] = useState(false);
+
+        const handleAnswer = (idx: number, answer: boolean) => {
+            if (submitted) return;
+            setAnswers(prev => ({ ...prev, [idx]: answer }));
+        };
+
+        const handleSubmit = () => setSubmitted(true);
+        const handleReset = () => {
+            setAnswers({});
+            setSubmitted(false);
+        };
+
+        const score = data.statements?.filter((s: any, idx: number) => answers[idx] === s.isTrue).length || 0;
+
+        return (
+            <div className="my-8 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-100">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span className="text-blue-600 font-bold">T/F</span>
+                    </div>
+                    <h4 className="font-bold text-[#1f1f1f]">{data.title || 'True or False?'}</h4>
+                </div>
+                <div className="space-y-4">
+                    {data.statements?.map((statement: any, idx: number) => (
+                        <div key={idx} className={`p-4 rounded-lg border-2 transition-all ${
+                            submitted
+                                ? answers[idx] === statement.isTrue
+                                    ? 'bg-green-50 border-green-300'
+                                    : 'bg-red-50 border-red-300'
+                                : 'bg-white border-gray-200'
+                        }`}>
+                            <p className="font-medium text-[#1f1f1f] mb-3">{statement.text}</p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => handleAnswer(idx, true)}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                        answers[idx] === true
+                                            ? submitted && statement.isTrue
+                                                ? 'bg-green-500 text-white'
+                                                : submitted
+                                                ? 'bg-red-500 text-white'
+                                                : 'bg-blue-500 text-white'
+                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                    }`}
+                                >
+                                    True
+                                </button>
+                                <button
+                                    onClick={() => handleAnswer(idx, false)}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                        answers[idx] === false
+                                            ? submitted && !statement.isTrue
+                                                ? 'bg-green-500 text-white'
+                                                : submitted
+                                                ? 'bg-red-500 text-white'
+                                                : 'bg-blue-500 text-white'
+                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                    }`}
+                                >
+                                    False
+                                </button>
+                            </div>
+                            {submitted && (
+                                <p className={`mt-2 text-sm ${answers[idx] === statement.isTrue ? 'text-green-700' : 'text-red-700'}`}>
+                                    {statement.explanation}
+                                </p>
+                            )}
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-4 flex gap-3">
+                    {!submitted ? (
+                        <button onClick={handleSubmit} disabled={Object.keys(answers).length < (data.statements?.length || 0)} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            Check Answers
+                        </button>
+                    ) : (
+                        <>
+                            <button onClick={handleReset} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all">
+                                Try Again
+                            </button>
+                            <span className={`px-4 py-2 rounded-lg font-medium ${score === data.statements?.length ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {score === data.statements?.length ? '🎉 All correct!' : `${score}/${data.statements?.length} correct`}
+                            </span>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // Labeling Activity
+    const LabelingActivity = ({ data }: { data: any }) => {
+        const [matches, setMatches] = useState<{ [key: number]: number | null }>({});
+        const [submitted, setSubmitted] = useState(false);
+
+        const handleMatch = (labelIdx: number, descIdx: number) => {
+            if (submitted) return;
+            setMatches(prev => ({ ...prev, [labelIdx]: descIdx }));
+        };
+
+        const handleSubmit = () => setSubmitted(true);
+        const handleReset = () => {
+            setMatches({});
+            setSubmitted(false);
+        };
+
+        const score = Object.keys(matches).filter(k => Number(k) === matches[Number(k)]).length;
+
+        return (
+            <div className="my-8 bg-gradient-to-br from-pink-50 to-rose-50 rounded-2xl p-6 border border-pink-100">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-pink-100 rounded-full flex items-center justify-center">
+                        <span className="text-pink-600 font-bold">🏷️</span>
+                    </div>
+                    <h4 className="font-bold text-[#1f1f1f]">{data.title || 'Label the Parts'}</h4>
+                </div>
+                <div className="space-y-3">
+                    {data.labels?.map((label: string, labelIdx: number) => (
+                        <div key={labelIdx} className="flex items-center gap-4">
+                            <span className={`px-3 py-2 rounded-lg font-bold min-w-[120px] ${
+                                submitted
+                                    ? matches[labelIdx] === labelIdx
+                                        ? 'bg-green-100 text-green-700 border-2 border-green-400'
+                                        : 'bg-red-100 text-red-700 border-2 border-red-400'
+                                    : 'bg-pink-100 text-pink-700 border-2 border-pink-300'
+                            }`}>
+                                {label}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <select
+                                value={matches[labelIdx] ?? ''}
+                                onChange={(e) => handleMatch(labelIdx, Number(e.target.value))}
+                                disabled={submitted}
+                                className={`flex-1 p-2 rounded-lg border-2 font-medium ${
+                                    submitted
+                                        ? matches[labelIdx] === labelIdx
+                                            ? 'bg-green-50 border-green-400'
+                                            : 'bg-red-50 border-red-400'
+                                        : 'bg-white border-gray-200 focus:border-pink-400'
+                                }`}
+                            >
+                                <option value="">Select description...</option>
+                                {data.descriptions?.map((desc: string, descIdx: number) => (
+                                    <option key={descIdx} value={descIdx}>{desc}</option>
+                                ))}
+                            </select>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-4 flex gap-3">
+                    {!submitted ? (
+                        <button onClick={handleSubmit} disabled={Object.keys(matches).length < (data.labels?.length || 0)} className="px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            Check Labels
+                        </button>
+                    ) : (
+                        <>
+                            <button onClick={handleReset} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all">
+                                Try Again
+                            </button>
+                            <span className={`px-4 py-2 rounded-lg font-medium ${score === data.labels?.length ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {score === data.labels?.length ? '🎉 Perfect!' : `${score}/${data.labels?.length} correct`}
+                            </span>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // Reflection Activity
+    const ReflectionActivity = ({ data }: { data: any }) => {
+        const [response, setResponse] = useState('');
+        const [showSample, setShowSample] = useState(false);
+
+        return (
+            <div className="my-8 bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl p-6 border border-violet-100">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-violet-100 rounded-full flex items-center justify-center">
+                        <span className="text-violet-600 font-bold">💭</span>
+                    </div>
+                    <h4 className="font-bold text-[#1f1f1f]">{data.title || 'Reflect & Think'}</h4>
+                </div>
+                <p className="text-lg text-[#1f1f1f] mb-4">{data.reflectionPrompt}</p>
+                <textarea
+                    value={response}
+                    onChange={(e) => setResponse(e.target.value)}
+                    placeholder="Write your thoughts here..."
+                    className="w-full p-4 rounded-lg border-2 border-violet-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-200 min-h-[120px] resize-y"
+                />
+                <div className="mt-4 flex gap-3">
+                    <button
+                        onClick={() => setShowSample(!showSample)}
+                        className="px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg font-medium transition-all"
+                    >
+                        {showSample ? 'Hide Sample Response' : 'Show Sample Response'}
+                    </button>
+                </div>
+                {showSample && data.sampleResponse && (
+                    <div className="mt-4 p-4 bg-white rounded-lg border border-violet-200">
+                        <p className="text-sm font-medium text-violet-600 mb-2">Sample Response:</p>
+                        <p className="text-gray-700">{data.sampleResponse}</p>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // ===== END NEW INTERACTIVE WIDGET COMPONENTS =====
+
     // Image Activity Handler
     const handleGenerateImageActivity = async () => {
         if (!imageActivityPrompt.trim()) return;
@@ -1930,77 +2566,60 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
         switch (activeMode) {
             case 'source':
-                // Show processing animation when loading
+                // Show processing animation when loading - Terminal Style
                 if (isLoading) {
+                    const terminalStages = [
+                        { 
+                            name: 'Uploading', 
+                            status: processingStage === 'uploading' ? 'loading' : 
+                                   ['extracting', 'analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
+                        },
+                        { 
+                            name: 'Extracting Content', 
+                            status: processingStage === 'extracting' ? 'loading' : 
+                                   ['analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
+                        },
+                        { 
+                            name: 'Analyzing Structure', 
+                            status: processingStage === 'analyzing' ? 'loading' : 
+                                   processingStage === 'generating' ? 'complete' : 'pending' as const
+                        },
+                        { 
+                            name: 'Generating Experience', 
+                            status: processingStage === 'generating' ? 'loading' : 'pending' as const
+                        }
+                    ];
+
+                    const stageProgress = {
+                        'idle': 0,
+                        'uploading': 15,
+                        'extracting': 40,
+                        'analyzing': 65,
+                        'generating': 90
+                    };
+
                     return (
                         <div className="flex flex-col items-center justify-center h-full space-y-6 p-8">
-                            <div className="text-center space-y-4 max-w-md">
-                                {/* Animated processing icon */}
-                                <div className="relative w-20 h-20 mx-auto mb-6">
-                                    <div className="absolute inset-0 bg-gradient-to-r from-[#4285f4] via-[#9334e9] to-[#ff8b66] rounded-2xl animate-pulse opacity-20" />
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <div className="relative">
-                                            <Loader2 className="w-10 h-10 text-[#4285f4] animate-spin" />
-                                            <div className="absolute inset-0 bg-[#4285f4] rounded-full opacity-10 animate-ping" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* File name */}
+                            <div className="w-full max-w-2xl">
+                                {/* File name badge */}
                                 {uploadedFileName && (
-                                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-[#f8f9fa] rounded-full">
+                                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-[#f8f9fa] rounded-full w-fit mx-auto mb-6">
                                         <FileText className="w-4 h-4 text-[#5f6368]" />
                                         <span className="text-sm text-[#5f6368] truncate max-w-[200px]">{uploadedFileName}</span>
                                     </div>
                                 )}
 
-                                {/* Processing stage title */}
-                                <h2 className="text-2xl font-google-sans text-[#1f1f1f]">
-                                    {processingStage === 'uploading' && 'Uploading Document'}
-                                    {processingStage === 'extracting' && 'Extracting Content'}
-                                    {processingStage === 'analyzing' && 'Analyzing Structure'}
-                                    {processingStage === 'generating' && 'Generating Experience'}
-                                </h2>
+                                {/* Terminal Progress Component */}
+                                <ProgressTerminal
+                                    stages={terminalStages}
+                                    progress={stageProgress[processingStage]}
+                                    subSteps={terminalSubSteps}
+                                    title="immersive-learning"
+                                />
 
-                                {/* Loading message with animated dots */}
-                                <p className="text-[#5f6368] flex items-center justify-center gap-1">
-                                    {loadingMessage}
-                                    <span className="inline-flex">
-                                        <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
-                                        <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
-                                        <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
-                                    </span>
-                                </p>
-
-                                {/* Progress steps */}
-                                <div className="flex items-center justify-center gap-2 mt-6">
-                                    {['uploading', 'extracting', 'analyzing', 'generating'].map((stage, index) => {
-                                        const stages = ['uploading', 'extracting', 'analyzing', 'generating'];
-                                        const currentIndex = stages.indexOf(processingStage);
-                                        const isCompleted = index < currentIndex;
-                                        const isCurrent = index === currentIndex;
-
-                                        return (
-                                            <div key={stage} className="flex items-center">
-                                                <div className={`w-3 h-3 rounded-full transition-all duration-300 ${isCompleted ? 'bg-[#34a853]' :
-                                                    isCurrent ? 'bg-[#4285f4] animate-pulse' :
-                                                        'bg-[#e8eaed]'
-                                                    }`} />
-                                                {index < 3 && (
-                                                    <div className={`w-8 h-0.5 transition-all duration-300 ${isCompleted ? 'bg-[#34a853]' : 'bg-[#e8eaed]'
-                                                        }`} />
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Stage labels */}
-                                <div className="flex items-center justify-between text-xs text-[#9aa0a6] mt-2 px-4">
-                                    <span>Upload</span>
-                                    <span>Extract</span>
-                                    <span>Analyze</span>
-                                    <span>Generate</span>
+                                {/* Current action message */}
+                                <div className="mt-4 text-center">
+                                    <p className="text-sm text-[#5f6368]">{loadingMessage}</p>
                                 </div>
                             </div>
                         </div>
@@ -2035,88 +2654,107 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                 );
 
             case 'immersive-text':
-                // Show streaming view while content is being generated
+                // Show streaming view while content is being generated - Terminal Style
                 if (isStreaming) {
+                    // Parse streamed text to extract progress info
+                    const hasStarted = streamedText.length > 0;
+                    const progressPercent = Math.min(95, Math.round(streamedText.length / 50));
+                    
                     return (
-                        <div className="flex w-full min-h-full">
-                            <div className="flex-1 py-10 px-12 relative">
-                                {/* Animated header */}
-                                <div className="text-[13px] text-[#5f6368] mb-2 uppercase tracking-wide font-medium flex items-center gap-2">
-                                    <div className="relative">
-                                        <Sparkles className="w-4 h-4 text-[#4285f4] animate-pulse" />
-                                        <div className="absolute inset-0 bg-[#4285f4] rounded-full opacity-20 animate-ping" />
-                                    </div>
-                                    <span className="bg-gradient-to-r from-[#4285f4] to-[#9334e9] bg-clip-text text-transparent font-semibold">
-                                        AI is generating your immersive content...
-                                    </span>
-                                </div>
-
-                                <div className="mb-6">
-                                    <h1 className="text-[28px] leading-[1.3] font-medium text-[#1f1f1f] max-w-[600px]">
-                                        ✨ Creating Your Learning Experience
-                                    </h1>
-                                    <p className="text-[15px] text-[#5f6368] mt-2">
-                                        Analyzing structure, generating sections, and preparing interactive elements...
-                                    </p>
-                                </div>
-
-                                {/* Progress indicators */}
-                                <div className="flex gap-4 mb-6">
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#e8f0fe] rounded-full">
-                                        <div className="w-2 h-2 bg-[#4285f4] rounded-full animate-pulse" />
-                                        <span className="text-[12px] text-[#4285f4] font-medium">Processing</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f8f9fa] rounded-full">
-                                        <Loader2 className="w-3 h-3 text-[#5f6368] animate-spin" />
-                                        <span className="text-[12px] text-[#5f6368]">
-                                            {streamedText.length > 0 ? `${Math.round(streamedText.length / 100)}% complete` : 'Starting...'}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* Streaming text display with cursor */}
-                                <div
-                                    ref={streamingContainerRef}
-                                    className="bg-gradient-to-br from-[#f8f9fa] to-[#fff] rounded-xl p-6 border border-[#e8eaed] min-h-[350px] max-h-[450px] overflow-y-auto shadow-sm scroll-smooth"
-                                >
-                                    {streamedText.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center h-[300px] text-center">
-                                            <div className="relative mb-4">
-                                                <Brain className="w-12 h-12 text-[#4285f4]" />
-                                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#34a853] rounded-full flex items-center justify-center">
-                                                    <Loader2 className="w-2.5 h-2.5 text-white animate-spin" />
-                                                </div>
-                                            </div>
-                                            <p className="text-[16px] text-[#1f1f1f] font-medium mb-2">Preparing AI Analysis</p>
-                                            <p className="text-[14px] text-[#5f6368]">Content will appear here as it's generated...</p>
-                                            <div className="flex gap-1 mt-4">
-                                                <div className="w-2 h-2 bg-[#4285f4] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                                <div className="w-2 h-2 bg-[#34a853] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                                <div className="w-2 h-2 bg-[#fbbc04] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                                                <div className="w-2 h-2 bg-[#ea4335] rounded-full animate-bounce" style={{ animationDelay: '450ms' }} />
-                                            </div>
+                        <div className="flex w-full h-full min-h-[calc(100vh-120px)]">
+                            <WarpBackground 
+                                className="flex-1 flex items-center justify-center border-0 p-0 bg-slate-950"
+                                perspective={150}
+                                beamsPerSide={4}
+                                beamSize={4}
+                                beamDelayMax={2}
+                                beamDuration={4}
+                                gridColor="rgba(99, 102, 241, 0.15)"
+                            >
+                                {/* Terminal Display - Centered */}
+                                <div className="relative z-10 w-full max-w-3xl mx-auto px-8">
+                                    <Terminal className="w-full max-w-none shadow-2xl backdrop-blur-sm">
+                                        {/* Command line with typing */}
+                                        <div className="flex items-center gap-2 text-slate-400 mb-3">
+                                            <span className="text-green-400">➜</span>
+                                            <span className="text-cyan-400">~/learning</span>
+                                            <span className="text-slate-500">$</span>
+                                            <TypingAnimation className="text-slate-300" duration={25} delay={0}>
+                                                gemini analyze --mode immersive
+                                            </TypingAnimation>
                                         </div>
-                                    ) : (
-                                        <pre className="font-mono text-[13px] text-[#444746] whitespace-pre-wrap break-words leading-relaxed">
-                                            {streamedText}
-                                            {showCursor && (
-                                                <span className="inline-block w-2 h-5 bg-[#4285f4] ml-0.5 animate-blink align-middle" />
+                                        
+                                        {/* Step 1 */}
+                                        <AnimatedSpan delay={1200} className="text-slate-300">
+                                            <span className="text-green-400">✔</span> Connected to Gemini AI
+                                        </AnimatedSpan>
+                                        
+                                        {/* Step 2 */}
+                                        <AnimatedSpan delay={1800} className="text-slate-300">
+                                            <span className="text-green-400">✔</span> Document parsed successfully
+                                        </AnimatedSpan>
+                                        
+                                        {/* Step 3 */}
+                                        <AnimatedSpan delay={2400} className="text-slate-300">
+                                            <span className="text-green-400">✔</span> Extracting key concepts
+                                        </AnimatedSpan>
+                                        
+                                        {/* Step 4 - Shows when content starts streaming */}
+                                        <AnimatedSpan delay={3000} className="text-slate-300">
+                                            {hasStarted ? (
+                                                <><span className="text-green-400">✔</span> Building section structure</>
+                                            ) : (
+                                                <><span className="text-yellow-400 animate-pulse">●</span> Analyzing document structure...</>
                                             )}
-                                        </pre>
-                                    )}
+                                        </AnimatedSpan>
+                                        
+                                        {hasStarted && (
+                                            <>
+                                                {/* Step 5 */}
+                                                <AnimatedSpan delay={3600} className="text-slate-300">
+                                                    <span className="text-blue-400 animate-pulse">●</span> Generating immersive content...
+                                                </AnimatedSpan>
+                                                
+                                                {/* Step 6 */}
+                                                <AnimatedSpan delay={4200} className="text-slate-300">
+                                                    <span className="text-blue-400 animate-pulse">●</span> Creating interactive widgets
+                                                </AnimatedSpan>
+                                                
+                                                {/* Step 7 */}
+                                                <AnimatedSpan delay={4800} className="text-slate-300">
+                                                    <span className="text-yellow-400 animate-spin inline-block">⟳</span> Preparing visual elements
+                                                </AnimatedSpan>
+                                                
+                                                {/* Progress bar */}
+                                                <AnimatedSpan delay={5400} className="mt-4 pt-3 border-t border-slate-800">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-slate-500 text-xs">Progress:</span>
+                                                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[200px]">
+                                                            <div 
+                                                                className="h-full bg-gradient-to-r from-green-500 to-cyan-400 transition-all duration-500"
+                                                                style={{ width: `${progressPercent}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-cyan-400 text-xs font-mono">{progressPercent}%</span>
+                                                    </div>
+                                                </AnimatedSpan>
+                                                
+                                                {/* Character count - live updating */}
+                                                <AnimatedSpan delay={5600} className="text-slate-500 text-xs">
+                                                    <span className="text-slate-600">ℹ</span> Streaming: {streamedText.length.toLocaleString()} characters received
+                                                </AnimatedSpan>
+                                            </>
+                                        )}
+                                        
+                                        {!hasStarted && (
+                                            <AnimatedSpan delay={3600} className="text-blue-400 flex items-center gap-2">
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                <span>Initializing content stream...</span>
+                                            </AnimatedSpan>
+                                        )}
+                                    </Terminal>
                                 </div>
-
-                                {/* Bottom status bar */}
-                                <div className="mt-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-2 text-[13px] text-[#5f6368]">
-                                        <Loader2 className="w-4 h-4 animate-spin text-[#4285f4]" />
-                                        <span>Generating sections, images, and interactive widgets...</span>
-                                    </div>
-                                    <div className="text-[12px] text-[#9aa0a6]">
-                                        {streamedText.length > 0 && `${streamedText.length.toLocaleString()} characters`}
-                                    </div>
-                                </div>
-                            </div>
+                            </WarpBackground>
                         </div>
                     );
                 }
@@ -2212,7 +2850,12 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
                             {/* Content paragraphs with floating ? buttons and inline citations */}
                             <div className="space-y-5 mb-8">
-                                {contentParts[0]?.split('\n\n').map((paragraph, pIdx) => (
+                                {contentParts[0]?.split('\n\n').map((paragraph, pIdx) => {
+                                    const paragraphs = contentParts[0]?.split('\n\n') || [];
+                                    const totalParagraphs = paragraphs.length;
+                                    const paragraphSourceIndices = getSourcesForParagraph(paragraph, groundingSources, pIdx, totalParagraphs);
+                                    
+                                    return (
                                     <div key={pIdx} className="relative group">
                                         <div className="pr-14">
                                             <ReactMarkdown
@@ -2220,10 +2863,13 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                                     p: ({ children }) => (
                                                         <p className="text-[18px] leading-[1.8] text-[#444746]">
                                                             {children}
-                                                            {/* Grounding Citation Bubbles - Tutor Style */}
-                                                            {pIdx === 0 && groundingSources.length > 0 && (
+                                                            {/* Grounding Citation Bubbles - Distributed across paragraphs */}
+                                                            {groundingSources.length > 0 && paragraphSourceIndices.length > 0 && (
                                                                 <span className="inline-flex items-center gap-0.5 ml-1">
-                                                                    {groundingSources.slice(0, 3).map((source, srcIdx) => (
+                                                                    {paragraphSourceIndices.map((srcIdx) => {
+                                                                        const source = groundingSources[srcIdx];
+                                                                        if (!source) return null;
+                                                                        return (
                                                                         <button
                                                                             key={srcIdx}
                                                                             onClick={() => {
@@ -2238,10 +2884,11 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                                                         >
                                                                             {srcIdx + 1}
                                                                         </button>
-                                                                    ))}
+                                                                        );
+                                                                    })}
                                                                 </span>
                                                             )}
-                                                            {/* Loading indicator for grounding */}
+                                                            {/* Loading indicator for grounding - only on first paragraph */}
                                                             {pIdx === 0 && isLoadingGrounding && (
                                                                 <span className="inline-flex items-center ml-1 text-blue-500">
                                                                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -2255,16 +2902,41 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                                         return def ? (
                                                             <span
                                                                 onClick={() => handleTermClick(def.term, def.definition)}
-                                                                className="relative group/term cursor-pointer"
+                                                                className="cursor-pointer"
                                                             >
-                                                                <span className="font-medium text-[#1f1f1f] underline decoration-dotted decoration-[#1a73e8] decoration-2 underline-offset-4 hover:decoration-solid hover:bg-[#e8f0fe] px-0.5 rounded transition-colors">
-                                                                    {children}
-                                                                </span>
+                                                                <Highlighter 
+                                                                    action="highlight" 
+                                                                    color="#FBBF24" 
+                                                                    animationDuration={1200}
+                                                                    iterations={1}
+                                                                >
+                                                                    <span className="font-semibold text-[#1f1f1f] hover:text-[#1a73e8] transition-colors">
+                                                                        {children}
+                                                                    </span>
+                                                                </Highlighter>
                                                             </span>
                                                         ) : (
-                                                            <strong className="font-medium text-[#1f1f1f]">{children}</strong>
+                                                            <Highlighter 
+                                                                action="highlight" 
+                                                                color="#FBBF24" 
+                                                                animationDuration={1200}
+                                                                iterations={1}
+                                                            >
+                                                                <strong className="font-semibold text-[#1f1f1f]">{children}</strong>
+                                                            </Highlighter>
                                                         );
-                                                    }
+                                                    },
+                                                    em: ({ children }) => (
+                                                        <Highlighter 
+                                                            action="underline" 
+                                                            color="#3B82F6" 
+                                                            strokeWidth={2}
+                                                            animationDuration={800}
+                                                            iterations={1}
+                                                        >
+                                                            <em className="not-italic text-[#374151]">{children}</em>
+                                                        </Highlighter>
+                                                    )
                                                 }}
                                             >
                                                 {paragraph}
@@ -2280,13 +2952,20 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                             <span className="font-bold text-base">?</span>
                                         </button>
                                     </div>
-                                ))}
+                                    );
+                                })}
 
-                                {activeWidget && (
+                                {activeWidget && activeWidget.data && (
                                     <div className="animate-slide-up">
-                                        {activeWidget.type === 'reveal' && <ScratchReveal title={activeWidget.data.title} content={activeWidget.data.content} />}
+                                        {activeWidget.type === 'reveal' && activeWidget.data.title && <ScratchReveal title={activeWidget.data.title} content={activeWidget.data.content || ''} />}
                                         {activeWidget.type === 'comparison' && <ComparisonSlider data={activeWidget.data} images={widgetImgs} />}
-                                        {/* {activeWidget.type === 'quiz' && <InlineQuiz data={activeWidget.data} />} */}
+                                        {activeWidget.type === 'quiz' && <InlineQuiz data={activeWidget.data} />}
+                                        {activeWidget.type === 'fill-blank' && <FillBlankActivity data={activeWidget.data} />}
+                                        {activeWidget.type === 'matching' && <MatchingActivity data={activeWidget.data} />}
+                                        {activeWidget.type === 'ordering' && <OrderingActivity data={activeWidget.data} />}
+                                        {activeWidget.type === 'true-false' && <TrueFalseActivity data={activeWidget.data} />}
+                                        {activeWidget.type === 'labeling' && <LabelingActivity data={activeWidget.data} />}
+                                        {activeWidget.type === 'reflection' && <ReflectionActivity data={activeWidget.data} />}
                                     </div>
                                 )}
 
@@ -2306,14 +2985,41 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                                         return def ? (
                                                             <span
                                                                 onClick={() => handleTermClick(def.term, def.definition)}
-                                                                className="font-medium text-[#1f1f1f] underline decoration-dotted decoration-[#1a73e8] decoration-2 underline-offset-4 cursor-pointer hover:decoration-solid hover:bg-[#e8f0fe] px-0.5 rounded transition-colors"
+                                                                className="cursor-pointer"
                                                             >
-                                                                {children}
+                                                                <Highlighter 
+                                                                    action="highlight" 
+                                                                    color="#FBBF24" 
+                                                                    animationDuration={1200}
+                                                                    iterations={1}
+                                                                >
+                                                                    <span className="font-semibold text-[#1f1f1f] hover:text-[#1a73e8] transition-colors">
+                                                                        {children}
+                                                                    </span>
+                                                                </Highlighter>
                                                             </span>
                                                         ) : (
-                                                            <strong className="font-medium text-[#1f1f1f]">{children}</strong>
+                                                            <Highlighter 
+                                                                action="highlight" 
+                                                                color="#FBBF24" 
+                                                                animationDuration={1200}
+                                                                iterations={1}
+                                                            >
+                                                                <strong className="font-semibold text-[#1f1f1f]">{children}</strong>
+                                                            </Highlighter>
                                                         );
-                                                    }
+                                                    },
+                                                    em: ({ children }) => (
+                                                        <Highlighter 
+                                                            action="underline" 
+                                                            color="#3B82F6" 
+                                                            strokeWidth={2}
+                                                            animationDuration={800}
+                                                            iterations={1}
+                                                        >
+                                                            <em className="not-italic text-[#374151]">{children}</em>
+                                                        </Highlighter>
+                                                    )
                                                 }}
                                             >
                                                 {paragraph}
@@ -2388,6 +3094,76 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                             )}
                                         </div>
                                     )}
+                                </div>
+                            </div>
+
+                            {/* Interactive Learning Activities Section */}
+                            <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl p-6 mb-8 border border-purple-100">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                                        <Brain className="w-6 h-6 text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-[16px] font-bold text-[#1f1f1f]">🧠 Brain Activities</h3>
+                                        <p className="text-[13px] text-gray-500">Challenge yourself with interactive learning!</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    {/* Brainstorm Activity Button */}
+                                    <button
+                                        onClick={handleGenerateBrainstorm}
+                                        disabled={isLoadingBrainstorm}
+                                        className="group relative overflow-hidden bg-white hover:bg-gradient-to-br hover:from-orange-400 hover:to-pink-500 rounded-xl p-4 border border-orange-200 hover:border-transparent transition-all duration-300 text-left"
+                                    >
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-10 h-10 bg-orange-100 group-hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                                                {isLoadingBrainstorm ? (
+                                                    <Loader2 className="w-5 h-5 text-orange-500 group-hover:text-white animate-spin" />
+                                                ) : (
+                                                    <Lightbulb className="w-5 h-5 text-orange-500 group-hover:text-white" />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-semibold text-gray-800 group-hover:text-white transition-colors">Brainstorm Challenge</h4>
+                                                <p className="text-xs text-gray-500 group-hover:text-white/80 transition-colors">Think creatively!</p>
+                                            </div>
+                                        </div>
+                                        <p className="text-sm text-gray-600 group-hover:text-white/90 transition-colors">
+                                            Get a real-world scenario and brainstorm solutions using what you've learned.
+                                        </p>
+                                    </button>
+
+                                    {/* What-If Activity Button */}
+                                    <button
+                                        onClick={handleGenerateWhatIf}
+                                        disabled={isLoadingWhatIf}
+                                        className="group relative overflow-hidden bg-white hover:bg-gradient-to-br hover:from-cyan-400 hover:to-blue-500 rounded-xl p-4 border border-cyan-200 hover:border-transparent transition-all duration-300 text-left"
+                                    >
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-10 h-10 bg-cyan-100 group-hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                                                {isLoadingWhatIf ? (
+                                                    <Loader2 className="w-5 h-5 text-cyan-500 group-hover:text-white animate-spin" />
+                                                ) : (
+                                                    <span className="text-xl">🤔</span>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-semibold text-gray-800 group-hover:text-white transition-colors">What If...?</h4>
+                                                <p className="text-xs text-gray-500 group-hover:text-white/80 transition-colors">Explore possibilities!</p>
+                                            </div>
+                                        </div>
+                                        <p className="text-sm text-gray-600 group-hover:text-white/90 transition-colors">
+                                            Explore thought-provoking "what if" scenarios to deepen understanding.
+                                        </p>
+                                    </button>
+                                </div>
+
+                                {/* Tips for learning */}
+                                <div className="mt-4 flex items-center gap-2 p-3 bg-white/50 rounded-lg border border-purple-100">
+                                    <Sparkles className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                                    <p className="text-xs text-purple-700">
+                                        <span className="font-semibold">Pro tip:</span> Click on any <span className="font-bold underline decoration-dotted">bold term</span> in the text above for an interactive deep-dive with quizzes, brain teasers, and fun facts!
+                                    </p>
                                 </div>
                             </div>
 
@@ -2514,17 +3290,377 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 </div>
                             )}
 
-                            {/* Term Definition Popover */}
+                            {/* Enhanced Term Definition Popover */}
                             {activeDefinition && (
-                                <div className="fixed top-28 left-1/2 -translate-x-1/2 z-50 bg-white border border-[#e8eaed] rounded-xl p-4 shadow-xl max-w-sm animate-fade-in">
-                                    <div className="flex justify-between items-start gap-3">
-                                        <div>
-                                            <h4 className="font-medium text-[#1967d2] text-[16px] mb-1.5">{activeDefinition.term}</h4>
-                                            <p className="text-[14px] text-[#444746] leading-relaxed">{activeDefinition.definition}</p>
+                                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-white border border-[#e8eaed] rounded-2xl shadow-2xl w-[500px] max-h-[80vh] overflow-hidden animate-fade-in">
+                                    {/* Header with gradient */}
+                                    <div className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-4">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                                                    <BookOpen className="w-5 h-5 text-white" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-white text-lg">{activeDefinition.term}</h4>
+                                                    <p className="text-white/80 text-sm">Click tabs to explore more!</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={handleCloseTermPopup} className="text-white/70 hover:text-white p-1 hover:bg-white/20 rounded-lg transition-all">
+                                                <X className="w-5 h-5" />
+                                            </button>
                                         </div>
-                                        <button onClick={() => setActiveDefinition(null)} className="text-[#9aa0a6] hover:text-[#5f6368] flex-shrink-0 p-1">
-                                            <X className="w-4 h-4" />
-                                        </button>
+                                    </div>
+
+                                    {/* Tab Navigation */}
+                                    <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
+                                        {[
+                                            { id: 'definition', icon: <Info className="w-4 h-4" />, label: 'Definition' },
+                                            { id: 'deepDive', icon: <Zap className="w-4 h-4" />, label: 'Deep Dive' },
+                                            { id: 'brainTeaser', icon: <Brain className="w-4 h-4" />, label: 'Brain Teaser' },
+                                            { id: 'quiz', icon: <Target className="w-4 h-4" />, label: 'Quick Quiz' },
+                                            { id: 'funFact', icon: <Sparkles className="w-4 h-4" />, label: 'Fun Fact' },
+                                        ].map((tab) => (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => setEnhancedTermTab(tab.id as any)}
+                                                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-all border-b-2 ${
+                                                    enhancedTermTab === tab.id
+                                                        ? 'border-blue-500 text-blue-600 bg-white'
+                                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                                }`}
+                                            >
+                                                {tab.icon}
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Tab Content */}
+                                    <div className="p-4 overflow-y-auto max-h-[400px]">
+                                        {isLoadingEnhancedTerm && enhancedTermTab !== 'definition' ? (
+                                            <div className="flex flex-col items-center justify-center py-8">
+                                                <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                                                <p className="text-gray-500 text-sm">Loading enhanced content...</p>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {/* Definition Tab */}
+                                                {enhancedTermTab === 'definition' && (
+                                                    <div className="space-y-4">
+                                                        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                                                            <p className="text-gray-700 leading-relaxed">{enhancedTermInfo?.definition || activeDefinition.definition}</p>
+                                                        </div>
+                                                        {enhancedTermInfo?.analogy && (
+                                                            <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <Lightbulb className="w-5 h-5 text-amber-500" />
+                                                                    <span className="font-semibold text-amber-700">Think of it like...</span>
+                                                                </div>
+                                                                <p className="text-gray-700">{enhancedTermInfo.analogy}</p>
+                                                            </div>
+                                                        )}
+                                                        {enhancedTermInfo?.memoryTrick && (
+                                                            <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <Brain className="w-5 h-5 text-purple-500" />
+                                                                    <span className="font-semibold text-purple-700">Memory Trick</span>
+                                                                </div>
+                                                                <p className="text-gray-700">{enhancedTermInfo.memoryTrick}</p>
+                                                            </div>
+                                                        )}
+                                                        {enhancedTermInfo?.relatedTerms && enhancedTermInfo.relatedTerms.length > 0 && (
+                                                            <div className="flex flex-wrap gap-2">
+                                                                <span className="text-sm text-gray-500">Related:</span>
+                                                                {enhancedTermInfo.relatedTerms.map((t, i) => (
+                                                                    <span key={i} className="px-2 py-1 bg-gray-100 rounded-full text-xs text-gray-600">{t}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Deep Dive Tab */}
+                                                {enhancedTermTab === 'deepDive' && enhancedTermInfo && (
+                                                    <div className="space-y-4">
+                                                        <div className="prose prose-sm max-w-none">
+                                                            <p className="text-gray-700 leading-relaxed whitespace-pre-line">{enhancedTermInfo.deepDive}</p>
+                                                        </div>
+                                                        {enhancedTermInfo.realWorldExample && (
+                                                            <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <Globe className="w-5 h-5 text-green-500" />
+                                                                    <span className="font-semibold text-green-700">Real World Example</span>
+                                                                </div>
+                                                                <p className="text-gray-700">{enhancedTermInfo.realWorldExample}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Brain Teaser Tab */}
+                                                {enhancedTermTab === 'brainTeaser' && enhancedTermInfo && (
+                                                    <div className="space-y-4">
+                                                        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100">
+                                                            <div className="flex items-center gap-2 mb-3">
+                                                                <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center">
+                                                                    <Brain className="w-4 h-4 text-white" />
+                                                                </div>
+                                                                <span className="font-bold text-indigo-700">Brain Teaser Challenge</span>
+                                                            </div>
+                                                            <p className="text-gray-800 text-lg font-medium mb-4">{enhancedTermInfo.brainTeaser.question}</p>
+                                                            
+                                                            {!brainTeaserRevealed ? (
+                                                                <div className="space-y-3">
+                                                                    <button
+                                                                        onClick={() => setBrainTeaserRevealed(true)}
+                                                                        className="w-full px-4 py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+                                                                    >
+                                                                        <Eye className="w-4 h-4" />
+                                                                        Reveal Answer
+                                                                    </button>
+                                                                    <div className="bg-white/60 rounded-lg p-3 border border-indigo-200">
+                                                                        <p className="text-sm text-indigo-600">
+                                                                            <span className="font-medium">💡 Hint:</span> {enhancedTermInfo.brainTeaser.hint}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="bg-white rounded-xl p-4 border-2 border-green-300 animate-fade-in">
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                                                        <span className="font-semibold text-green-700">Answer</span>
+                                                                    </div>
+                                                                    <p className="text-gray-700">{enhancedTermInfo.brainTeaser.answer}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Quick Quiz Tab */}
+                                                {enhancedTermTab === 'quiz' && enhancedTermInfo && (
+                                                    <div className="space-y-4">
+                                                        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                                                            <p className="font-medium text-gray-800 mb-4">{enhancedTermInfo.quickQuiz.question}</p>
+                                                            <div className="space-y-2">
+                                                                {enhancedTermInfo.quickQuiz.options.map((option, idx) => (
+                                                                    <button
+                                                                        key={idx}
+                                                                        onClick={() => setEnhancedQuizAnswer(idx)}
+                                                                        disabled={enhancedQuizAnswer !== null}
+                                                                        className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${
+                                                                            enhancedQuizAnswer !== null
+                                                                                ? idx === enhancedTermInfo.quickQuiz.correctIndex
+                                                                                    ? 'bg-green-100 border-green-400 text-green-700'
+                                                                                    : enhancedQuizAnswer === idx
+                                                                                    ? 'bg-red-100 border-red-400 text-red-700'
+                                                                                    : 'bg-gray-50 border-gray-200 text-gray-500'
+                                                                                : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50'
+                                                                        }`}
+                                                                    >
+                                                                        <span className="font-bold mr-2">{String.fromCharCode(65 + idx)}.</span>
+                                                                        {option}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                            {enhancedQuizAnswer !== null && (
+                                                                <div className={`mt-4 p-3 rounded-lg ${enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? 'bg-green-100' : 'bg-amber-100'}`}>
+                                                                    <p className={`font-medium ${enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? 'text-green-700' : 'text-amber-700'}`}>
+                                                                        {enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? '🎉 Correct!' : '💡 Not quite...'}
+                                                                    </p>
+                                                                    <p className="text-gray-600 text-sm mt-1">{enhancedTermInfo.quickQuiz.explanation}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Fun Fact Tab */}
+                                                {enhancedTermTab === 'funFact' && enhancedTermInfo && (
+                                                    <div className="space-y-4">
+                                                        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-5 border border-amber-200">
+                                                            <div className="flex items-center gap-2 mb-3">
+                                                                <div className="w-10 h-10 bg-amber-400 rounded-full flex items-center justify-center text-xl">
+                                                                    🌟
+                                                                </div>
+                                                                <span className="font-bold text-amber-700">Did You Know?</span>
+                                                            </div>
+                                                            <p className="text-gray-800 text-lg leading-relaxed">{enhancedTermInfo.funFact}</p>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-gray-400 text-sm">Share this fun fact with your friends! 📚</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Brainstorm Activity Panel */}
+                            {brainstormActivity && (
+                                <div className="fixed bottom-4 right-4 z-50 w-[420px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-slide-up">
+                                    <div className="bg-gradient-to-r from-orange-400 to-pink-500 p-4">
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                                                    <Lightbulb className="w-6 h-6 text-white" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-white">{brainstormActivity.title}</h4>
+                                                    <p className="text-white/80 text-sm">Brainstorming Challenge</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => setBrainstormActivity(null)} className="text-white/70 hover:text-white">
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 max-h-[400px] overflow-y-auto space-y-4">
+                                        <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
+                                            <p className="text-gray-700 font-medium">📌 Scenario:</p>
+                                            <p className="text-gray-600 mt-1">{brainstormActivity.scenario}</p>
+                                        </div>
+                                        <div className="bg-pink-50 rounded-xl p-4 border border-pink-100">
+                                            <p className="text-gray-700 font-medium">🎯 Your Challenge:</p>
+                                            <p className="text-gray-800 mt-1 font-semibold">{brainstormActivity.challenge}</p>
+                                        </div>
+                                        
+                                        {/* Hints */}
+                                        <div className="space-y-2">
+                                            <p className="font-medium text-gray-700">💡 Need hints?</p>
+                                            {brainstormActivity.hints.map((hint, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => {
+                                                        const newHints = [...showBrainstormHints];
+                                                        newHints[idx] = true;
+                                                        setShowBrainstormHints(newHints);
+                                                    }}
+                                                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                                                        showBrainstormHints[idx]
+                                                            ? 'bg-amber-50 border-amber-200'
+                                                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                                    }`}
+                                                >
+                                                    {showBrainstormHints[idx] ? (
+                                                        <span className="text-amber-700">{hint}</span>
+                                                    ) : (
+                                                        <span className="text-gray-500 flex items-center gap-2">
+                                                            <EyeOff className="w-4 h-4" />
+                                                            Click to reveal Hint {idx + 1}
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* Notes Area */}
+                                        <div>
+                                            <p className="font-medium text-gray-700 mb-2">📝 Your Ideas:</p>
+                                            <textarea
+                                                value={userBrainstormNotes}
+                                                onChange={(e) => setUserBrainstormNotes(e.target.value)}
+                                                placeholder="Write your brainstorm ideas here..."
+                                                className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-[100px] resize-y"
+                                            />
+                                        </div>
+
+                                        {/* Reveal Solutions */}
+                                        <div className="space-y-2">
+                                            <button
+                                                onClick={() => setShowBrainstormApproaches(!showBrainstormApproaches)}
+                                                className="w-full px-4 py-2 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg font-medium hover:opacity-90 transition-all"
+                                            >
+                                                {showBrainstormApproaches ? 'Hide' : 'Show'} Possible Approaches
+                                            </button>
+                                            {showBrainstormApproaches && (
+                                                <div className="bg-gradient-to-br from-orange-50 to-pink-50 rounded-xl p-4 border border-orange-200 space-y-2 animate-fade-in">
+                                                    {brainstormActivity.possibleApproaches.map((approach, idx) => (
+                                                        <div key={idx} className="flex items-start gap-2">
+                                                            <span className="w-6 h-6 bg-orange-400 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">{idx + 1}</span>
+                                                            <p className="text-gray-700">{approach}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={() => setShowBrainstormInsight(!showBrainstormInsight)}
+                                                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 transition-all"
+                                            >
+                                                {showBrainstormInsight ? 'Hide' : 'Show'} Expert Insight
+                                            </button>
+                                            {showBrainstormInsight && (
+                                                <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 animate-fade-in">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <Award className="w-5 h-5 text-purple-500" />
+                                                        <span className="font-semibold text-purple-700">Expert Insight</span>
+                                                    </div>
+                                                    <p className="text-gray-700">{brainstormActivity.expertInsight}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* What-If Activity Panel */}
+                            {whatIfActivity && (
+                                <div className="fixed bottom-4 left-4 z-50 w-[400px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-slide-up">
+                                    <div className="bg-gradient-to-r from-cyan-400 to-blue-500 p-4">
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-xl">
+                                                    🤔
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-white">{whatIfActivity.title}</h4>
+                                                    <p className="text-white/80 text-sm">Explore the Possibilities</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => setWhatIfActivity(null)} className="text-white/70 hover:text-white">
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 max-h-[400px] overflow-y-auto space-y-4">
+                                        <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-100">
+                                            <p className="text-gray-700">{whatIfActivity.baseScenario}</p>
+                                        </div>
+                                        
+                                        {whatIfActivity.whatIfQuestions.map((q, idx) => (
+                                            <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                                                <button
+                                                    onClick={() => setRevealedWhatIfs(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                                    className="w-full p-4 text-left bg-gradient-to-r from-cyan-50 to-blue-50 hover:from-cyan-100 hover:to-blue-100 transition-all"
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-medium text-blue-700">{q.question}</span>
+                                                        <ChevronDown className={`w-5 h-5 text-blue-500 transition-transform ${revealedWhatIfs[idx] ? 'rotate-180' : ''}`} />
+                                                    </div>
+                                                </button>
+                                                {revealedWhatIfs[idx] && (
+                                                    <div className="p-4 bg-white border-t border-gray-100 space-y-3 animate-fade-in">
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500 mb-2">Think about:</p>
+                                                            <ul className="space-y-1">
+                                                                {q.thinkingPoints.map((point, pIdx) => (
+                                                                    <li key={pIdx} className="flex items-start gap-2 text-gray-600">
+                                                                        <span className="text-blue-400">•</span>
+                                                                        {point}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                        <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                                                            <p className="text-sm font-medium text-blue-700 mb-1">💡 Key Insight:</p>
+                                                            <p className="text-gray-700 text-sm">{q.insight}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             )}

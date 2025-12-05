@@ -51,6 +51,7 @@ export default {
         'slide-in-right': 'slideInRight 0.25s ease-out forwards',
         'fade-in': 'fadeIn 0.2s ease-out forwards',
         'shine': 'shine var(--duration, 14s) infinite linear',
+        'grid': 'grid 15s linear infinite',
       },
       keyframes: {
         'spin-reverse': {
@@ -77,6 +78,10 @@ export default {
           '0%': { backgroundPosition: '0% 0%' },
           '50%': { backgroundPosition: '100% 100%' },
           '100%': { backgroundPosition: '0% 0%' },
+        },
+        grid: {
+          '0%': { transform: 'translateY(-50%)' },
+          '100%': { transform: 'translateY(0)' },
         },
       },
     },

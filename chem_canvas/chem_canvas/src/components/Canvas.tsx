@@ -244,10 +244,11 @@ const FlowResourceNode = ({ data, id }: any) => {
   const isFileBased = ['pdf', 'doc', 'spreadsheet', 'csv'].includes(data.kind);
   const isUrlBased = ['url'].includes(data.kind);
 
+  // Use specific properties as dependencies to avoid infinite loops
   useEffect(() => {
     setDocInput(data.input ?? '');
     setUrl(data.url ?? '');
-  }, [data]);
+  }, [data.input, data.url]);
 
   return (
     <div className="min-w-[240px] rounded-3xl border border-slate-600/60 bg-gradient-to-br from-[#111836] via-[#0f172a] to-[#09111f] px-4 py-3 shadow-[0_10px_35px_rgba(15,23,42,0.7)] text-slate-100 space-y-3">
@@ -604,10 +605,34 @@ export default function Canvas({
 }: CanvasProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  // Store registration callbacks in refs to avoid re-triggering on every render
+  const onRegisterSnapshotHandlerRef = useRef(onRegisterSnapshotHandler);
+  const onRegisterTextInjectionHandlerRef = useRef(onRegisterTextInjectionHandler);
+  const onRegisterHandwritingHandlerRef = useRef(onRegisterHandwritingHandler);
+  const onRegisterMoleculeInjectionHandlerRef = useRef(onRegisterMoleculeInjectionHandler);
+  const onRegisterProteinInjectionHandlerRef = useRef(onRegisterProteinInjectionHandler);
+  const onRegisterReactionInjectionHandlerRef = useRef(onRegisterReactionInjectionHandler);
+  const onRegisterMarkdownInjectionHandlerRef = useRef(onRegisterMarkdownInjectionHandler);
+  const onRegisterGetShapesHandlerRef = useRef(onRegisterGetShapesHandler);
+  const onRegisterSetShapesHandlerRef = useRef(onRegisterSetShapesHandler);
+  
+  // Update refs when props change (but don't trigger re-renders)
+  useEffect(() => {
+    onRegisterSnapshotHandlerRef.current = onRegisterSnapshotHandler;
+    onRegisterTextInjectionHandlerRef.current = onRegisterTextInjectionHandler;
+    onRegisterHandwritingHandlerRef.current = onRegisterHandwritingHandler;
+    onRegisterMoleculeInjectionHandlerRef.current = onRegisterMoleculeInjectionHandler;
+    onRegisterProteinInjectionHandlerRef.current = onRegisterProteinInjectionHandler;
+    onRegisterReactionInjectionHandlerRef.current = onRegisterReactionInjectionHandler;
+    onRegisterMarkdownInjectionHandlerRef.current = onRegisterMarkdownInjectionHandler;
+    onRegisterGetShapesHandlerRef.current = onRegisterGetShapesHandler;
+    onRegisterSetShapesHandlerRef.current = onRegisterSetShapesHandler;
+  });
 
   useEffect(() => {
-    if (onRegisterSnapshotHandler) {
-      onRegisterSnapshotHandler(async () => {
+    if (onRegisterSnapshotHandlerRef.current) {
+      onRegisterSnapshotHandlerRef.current(async () => {
         if (!canvasRef.current) return null;
         try {
           // Simple data URL export.
@@ -620,7 +645,7 @@ export default function Canvas({
         }
       });
     }
-  }, [onRegisterSnapshotHandler]);
+  }, []); // Only run once on mount
 
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -2324,12 +2349,26 @@ export default function Canvas({
     setTimeout(animateTyping, 100);
   }, [findEmptySpace, wrapTextIntoLines, parseMarkdownBold]);
 
-  // Register handwriting handler
+  // Store handler refs that need to be updated
+  const handleHandwritingInjectionRef = useRef(handleHandwritingInjection);
+  const handleExternalTextInjectionRef = useRef(handleExternalTextInjection);
+  
   useEffect(() => {
-    if (onRegisterHandwritingHandler) {
-      onRegisterHandwritingHandler(handleHandwritingInjection);
+    handleHandwritingInjectionRef.current = handleHandwritingInjection;
+  }, [handleHandwritingInjection]);
+  
+  useEffect(() => {
+    handleExternalTextInjectionRef.current = handleExternalTextInjection;
+  }, [handleExternalTextInjection]);
+
+  // Register handwriting handler - only once on mount
+  useEffect(() => {
+    if (onRegisterHandwritingHandlerRef.current) {
+      onRegisterHandwritingHandlerRef.current((...args: Parameters<typeof handleHandwritingInjection>) => 
+        handleHandwritingInjectionRef.current(...args)
+      );
     }
-  }, [handleHandwritingInjection, onRegisterHandwritingHandler]);
+  }, []);
 
   const handleExternalMarkdownInjection = useCallback((payload: { text: string; heading?: string }) => {
     if (!payload?.text?.trim()) {
@@ -2337,24 +2376,35 @@ export default function Canvas({
     }
     appendMarkdownEntry(payload.text, payload.heading);
   }, [appendMarkdownEntry]);
-
+  
+  const handleExternalMarkdownInjectionRef = useRef(handleExternalMarkdownInjection);
   useEffect(() => {
-    if (onRegisterTextInjectionHandler) {
-      onRegisterTextInjectionHandler(handleExternalTextInjection);
-    }
-  }, [handleExternalTextInjection, onRegisterTextInjectionHandler]);
+    handleExternalMarkdownInjectionRef.current = handleExternalMarkdownInjection;
+  }, [handleExternalMarkdownInjection]);
 
+  // Register text injection handler - only once on mount
   useEffect(() => {
-    if (onRegisterMarkdownInjectionHandler) {
-      onRegisterMarkdownInjectionHandler(handleExternalMarkdownInjection);
+    if (onRegisterTextInjectionHandlerRef.current) {
+      onRegisterTextInjectionHandlerRef.current((...args: Parameters<typeof handleExternalTextInjection>) => 
+        handleExternalTextInjectionRef.current(...args)
+      );
     }
-  }, [handleExternalMarkdownInjection, onRegisterMarkdownInjectionHandler]);
+  }, []);
 
-  // Register get shapes handler for workspace persistence
+  // Register markdown injection handler - only once on mount
+  useEffect(() => {
+    if (onRegisterMarkdownInjectionHandlerRef.current) {
+      onRegisterMarkdownInjectionHandlerRef.current((payload: { text: string; heading?: string }) => 
+        handleExternalMarkdownInjectionRef.current(payload)
+      );
+    }
+  }, []);
+
+  // Register get shapes handler for workspace persistence - only once on mount
   // Returns both canvas shapes and dropped documents
   useEffect(() => {
-    if (onRegisterGetShapesHandler) {
-      onRegisterGetShapesHandler(() => {
+    if (onRegisterGetShapesHandlerRef.current) {
+      onRegisterGetShapesHandlerRef.current(() => {
         // Combine shapes with documents for saving
         const shapesCount = canvasHistoryRef.current.length;
         const docsCount = droppedDocumentsRef.current.length;
@@ -2379,13 +2429,13 @@ export default function Canvas({
         return allItems;
       });
     }
-  }, [onRegisterGetShapesHandler]);
+  }, []);
 
-  // Register set shapes handler for workspace persistence
+  // Register set shapes handler for workspace persistence - only once on mount
   // Restores both canvas shapes and dropped documents
   useEffect(() => {
-    if (onRegisterSetShapesHandler) {
-      onRegisterSetShapesHandler(async (allItems: any[]) => {
+    if (onRegisterSetShapesHandlerRef.current) {
+      onRegisterSetShapesHandlerRef.current(async (allItems: any[]) => {
         // Separate documents from shapes
         const documents = allItems.filter(item => item._isDocument || item._nodeType === 'document' || item.type === 'document');
         const shapes = allItems.filter(item => !item._isDocument && item._nodeType !== 'document' && item.type !== 'document');
@@ -2483,7 +2533,7 @@ export default function Canvas({
         }
       });
     }
-  }, [onRegisterSetShapesHandler]);
+  }, []); // Only run once on mount
 
   // Load initial shapes from workspace persistence
   useEffect(() => {
@@ -3516,23 +3566,49 @@ export default function Canvas({
     }
   }, [insertReactionToCanvas]);
 
+  // Store handler refs for molecule/protein/reaction
+  const handleExternalMoleculeInsertionRef = useRef(handleExternalMoleculeInsertion);
+  const handleExternalProteinInsertionRef = useRef(handleExternalProteinInsertion);
+  const handleExternalReactionInsertionRef = useRef(handleExternalReactionInsertion);
+  
   useEffect(() => {
-    if (onRegisterMoleculeInjectionHandler) {
-      onRegisterMoleculeInjectionHandler(handleExternalMoleculeInsertion);
-    }
-  }, [handleExternalMoleculeInsertion, onRegisterMoleculeInjectionHandler]);
+    handleExternalMoleculeInsertionRef.current = handleExternalMoleculeInsertion;
+  }, [handleExternalMoleculeInsertion]);
+  
+  useEffect(() => {
+    handleExternalProteinInsertionRef.current = handleExternalProteinInsertion;
+  }, [handleExternalProteinInsertion]);
+  
+  useEffect(() => {
+    handleExternalReactionInsertionRef.current = handleExternalReactionInsertion;
+  }, [handleExternalReactionInsertion]);
 
+  // Register molecule injection handler - only once on mount
   useEffect(() => {
-    if (onRegisterProteinInjectionHandler) {
-      onRegisterProteinInjectionHandler(handleExternalProteinInsertion);
+    if (onRegisterMoleculeInjectionHandlerRef.current) {
+      onRegisterMoleculeInjectionHandlerRef.current((...args: Parameters<typeof handleExternalMoleculeInsertion>) => 
+        handleExternalMoleculeInsertionRef.current(...args)
+      );
     }
-  }, [handleExternalProteinInsertion, onRegisterProteinInjectionHandler]);
+  }, []);
 
+  // Register protein injection handler - only once on mount
   useEffect(() => {
-    if (onRegisterReactionInjectionHandler) {
-      onRegisterReactionInjectionHandler(handleExternalReactionInsertion);
+    if (onRegisterProteinInjectionHandlerRef.current) {
+      onRegisterProteinInjectionHandlerRef.current((...args: Parameters<typeof handleExternalProteinInsertion>) => 
+        handleExternalProteinInsertionRef.current(...args)
+      );
     }
-  }, [handleExternalReactionInsertion, onRegisterReactionInjectionHandler]);
+  }, []);
+
+  // Register reaction injection handler - only once on mount
+  useEffect(() => {
+    if (onRegisterReactionInjectionHandlerRef.current) {
+      onRegisterReactionInjectionHandlerRef.current((...args: Parameters<typeof handleExternalReactionInsertion>) => 
+        handleExternalReactionInsertionRef.current(...args)
+      );
+    }
+  }, []);
 
   const handleAddSdfModelsToReaction = useCallback(async (reactionShapeId: string) => {
     setReactionSdfError(null);
