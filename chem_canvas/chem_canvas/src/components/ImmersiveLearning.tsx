@@ -3097,14 +3097,9 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                 </div>
                             )}
 
-                            {/* Content paragraphs with floating ? buttons and inline citations */}
+                            {/* Content paragraphs with floating ? buttons */}
                             <div className="space-y-5 mb-8">
-                                {contentParts[0]?.split('\n\n').map((paragraph, pIdx) => {
-                                    const paragraphs = contentParts[0]?.split('\n\n') || [];
-                                    const totalParagraphs = paragraphs.length;
-                                    const paragraphSourceIndices = getSourcesForParagraph(paragraph, groundingSources, pIdx, totalParagraphs);
-                                    
-                                    return (
+                                {contentParts[0]?.split('\n\n').map((paragraph, pIdx) => (
                                     <div key={pIdx} className="relative group">
                                         <div className="pr-14">
                                             <ReactMarkdown
@@ -3112,37 +3107,6 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                                     p: ({ children }) => (
                                                         <p className="text-[18px] leading-[1.8] text-[#444746]">
                                                             {children}
-                                                            {/* Grounding Citation Bubbles - Distributed across paragraphs */}
-                                                            {groundingSources.length > 0 && paragraphSourceIndices.length > 0 && (
-                                                                <span className="inline-flex items-center gap-0.5 ml-1">
-                                                                    {paragraphSourceIndices.map((srcIdx) => {
-                                                                        const source = groundingSources[srcIdx];
-                                                                        if (!source) return null;
-                                                                        return (
-                                                                        <button
-                                                                            key={srcIdx}
-                                                                            onClick={() => {
-                                                                                setActiveSource(source);
-                                                                                setShowPdfSidebar(true);
-                                                                            }}
-                                                                            className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full align-super transition-colors ${activeSource?.url === source.url
-                                                                                    ? 'bg-indigo-600 text-white'
-                                                                                    : 'text-blue-600 bg-blue-100 hover:bg-blue-200'
-                                                                                }`}
-                                                                            title={source.title}
-                                                                        >
-                                                                            {srcIdx + 1}
-                                                                        </button>
-                                                                        );
-                                                                    })}
-                                                                </span>
-                                                            )}
-                                                            {/* Loading indicator for grounding - only on first paragraph */}
-                                                            {pIdx === 0 && isLoadingGrounding && (
-                                                                <span className="inline-flex items-center ml-1 text-blue-500">
-                                                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                                                </span>
-                                                            )}
                                                         </p>
                                                     ),
                                                     strong: ({ children }) => {
@@ -3201,8 +3165,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                                             <span className="font-bold text-base">?</span>
                                         </button>
                                     </div>
-                                    );
-                                })}
+                                ))}
 
                                 {activeWidget && activeWidget.data && (
                                     <div className="animate-slide-up">
