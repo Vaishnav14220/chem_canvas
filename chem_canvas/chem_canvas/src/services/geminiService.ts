@@ -907,45 +907,61 @@ export const generateEducationalImage = async (
         cachedModelName = null;
       }
 
-      // Step 1: Prompt Engineering with Gemini 2.5 Flash
+      // Step 1: Research with Google Search grounding for scientific accuracy
+      const researchResult = await genAI!.models.generateContent({
+        model: 'gemini-2.5-flash',
+        config: {
+          tools: [{ googleSearch: {} }],
+          thinkingConfig: { thinkingBudget: 1024 }
+        },
+        contents: [{ role: 'user', parts: [{ text: `Research the scientific/academic topic: "${topic}". Find accurate visual representations, diagrams, and scientific illustrations used in academic textbooks, research papers, and educational materials. Focus on:
+1. What are the key visual elements and components that MUST be shown?
+2. What is the scientifically accurate representation?
+3. What style is commonly used in academic/textbook illustrations?
+4. What are common mistakes to avoid in depicting this topic?` }] }]
+      });
+
+      const researchContext = researchResult.text || '';
+      console.log("Research context gathered for image generation");
+
+      // Step 2: Prompt Engineering with Gemini 2.5 Flash using research context
       const promptResult = await genAI!.models.generateContent({
         model: 'gemini-2.5-flash',
         config: {
-          systemInstruction: `Role: You are an Expert Scientific Illustrator and Prompt Engineer for an advanced AI image generator (Nano Banana Pro).
+          systemInstruction: `Role: You are an Expert SCIENTIFIC and ACADEMIC Illustrator and Prompt Engineer for an advanced AI image generator.
 
-Objective: specific Anlayse the user's educational query and the provided grounded research (search results/PDFs). You must construct a structured JSON output to generate a scientifically accurate educational image.
+OBJECTIVE: Create prompts for STRICTLY SCIENTIFIC, ACADEMIC, and EDUCATIONAL images. The images must look like they belong in a university textbook, scientific journal, or educational material.
 
-Process:
+CRITICAL REQUIREMENTS:
+1. Images MUST be scientifically accurate - no artistic liberties that compromise accuracy
+2. Images MUST look professional and academic - like from Nature, Science journals, or Pearson textbooks
+3. NO fantasy elements, NO artistic stylization that compromises scientific accuracy
+4. Use proper scientific terminology and accurate representations
 
-Analyze the Educational Level:
+STYLE GUIDELINES by Level:
+- High School/Undergraduate: Clean textbook-style diagrams, labeled scientific illustrations, cross-sections, photorealistic renders of scientific concepts
+- University/Professional: Publication-quality scientific figures, electron microscopy style, research-grade visualizations, data visualizations
 
-Grade 5-8: Use bright colors, simplified shapes, "Pixar-style" 3D renders, or engaging illustrations. Avoid overwhelming complexity.
+REQUIRED VISUAL ELEMENTS:
+- Scientific accuracy in proportions, structures, and relationships
+- Clear labeling-ready compositions (even if labels aren't shown)
+- Professional color palettes used in scientific publishing (blues, greens, neutral tones)
+- Clean backgrounds (white, gradient, or contextually appropriate)
+- Proper scale and perspective for scientific subjects
 
-High School: Use clean "textbook style" diagrams, cutaways, or photorealism.
+PROMPT CONSTRUCTION FORMAT:
+"Scientific illustration of [SUBJECT] showing [KEY COMPONENTS], [VISUALIZATION TYPE] style, [SPECIFIC SCIENTIFIC DETAILS], professional academic quality, textbook illustration, clean composition, accurate proportions, [LIGHTING], high resolution, publication quality"
 
-University/Professional: Use Electron Microscope style, hyper-realistic macro photography, or complex data visualizations. strict scientific accuracy is paramount.
+NEGATIVE PROMPT must include:
+"cartoon, anime, fantasy, artistic interpretation, stylized, abstract, inaccurate anatomy, wrong proportions, text, watermark, logo, blurry, low quality, amateur, unrealistic colors, exaggerated features"
 
-Analyze Technical Requirements:
-
-Identify specific components (e.g., if the topic is "Plant Cell", ensure Chloroplasts and Cell Walls are mentioned).
-
-Ensure correct lighting and camera angles (e.g., "Cross-section view" vs "Macro view").
-
-Construct the final_prompt:
-
-Format: [Subject] + [Action/Context] + [Art Style/Medium] + [Lighting/Color] + [Camera/View] + [Quality Boosters]
-
-Keywords to use: "Unreal Engine 5", "Octane Render", "8k", "Volumetric Lighting", "Educational Diagram", "Studio Ghibli" (for younger), "National Geographic" (for older).
-
-Construct the negative_prompt:
-
-Always include: "text, watermark, blurry, distorted, anatomical nonsense, bad geometry, low resolution".
-
-Add subject-specific negatives (e.g., for Space: "atmosphere on moon").
+Research Context (use this for accuracy):
+${researchContext}
 
 Output Format: return ONLY the raw JSON object. Do not wrap it in markdown code blocks.`,
           responseMimeType: 'application/json',
-          responseSchema: ImageGenerationPromptSchema
+          responseSchema: ImageGenerationPromptSchema,
+          thinkingConfig: { thinkingBudget: 512 }
         },
         contents: [{ role: 'user', parts: [{ text: topic }] }]
       });

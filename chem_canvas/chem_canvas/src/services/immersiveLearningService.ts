@@ -258,6 +258,11 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     5. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
     6. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
     7. Focus on rich, detailed text content and engaging interactive activities instead of images.
+    8. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration. Include:
+       - The specific scientific subject and key components to show
+       - The type of scientific visualization (diagram, cross-section, molecular structure, process flow, microscopy view, etc.)
+       - Specific scientific details that must be accurate (structures, labels, relationships)
+       - Example: "Scientific diagram of the electron transport chain in mitochondria showing Complex I-IV, ATP synthase, proton gradient across inner membrane, NADH and FADH2 entry points, cytochrome c, and oxygen as final electron acceptor, textbook illustration style, publication quality"
 
     Text to Analyze:
     ${text.slice(0, 10000)}
@@ -272,7 +277,7 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
       id: 'fallback-1',
       title: 'Document Overview',
       content: text.slice(0, 500) + '...',
-      imagePrompt: 'An educational illustration representing the main topic'
+      imagePrompt: 'Scientific textbook-style diagram illustrating the main educational concept with accurate proportions, labeled components, professional academic quality, clean white background, publication-ready illustration'
     }],
     keyTerms: [],
     contextNotes: []
@@ -384,6 +389,11 @@ export const streamAnalyzeDocumentForImmersive = async (
     5. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
     6. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
     7. Focus on rich, detailed text content and engaging interactive activities instead of images.
+    8. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration. Include:
+       - The specific scientific subject and key components to show
+       - The type of scientific visualization (diagram, cross-section, molecular structure, process flow, microscopy view, etc.)
+       - Specific scientific details that must be accurate (structures, labels, relationships)
+       - Example: "Scientific diagram of the electron transport chain in mitochondria showing Complex I-IV, ATP synthase, proton gradient across inner membrane, NADH and FADH2 entry points, cytochrome c, and oxygen as final electron acceptor, textbook illustration style, publication quality"
 
     Text to Analyze:
     ${text.slice(0, 10000)}
@@ -395,7 +405,7 @@ export const streamAnalyzeDocumentForImmersive = async (
       id: 'fallback-1',
       title: 'Document Overview',
       content: text.slice(0, 500) + '...',
-      imagePrompt: 'An educational illustration representing the main topic'
+      imagePrompt: 'Scientific textbook-style diagram illustrating the main educational concept with accurate proportions, labeled components, professional academic quality, clean white background, publication-ready illustration'
     }],
     keyTerms: [],
     contextNotes: []
