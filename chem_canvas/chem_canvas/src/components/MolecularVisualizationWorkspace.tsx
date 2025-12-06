@@ -604,24 +604,31 @@ const MolecularVisualizationWorkspace: React.FC = () => {
 
   return (
     <div className="space-y-5 text-slate-100">
-      <section className="rounded-2xl border border-slate-800/70 bg-slate-950/80 p-4 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {CATEGORY_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSelectedCategory(tab.id)}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                selectedCategory === tab.id
-                  ? 'border-indigo-500 bg-indigo-600/70 text-white'
-                  : 'border-slate-700 text-slate-300 hover:border-indigo-400'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <section className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-950/80 to-slate-900/80 p-5 space-y-4 shadow-2xl ring-1 ring-slate-900/50">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {CATEGORY_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSelectedCategory(tab.id)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition shadow-sm ${
+                  selectedCategory === tab.id
+                    ? 'bg-indigo-500 text-white shadow-indigo-500/20'
+                    : 'bg-slate-900/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {searchFeedback && (
+            <span className="text-[11px] text-slate-400 bg-slate-900/70 border border-slate-800/70 px-2 py-1 rounded-full">
+              {searchFeedback}
+            </span>
+          )}
         </div>
-        <label className="text-xs uppercase tracking-[0.3em] text-slate-500">Search workspace</label>
-        <div className="flex flex-wrap gap-2">
+
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
             value={searchQuery}
@@ -633,12 +640,12 @@ const MolecularVisualizationWorkspace: React.FC = () => {
               }
             }}
             placeholder="Search molecules, proteins, crystals, or paste a URL..."
-            className="flex-1 min-w-[240px] rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="flex-1 min-w-[260px] rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/70"
           />
           <button
             onClick={() => void handleSearch()}
             disabled={isSearchLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-500/70 bg-indigo-600/90 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-60"
           >
             {isSearchLoading ? (
               <>
@@ -650,9 +657,7 @@ const MolecularVisualizationWorkspace: React.FC = () => {
             )}
           </button>
         </div>
-        {searchFeedback && (
-          <p className="text-xs text-slate-400">{searchFeedback}</p>
-        )}
+
         <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
           {CATEGORY_HINTS[selectedCategory].map((hint) => (
             <button
@@ -661,7 +666,7 @@ const MolecularVisualizationWorkspace: React.FC = () => {
                 setSearchQuery(hint);
                 void handleSearch(hint);
               }}
-              className="rounded-full border border-slate-700/70 px-3 py-1 hover:border-indigo-400 hover:text-white"
+              className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 hover:border-indigo-400 hover:text-white"
             >
               {hint}
             </button>
