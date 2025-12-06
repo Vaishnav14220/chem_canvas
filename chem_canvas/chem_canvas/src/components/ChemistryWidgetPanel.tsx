@@ -38,6 +38,34 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({
       </div>
 
       <div className="flex-1 bg-slate-900 overflow-auto">
+        {/* Magic UI-inspired interactive strip */}
+        <div className="px-4 py-3 border-b border-slate-800/70 bg-slate-900/80">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { id: 'preset-ball', label: 'Ball & Stick', accent: 'from-blue-500/50 to-cyan-500/40' },
+              { id: 'preset-density', label: 'Electron Density', accent: 'from-violet-500/50 to-indigo-500/40' },
+              { id: 'preset-surface', label: 'Solvent Surface', accent: 'from-emerald-500/50 to-teal-500/40' },
+              { id: 'preset-reset', label: 'Reset View', accent: 'from-amber-500/50 to-orange-500/40' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                className={`group relative overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/80 px-3 py-3 text-left transition hover:-translate-y-[1px] hover:border-slate-600 hover:shadow-[0_10px_30px_rgba(0,0,0,0.35)]`}
+              >
+                <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-br ${item.accent} blur-[18px]`} />
+                <div className="relative flex items-center justify-between">
+                  <span className="text-sm font-semibold text-slate-100">{item.label}</span>
+                  <span className="text-[10px] text-slate-400 px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/80">
+                    tap
+                  </span>
+                </div>
+                <p className="relative mt-1 text-[11px] text-slate-400">
+                  Interactive control — apply instantly to the live viewport.
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="p-4 h-full overflow-y-auto bg-slate-900">
           <MolecularVisualizationWorkspace />
         </div>
