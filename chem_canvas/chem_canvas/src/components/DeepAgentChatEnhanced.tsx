@@ -1118,7 +1118,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                       <div className="space-y-2">
                         {toolCalls.map((tc, idx) => (
                           <div
-                            key={tc.id}
+                            key={`${tc.id}-${idx}`}
                             className={`flex items-center gap-3 p-3 rounded-lg border ${tc.status === 'completed' ? 'bg-green-500/10 border-green-500/30' :
                               tc.status === 'error' ? 'bg-red-500/10 border-red-500/30' :
                                 'bg-gray-700 border-gray-600'
@@ -1397,7 +1397,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     {toolCalls.length > 0 && (
                       <div className="space-y-2 mb-4">
                         {toolCalls.filter(tc => tc.name !== 'task').map(tc => (
-                          <ToolCallBox key={tc.id} toolCall={tc} />
+                          <ToolCallBox key={`${tc.id}-${tc.status}`} toolCall={tc} />
                         ))}
                       </div>
                     )}
@@ -1408,8 +1408,8 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                         <Task defaultOpen={true} className="border rounded-lg bg-card text-card-foreground shadow-sm">
                           <TaskTrigger title="Deep Agent Working..." className="px-4 py-3 border-b" />
                           <TaskContent className="px-4 py-3">
-                            {activeTasks.map((task) => (
-                              <div key={task.id}>
+                            {activeTasks.map((task, taskIdx) => (
+                              <div key={`${task.id}-${taskIdx}`}>
                                 {activeTasks.length > 1 && (
                                   <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 mt-2">
                                     {task.title}
@@ -1417,7 +1417,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                                 )}
                                 {task.steps.map((step, idx) => (
                                   <WorkflowStep
-                                    key={step.id}
+                                    key={`${task.id}-step-${step.id ?? idx}-${idx}`}
                                     step={step}
                                     isLast={idx === task.steps.length - 1}
                                   />
@@ -1464,7 +1464,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded">
-                          {finalDocument.content.length} chars
+                          {finalDocument.content ? finalDocument.content.length : 0} chars
                         </span>
                         <button
                           onClick={(e) => {
