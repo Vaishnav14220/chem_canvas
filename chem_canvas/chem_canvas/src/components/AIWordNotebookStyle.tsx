@@ -2014,21 +2014,21 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                       </div>
 
                       {/* Search Bar */}
-                      <div className="flex gap-2 mb-3">
-                        <div className="flex-1 relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                      <div className="flex gap-2 mb-3 items-center">
+                        <div className="flex-1 flex items-center gap-2 bg-[#1b1c20] border border-white/10 rounded-full px-3 py-1.5 shadow-inner shadow-black/30">
+                          <Search className="h-4 w-4 text-gray-500" />
                           <input
                             type="text"
                             value={driveSearchQuery}
                             onChange={(e) => setDriveSearchQuery(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleDriveSearch()}
-                            placeholder="Search in Drive..."
-                            className="w-full pl-10 pr-4 py-2 rounded-lg bg-[#2d2d2d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-green-500 text-sm"
+                            placeholder="Search in Drive"
+                            className="w-full bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
                           />
                         </div>
                         <button
                           onClick={handleDriveSearch}
-                          className="px-4 py-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm transition-colors"
+                          className="px-4 py-2 rounded-lg bg-[#24262d] hover:bg-[#2d3038] text-sm text-gray-200 transition-colors border border-white/10"
                         >
                           Search
                         </button>
@@ -2059,7 +2059,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                       </div>
 
                       {/* File Grid (Drive-like cards) */}
-                      <div className="flex-1 overflow-y-auto border border-white/10 rounded-lg bg-[#111216]">
+                      <div className="flex-1 overflow-y-auto border border-white/10 rounded-lg bg-[#101115]">
                         {driveLoading ? (
                           <div className="flex items-center justify-center py-12">
                             <Loader2 className="h-8 w-8 animate-spin text-green-400" />
@@ -2102,12 +2102,12 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                                         toggleDriveFileSelection(file);
                                       }
                                     }}
-                                    className={`relative flex flex-col items-start gap-2 px-4 py-3 rounded-2xl text-left border transition-all duration-150 shadow-[0_10px_28px_rgba(0,0,0,0.35)] bg-gradient-to-br from-[#171a21] to-[#111216] hover:border-white/10 ${
-                                      isSelected ? 'border-emerald-400/60 ring-1 ring-emerald-400/40' : 'border-white/5'
+                                    className={`relative flex flex-col gap-2 px-4 py-3 rounded-xl text-left border transition-all duration-150 shadow-[0_10px_26px_rgba(0,0,0,0.32)] bg-[#14161c] hover:bg-[#191b22] ${
+                                      isSelected ? 'border-emerald-400/60 ring-1 ring-emerald-400/30' : 'border-white/6'
                                     }`}
                                   >
-                                    <div className="flex items-start gap-3 w-full">
-                                      <div className={`flex-shrink-0 rounded-xl bg-white/5 p-2 ${accent}`}>
+                                    <div className="flex items-center gap-3 w-full">
+                                      <div className={`flex-shrink-0 rounded-lg bg-white/5 p-2 ${accent}`}>
                                         {getFileIcon(file.mimeType)}
                                       </div>
                                       <div className="min-w-0 flex-1">
@@ -2117,11 +2117,14 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                                           {file.size && ` • ${(parseInt(file.size) / 1024).toFixed(1)} KB`}
                                         </p>
                                       </div>
-                                      {isFolder && <ChevronRight className="h-4 w-4 text-gray-500 flex-shrink-0" />}
+                                      {isFolder ? (
+                                        <ChevronRight className="h-4 w-4 text-gray-500 flex-shrink-0" />
+                                      ) : (
+                                        <div className={`h-2.5 w-2.5 rounded-full ${isSelected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                                      )}
                                     </div>
                                     {!isFolder && (
-                                      <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                                        <div className={`h-2 w-2 rounded-full ${isSelected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                                      <div className="text-[11px] text-gray-400 pl-10">
                                         {isSelected ? 'Selected' : 'Click to select'}
                                       </div>
                                     )}
