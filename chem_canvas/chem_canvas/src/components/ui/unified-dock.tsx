@@ -12,7 +12,6 @@ import {
 } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { 
-  Mic, 
   PhoneOff, 
   Loader2, 
   Activity, 
@@ -441,23 +440,6 @@ export function UnifiedDock({
           ) : (
             <Sparkles className="w-6 h-6" />
           )}
-        </DockIcon>
-
-        {/* Mic Status Button - Always visible */}
-        <DockIcon
-          title={isListening ? 'Listening...' : isSpeaking ? 'Speaking...' : 'Mic Status'}
-          active={isListening || isSpeaking}
-          badge={isListening || isSpeaking}
-          badgeColor={isListening ? "bg-pink-500" : isSpeaking ? "bg-emerald-500" : "bg-slate-500"}
-          className={cn(
-            isListening 
-              ? "bg-pink-500/20 text-pink-400" 
-              : isSpeaking 
-                ? "bg-emerald-500/20 text-emerald-400" 
-                : "bg-slate-800/80 text-slate-400"
-          )}
-        >
-          <Mic className={cn("w-5 h-5", (isListening || isSpeaking) && "animate-pulse")} />
         </DockIcon>
 
         {/* Screen Share Button - Always visible */}
