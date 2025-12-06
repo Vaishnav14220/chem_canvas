@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Download,
   Loader2,
+  Waves,
 } from 'lucide-react';
 import JSmolViewer from './JSmolViewer';
 import SymmetryQuiz from './SymmetryQuiz';
