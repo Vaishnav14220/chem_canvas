@@ -1519,6 +1519,22 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
     }
   };
 
+  // Run a studio tool via Deep Agent using selected sources and optional user input
+  const handleStudioToolAction = useCallback((tool: StudioTool) => {
+    const selected = sources.filter(s => s.selected);
+    if (selected.length === 0) {
+      showNotification('Please select at least one source first.');
+      return;
+    }
+
+    const userInput = inputText.trim();
+    const sourceList = selected.map(s => s.name).join(', ');
+    const intent = `${tool.label}: ${userInput || 'Generate using selected sources.'}`;
+    const prompt = `${intent}\nSources: ${sourceList}`;
+
+    handleDeepAgentResearch(prompt);
+  }, [handleDeepAgentResearch, inputText, showNotification, sources]);
+
   // Load document from URL
   const handleLoadDocument = useCallback(() => {
     if (documentUrl.trim()) {
@@ -1570,11 +1586,11 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
   // Studio tools
   const studioTools: StudioTool[] = [
-    { id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" />, action: () => { } },
-    { id: 'qa', label: 'Question & Answers', icon: <HelpCircle className="h-5 w-5" />, action: () => { } },
-    { id: 'notes', label: 'Study Notes', icon: <BookOpen className="h-5 w-5" />, action: () => { } },
-    { id: 'summary', label: 'Summary Formulas', icon: <Brain className="h-5 w-5" />, action: () => { } },
-    { id: 'keypoints', label: 'Key Points', icon: <Mic className="h-5 w-5" />, action: () => { } },
+    { id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" />, action: () => { } }) },
+    { id: 'qa', label: 'Question & Answers', icon: <HelpCircle className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'qa', label: 'Question & Answers', icon: <HelpCircle className="h-5 w-5" />, action: () => { } }) },
+    { id: 'notes', label: 'Study Notes', icon: <BookOpen className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'notes', label: 'Study Notes', icon: <BookOpen className="h-5 w-5" />, action: () => { } }) },
+    { id: 'summary', label: 'Summary Formulas', icon: <Brain className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'summary', label: 'Summary Formulas', icon: <Brain className="h-5 w-5" />, action: () => { } }) },
+    { id: 'keypoints', label: 'Key Points', icon: <Mic className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'keypoints', label: 'Key Points', icon: <Mic className="h-5 w-5" />, action: () => { } }) },
   ];
 
   // Get source icon
