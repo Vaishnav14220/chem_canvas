@@ -747,20 +747,6 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
       const result = await listGoogleDocs(20);
       if (result.success && result.documents) {
         setGoogleDocs(result.documents);
-
-        // Add Google Docs as sources
-        const googleSources: Source[] = result.documents.map((doc: DocumentInfo) => ({
-          id: `gdoc-${doc.id}`,
-          name: doc.name,
-          type: 'doc' as const,
-          selected: false
-        }));
-
-        setSources(prev => {
-          // Remove old Google Doc sources and add new ones
-          const nonGoogleSources = prev.filter(s => !s.id.startsWith('gdoc-'));
-          return [...nonGoogleSources, ...googleSources];
-        });
       }
     } catch (error) {
       console.error('Failed to load Google Docs:', error);
@@ -795,10 +781,22 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         setActiveView('googledoc');
         setShowGoogleDocsModal(false);
 
-        // Add to sources as selected
-        setSources(prev => prev.map(s =>
-          s.id === `gdoc-${doc.id}` ? { ...s, selected: true } : s
-        ));
+        // Add to sources only when explicitly opened/imported
+        setSources(prev => {
+          const existing = prev.find(s => s.id === `gdoc-${doc.id}`);
+          if (existing) {
+            return prev.map(s => s.id === `gdoc-${doc.id}` ? { ...s, selected: true } : s);
+          }
+          return [
+            ...prev,
+            {
+              id: `gdoc-${doc.id}`,
+              name: doc.name,
+              type: 'doc',
+              selected: true,
+            },
+          ];
+        });
 
         showNotification(`✓ Opened: ${doc.name}`);
       } else {
@@ -1071,7 +1069,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
             modifiedTime: file.modifiedTime,
             webViewLink: file.webViewLink || `https://docs.google.com/document/d/${file.id}/edit`
           };
-          // Add to googleDocs list if not already there
+          // Only add to the user's saved Docs list if they explicitly import
           setGoogleDocs(prev => {
             if (prev.find(d => d.id === doc.id)) return prev;
             return [...prev, doc];
