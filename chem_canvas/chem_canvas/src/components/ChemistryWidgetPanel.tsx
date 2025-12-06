@@ -69,6 +69,26 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({
         <div className="p-4 h-full overflow-y-auto bg-slate-900">
           <MolecularVisualizationWorkspace />
         </div>
+
+        {/* Compact Magic-UI style dock */}
+        <div className="sticky bottom-0 z-10 px-4 pb-4">
+          <div className="mx-auto flex w-full max-w-xl items-center justify-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/80 px-3 py-2 shadow-xl backdrop-blur">
+            {[
+              { id: 'ball', label: 'Ball&Stick' },
+              { id: 'density', label: 'Density' },
+              { id: 'surface', label: 'Surface' },
+              { id: 'reset', label: 'Reset' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                className="flex h-10 flex-1 items-center justify-center rounded-xl bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:bg-slate-800 hover:text-white border border-slate-800/70"
+                title={item.label}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
