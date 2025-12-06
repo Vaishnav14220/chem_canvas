@@ -605,6 +605,30 @@ const MolecularVisualizationWorkspace: React.FC = () => {
   return (
     <div className="space-y-5 text-slate-100">
       <section className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-950/80 to-slate-900/80 p-5 space-y-4 shadow-2xl ring-1 ring-slate-900/50">
+        {/* Hero header */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <Layers3 className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-white leading-tight">3D Explorer</h2>
+              <p className="text-xs text-slate-400">Load molecules, proteins, crystals, or reactions with one tap.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] text-slate-300">JSmol Live</span>
+            <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] text-slate-300">AI Assist</span>
+            <button
+              onClick={loadSampleStructure}
+              className="inline-flex items-center gap-2 rounded-full bg-indigo-600/80 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm shadow-indigo-500/30 hover:bg-indigo-600"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Load sample
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {CATEGORY_TABS.map((tab) => (
@@ -669,6 +693,34 @@ const MolecularVisualizationWorkspace: React.FC = () => {
               className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 hover:border-indigo-400 hover:text-white"
             >
               {hint}
+            </button>
+          ))}
+        </div>
+
+        {/* Compact preset dock */}
+        <div className="mx-auto flex w-full max-w-2xl items-center justify-center gap-2 rounded-2xl border border-slate-800/70 bg-slate-950/90 px-2 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
+          {[
+            { id: 'dock-ball', label: 'Ball & Stick', icon: Layers3 },
+            { id: 'dock-density', label: 'Density', icon: Gem },
+            { id: 'dock-surface', label: 'Surface', icon: Waves },
+            { id: 'dock-reset', label: 'Reset', icon: RefreshCcw },
+          ].map((item) => (
+            <button
+              key={item.id}
+              className="group relative flex h-10 flex-1 items-center justify-center overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/80 hover:text-white"
+              title={item.label}
+              onClick={() => {
+                if (item.id === 'dock-ball') handleRunDemo(visualizationDemos[0]);
+                if (item.id === 'dock-density') setScript(visualizationDemos.find(d => d.id === 'electron_density')?.script || visualizationDemos[0].script);
+                if (item.id === 'dock-surface') setScript(visualizationDemos.find(d => d.id === 'solvent_surface')?.script || visualizationDemos[0].script);
+                if (item.id === 'dock-reset') handleResetView();
+              }}
+            >
+              <span className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br from-blue-500/10 via-cyan-400/10 to-blue-600/10 blur-[12px] transition-opacity" />
+              <div className="relative flex items-center gap-2">
+                <item.icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </div>
             </button>
           ))}
         </div>
