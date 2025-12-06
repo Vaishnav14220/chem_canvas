@@ -727,7 +727,42 @@ const MolecularVisualizationWorkspace: React.FC = () => {
         </div>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
+      <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
+        {/* Sidebar: presets + quiz */}
+        <div className="space-y-4">
+          {renderCategoryTools()}
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <Beaker className="w-5 h-5 text-cyan-300" />
+              <div>
+                <h4 className="text-sm font-semibold text-white">Symmetry quiz</h4>
+                <p className="text-xs text-slate-400">Launch when you want to test recognition.</p>
+              </div>
+            </div>
+            {!quizOpen ? (
+              <button
+                onClick={() => setQuizOpen(true)}
+                className="w-full rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600"
+              >
+                Start Quiz
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setQuizOpen(false)}
+                    className="text-xs text-slate-400 hover:text-white"
+                  >
+                    Close quiz
+                  </button>
+                </div>
+                <SymmetryQuiz onScriptChange={setScript} />
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* Main canvas */}
         <div className="space-y-4">
           <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -761,40 +796,6 @@ const MolecularVisualizationWorkspace: React.FC = () => {
             {selectedCategory === 'reaction' && reactionResolution && (
               <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
                 <ResolvedReactionPath resolution={reactionResolution} onScriptChange={setScript} />
-              </div>
-            )}
-          </section>
-
-          {renderCategoryTools()}
-        </div>
-
-        <div className="space-y-4">
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
-            <div className="flex items-center gap-3">
-              <Beaker className="w-5 h-5 text-cyan-300" />
-              <div>
-                <h4 className="text-sm font-semibold text-white">Symmetry quiz</h4>
-                <p className="text-xs text-slate-400">Launch when you want to test recognition.</p>
-              </div>
-            </div>
-            {!quizOpen ? (
-              <button
-                onClick={() => setQuizOpen(true)}
-                className="w-full rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600"
-              >
-                Start Quiz
-              </button>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => setQuizOpen(false)}
-                    className="text-xs text-slate-400 hover:text-white"
-                  >
-                    Close quiz
-                  </button>
-                </div>
-                <SymmetryQuiz onScriptChange={setScript} />
               </div>
             )}
           </section>
