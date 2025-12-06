@@ -243,6 +243,110 @@ const WorkflowStep: React.FC<WorkflowStepProps> = ({ step, isLast }) => {
 };
 
 // ==========================================
+// Link Graph (Obsidian-style radial layout)
+// ==========================================
+
+interface GraphNode {
+  id: string;
+  label: string;
+  type: 'final' | 'artifact';
+}
+
+interface GraphLink {
+  source: string;
+  target: string;
+}
+
+const GraphView: React.FC<{ nodes: GraphNode[]; links: GraphLink[] }> = ({ nodes, links }) => {
+  const width = 1100;
+  const height = 560;
+  const centerX = width / 2;
+  const centerY = height / 2;
+
+  const positionedNodes = useMemo(() => {
+    if (nodes.length === 0) return [];
+    const nonFinal = nodes.filter(n => n.type !== 'final');
+    const finals = nodes.filter(n => n.type === 'final');
+    const positioned: Array<GraphNode & { x: number; y: number }> = [];
+
+    finals.forEach(f => positioned.push({ ...f, x: centerX, y: centerY }));
+
+    const radius = Math.min(width, height) / 2.5;
+    nonFinal.forEach((n, idx) => {
+      const angle = (2 * Math.PI * idx) / Math.max(1, nonFinal.length);
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      positioned.push({ ...n, x, y });
+    });
+
+    return positioned;
+  }, [nodes, centerX, centerY, width, height]);
+
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, { x: number; y: number; type: GraphNode['type']; label: string }>();
+    positionedNodes.forEach(n => map.set(n.id, n));
+    return map;
+  }, [positionedNodes]);
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900/80 p-3 shadow-lg">
+      <div className="flex items-center justify-between mb-3 text-xs text-gray-400">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full bg-cyan-400" /> Final
+          <div className="h-2 w-2 rounded-full bg-purple-400" /> Artifact
+        </div>
+        <div>Radial layout — each artifact links to the final doc</div>
+      </div>
+      <div className="overflow-auto">
+        <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="bg-gray-950/60 rounded-lg border border-gray-800">
+          {/* Edges */}
+          {links.map((l, idx) => {
+            const s = nodeMap.get(l.source);
+            const t = nodeMap.get(l.target);
+            if (!s || !t) return null;
+            return (
+              <g key={`link-${idx}`}>
+                <line
+                  x1={s.x}
+                  y1={s.y}
+                  x2={t.x}
+                  y2={t.y}
+                  stroke="rgba(94, 234, 212, 0.35)"
+                  strokeWidth={1.5}
+                />
+              </g>
+            );
+          })}
+
+          {/* Nodes */}
+          {positionedNodes.map((n, idx) => (
+            <g key={`node-${n.id}-${idx}`} transform={`translate(${n.x},${n.y})`}>
+              <circle
+                r={n.type === 'final' ? 22 : 16}
+                fill={n.type === 'final' ? 'rgba(34,211,238,0.25)' : 'rgba(168,85,247,0.25)'}
+                stroke={n.type === 'final' ? 'rgba(34,211,238,0.8)' : 'rgba(168,85,247,0.8)'}
+                strokeWidth={2}
+              />
+              <text
+                y={n.type === 'final' ? 36 : 30}
+                textAnchor="middle"
+                fill="#e5e7eb"
+                fontSize="11"
+                fontWeight={600}
+                className="pointer-events-none"
+              >
+                {n.label.slice(0, 32)}
+                {n.label.length > 32 ? '…' : ''}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // Main Component
 // ==========================================
 
@@ -315,6 +419,22 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
   // Get available tools and subagents
   const availableTools = getAvailableTools();
   const availableSubagents = getAvailableSubagents();
+
+  // Link Graph data (final doc + artifacts)
+  const graphData = useMemo(() => {
+    const nodes: Array<{ id: string; label: string; type: 'final' | 'artifact' }> = [];
+    const links: Array<{ source: string; target: string }> = [];
+    if (finalDocument) {
+      nodes.push({ id: 'final-doc', label: finalDocument.title || 'Final Document', type: 'final' });
+    }
+    artifactsList.forEach(a => {
+      nodes.push({ id: a.id, label: a.title, type: 'artifact' });
+      if (finalDocument) {
+        links.push({ source: a.id, target: 'final-doc' });
+      }
+    });
+    return { nodes, links };
+  }, [finalDocument, artifactsList]);
 
   // Computed State
   const hasTasks = currentTodos.length > 0;
@@ -1752,50 +1872,8 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                 </div>
 
                 {/* Nodes */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {finalDocument && (
-                    <div className="p-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10">
-                      <div className="text-xs uppercase text-cyan-300 mb-1">Final Document</div>
-                      <div className="text-sm font-semibold text-white truncate">{finalDocument.title}</div>
-                      <div className="text-[11px] text-gray-400 mt-1">{(finalDocument.content || '').slice(0, 80)}{(finalDocument.content || '').length > 80 ? '…' : ''}</div>
-                    </div>
-                  )}
-                  {artifactsList.map((a) => (
-                    <div key={a.id} className="p-3 rounded-xl border border-gray-700 bg-gray-850">
-                      <div className="text-xs uppercase text-gray-400 mb-1">{a.type}</div>
-                      <div className="text-sm font-semibold text-white truncate">{a.title}</div>
-                      <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{a.content.slice(0, 120)}{a.content.length > 120 ? '…' : ''}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Edges */}
-                <div className="p-3 rounded-xl border border-gray-700 bg-gray-850">
-                  <div className="text-sm font-semibold text-white mb-2">Connections</div>
-                  <div className="space-y-2 text-sm text-gray-300">
-                    {finalDocument ? (
-                      artifactsList.length > 0 ? (
-                        artifactsList.map((a) => (
-                          <div key={`edge-${a.id}`} className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-cyan-400" />
-                            <span className="text-white font-medium">{a.title}</span>
-                            <span className="text-gray-500">→</span>
-                            <span className="text-cyan-300">{finalDocument.title}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-gray-500">No artifacts linked yet.</div>
-                      )
-                    ) : (
-                      <div className="text-gray-500">No final document available.</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Hint */}
-                <div className="text-xs text-gray-500">
-                  For richer graphs, add source metadata to artifacts and recompute edges.
-                </div>
+              <GraphView nodes={graphData.nodes} links={graphData.links} />
+              <div className="text-xs text-gray-500">Graph auto-links artifacts to the final document. Add source metadata to drive richer connections.</div>
               </div>
             </div>
           )
