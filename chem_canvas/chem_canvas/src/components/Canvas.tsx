@@ -900,9 +900,9 @@ export default function Canvas({
     (text: string) => {
       // Instead of a side panel, inject explanations directly onto the canvas
       if (!text?.trim()) return;
-      handleExternalTextInjection(text);
+      insertTextBlock(text, { autoPlacement: true });
     },
-    [handleExternalTextInjection]
+    [insertTextBlock]
   );
 
   const clearMarkdownEntries = useCallback(() => {
