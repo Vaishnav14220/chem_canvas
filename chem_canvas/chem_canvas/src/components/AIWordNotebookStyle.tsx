@@ -1570,14 +1570,11 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
   // Studio tools
   const studioTools: StudioTool[] = [
-    { id: 'audio', label: 'Audio Overview', icon: <Mic className="h-5 w-5" />, action: () => { } },
-    { id: 'video', label: 'Video Overview', icon: <Video className="h-5 w-5" />, action: () => { } },
-    { id: 'mindmap', label: 'Mind Map', icon: <Brain className="h-5 w-5" />, action: () => { } },
     { id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" />, action: () => { } },
-    { id: 'flashcards', label: 'Flashcards', icon: <BookOpen className="h-5 w-5" />, action: () => { } },
-    { id: 'quiz', label: 'Quiz', icon: <HelpCircle className="h-5 w-5" />, action: () => { } },
-    { id: 'infographic', label: 'Infographic', icon: <Image className="h-5 w-5" />, action: () => { } },
-    { id: 'slides', label: 'Slide deck', icon: <Presentation className="h-5 w-5" />, action: () => { } },
+    { id: 'qa', label: 'Question & Answers', icon: <HelpCircle className="h-5 w-5" />, action: () => { } },
+    { id: 'notes', label: 'Study Notes', icon: <BookOpen className="h-5 w-5" />, action: () => { } },
+    { id: 'summary', label: 'Summary Formulas', icon: <Brain className="h-5 w-5" />, action: () => { } },
+    { id: 'keypoints', label: 'Key Points', icon: <Mic className="h-5 w-5" />, action: () => { } },
   ];
 
   // Get source icon
