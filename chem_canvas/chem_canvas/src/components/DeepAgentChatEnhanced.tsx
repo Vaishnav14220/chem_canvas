@@ -1192,8 +1192,8 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     </div>
                   )}
 
-                  {/* Empty State */}
-                  {activeTasks.length === 0 && toolCalls.length === 0 && subAgents.length === 0 && !isLoading && (
+                    {/* Empty State */}
+                    {activeTasks.length === 0 && toolCalls.length === 0 && subAgents.length === 0 && !isLoading && (
                     <div className="text-center py-12">
                       <div className="inline-flex p-4 bg-gray-800 rounded-full mb-4">
                         <GitBranch className="w-8 h-8 text-gray-600" />
@@ -1282,8 +1282,8 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                       </div>
                     )}
 
-                    {/* Messages */}
-                    {messages.map((message, index) => (
+                    {/* Messages (hidden in concise mode) */}
+                    {!conciseMode && messages.map((message, index) => (
                       <div
                         key={index}
                         className={`flex w-full max-w-full overflow-x-hidden mb-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'
@@ -1321,7 +1321,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     ))}
 
                     {/* Streaming Content with Live Animation */}
-                    {isStreaming && (
+                    {isStreaming && !conciseMode && (
                       <div className="flex justify-start mb-4">
                         <div className="max-w-full w-full rounded-lg p-4 bg-gray-800 border border-purple-500/30">
                           {/* Animated Header */}
@@ -1409,7 +1409,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     )}
 
                     {/* Tool Calls */}
-                    {toolCalls.length > 0 && (
+                    {toolCalls.length > 0 && !conciseMode && (
                       <div className="space-y-2 mb-4">
                         {toolCalls.filter(tc => tc.name !== 'task').map(tc => (
                           <ToolCallBox key={`${tc.id}-${tc.status}`} toolCall={tc} />
@@ -1418,7 +1418,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     )}
                     {/* Active Tasks Progress */}
                     {/* Active Tasks Progress */}
-                    {activeTasks.length > 0 && (
+                    {activeTasks.length > 0 && !conciseMode && (
                       <div className="mb-4">
                         <Task defaultOpen={true} className="border rounded-lg bg-card text-card-foreground shadow-sm">
                           <TaskTrigger title="Deep Agent Working..." className="px-4 py-3 border-b" />
