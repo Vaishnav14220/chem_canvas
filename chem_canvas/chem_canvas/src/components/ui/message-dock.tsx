@@ -235,8 +235,8 @@ export function MessageDock({
   const isExpanded = expandedCharacter !== null;
 
   const defaultPositionClasses = position === "top" 
-    ? "fixed top-6 left-1/2 -translate-x-1/2 z-50"
-    : "fixed bottom-6 left-1/2 -translate-x-1/2 z-50";
+    ? "fixed top-6 left-1/2 -translate-x-1/2 z-[9999]"
+    : "fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999]";
 
   return (
     <motion.div

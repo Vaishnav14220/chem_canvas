@@ -150,9 +150,9 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             className={`fixed bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700 z-40 ${
               isFullscreen
-                ? 'inset-4 rounded-xl'
-                : 'right-4 top-20 bottom-24 w-[500px] rounded-xl'
-            } ${className}`}
+                ? 'left-4 right-4 top-28 bottom-8 rounded-xl'
+                : 'right-4 top-28 bottom-24 w-[520px] rounded-xl'
+            } max-h-[calc(100vh-8rem)] ${className}`}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-t-xl">

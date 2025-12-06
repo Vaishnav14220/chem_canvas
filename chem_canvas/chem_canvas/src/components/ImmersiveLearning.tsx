@@ -1,6 +1,14 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon, Lightbulb, Zap, Target, Award, Eye, EyeOff } from 'lucide-react';
+import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon, Lightbulb, Zap, Target, Award, Eye, EyeOff, Code2, Terminal as TerminalIcon, Save, RotateCcw, Download } from 'lucide-react';
+import CodeMirror from '@uiw/react-codemirror';
+import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
+import { python } from '@codemirror/lang-python';
+import { javascript } from '@codemirror/lang-javascript';
+import { java } from '@codemirror/lang-java';
+import { cpp } from '@codemirror/lang-cpp';
+import { vscodeDark } from '@uiw/codemirror-theme-vscode';
+import { dracula } from '@uiw/codemirror-theme-dracula';
 import LaserCursor from './LaserCursor';
 import HandControlled3DMolecule from './HandControlled3DMolecule';
 import { useHandTracking } from '../hooks/useHandTracking';
@@ -24,9 +32,6 @@ import {
     generateEnhancedTermInfo,
     generateBrainstormActivity,
     generateWhatIfActivity,
-    EnhancedTermInfo,
-    BrainstormActivity,
-    WhatIfActivity,
 
     generateReactFlowData,
     generateImmersiveImage,
@@ -59,6 +64,8 @@ import {
     BoundingBox,
     ReactFlowData
 } from '../services/immersiveLearningService';
+import { sendStudiumChatMessage } from '../services/geminiService';
+import { generateStreamingContent } from '../services/geminiStreaming';
 import { fetchGroundingSources } from '../services/geminiService';
 import ReactFlowMindMap from './ReactFlowMindMap';
 import { LessonGeneratorActivity } from './LessonGeneratorActivity';
@@ -68,7 +75,16 @@ interface ImmersiveLearningProps {
     apiKey?: string;
 }
 
-type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity';
+type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity' | 'code-lab';
+
+type CodeLabLanguage = 'python' | 'javascript' | 'java' | 'cpp';
+
+interface CodeLabFile {
+    id: string;
+    name: string;
+    language: CodeLabLanguage;
+    content: string;
+}
 
 interface LearningModeCard {
     id: LearningMode;
@@ -181,6 +197,23 @@ const ImageActivityIcon = ({ active }: { active?: boolean }) => (
     </svg>
 );
 
+const CodeLabIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Code editor window */}
+        <rect x="2" y="3" width="20" height="18" rx="2" fill={active ? "#10b981" : "#9aa0a6"} fillOpacity="0.2" stroke={active ? "#10b981" : "#9aa0a6"} strokeWidth="1.5" />
+        {/* Window controls */}
+        <circle cx="5" cy="6" r="1" fill={active ? "#ef4444" : "#bdc1c6"} />
+        <circle cx="8" cy="6" r="1" fill={active ? "#f59e0b" : "#bdc1c6"} />
+        <circle cx="11" cy="6" r="1" fill={active ? "#22c55e" : "#bdc1c6"} />
+        {/* Code lines */}
+        <path d="M6 11L9 13L6 15" stroke={active ? "#10b981" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="11" y1="15" x2="18" y2="15" stroke={active ? "#60a5fa" : "#bdc1c6"} strokeWidth="1.5" strokeLinecap="round" />
+        {/* Python snake indicator */}
+        <circle cx="19" cy="6" r="2" fill={active ? "#3b82f6" : "#bdc1c6"} />
+        <text x="19" y="7" fontSize="3" fill="white" textAnchor="middle" fontWeight="bold">🐍</text>
+    </svg>
+);
+
 const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }) => {
     // Initialize Gemini Live
     const geminiLiveState = useGeminiLive(apiKey || '');
@@ -202,8 +235,13 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         console.log('Canvas image expanded:', image);
     }, []);
 
-    // ========== WORKSPACE MANAGEMENT (NotebookLM-style) ==========
-    interface SavedWorkspace {
+    // ========== WORKSPACE MANAGEMENT TYPES (moved outside for hoisting) ==========
+    // Note: Actual workspace state and functions are defined after all other state declarations
+
+    const WORKSPACES_STORAGE_KEY = 'immersive_learning_workspaces';
+    const ACTIVE_WORKSPACE_KEY = 'immersive_learning_active_workspace';
+
+    const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{
         id: string;
         name: string;
         description: string;
@@ -221,227 +259,14 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         relevantVideos: RankedYouTubeVideo[];
         pdfUrl: string | null;
         activeSectionId: string | null;
-    }
-
-    const WORKSPACES_STORAGE_KEY = 'immersive_learning_workspaces';
-    const ACTIVE_WORKSPACE_KEY = 'immersive_learning_active_workspace';
-
-    const [savedWorkspaces, setSavedWorkspaces] = useState<SavedWorkspace[]>([]);
+    }>>([]);
     const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
     const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
     const [showWorkspaceManager, setShowWorkspaceManager] = useState(true);
     const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
     const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState('');
 
-    // Load workspaces from localStorage on mount
-    useEffect(() => {
-        try {
-            const savedData = localStorage.getItem(WORKSPACES_STORAGE_KEY);
-            if (savedData) {
-                const workspaces = JSON.parse(savedData) as SavedWorkspace[];
-                setSavedWorkspaces(workspaces.sort((a, b) => b.updatedAt - a.updatedAt));
-            }
-            
-            // Check if there's an active workspace to restore
-            const activeId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-            if (activeId) {
-                setActiveWorkspaceId(activeId);
-                setShowWorkspaceManager(false);
-            }
-        } catch (error) {
-            console.error('Failed to load workspaces:', error);
-        } finally {
-            setIsLoadingWorkspaces(false);
-        }
-    }, []);
-
-    // Generate intelligent workspace name using Gemini
-    const generateWorkspaceName = async (documentText: string, fileName: string): Promise<{ name: string; description: string; emoji: string }> => {
-        try {
-            const prompt = `Based on this educational document content, generate a concise, descriptive name for a learning workspace.
-            
-Document filename: ${fileName}
-Document excerpt: ${documentText.slice(0, 2000)}
-
-Return ONLY a JSON object with:
-{
-  "name": "Short descriptive name (3-5 words max)",
-  "description": "One sentence describing the main topic",
-  "emoji": "A single relevant emoji for the topic"
-}`;
-
-            const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + (apiKey || ''), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { responseMimeType: 'application/json' }
-                })
-            });
-
-            const data = await response.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            const parsed = JSON.parse(text);
-            return {
-                name: parsed.name || fileName.replace(/\.[^/.]+$/, ''),
-                description: parsed.description || 'Learning workspace',
-                emoji: parsed.emoji || '📚'
-            };
-        } catch (error) {
-            console.error('Failed to generate workspace name:', error);
-            return {
-                name: fileName.replace(/\.[^/.]+$/, ''),
-                description: 'Learning workspace',
-                emoji: '📚'
-            };
-        }
-    };
-
-    // Save current state as a new workspace
-    const saveCurrentAsWorkspace = async () => {
-        if (!immersiveContent || !documentTextRef.current) return;
-
-        setIsCreatingWorkspace(true);
-        try {
-            const { name, description, emoji } = await generateWorkspaceName(documentTextRef.current, uploadedFileName);
-            
-            const workspace: SavedWorkspace = {
-                id: `workspace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                name,
-                description,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                thumbnailEmoji: emoji,
-                documentFileName: uploadedFileName,
-                documentText: documentTextRef.current,
-                immersiveContent,
-                sectionImages,
-                widgetImages,
-                quiz,
-                audioScript,
-                reactFlowData,
-                relevantVideos,
-                pdfUrl,
-                activeSectionId
-            };
-
-            const updatedWorkspaces = [workspace, ...savedWorkspaces];
-            setSavedWorkspaces(updatedWorkspaces);
-            setActiveWorkspaceId(workspace.id);
-            localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
-            localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
-            
-            console.log('✅ Workspace saved:', workspace.name);
-        } catch (error) {
-            console.error('Failed to save workspace:', error);
-        } finally {
-            setIsCreatingWorkspace(false);
-        }
-    };
-
-    // Update existing workspace
-    const updateWorkspace = useCallback(() => {
-        if (!activeWorkspaceId || !immersiveContent) return;
-
-        const updatedWorkspaces = savedWorkspaces.map(ws => {
-            if (ws.id === activeWorkspaceId) {
-                return {
-                    ...ws,
-                    updatedAt: Date.now(),
-                    immersiveContent,
-                    sectionImages,
-                    widgetImages,
-                    quiz,
-                    audioScript,
-                    reactFlowData,
-                    relevantVideos,
-                    pdfUrl,
-                    activeSectionId
-                };
-            }
-            return ws;
-        });
-
-        setSavedWorkspaces(updatedWorkspaces);
-        localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
-    }, [activeWorkspaceId, immersiveContent, sectionImages, widgetImages, quiz, audioScript, reactFlowData, relevantVideos, pdfUrl, activeSectionId, savedWorkspaces]);
-
-    // Auto-save workspace when content changes
-    useEffect(() => {
-        if (activeWorkspaceId && immersiveContent) {
-            const timeoutId = setTimeout(() => {
-                updateWorkspace();
-            }, 2000); // Debounce saves
-            return () => clearTimeout(timeoutId);
-        }
-    }, [activeWorkspaceId, immersiveContent, sectionImages, quiz, audioScript, reactFlowData, updateWorkspace]);
-
-    // Open a saved workspace
-    const openWorkspace = (workspace: SavedWorkspace) => {
-        console.log('📂 Opening workspace:', workspace.name);
-        
-        // Restore all state
-        documentTextRef.current = workspace.documentText;
-        setUploadedFileName(workspace.documentFileName);
-        setImmersiveContent(workspace.immersiveContent);
-        setSectionImages(workspace.sectionImages || {});
-        setWidgetImages(workspace.widgetImages || {});
-        setQuiz(workspace.quiz || []);
-        setAudioScript(workspace.audioScript);
-        setReactFlowData(workspace.reactFlowData);
-        setRelevantVideos(workspace.relevantVideos || []);
-        setPdfUrl(workspace.pdfUrl);
-        setActiveSectionId(workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || null);
-        
-        setActiveWorkspaceId(workspace.id);
-        localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
-        setShowWorkspaceManager(false);
-        setActiveMode('immersive-text');
-    };
-
-    // Delete a workspace
-    const deleteWorkspace = (workspaceId: string) => {
-        const updatedWorkspaces = savedWorkspaces.filter(ws => ws.id !== workspaceId);
-        setSavedWorkspaces(updatedWorkspaces);
-        localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
-        
-        if (activeWorkspaceId === workspaceId) {
-            setActiveWorkspaceId(null);
-            localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
-            // Clear current state
-            setImmersiveContent(null);
-            documentTextRef.current = '';
-            setUploadedFileName('');
-            setShowWorkspaceManager(true);
-        }
-    };
-
-    // Create new workspace (clear current and show upload)
-    const createNewWorkspace = () => {
-        setActiveWorkspaceId(null);
-        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
-        setImmersiveContent(null);
-        documentTextRef.current = '';
-        setUploadedFileName('');
-        setSectionImages({});
-        setWidgetImages({});
-        setQuiz([]);
-        setAudioScript(null);
-        setReactFlowData(null);
-        setRelevantVideos([]);
-        setPdfUrl(null);
-        setShowWorkspaceManager(false);
-        setActiveMode('source');
-    };
-
-    // Filter workspaces by search
-    const filteredWorkspaces = savedWorkspaces.filter(ws => 
-        ws.name.toLowerCase().includes(workspaceSearchQuery.toLowerCase()) ||
-        ws.description.toLowerCase().includes(workspaceSearchQuery.toLowerCase()) ||
-        ws.documentFileName.toLowerCase().includes(workspaceSearchQuery.toLowerCase())
-    );
-
-    const [activeMode, setActiveMode] = useState<LearningMode>('immersive-text');
+    const [activeMode, setActiveMode] = useState<LearningMode>('source'); // Start with workspace manager
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState('');
     const [processingStage, setProcessingStage] = useState<'idle' | 'uploading' | 'extracting' | 'analyzing' | 'generating'>('idle');
@@ -667,6 +492,55 @@ Return ONLY a JSON object with:
     const viewer3dLastPinchDistanceRef = useRef<number | null>(null);
     const viewer3dLastPinchYRef = useRef<number | null>(null);
 
+    // Code Lab IDE state
+    const [codeLabFiles, setCodeLabFiles] = useState<CodeLabFile[]>(() => [
+        {
+            id: 'py',
+            name: 'main.py',
+            language: 'python',
+            content: 'print("Hello from Code Lab")\nfor i in range(3):\n    print(f"Iteration {i}")'
+        },
+        {
+            id: 'js',
+            name: 'index.js',
+            language: 'javascript',
+            content: 'console.log("Hello from Code Lab JS")\nconst nums = [1,2,3];\nconsole.log(nums.map(n => n * 2));'
+        },
+        {
+            id: 'java',
+            name: 'App.java',
+            language: 'java',
+            content: 'public class App {\n    public static void main(String[] args) {\n        System.out.println("Hello from Code Lab Java");\n    }\n}'
+        },
+        {
+            id: 'cpp',
+            name: 'main.cpp',
+            language: 'cpp',
+            content: '#include <iostream>\nint main() {\n    std::cout << "Hello from Code Lab C++" << std::endl;\n    return 0;\n}'
+        }
+    ]);
+    const [codeLabActiveFileId, setCodeLabActiveFileId] = useState<string>('py');
+    const [codeLabCode, setCodeLabCode] = useState<string>(() => 'print("Hello from Code Lab")\nfor i in range(3):\n    print(f"Iteration {i}")');
+    const [codeLabLanguage, setCodeLabLanguage] = useState<CodeLabLanguage>('python');
+    const [codeLabTheme, setCodeLabTheme] = useState<'vscode' | 'dracula'>('vscode');
+    const [codeLabOutput, setCodeLabOutput] = useState<string>('');
+    const [codeLabIsRunning, setCodeLabIsRunning] = useState(false);
+    const [codeLabAiPrompt, setCodeLabAiPrompt] = useState<string>('Improve or extend this code');
+    const [codeLabAiResponse, setCodeLabAiResponse] = useState<string>('');
+    const [codeLabAiLoading, setCodeLabAiLoading] = useState<boolean>(false);
+    const [codeLabAiStreaming, setCodeLabAiStreaming] = useState<boolean>(false);
+    const [codeLabAiError, setCodeLabAiError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const activeFile = codeLabFiles.find(file => file.id === codeLabActiveFileId);
+        if (activeFile) {
+            setCodeLabCode(activeFile.content);
+            setCodeLabLanguage(activeFile.language);
+        }
+        // Only run when switching active file to avoid cursor resets on each keystroke
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [codeLabActiveFileId]);
+
     // Image Activity State
     const [imageActivityPrompt, setImageActivityPrompt] = useState('');
     const [generatedImageActivityUrl, setGeneratedImageActivityUrl] = useState<string | null>(null);
@@ -677,6 +551,283 @@ Return ONLY a JSON object with:
 
     // Track if we need to continue generating missing content after restore
     const [needsContinueGeneration, setNeedsContinueGeneration] = useState(false);
+
+    // ========== WORKSPACE MANAGEMENT FUNCTIONS ==========
+    
+    // Generate intelligent workspace name using Gemini
+    const generateWorkspaceName = async (content: ImmersiveContent | null, fileName: string): Promise<{ name: string; description: string; emoji: string }> => {
+        try {
+            const contentSummary = content?.sections?.slice(0, 3).map(s => s.title || s.content.slice(0, 100)).join(', ') || '';
+            const prompt = `Based on this educational content about "${content?.title || fileName}", generate a concise workspace name.
+Content preview: ${contentSummary.slice(0, 300)}
+
+Respond in JSON format only:
+{
+  "name": "Short creative name (2-4 words max)",
+  "description": "One sentence description of the topic",
+  "emoji": "Single relevant emoji"
+}`;
+
+            const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + import.meta.env.VITE_GEMINI_API_KEY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.7 }
+                })
+            });
+
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                return {
+                    name: parsed.name || fileName.replace(/\.[^/.]+$/, ''),
+                    description: parsed.description || 'Learning workspace',
+                    emoji: parsed.emoji || '📚'
+                };
+            }
+        } catch (e) {
+            console.error('Failed to generate workspace name:', e);
+        }
+        return {
+            name: fileName.replace(/\.[^/.]+$/, '') || 'Untitled',
+            description: 'Learning workspace',
+            emoji: '📚'
+        };
+    };
+
+    // Save current state as a new workspace
+    const saveCurrentAsWorkspace = async () => {
+        if (!immersiveContent || !documentTextRef.current) {
+            console.log('No content to save as workspace');
+            return null;
+        }
+
+        setIsCreatingWorkspace(true);
+        try {
+            const { name, description, emoji } = await generateWorkspaceName(immersiveContent, uploadedFileName);
+            
+            const workspace = {
+                id: `workspace_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+                name,
+                description,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                thumbnailEmoji: emoji,
+                documentFileName: uploadedFileName,
+                documentText: documentTextRef.current,
+                immersiveContent,
+                sectionImages,
+                widgetImages,
+                quiz,
+                audioScript: audioScript || null,
+                reactFlowData,
+                relevantVideos,
+                pdfUrl,
+                activeSectionId: activeSectionId || null
+            };
+
+            const existingWorkspaces = JSON.parse(localStorage.getItem(WORKSPACES_STORAGE_KEY) || '[]');
+            const updatedWorkspaces = [workspace, ...existingWorkspaces];
+            localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
+            localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
+
+            setSavedWorkspaces(updatedWorkspaces);
+            setActiveWorkspaceId(workspace.id);
+            setShowWorkspaceManager(false);
+
+            console.log('💾 Saved new workspace:', workspace.name);
+            return workspace;
+        } catch (e) {
+            console.error('Failed to save workspace:', e);
+            return null;
+        } finally {
+            setIsCreatingWorkspace(false);
+        }
+    };
+
+    // Save workspace with provided content (for async calls where state might not be updated)
+    const saveWorkspaceWithContent = async (content: ImmersiveContent, fileName: string, docText: string) => {
+        if (!content) {
+            console.log('No content provided to save as workspace');
+            return null;
+        }
+
+        setIsCreatingWorkspace(true);
+        try {
+            const { name, description, emoji } = await generateWorkspaceName(content, fileName);
+            
+            const workspace = {
+                id: `workspace_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+                name,
+                description,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                thumbnailEmoji: emoji,
+                documentFileName: fileName,
+                documentText: docText,
+                immersiveContent: content,
+                sectionImages: {},
+                widgetImages: {},
+                quiz: [],
+                audioScript: null,
+                reactFlowData: null,
+                relevantVideos: [],
+                pdfUrl: null,
+                activeSectionId: content.sections?.[0]?.id || null
+            };
+
+            const existingWorkspaces = JSON.parse(localStorage.getItem(WORKSPACES_STORAGE_KEY) || '[]');
+            const updatedWorkspaces = [workspace, ...existingWorkspaces];
+            localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
+            localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
+
+            setSavedWorkspaces(updatedWorkspaces);
+            setActiveWorkspaceId(workspace.id);
+
+            console.log('💾 Saved new workspace with content:', workspace.name);
+            return workspace;
+        } catch (e) {
+            console.error('Failed to save workspace with content:', e);
+            return null;
+        } finally {
+            setIsCreatingWorkspace(false);
+        }
+    };
+
+    // Update existing workspace with current state
+    const updateWorkspace = (workspaceId: string) => {
+        const updatedWorkspaces = savedWorkspaces.map(ws => {
+            if (ws.id === workspaceId) {
+                return {
+                    ...ws,
+                    updatedAt: Date.now(),
+                    immersiveContent,
+                    sectionImages,
+                    widgetImages,
+                    quiz,
+                    audioScript: audioScript || null,
+                    reactFlowData,
+                    relevantVideos,
+                    pdfUrl,
+                    activeSectionId: activeSectionId || null
+                };
+            }
+            return ws;
+        });
+        localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
+        setSavedWorkspaces(updatedWorkspaces);
+    };
+
+    // Open an existing workspace
+    const openWorkspace = (workspace: typeof savedWorkspaces[0]) => {
+        console.log('📂 Opening workspace:', workspace.name);
+        
+        // Restore all state from workspace
+        documentTextRef.current = workspace.documentText;
+        setImmersiveContent(workspace.immersiveContent);
+        setSectionImages(workspace.sectionImages || {});
+        setWidgetImages(workspace.widgetImages || {});
+        setQuiz(workspace.quiz || []);
+        setAudioScript(workspace.audioScript || '');
+        setReactFlowData(workspace.reactFlowData);
+        setRelevantVideos(workspace.relevantVideos || []);
+        setPdfUrl(workspace.pdfUrl);
+        setUploadedFileName(workspace.documentFileName);
+        setActiveSectionId(workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || '');
+        
+        setActiveWorkspaceId(workspace.id);
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
+        setShowWorkspaceManager(false);
+        setActiveMode('immersive-text'); // Switch to content view
+    };
+
+    // Delete a workspace
+    const deleteWorkspace = (workspaceId: string) => {
+        const updatedWorkspaces = savedWorkspaces.filter(ws => ws.id !== workspaceId);
+        localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
+        setSavedWorkspaces(updatedWorkspaces);
+        
+        if (activeWorkspaceId === workspaceId) {
+            setActiveWorkspaceId(null);
+            localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+        }
+    };
+
+    // Create new workspace (reset state and trigger file upload)
+    const createNewWorkspace = () => {
+        setImmersiveContent(null);
+        setSectionImages({});
+        setWidgetImages({});
+        setQuiz([]);
+        setAudioScript('');
+        setReactFlowData(null);
+        setRelevantVideos([]);
+        setPdfUrl(null);
+        setUploadedFileName('');
+        setActiveSectionId('');
+        documentTextRef.current = '';
+        setActiveWorkspaceId(null);
+        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+        // Don't hide workspace manager - stay on source page and trigger file upload
+        // setShowWorkspaceManager(false);
+        // Trigger file upload dialog
+        setTimeout(() => {
+            fileInputRef.current?.click();
+        }, 100);
+    };
+
+    // Load workspaces on mount
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(WORKSPACES_STORAGE_KEY);
+            if (saved) {
+                const workspaces = JSON.parse(saved);
+                setSavedWorkspaces(workspaces);
+                
+                // Check for active workspace and auto-restore it
+                const activeId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+                if (activeId) {
+                    const activeWs = workspaces.find((ws: any) => ws.id === activeId);
+                    if (activeWs) {
+                        // Restore all state from workspace
+                        documentTextRef.current = activeWs.documentText;
+                        setImmersiveContent(activeWs.immersiveContent);
+                        setSectionImages(activeWs.sectionImages || {});
+                        setWidgetImages(activeWs.widgetImages || {});
+                        setQuiz(activeWs.quiz || []);
+                        setAudioScript(activeWs.audioScript || '');
+                        setReactFlowData(activeWs.reactFlowData);
+                        setRelevantVideos(activeWs.relevantVideos || []);
+                        setPdfUrl(activeWs.pdfUrl);
+                        setUploadedFileName(activeWs.documentFileName);
+                        setActiveSectionId(activeWs.activeSectionId || activeWs.immersiveContent?.sections?.[0]?.id || '');
+                        
+                        setActiveWorkspaceId(activeId);
+                        setShowWorkspaceManager(false);
+                        setActiveMode('immersive-text'); // Switch to content view
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load workspaces:', e);
+        } finally {
+            setIsLoadingWorkspaces(false);
+        }
+    }, []);
+
+    // Auto-save to active workspace when content changes
+    useEffect(() => {
+        if (activeWorkspaceId && immersiveContent) {
+            const timeoutId = setTimeout(() => {
+                updateWorkspace(activeWorkspaceId);
+                console.log('🔄 Auto-saved to workspace');
+            }, 5000); // Debounce 5 seconds
+            return () => clearTimeout(timeoutId);
+        }
+    }, [activeWorkspaceId, immersiveContent, sectionImages, quiz, audioScript, reactFlowData, relevantVideos]);
 
     // Load saved content from localStorage on mount
     useEffect(() => {
@@ -1879,7 +2030,8 @@ Return ONLY a JSON object with:
         { id: 'simulation', icon: <SimulationIcon active={activeMode === 'simulation'} />, label: 'Simulation', activeColor: '#ff6d01', activeBg: '#fff3e0' },
         { id: 'robotics', icon: <RoboticsIcon active={activeMode === 'robotics'} />, label: 'Robotics Vision', activeColor: '#00bcd4', activeBg: '#e0f7fa' },
         { id: 'viewer3d', icon: <Viewer3DIcon active={activeMode === 'viewer3d'} />, label: '3D Viewer', activeColor: '#7c3aed', activeBg: '#ede9fe' },
-        { id: 'image-activity', icon: <ImageActivityIcon active={activeMode === 'image-activity'} />, label: 'Image Activity', activeColor: '#f97316', activeBg: '#ffedd5' }
+        { id: 'image-activity', icon: <ImageActivityIcon active={activeMode === 'image-activity'} />, label: 'Image Activity', activeColor: '#f97316', activeBg: '#ffedd5' },
+        { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' }
     ];
 
 
@@ -1887,6 +2039,9 @@ Return ONLY a JSON object with:
     const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
+
+        // Capture file name for use in async callbacks
+        const fileName = file.name;
 
         // Clear previous content when uploading a new file
         console.log('📤 New file upload - clearing previous content...');
@@ -1899,7 +2054,7 @@ Return ONLY a JSON object with:
         localStorage.removeItem(STORAGE_KEY);
 
         setIsLoading(true);
-        setUploadedFileName(file.name);
+        setUploadedFileName(fileName);
         setProcessingStage('uploading');
         setLoadingMessage('Uploading document...');
         setTerminalSubSteps(['Initializing upload...']);
@@ -2087,12 +2242,9 @@ Return ONLY a JSON object with:
                 fetchVideosAsync()
             ]).then(async () => {
                 console.log('✅ All background content generation complete!');
-                // Save as new workspace after all content is generated
-                // Note: We need to call saveCurrentAsWorkspace after state updates
-                // Use a small delay to ensure state is updated
-                setTimeout(async () => {
-                    await saveCurrentAsWorkspace();
-                }, 1000);
+                // Save as new workspace using the analysis content directly
+                // This ensures we have the content even if state hasn't updated yet
+                await saveWorkspaceWithContent(analysis, fileName, text);
             }).catch(e => {
                 console.error('Some background tasks failed:', e);
             });
@@ -3097,6 +3249,563 @@ Return ONLY a JSON object with:
         );
     };
 
+    // Code Playground Activity - Interactive coding exercise
+    // Global Pyodide instance for Python execution
+    const pyodideRef = useRef<any>(null);
+    const [pyodideLoading, setPyodideLoading] = useState(false);
+    const [pyodideReady, setPyodideReady] = useState(false);
+
+    // Load Pyodide on first Python code execution
+    const loadPyodide = async () => {
+        if (pyodideRef.current) return pyodideRef.current;
+        if (pyodideLoading) return null;
+        
+        setPyodideLoading(true);
+        try {
+            // Dynamically load Pyodide script
+            if (!(window as any).loadPyodide) {
+                await new Promise<void>((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js';
+                    script.onload = () => resolve();
+                    script.onerror = () => reject(new Error('Failed to load Pyodide'));
+                    document.head.appendChild(script);
+                });
+            }
+            
+            const pyodide = await (window as any).loadPyodide({
+                indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/'
+            });
+            
+            pyodideRef.current = pyodide;
+            setPyodideReady(true);
+            return pyodide;
+        } catch (error) {
+            console.error('Failed to load Pyodide:', error);
+            return null;
+        } finally {
+            setPyodideLoading(false);
+        }
+    };
+
+    // Code Playground Activity - Interactive coding exercise with REAL Python execution
+    const CodePlaygroundActivity = ({ data }: { data: any }) => {
+        const [code, setCode] = useState(data.code || '');
+        const [output, setOutput] = useState('');
+        const [showHints, setShowHints] = useState(false);
+        const [isRunning, setIsRunning] = useState(false);
+        const [showExpected, setShowExpected] = useState(false);
+        const [isPyodideLoading, setIsPyodideLoading] = useState(false);
+
+        // Run Python code using Pyodide
+        const runPythonCode = async (pythonCode: string) => {
+            setIsPyodideLoading(!pyodideReady);
+            const pyodide = await loadPyodide();
+            setIsPyodideLoading(false);
+            
+            if (!pyodide) {
+                return 'Error: Failed to load Python runtime. Please try again.';
+            }
+
+            try {
+                // Redirect stdout to capture print statements
+                pyodide.runPython(`
+import sys
+from io import StringIO
+sys.stdout = StringIO()
+sys.stderr = StringIO()
+                `);
+
+                // Run the user's code
+                let result;
+                try {
+                    result = pyodide.runPython(pythonCode);
+                } catch (e: any) {
+                    const stderr = pyodide.runPython('sys.stderr.getvalue()');
+                    return `Error:\n${e.message}\n${stderr}`;
+                }
+
+                // Get captured output
+                const stdout = pyodide.runPython('sys.stdout.getvalue()');
+                const stderr = pyodide.runPython('sys.stderr.getvalue()');
+
+                // Reset stdout/stderr
+                pyodide.runPython(`
+sys.stdout = sys.__stdout__
+sys.stderr = sys.__stderr__
+                `);
+
+                let output = '';
+                if (stdout) output += stdout;
+                if (stderr) output += `\nStderr:\n${stderr}`;
+                if (result !== undefined && result !== null && !stdout) {
+                    output += String(result);
+                }
+                
+                return output.trim() || 'Code executed successfully (no output)';
+            } catch (error: any) {
+                return `Error: ${error.message}`;
+            }
+        };
+
+        const handleRunCode = async () => {
+            setIsRunning(true);
+            setOutput('');
+            
+            try {
+                if (data.language === 'python' || !data.language) {
+                    // Use Pyodide for Python
+                    const result = await runPythonCode(code);
+                    setOutput(result);
+                } else if (data.language === 'javascript' || data.language === 'typescript') {
+                    // For JavaScript/TypeScript, use eval
+                    try {
+                        const logs: string[] = [];
+                        const originalLog = console.log;
+                        console.log = (...args) => logs.push(args.map(String).join(' '));
+                        
+                        // eslint-disable-next-line no-new-func
+                        const result = new Function(code)();
+                        
+                        console.log = originalLog;
+                        let output = logs.join('\n');
+                        if (result !== undefined) {
+                            output += (output ? '\n' : '') + String(result);
+                        }
+                        setOutput(output || 'Code executed successfully (no output)');
+                    } catch (err: any) {
+                        setOutput(`Error: ${err.message}`);
+                    }
+                } else {
+                    setOutput(`[${data.language}] Code execution not supported for this language.\nCheck your code logic and compare with the expected output.`);
+                }
+            } catch (err: any) {
+                setOutput(`Error: ${err.message}`);
+            } finally {
+                setIsRunning(false);
+            }
+        };
+
+        const handleReset = () => {
+            setCode(data.code || '');
+            setOutput('');
+            setShowExpected(false);
+        };
+
+        return (
+            <div className="my-8 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-6 border border-emerald-200 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                        <span className="text-2xl">🐍</span>
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-[#1f1f1f] text-lg">{data.title || 'Python Playground'}</h4>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-emerald-600 font-medium uppercase tracking-wide">{data.language || 'python'}</span>
+                            {pyodideReady && <span className="text-xs text-green-500">● Python Ready</span>}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Challenge description */}
+                {data.challenge && (
+                    <div className="mb-4 p-4 bg-white/60 rounded-xl border border-emerald-100">
+                        <p className="text-[15px] text-gray-700 flex items-start gap-2">
+                            <Target className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <span><strong>Challenge:</strong> {data.challenge}</span>
+                        </p>
+                    </div>
+                )}
+
+                {/* Code editor */}
+                <div className="mb-4 rounded-xl overflow-hidden border border-gray-300 shadow-sm">
+                    <div className="bg-gray-800 text-gray-300 px-4 py-2 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="font-medium">{data.language || 'python'}</span>
+                            {isPyodideLoading && <span className="text-yellow-400 animate-pulse">Loading Python...</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => navigator.clipboard.writeText(code)}
+                                className="hover:text-white transition-colors flex items-center gap-1"
+                            >
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Copy</span>
+                            </button>
+                        </div>
+                    </div>
+                    <textarea
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        className="w-full bg-gray-900 text-gray-100 p-4 font-mono text-sm leading-relaxed min-h-[200px] resize-y focus:outline-none"
+                        spellCheck={false}
+                        placeholder="# Write your Python code here..."
+                    />
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex flex-wrap gap-3 mb-4">
+                    <button
+                        onClick={handleRunCode}
+                        disabled={isRunning}
+                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white rounded-lg font-medium transition-all flex items-center gap-2"
+                    >
+                        {isRunning ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                {isPyodideLoading ? 'Loading Python...' : 'Running...'}
+                            </>
+                        ) : (
+                            <>
+                                <Play className="w-4 h-4" />
+                                Run Code
+                            </>
+                        )}
+                    </button>
+                    <button
+                        onClick={handleReset}
+                        className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all flex items-center gap-2"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        Reset
+                    </button>
+                    {data.hints && data.hints.length > 0 && (
+                        <button
+                            onClick={() => setShowHints(!showHints)}
+                            className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg font-medium transition-all flex items-center gap-2"
+                        >
+                            <Lightbulb className="w-4 h-4" />
+                            {showHints ? 'Hide Hints' : 'Show Hints'}
+                        </button>
+                    )}
+                    {data.expectedOutput && (
+                        <button
+                            onClick={() => setShowExpected(!showExpected)}
+                            className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-medium transition-all flex items-center gap-2"
+                        >
+                            <Eye className="w-4 h-4" />
+                            {showExpected ? 'Hide Expected' : 'Show Expected'}
+                        </button>
+                    )}
+                </div>
+
+                {/* Hints section */}
+                {showHints && data.hints && (
+                    <div className="mb-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
+                        <p className="text-sm font-medium text-amber-700 mb-2 flex items-center gap-2">
+                            <Lightbulb className="w-4 h-4" />
+                            Hints:
+                        </p>
+                        <ul className="space-y-1">
+                            {data.hints.map((hint: string, idx: number) => (
+                                <li key={idx} className="text-sm text-amber-800 flex items-start gap-2">
+                                    <span className="text-amber-500 font-bold">{idx + 1}.</span>
+                                    {hint}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
+                {/* Output section */}
+                {output && (
+                    <div className="mb-4 rounded-xl overflow-hidden border border-gray-300">
+                        <div className="bg-gray-700 text-gray-300 px-4 py-2 text-xs font-medium flex items-center gap-2">
+                            <span>Output</span>
+                            {output.startsWith('Error') && <span className="text-red-400">⚠️</span>}
+                        </div>
+                        <pre className={`bg-gray-800 p-4 font-mono text-sm overflow-x-auto whitespace-pre-wrap ${
+                            output.startsWith('Error') ? 'text-red-400' : 'text-green-400'
+                        }`}>
+                            {output}
+                        </pre>
+                    </div>
+                )}
+
+                {/* Expected output */}
+                {showExpected && data.expectedOutput && (
+                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                        <p className="text-sm font-medium text-blue-700 mb-2 flex items-center gap-2">
+                            <Target className="w-4 h-4" />
+                            Expected Output:
+                        </p>
+                        <pre className="text-sm text-blue-800 font-mono bg-white p-3 rounded-lg">
+                            {data.expectedOutput}
+                        </pre>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // Python Interactive REPL Component
+    const PythonREPL = () => {
+        const [history, setHistory] = useState<{ input: string; output: string; isError: boolean }[]>([]);
+        const [currentInput, setCurrentInput] = useState('');
+        const [isLoading, setIsLoading] = useState(false);
+        const [isInitializing, setIsInitializing] = useState(true);
+        const inputRef = useRef<HTMLInputElement>(null);
+        const outputRef = useRef<HTMLDivElement>(null);
+
+        useEffect(() => {
+            // Initialize Pyodide when REPL mounts
+            const init = async () => {
+                await loadPyodide();
+                setIsInitializing(false);
+            };
+            init();
+        }, []);
+
+        useEffect(() => {
+            // Scroll to bottom when new output is added
+            if (outputRef.current) {
+                outputRef.current.scrollTop = outputRef.current.scrollHeight;
+            }
+        }, [history]);
+
+        const executeCommand = async () => {
+            if (!currentInput.trim() || isLoading) return;
+            
+            const pyodide = pyodideRef.current;
+            if (!pyodide) {
+                setHistory(prev => [...prev, { 
+                    input: currentInput, 
+                    output: 'Error: Python runtime not ready. Please wait...', 
+                    isError: true 
+                }]);
+                return;
+            }
+
+            setIsLoading(true);
+            const command = currentInput;
+            setCurrentInput('');
+
+            try {
+                // Redirect stdout
+                pyodide.runPython(`
+import sys
+from io import StringIO
+_stdout_capture = StringIO()
+_stderr_capture = StringIO()
+sys.stdout = _stdout_capture
+sys.stderr = _stderr_capture
+                `);
+
+                let result;
+                let hasError = false;
+                let output = '';
+
+                try {
+                    result = pyodide.runPython(command);
+                    const stdout = pyodide.runPython('_stdout_capture.getvalue()');
+                    const stderr = pyodide.runPython('_stderr_capture.getvalue()');
+                    
+                    if (stdout) output += stdout;
+                    if (stderr) {
+                        output += stderr;
+                        hasError = true;
+                    }
+                    if (result !== undefined && result !== null && !stdout) {
+                        output += String(result);
+                    }
+                } catch (e: any) {
+                    output = e.message;
+                    hasError = true;
+                }
+
+                // Reset stdout/stderr
+                pyodide.runPython(`
+sys.stdout = sys.__stdout__
+sys.stderr = sys.__stderr__
+                `);
+
+                setHistory(prev => [...prev, { 
+                    input: command, 
+                    output: output.trim() || '', 
+                    isError: hasError 
+                }]);
+            } catch (error: any) {
+                setHistory(prev => [...prev, { 
+                    input: command, 
+                    output: error.message, 
+                    isError: true 
+                }]);
+            } finally {
+                setIsLoading(false);
+                inputRef.current?.focus();
+            }
+        };
+
+        const handleKeyDown = (e: React.KeyboardEvent) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                executeCommand();
+            }
+        };
+
+        return (
+            <div className="my-8 rounded-2xl overflow-hidden border border-gray-700 shadow-lg">
+                {/* Terminal header */}
+                <div className="bg-gray-800 px-4 py-2 flex items-center gap-2">
+                    <div className="flex gap-1.5">
+                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                        <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                        <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                    </div>
+                    <span className="text-gray-400 text-sm font-mono ml-2">Python 3.11 (Pyodide)</span>
+                    {pyodideReady && <span className="text-green-400 text-xs ml-auto">● Connected</span>}
+                </div>
+
+                {/* Terminal output */}
+                <div 
+                    ref={outputRef}
+                    className="bg-gray-900 p-4 font-mono text-sm max-h-[400px] overflow-y-auto"
+                    onClick={() => inputRef.current?.focus()}
+                >
+                    {/* Welcome message */}
+                    <div className="text-gray-400 mb-2">
+                        Python 3.11.3 (Pyodide) on WebAssembly/Emscripten<br/>
+                        Type Python commands below. Press Enter to execute.
+                    </div>
+
+                    {isInitializing && (
+                        <div className="text-yellow-400 flex items-center gap-2 mb-2">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading Python runtime...
+                        </div>
+                    )}
+
+                    {/* Command history */}
+                    {history.map((entry, idx) => (
+                        <div key={idx} className="mb-2">
+                            <div className="text-green-400">
+                                <span className="text-gray-500">{'>>> '}</span>
+                                {entry.input}
+                            </div>
+                            {entry.output && (
+                                <div className={entry.isError ? 'text-red-400' : 'text-gray-100'}>
+                                    {entry.output}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+
+                    {/* Current input line */}
+                    <div className="flex items-center">
+                        <span className="text-gray-500">{'>>> '}</span>
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={currentInput}
+                            onChange={(e) => setCurrentInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            disabled={isLoading || isInitializing}
+                            className="flex-1 bg-transparent text-green-400 outline-none font-mono"
+                            placeholder={isInitializing ? 'Loading...' : 'Enter Python command...'}
+                            autoFocus
+                        />
+                        {isLoading && <Loader2 className="w-4 h-4 text-yellow-400 animate-spin ml-2" />}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // Code Explanation Activity - Step-by-step code walkthrough
+    const CodeExplanationActivity = ({ data }: { data: any }) => {
+        const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
+        const [showAll, setShowAll] = useState(false);
+
+        const codeLines = data.codeLines || [];
+
+        return (
+            <div className="my-8 bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-6 border border-sky-200 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
+                        <span className="text-2xl">📖</span>
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-[#1f1f1f] text-lg">{data.title || 'Code Walkthrough'}</h4>
+                        <span className="text-xs text-sky-600 font-medium uppercase tracking-wide">{data.codeLanguage || 'code'}</span>
+                    </div>
+                </div>
+
+                {/* Overall explanation */}
+                {data.overallExplanation && (
+                    <div className="mb-4 p-4 bg-white/60 rounded-xl border border-sky-100">
+                        <p className="text-[15px] text-gray-700 flex items-start gap-2">
+                            <Info className="w-5 h-5 text-sky-500 flex-shrink-0 mt-0.5" />
+                            <span>{data.overallExplanation}</span>
+                        </p>
+                    </div>
+                )}
+
+                {/* Toggle button */}
+                <div className="mb-4">
+                    <button
+                        onClick={() => setShowAll(!showAll)}
+                        className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-medium transition-all text-sm"
+                    >
+                        {showAll ? 'Interactive Mode' : 'Show All Explanations'}
+                    </button>
+                </div>
+
+                {/* Code with explanations */}
+                <div className="rounded-xl overflow-hidden border border-gray-300 shadow-sm">
+                    <div className="bg-gray-800 text-gray-300 px-4 py-2 text-xs flex items-center justify-between">
+                        <span className="font-medium">{data.codeLanguage || 'code'}</span>
+                        <span className="text-gray-500">Click a line to see explanation</span>
+                    </div>
+                    <div className="bg-gray-900">
+                        {codeLines.map((lineData: { line: string; explanation: string }, idx: number) => (
+                            <div key={idx} className="group">
+                                <div
+                                    onClick={() => setActiveLineIndex(activeLineIndex === idx ? null : idx)}
+                                    className={`flex items-stretch cursor-pointer transition-all ${
+                                        activeLineIndex === idx 
+                                            ? 'bg-sky-900/40' 
+                                            : 'hover:bg-gray-800/50'
+                                    }`}
+                                >
+                                    {/* Line number */}
+                                    <div className="w-12 flex-shrink-0 bg-gray-800/50 text-gray-500 text-right pr-3 py-1 select-none font-mono text-sm border-r border-gray-700">
+                                        {idx + 1}
+                                    </div>
+                                    {/* Code */}
+                                    <pre className="flex-1 px-4 py-1 font-mono text-sm text-gray-100 overflow-x-auto">
+                                        <code>{lineData.line}</code>
+                                    </pre>
+                                    {/* Indicator */}
+                                    <div className={`w-8 flex items-center justify-center ${
+                                        activeLineIndex === idx ? 'text-sky-400' : 'text-gray-600 group-hover:text-gray-400'
+                                    }`}>
+                                        <ChevronRight className={`w-4 h-4 transition-transform ${activeLineIndex === idx ? 'rotate-90' : ''}`} />
+                                    </div>
+                                </div>
+                                {/* Explanation (shown when clicked or showAll) */}
+                                {(activeLineIndex === idx || showAll) && lineData.explanation && (
+                                    <div className="bg-sky-900/20 px-4 py-3 pl-16 border-l-4 border-sky-500">
+                                        <p className="text-sm text-sky-200 flex items-start gap-2">
+                                            <Zap className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+                                            {lineData.explanation}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Summary at bottom */}
+                {!showAll && activeLineIndex === null && (
+                    <p className="mt-4 text-sm text-gray-500 text-center">
+                        💡 Click on any line of code to see its explanation
+                    </p>
+                )}
+            </div>
+        );
+    };
+
     // ===== END NEW INTERACTIVE WIDGET COMPONENTS =====
 
     // Image Activity Handler
@@ -3115,6 +3824,328 @@ Return ONLY a JSON object with:
         }
     };
 
+    const getLanguageExtension = (language: CodeLabLanguage) => {
+        switch (language) {
+            case 'javascript':
+                return javascript();
+            case 'java':
+                return java();
+            case 'cpp':
+                return cpp();
+            case 'python':
+            default:
+                return python();
+        }
+    };
+
+    const codeLabExtensions = useMemo(() => [
+        getLanguageExtension(codeLabLanguage),
+        closeBrackets(),
+        autocompletion()
+    ], [codeLabLanguage]);
+
+    const codeLabBasicSetup = useMemo(() => ({
+        lineNumbers: true,
+        highlightActiveLine: true,
+        highlightActiveLineGutter: true,
+        history: true,
+        foldGutter: true,
+        bracketMatching: true,
+        tabSize: 4
+    }), []);
+
+    const extractCodeBlock = (text: string) => {
+        const match = text.match(/```[\w+-]*\n([\s\S]*?)```/);
+        return match ? match[1].trim() : text.trim();
+    };
+
+    const sanitizeCode = (text: string) => {
+        let cleaned = text || '';
+        cleaned = cleaned.replace(/```[\w+-]*\s*/g, '');
+        cleaned = cleaned.replace(/```/g, '');
+        cleaned = cleaned.replace(/^\s*(python|javascript|java|cpp)\s*/i, '');
+        return cleaned.trimStart();
+    };
+
+    const handleAskCodeLabAi = async () => {
+        if (!codeLabAiPrompt.trim()) return;
+        setCodeLabAiLoading(true);
+        setCodeLabAiStreaming(true);
+        setCodeLabAiError(null);
+        setCodeLabAiResponse('');
+
+        const prompt = `You are a coding assistant using Gemini 2.5 Pro. Language: ${codeLabLanguage}.
+Current file: ${codeLabFiles.find(f => f.id === codeLabActiveFileId)?.name || 'main'}.
+Current code:\n${codeLabCode}\n\nUser request: ${codeLabAiPrompt}\n\nRespond with ONLY executable ${codeLabLanguage} code. Do NOT include markdown, fences, comments, or explanations—just the final code that can run as-is.`;
+
+        let buffer = '';
+        try {
+            await generateStreamingContent(
+                prompt,
+                (chunk) => {
+                    buffer += chunk;
+                    setCodeLabAiResponse(buffer);
+                    const extracted = extractCodeBlock(buffer);
+                    const candidate = extracted || buffer;
+                    const nextCode = sanitizeCode(candidate);
+                    if (!nextCode) return;
+                    setCodeLabCode(nextCode);
+                    setCodeLabFiles(prev => prev.map(file => file.id === codeLabActiveFileId ? { ...file, content: nextCode } : file));
+                },
+                () => {
+                    setCodeLabAiStreaming(false);
+                    setCodeLabAiLoading(false);
+                },
+                (err) => {
+                    setCodeLabAiError(err?.message || 'AI request failed');
+                    setCodeLabAiStreaming(false);
+                    setCodeLabAiLoading(false);
+                }
+            );
+        } catch (err: any) {
+            setCodeLabAiError(err?.message || 'AI request failed');
+            setCodeLabAiStreaming(false);
+            setCodeLabAiLoading(false);
+        }
+    };
+
+    const handleInsertAiCode = () => {
+        // Streaming writes directly into the editor; keep this as a no-op for legacy UI button.
+        if (!codeLabAiResponse) return;
+        const extracted = extractCodeBlock(codeLabAiResponse);
+        const nextCode = sanitizeCode(extracted || codeLabAiResponse);
+        setCodeLabCode(nextCode);
+        setCodeLabFiles(prev => prev.map(file => file.id === codeLabActiveFileId ? { ...file, content: nextCode } : file));
+    };
+
+    const CodeLabView = () => {
+        const activeFile = codeLabFiles.find(file => file.id === codeLabActiveFileId) || codeLabFiles[0];
+
+        const handleFileSelect = (fileId: string) => {
+            setCodeLabActiveFileId(fileId);
+        };
+
+        const handleCodeChange = (value: string) => {
+            setCodeLabCode(value);
+            setCodeLabFiles(prev => prev.map(file => file.id === (activeFile?.id || '') ? { ...file, content: value } : file));
+        };
+
+        const runCode = async () => {
+            if (!activeFile) return;
+            setCodeLabIsRunning(true);
+            setCodeLabOutput('');
+
+            try {
+                if (codeLabLanguage === 'python') {
+                    const pyodide = await loadPyodide();
+                    if (!pyodide) {
+                        setCodeLabOutput('Error: Failed to load Python runtime.');
+                        return;
+                    }
+
+                    pyodide.runPython(`
+import sys
+from io import StringIO
+sys.stdout = StringIO()
+sys.stderr = StringIO()
+                    `);
+
+                    try {
+                        pyodide.runPython(codeLabCode);
+                    } catch (e: any) {
+                        const stderr = pyodide.runPython('sys.stderr.getvalue()');
+                        setCodeLabOutput(`Error:\n${e.message}\n${stderr}`);
+                        return;
+                    }
+
+                    const stdout = pyodide.runPython('sys.stdout.getvalue()');
+                    const stderr = pyodide.runPython('sys.stderr.getvalue()');
+                    const combined = [stdout, stderr].filter(Boolean).join('\n');
+                    setCodeLabOutput(combined.trim() || 'No output.');
+                    return;
+                }
+
+                if (codeLabLanguage === 'javascript') {
+                    const logs: string[] = [];
+                    const originalLog = console.log;
+                    console.log = (...args) => {
+                        logs.push(args.map(String).join(' '));
+                    };
+
+                    try {
+                        const result = eval(codeLabCode);
+                        if (typeof result !== 'undefined') {
+                            logs.push(`Result: ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
+                        }
+                    } catch (e: any) {
+                        logs.push(`Error: ${e?.message || e}`);
+                    } finally {
+                        console.log = originalLog;
+                    }
+
+                    setCodeLabOutput(logs.join('\n') || 'No output.');
+                    return;
+                }
+
+                setCodeLabOutput('Execution is available for Python and JavaScript right now.');
+            } finally {
+                setCodeLabIsRunning(false);
+            }
+        };
+
+        const clearOutput = () => setCodeLabOutput('');
+
+        if (!activeFile) {
+            return (
+                <div className="p-6 text-center text-[#444746]">
+                    <p>No files are loaded in Code Lab.</p>
+                </div>
+            );
+        }
+
+        return (
+            <div className="h-full flex flex-col">
+                <div className="flex items-center gap-3 border-b border-[#e8eaed] bg-white px-4 py-3">
+                    <div className="flex items-center gap-2">
+                        {codeLabFiles.map(file => {
+                            const isActive = file.id === activeFile.id;
+                            return (
+                                <button
+                                    key={file.id}
+                                    onClick={() => handleFileSelect(file.id)}
+                                    className={`px-3 py-1.5 rounded-full text-sm transition-colors ${isActive ? 'bg-[#ecfdf3] text-[#065f46] border border-[#bbf7d0]' : 'bg-[#f1f3f4] text-[#444746] border border-transparent hover:bg-[#e4e7ea]'}`}
+                                >
+                                    {file.name}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <div className="flex items-center gap-2 ml-auto">
+                        <select
+                            value={codeLabTheme}
+                            onChange={(e) => setCodeLabTheme(e.target.value as 'vscode' | 'dracula')}
+                            className="text-sm border border-[#dadce0] rounded-lg px-2 py-1 bg-white text-[#1f1f1f]"
+                        >
+                            <option value="vscode">VS Code</option>
+                            <option value="dracula">Dracula</option>
+                        </select>
+                        <span className="text-xs text-[#5f6368] px-2 py-1 bg-[#f1f3f4] rounded-lg border border-[#dadce0]">
+                            {activeFile.language === 'java' || activeFile.language === 'cpp' ? 'Run coming soon for Java/C++' : 'Python + JS runnable'}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-4 p-4 h-full overflow-hidden">
+                    <div className="flex-1 min-h-[340px] h-full">
+                        <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-[#5f6368]">Language</span>
+                                <select
+                                    value={codeLabLanguage}
+                                    onChange={(e) => {
+                                        const nextLang = e.target.value as CodeLabLanguage;
+                                        setCodeLabLanguage(nextLang);
+                                        setCodeLabFiles(prev => prev.map(file => file.id === activeFile.id ? { ...file, language: nextLang } : file));
+                                    }}
+                                    className="text-sm border border-[#dadce0] rounded-lg px-2 py-1 bg-white text-[#1f1f1f]"
+                                >
+                                    <option value="python">Python</option>
+                                    <option value="javascript">JavaScript</option>
+                                    <option value="java">Java</option>
+                                    <option value="cpp">C++</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={clearOutput}
+                                    className="px-3 py-1.5 text-sm border border-[#dadce0] rounded-lg text-[#5f6368] hover:bg-[#f1f3f4]"
+                                >
+                                    Clear Output
+                                </button>
+                                <button
+                                    onClick={runCode}
+                                    disabled={codeLabIsRunning}
+                                    className={`px-4 py-1.5 text-sm rounded-lg text-white flex items-center gap-2 ${codeLabIsRunning ? 'bg-[#9aa0a6] cursor-not-allowed' : 'bg-[#10b981] hover:bg-[#0ea271]'}`}
+                                >
+                                    {codeLabIsRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                                    {codeLabIsRunning ? 'Running' : 'Run'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 mb-3">
+                            <div className="flex flex-col lg:flex-row gap-2">
+                                <input
+                                    value={codeLabAiPrompt}
+                                    onChange={(e) => setCodeLabAiPrompt(e.target.value)}
+                                    placeholder="Ask AI to refactor, explain, or add a feature..."
+                                    className="flex-1 text-sm border border-[#dadce0] rounded-lg px-3 py-2 bg-white text-[#1f1f1f] focus:outline-none focus:ring-2 focus:ring-[#10b981]"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleAskCodeLabAi}
+                                        disabled={codeLabAiLoading}
+                                        className={`px-4 py-2 text-sm rounded-lg text-white flex items-center gap-2 ${codeLabAiLoading ? 'bg-[#9aa0a6] cursor-not-allowed' : 'bg-[#10b981] hover:bg-[#0ea271]'}`}
+                                    >
+                                        {codeLabAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                                        {codeLabAiStreaming ? 'Streaming…' : 'Ask AI'}
+                                    </button>
+                                    <button
+                                        onClick={handleInsertAiCode}
+                                        disabled={!codeLabAiResponse}
+                                        className={`px-4 py-2 text-sm rounded-lg border ${codeLabAiResponse ? 'border-[#10b981] text-[#065f46] hover:bg-[#ecfdf3]' : 'border-[#dadce0] text-[#9aa0a6] cursor-not-allowed'}`}
+                                    >
+                                        Insert
+                                    </button>
+                                </div>
+                            </div>
+                            {codeLabAiError && (
+                                <div className="text-sm text-red-600">{codeLabAiError}</div>
+                            )}
+                            {codeLabAiResponse && (
+                                <div className="border border-[#e8eaed] rounded-lg bg-white p-3 text-sm text-[#1f1f1f] max-h-48 overflow-auto">
+                                    <div className="font-medium text-[#5f6368] mb-1">AI Suggestion</div>
+                                    <pre className="whitespace-pre-wrap text-xs text-[#111827]">{codeLabAiResponse}</pre>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="border border-[#e8eaed] rounded-xl overflow-hidden h-[70vh]">
+                            <CodeMirror
+                                value={codeLabCode}
+                                height="100%"
+                                editable
+                                theme={codeLabTheme === 'vscode' ? vscodeDark : dracula}
+                                basicSetup={codeLabBasicSetup}
+                                className="h-full"
+                                style={{ height: '100%', minHeight: '70vh', backgroundColor: '#0b1220' }}
+                                extensions={codeLabExtensions}
+                                onChange={handleCodeChange}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="w-full lg:w-80 flex-shrink-0 h-full">
+                        <div className="bg-white border border-[#e8eaed] rounded-xl h-full flex flex-col shadow-sm">
+                            <div className="px-4 py-3 border-b border-[#e8eaed] flex items-center justify-between">
+                                <span className="text-sm font-medium text-[#1f1f1f]">Output</span>
+                                <button onClick={clearOutput} className="text-xs text-[#5f6368] hover:text-[#1f1f1f]">Clear</button>
+                            </div>
+                            <div className="flex-1 px-4 py-3 overflow-auto bg-[#0b1220] text-[#e8eaed] font-mono text-sm rounded-b-xl">
+                                {codeLabOutput ? codeLabOutput.split('\n').map((line, idx) => (
+                                    <div key={idx} className="whitespace-pre-wrap leading-6">{line || ' '}</div>
+                                )) : (
+                                    <div className="text-[#9aa0a6]">Run code to see output here.</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderContent = () => {
         if (isLoading) {
             return (
@@ -3127,8 +4158,8 @@ Return ONLY a JSON object with:
 
         // Only show "Start Learning" fallback when NOT streaming
         // During streaming, let case 'immersive-text' handle the streaming UI
-        // Robotics and 3D Viewer work independently without needing uploaded content
-        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && !isStreaming) {
+        // Robotics, 3D Viewer, and Code Lab work independently without needing uploaded content
+        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && !isStreaming) {
             return (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 p-8">
                     <div className="text-center space-y-3 max-w-md">
@@ -3147,6 +4178,13 @@ Return ONLY a JSON object with:
                 </div>
             );
         }
+
+        // Filter workspaces based on search query
+        const filteredWorkspaces = savedWorkspaces.filter(ws =>
+            ws.name.toLowerCase().includes(workspaceSearchQuery.toLowerCase()) ||
+            ws.description.toLowerCase().includes(workspaceSearchQuery.toLowerCase()) ||
+            ws.documentFileName.toLowerCase().includes(workspaceSearchQuery.toLowerCase())
+        );
 
         switch (activeMode) {
             case 'source':
@@ -3210,60 +4248,55 @@ Return ONLY a JSON object with:
                     );
                 }
 
-                // NotebookLM-style Workspace Manager UI
+                // NotebookLM-style Workspace Manager UI - Dark Theme
                 return (
-                    <div className="flex flex-col h-full bg-gradient-to-br from-[#fafafa] to-[#f0f4f8] overflow-hidden">
+                    <div className="flex flex-col h-full bg-[#131314] overflow-hidden">
                         {/* Header */}
-                        <div className="px-8 pt-8 pb-4">
-                            <div className="flex items-center justify-between mb-6">
-                                <div>
-                                    <h1 className="text-3xl font-semibold text-[#1f1f1f] flex items-center gap-3">
-                                        <span className="text-4xl">📚</span>
-                                        Learn Your Way
-                                    </h1>
-                                    <p className="text-[#5f6368] mt-1">Your AI-powered learning workspaces</p>
+                        <div className="px-4 sm:px-6 pt-4 pb-3 border-b border-[#3c4043]">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8ab4f8] to-[#669df6] flex items-center justify-center">
+                                        <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h1 className="text-xl font-medium text-white">Immersive Learning</h1>
+                                        <p className="text-xs text-[#9aa0a6]">Your AI-powered learning workspace</p>
+                                    </div>
                                 </div>
                                 <button
                                     onClick={createNewWorkspace}
-                                    className="px-5 py-2.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-full font-medium transition-all shadow-md hover:shadow-lg flex items-center gap-2"
+                                    className="px-5 py-2.5 bg-[#8ab4f8] hover:bg-[#aecbfa] text-[#202124] rounded-full font-medium transition-all flex items-center gap-2 text-sm"
                                 >
-                                    <span className="text-lg">+</span>
-                                    New Workspace
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    Create new
                                 </button>
-                            </div>
-
-                            {/* Search Bar */}
-                            <div className="relative max-w-xl">
-                                <input
-                                    type="text"
-                                    value={workspaceSearchQuery}
-                                    onChange={(e) => setWorkspaceSearchQuery(e.target.value)}
-                                    placeholder="Search your workspaces..."
-                                    className="w-full px-4 py-3 pl-11 bg-white border border-[#e0e0e0] rounded-full text-[15px] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/20 transition-all shadow-sm"
-                                />
-                                <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#5f6368]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
                             </div>
                         </div>
 
-                        {/* Workspaces Grid */}
-                        <div className="flex-1 overflow-y-auto px-8 pb-8">
+                        {/* Main Content Area - Full Width */}
+                        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
                             {isLoadingWorkspaces ? (
                                 <div className="flex items-center justify-center h-64">
-                                    <Loader2 className="w-8 h-8 text-[#1a73e8] animate-spin" />
+                                    <Loader2 className="w-8 h-8 text-[#8ab4f8] animate-spin" />
                                 </div>
                             ) : filteredWorkspaces.length === 0 && !workspaceSearchQuery ? (
-                                /* Empty State - First Time User */
-                                <div className="flex flex-col items-center justify-center h-full py-16">
-                                    <div className="w-32 h-32 bg-gradient-to-br from-[#e8f0fe] to-[#d2e3fc] rounded-3xl flex items-center justify-center mb-6 shadow-lg">
-                                        <span className="text-6xl">✨</span>
-                                    </div>
-                                    <h2 className="text-2xl font-semibold text-[#1f1f1f] mb-3">Welcome to Learn Your Way</h2>
-                                    <p className="text-[#5f6368] text-center max-w-md mb-8">
-                                        Upload your study materials and let AI create an immersive, personalized learning experience for you.
-                                    </p>
-                                    <div className="flex flex-col items-center gap-4">
+                                /* Empty State - NotebookLM Style */
+                                <div className="flex flex-col items-center justify-center h-full">
+                                    <div className="max-w-md text-center">
+                                        {/* Animated gradient icon */}
+                                        <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[#8ab4f8] via-[#c58af9] to-[#f28b82] p-0.5">
+                                            <div className="w-full h-full rounded-2xl bg-[#131314] flex items-center justify-center">
+                                                <span className="text-5xl">✨</span>
+                                            </div>
+                                        </div>
+                                        <h2 className="text-2xl font-normal text-white mb-3">Welcome to NotebookLM</h2>
+                                        <p className="text-[#9aa0a6] text-sm mb-8 leading-relaxed">
+                                            Upload your documents, and NotebookLM will help you understand them better with AI-powered insights, summaries, and interactive learning.
+                                        </p>
                                         <input
                                             ref={fileInputRef}
                                             type="file"
@@ -3273,95 +4306,133 @@ Return ONLY a JSON object with:
                                         />
                                         <button
                                             onClick={() => fileInputRef.current?.click()}
-                                            className="px-8 py-4 bg-gradient-to-r from-[#ff8b66] to-[#ff6d01] hover:from-[#ff7a50] hover:to-[#e56200] text-white rounded-2xl font-medium transition-all shadow-lg hover:shadow-xl flex items-center gap-3 text-lg"
+                                            className="px-6 py-3 bg-[#8ab4f8] hover:bg-[#aecbfa] text-[#202124] rounded-full font-medium transition-all flex items-center gap-2 mx-auto text-sm"
                                         >
-                                            <Upload className="w-6 h-6" />
-                                            <span>Upload Your First Document</span>
+                                            <Upload className="w-5 h-5" />
+                                            <span>Upload your first source</span>
                                         </button>
-                                        <p className="text-sm text-[#5f6368]">Supports PDF, TXT, MD, DOCX</p>
+                                        <p className="text-xs text-[#5f6368] mt-4">Supports PDF, TXT, Markdown, and DOCX</p>
                                     </div>
                                 </div>
-                            ) : filteredWorkspaces.length === 0 && workspaceSearchQuery ? (
-                                /* No Search Results */
-                                <div className="flex flex-col items-center justify-center h-64">
-                                    <span className="text-5xl mb-4">🔍</span>
-                                    <p className="text-[#5f6368]">No workspaces found matching "{workspaceSearchQuery}"</p>
-                                </div>
                             ) : (
-                                /* Workspaces Grid */
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
-                                    {/* Create New Card */}
-                                    <button
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="group h-48 rounded-2xl border-2 border-dashed border-[#dadce0] hover:border-[#1a73e8] bg-white/50 hover:bg-[#e8f0fe]/30 transition-all flex flex-col items-center justify-center gap-3"
-                                    >
-                                        <div className="w-14 h-14 rounded-2xl bg-[#e8f0fe] group-hover:bg-[#1a73e8] transition-colors flex items-center justify-center">
-                                            <Upload className="w-7 h-7 text-[#1a73e8] group-hover:text-white transition-colors" />
+                                <>
+                                    {/* Section Header */}
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h2 className="text-base font-medium text-[#e8eaed]">My notebooks</h2>
+                                        {/* Search */}
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={workspaceSearchQuery}
+                                                onChange={(e) => setWorkspaceSearchQuery(e.target.value)}
+                                                placeholder="Search notebooks..."
+                                                className="w-64 px-4 py-2 pl-10 bg-[#202124] border border-[#3c4043] rounded-full text-sm text-white placeholder-[#9aa0a6] focus:outline-none focus:border-[#8ab4f8] transition-all"
+                                            />
+                                            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9aa0a6]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
                                         </div>
-                                        <span className="font-medium text-[#1a73e8]">Upload Document</span>
-                                        <input
-                                            ref={fileInputRef}
-                                            type="file"
-                                            accept=".txt,.md,.pdf,.docx"
-                                            onChange={handleFileUpload}
-                                            className="hidden"
-                                        />
-                                    </button>
+                                    </div>
 
-                                    {/* Workspace Cards */}
-                                    {filteredWorkspaces.map((workspace) => (
-                                        <div
-                                            key={workspace.id}
-                                            className="group relative h-48 rounded-2xl bg-white border border-[#e0e0e0] hover:border-[#1a73e8] hover:shadow-lg transition-all cursor-pointer overflow-hidden"
-                                            onClick={() => openWorkspace(workspace)}
-                                        >
-                                            {/* Gradient Top Bar */}
-                                            <div className="h-2 bg-gradient-to-r from-[#ff8b66] via-[#1a73e8] to-[#34a853]" />
-                                            
-                                            {/* Content */}
-                                            <div className="p-4">
-                                                {/* Emoji & Title */}
-                                                <div className="flex items-start gap-3 mb-2">
-                                                    <span className="text-3xl">{workspace.thumbnailEmoji}</span>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="font-semibold text-[#1f1f1f] truncate">{workspace.name}</h3>
-                                                        <p className="text-sm text-[#5f6368] line-clamp-2 mt-1">{workspace.description}</p>
-                                                    </div>
+                                    {filteredWorkspaces.length === 0 && workspaceSearchQuery ? (
+                                        /* No Search Results */
+                                        <div className="flex flex-col items-center justify-center h-64">
+                                            <span className="text-4xl mb-4">🔍</span>
+                                            <p className="text-[#9aa0a6]">No notebooks found matching "{workspaceSearchQuery}"</p>
+                                        </div>
+                                    ) : (
+                                        /* Notebooks Grid - Full Width */
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+                                            {/* Create New Card */}
+                                            <button
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="group h-[220px] rounded-2xl border-2 border-dashed border-[#3c4043] hover:border-[#8ab4f8] bg-[#202124]/50 hover:bg-[#202124] transition-all flex flex-col items-center justify-center gap-3"
+                                            >
+                                                <div className="w-14 h-14 rounded-2xl bg-[#3c4043] group-hover:bg-[#8ab4f8] transition-colors flex items-center justify-center">
+                                                    <svg className="w-7 h-7 text-[#9aa0a6] group-hover:text-[#202124] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                    </svg>
                                                 </div>
+                                                <span className="text-sm font-medium text-[#8ab4f8]">New notebook</span>
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    accept=".txt,.md,.pdf,.docx"
+                                                    onChange={handleFileUpload}
+                                                    className="hidden"
+                                                />
+                                            </button>
 
-                                                {/* File Info */}
-                                                <div className="flex items-center gap-2 mt-3 text-xs text-[#5f6368]">
-                                                    <FileText className="w-3.5 h-3.5" />
-                                                    <span className="truncate">{workspace.documentFileName}</span>
-                                                </div>
-
-                                                {/* Last Updated */}
-                                                <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
-                                                    <span className="text-xs text-[#5f6368]">
-                                                        {new Date(workspace.updatedAt).toLocaleDateString('en-US', { 
-                                                            month: 'short', 
-                                                            day: 'numeric',
-                                                            year: workspace.updatedAt < Date.now() - 365 * 24 * 60 * 60 * 1000 ? 'numeric' : undefined
-                                                        })}
-                                                    </span>
-                                                    
-                                                    {/* Delete Button */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (confirm('Delete this workspace?')) {
-                                                                deleteWorkspace(workspace.id);
-                                                            }
-                                                        }}
-                                                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-red-50 text-[#5f6368] hover:text-red-500 transition-all"
+                                            {/* Notebook Cards */}
+                                            {filteredWorkspaces.map((workspace, index) => {
+                                                // Different gradient colors for each card
+                                                const gradients = [
+                                                    'from-[#f28b82] to-[#fdd663]', // Red to Yellow
+                                                    'from-[#8ab4f8] to-[#c58af9]', // Blue to Purple
+                                                    'from-[#81c995] to-[#34a853]', // Green
+                                                    'from-[#fdd663] to-[#fbbc04]', // Yellow
+                                                    'from-[#c58af9] to-[#f28b82]', // Purple to Red
+                                                    'from-[#78d9ec] to-[#8ab4f8]', // Cyan to Blue
+                                                ];
+                                                const gradient = gradients[index % gradients.length];
+                                                
+                                                return (
+                                                    <div
+                                                        key={workspace.id}
+                                                        className="group relative h-[220px] rounded-2xl bg-[#202124] border border-[#3c4043] hover:border-[#5f6368] hover:shadow-xl hover:shadow-black/20 transition-all cursor-pointer overflow-hidden"
+                                                        onClick={() => openWorkspace(workspace)}
                                                     >
-                                                        <X className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
+                                                        {/* Gradient Header - Takes up ~60% of card */}
+                                                        <div className={`h-[130px] bg-gradient-to-br ${gradient} relative`}>
+                                                            {/* Decorative Pattern */}
+                                                            <div className="absolute inset-0 opacity-20">
+                                                                <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                                    <circle cx="80" cy="20" r="35" fill="white" opacity="0.3" />
+                                                                    <circle cx="20" cy="80" r="25" fill="white" opacity="0.2" />
+                                                                </svg>
+                                                            </div>
+                                                            {/* Large Emoji */}
+                                                            <div className="absolute bottom-3 left-4">
+                                                                <span className="text-5xl drop-shadow-lg">{workspace.thumbnailEmoji}</span>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {/* Content */}
+                                                        <div className="p-4">
+                                                            <h3 className="font-medium text-white text-sm truncate mb-1">{workspace.name}</h3>
+                                                            <p className="text-xs text-[#9aa0a6] line-clamp-1">{workspace.description}</p>
+                                                            
+                                                            {/* Footer */}
+                                                            <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
+                                                                <span className="text-xs text-[#5f6368]">
+                                                                    {new Date(workspace.updatedAt).toLocaleDateString('en-US', { 
+                                                                        month: 'short', 
+                                                                        day: 'numeric'
+                                                                    })}
+                                                                </span>
+                                                                
+                                                                {/* Menu Button */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (confirm('Delete this notebook?')) {
+                                                                            deleteWorkspace(workspace.id);
+                                                                        }
+                                                                    }}
+                                                                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white transition-all"
+                                                                >
+                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                    </svg>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                    ))}
-                                </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>
@@ -3568,6 +4639,8 @@ Return ONLY a JSON object with:
                                     <div key={pIdx} className="relative group">
                                         <div className="pr-14">
                                             <ReactMarkdown
+                                                remarkPlugins={[remarkMath]}
+                                                rehypePlugins={[rehypeKatex]}
                                                 components={{
                                                     p: ({ children }) => (
                                                         <p className="text-[18px] leading-[1.8] text-[#444746]">
@@ -3614,7 +4687,38 @@ Return ONLY a JSON object with:
                                                         >
                                                             <em className="not-italic text-[#374151]">{children}</em>
                                                         </Highlighter>
-                                                    )
+                                                    ),
+                                                    code: ({ className, children, ...props }) => {
+                                                        const match = /language-(\w+)/.exec(className || '');
+                                                        const isInline = !match;
+                                                        if (isInline) {
+                                                            return (
+                                                                <code className="bg-gray-100 text-[#e11d48] px-1.5 py-0.5 rounded text-[15px] font-mono" {...props}>
+                                                                    {children}
+                                                                </code>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <div className="my-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                                                                <div className="bg-gray-800 text-gray-300 px-4 py-2 text-xs flex items-center justify-between">
+                                                                    <span className="font-medium">{match[1]}</span>
+                                                                    <button
+                                                                        onClick={() => navigator.clipboard.writeText(String(children))}
+                                                                        className="hover:text-white transition-colors flex items-center gap-1"
+                                                                    >
+                                                                        <Copy className="w-3.5 h-3.5" />
+                                                                        <span>Copy</span>
+                                                                    </button>
+                                                                </div>
+                                                                <pre className="bg-gray-900 p-4 overflow-x-auto">
+                                                                    <code className={`${className} text-sm font-mono text-gray-100`} {...props}>
+                                                                        {children}
+                                                                    </code>
+                                                                </pre>
+                                                            </div>
+                                                        );
+                                                    },
+                                                    pre: ({ children }) => <>{children}</>
                                                 }}
                                             >
                                                 {paragraph}
@@ -3643,6 +4747,8 @@ Return ONLY a JSON object with:
                                         {activeWidget.type === 'true-false' && <TrueFalseActivity data={activeWidget.data} />}
                                         {activeWidget.type === 'labeling' && <LabelingActivity data={activeWidget.data} />}
                                         {activeWidget.type === 'reflection' && <ReflectionActivity data={activeWidget.data} />}
+                                        {activeWidget.type === 'code-playground' && <CodePlaygroundActivity data={activeWidget.data} />}
+                                        {activeWidget.type === 'code-explanation' && <CodeExplanationActivity data={activeWidget.data} />}
                                     </div>
                                 )}
 
@@ -3650,6 +4756,8 @@ Return ONLY a JSON object with:
                                     <div key={`p2-${pIdx}`} className="relative group">
                                         <div className="pr-14">
                                             <ReactMarkdown
+                                                remarkPlugins={[remarkMath]}
+                                                rehypePlugins={[rehypeKatex]}
                                                 components={{
                                                     p: ({ children }) => (
                                                         <p className="text-[18px] leading-[1.8] text-[#444746]">
@@ -3696,7 +4804,38 @@ Return ONLY a JSON object with:
                                                         >
                                                             <em className="not-italic text-[#374151]">{children}</em>
                                                         </Highlighter>
-                                                    )
+                                                    ),
+                                                    code: ({ className, children, ...props }) => {
+                                                        const match = /language-(\w+)/.exec(className || '');
+                                                        const isInline = !match;
+                                                        if (isInline) {
+                                                            return (
+                                                                <code className="bg-gray-100 text-[#e11d48] px-1.5 py-0.5 rounded text-[15px] font-mono" {...props}>
+                                                                    {children}
+                                                                </code>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <div className="my-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                                                                <div className="bg-gray-800 text-gray-300 px-4 py-2 text-xs flex items-center justify-between">
+                                                                    <span className="font-medium">{match[1]}</span>
+                                                                    <button
+                                                                        onClick={() => navigator.clipboard.writeText(String(children))}
+                                                                        className="hover:text-white transition-colors flex items-center gap-1"
+                                                                    >
+                                                                        <Copy className="w-3.5 h-3.5" />
+                                                                        <span>Copy</span>
+                                                                    </button>
+                                                                </div>
+                                                                <pre className="bg-gray-900 p-4 overflow-x-auto">
+                                                                    <code className={`${className} text-sm font-mono text-gray-100`} {...props}>
+                                                                        {children}
+                                                                    </code>
+                                                                </pre>
+                                                            </div>
+                                                        );
+                                                    },
+                                                    pre: ({ children }) => <>{children}</>
                                                 }}
                                             >
                                                 {paragraph}
@@ -6471,6 +7610,9 @@ Return ONLY a JSON object with:
                     </div>
                 );
 
+            case 'code-lab':
+                return <CodeLabView />;
+
             default:
                 return null;
         }
@@ -6713,8 +7855,8 @@ Return ONLY a JSON object with:
                 )}
 
                 {/* Main Content Card */}
-                <div className={`flex-1 bg-[#fbf7f2] ${activeMode === 'mindmap' ? 'overflow-hidden p-0' : 'overflow-y-auto p-4'}`}>
-                    <div className={`bg-white overflow-hidden ${activeMode === 'mindmap' ? 'h-full rounded-none shadow-none' : 'min-h-full rounded-[24px] shadow-sm'}`}>
+                <div className={`flex-1 ${activeMode === 'source' ? 'bg-[#131314] overflow-hidden p-0' : activeMode === 'mindmap' ? 'bg-[#fbf7f2] overflow-hidden p-0' : 'bg-[#fbf7f2] overflow-y-auto p-4'}`}>
+                    <div className={`${activeMode === 'source' ? 'h-full' : activeMode === 'mindmap' ? 'h-full rounded-none shadow-none bg-white' : 'min-h-full rounded-[24px] shadow-sm bg-white'} overflow-hidden`}>
                         {renderContent()}
                     </div>
                 </div>

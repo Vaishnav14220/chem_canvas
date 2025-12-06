@@ -97,7 +97,7 @@ export interface RankedYouTubeVideo extends YouTubeVideo {
 }
 
 export interface InteractiveWidget {
-  type: 'reveal' | 'comparison' | 'quiz' | 'fill-blank' | 'matching' | 'ordering' | 'labeling' | 'true-false' | 'reflection';
+  type: 'reveal' | 'comparison' | 'quiz' | 'fill-blank' | 'matching' | 'ordering' | 'labeling' | 'true-false' | 'reflection' | 'code-playground' | 'code-explanation';
   data: {
     title?: string;
     content?: string; // For reveal
@@ -128,6 +128,16 @@ export interface InteractiveWidget {
     // For reflection:
     reflectionPrompt?: string;
     sampleResponse?: string;
+    // For code-playground (interactive code editor):
+    code?: string; // The code to display/edit
+    language?: string; // Programming language (python, javascript, etc.)
+    expectedOutput?: string; // Expected output when code runs correctly
+    hints?: string[]; // Hints for solving the problem
+    challenge?: string; // Challenge description for the user
+    // For code-explanation (step-by-step code walkthrough):
+    codeLines?: { line: string; explanation: string }[]; // Line-by-line explanation
+    codeLanguage?: string; // Language for syntax highlighting
+    overallExplanation?: string; // Summary of what the code does
   };
 }
 
@@ -171,6 +181,40 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     - Bold terms should be scientific terms, key concepts, proper nouns, and important vocabulary
     - Emphasized text should be important explanations, key insights, or sentences the student should pay attention to
     
+    MATHEMATICS CONTENT REQUIREMENTS:
+    - If the content involves MATHEMATICS, FORMULAS, or EQUATIONS:
+      - Use LaTeX notation for ALL mathematical expressions
+      - Inline math: Use single dollar signs $...$ (e.g., "The quadratic formula is $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$")
+      - Block/display math: Use double dollar signs $$...$$ for important equations on their own line
+      - Include step-by-step derivations where appropriate
+      - Example: "$$\\int_a^b f(x)dx = F(b) - F(a)$$"
+    
+    🚨 PROGRAMMING CONTENT REQUIREMENTS (CRITICAL - MUST FOLLOW FOR ANY CODE/PROGRAMMING CONTENT):
+    - If the content involves PROGRAMMING, CODING, FUNCTIONS, or ALGORITHMS:
+      - ALWAYS use FENCED CODE BLOCKS with triple backticks and language specification
+      - Format: Start with \`\`\`python (or javascript, java, etc.) on its own line, then code, then \`\`\` on its own line
+      - NEVER show code inline like \`print()\` for examples - ALWAYS use full fenced code blocks
+      - Every code example MUST be in a fenced code block, even simple one-liners
+      - Include COMPLETE, RUNNABLE code with comments explaining each part
+      - MANDATORY: Include at least ONE 'code-playground' widget for hands-on practice
+      - MANDATORY: Include at least ONE 'code-explanation' widget for step-by-step walkthrough
+      
+      EXAMPLE of proper code block in content:
+      "Here is how to use the print function:
+      
+      \`\`\`python
+      # Basic print statement
+      print('Hello, World!')
+      
+      # Print with multiple arguments
+      print('My name is', 'Alice')
+      
+      # Print with custom separator
+      print('apple', 'banana', 'cherry', sep=', ')
+      \`\`\`
+      
+      The code above demonstrates..."
+    
     Return a JSON object with the following structure:
     {
       "title": "Document Title",
@@ -179,10 +223,10 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
         { 
           "id": "unique_id", 
           "title": "Section Title", 
-          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. AT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
+          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. Include $inline math$ and $$block math$$ for mathematical content. For programming content, ALWAYS include full fenced code blocks like:\\n\\n\`\`\`python\\ncode here\\n\`\`\`\\n\\nAT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
           "imagePrompt": null,
           "widget": {
-            "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection",
+            "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection" | "code-playground" | "code-explanation",
             "data": {
               // For 'reveal':
               "title": "Did you know?",
@@ -226,7 +270,26 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
               // For 'reflection' (open-ended thinking prompt):
               "title": "Reflect & Think",
               "reflectionPrompt": "How might this concept apply to...?",
-              "sampleResponse": "A good response might consider..."
+              "sampleResponse": "A good response might consider...",
+              
+              // For 'code-playground' (interactive coding exercise - USE FOR PROGRAMMING CONTENT):
+              "title": "Try It Yourself!",
+              "code": "# Starter code here\\ndef example():\\n    pass",
+              "language": "python",
+              "challenge": "Modify the code to...",
+              "expectedOutput": "Expected result...",
+              "hints": ["Hint 1", "Hint 2"],
+              
+              // For 'code-explanation' (step-by-step code walkthrough - USE FOR EXPLAINING CODE):
+              "title": "Code Walkthrough",
+              "codeLanguage": "python",
+              "overallExplanation": "This code demonstrates...",
+              "codeLines": [
+                { "line": "def factorial(n):", "explanation": "Define a function named factorial that takes n as parameter" },
+                { "line": "    if n <= 1:", "explanation": "Base case: if n is 0 or 1, return 1" },
+                { "line": "        return 1", "explanation": "Return 1 for the base case" },
+                { "line": "    return n * factorial(n-1)", "explanation": "Recursive case: multiply n by factorial of (n-1)" }
+              ]
             }
           }
         }
@@ -246,23 +309,24 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
        - Wrap key terms in **double asterisks** for highlighting (minimum 3 per paragraph)
        - Wrap important phrases/sentences in *single asterisks* for underlining (minimum 1 per paragraph)
        - Example: "The **rate of reaction** depends on *several critical factors that we must understand*."
-    4. For EACH section, include ONE interactive widget. PREFER interactive activities over images:
-       - Use 'fill-blank' for key concepts and definitions.
-       - Use 'matching' for terminology and relationships.
-       - Use 'ordering' for processes, sequences, or steps.
-       - Use 'labeling' for parts and their functions.
-       - Use 'true-false' for common misconceptions.
-       - Use 'quiz' for complex concepts that need checking.
-       - Use 'reveal' for surprising facts or "aha!" moments.
-       - Use 'reflection' for deeper thinking prompts.
-    5. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
-    6. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
-    7. Focus on rich, detailed text content and engaging interactive activities instead of images.
-    8. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration. Include:
-       - The specific scientific subject and key components to show
-       - The type of scientific visualization (diagram, cross-section, molecular structure, process flow, microscopy view, etc.)
-       - Specific scientific details that must be accurate (structures, labels, relationships)
-       - Example: "Scientific diagram of the electron transport chain in mitochondria showing Complex I-IV, ATP synthase, proton gradient across inner membrane, NADH and FADH2 entry points, cytochrome c, and oxygen as final electron acceptor, textbook illustration style, publication quality"
+    4. MATHEMATICS: If the document contains math content:
+       - Use $...$ for inline LaTeX math expressions
+       - Use $$...$$ for block/display LaTeX equations
+       - Include ALL formulas, equations, and mathematical notation in proper LaTeX
+       - Show step-by-step solutions where relevant
+    5. PROGRAMMING: If the document contains programming/coding content:
+       - Use \`\`\`language fenced code blocks for all code examples
+       - Prefer 'code-playground' widget for practice exercises
+       - Prefer 'code-explanation' widget for explaining how code works
+       - Include complete, runnable code with comments
+    6. For EACH section, include ONE interactive widget:
+       - For MATH content: Use 'fill-blank', 'ordering' (for solving steps), or 'quiz'
+       - For PROGRAMMING content: Use 'code-playground' or 'code-explanation'
+       - For other content: Use appropriate widget type from the list
+    7. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
+    8. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
+    9. Focus on rich, detailed text content and engaging interactive activities instead of images.
+    10. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration.
 
     Text to Analyze:
     ${text.slice(0, 10000)}
@@ -304,16 +368,54 @@ export const streamAnalyzeDocumentForImmersive = async (
     - Bold terms should be scientific terms, key concepts, proper nouns, and important vocabulary
     - Emphasized text should be important explanations, key insights, or sentences the student should pay attention to
     
+    MATHEMATICS CONTENT REQUIREMENTS (MANDATORY for math/science content):
+    - If the content involves MATHEMATICS, PHYSICS FORMULAS, CHEMISTRY EQUATIONS, or any EQUATIONS:
+      - Use LaTeX notation for ALL mathematical expressions - this is REQUIRED
+      - Inline math: Use single dollar signs $...$ (e.g., "The quadratic formula is $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$")
+      - Block/display math: Use double dollar signs $$...$$ for important equations on their own line
+      - ALWAYS show step-by-step derivations and solutions with LaTeX
+      - Examples:
+        - Inline: "The derivative $\\frac{dy}{dx}$ represents the rate of change"
+        - Block: "$$\\int_a^b f(x)dx = F(b) - F(a)$$"
+        - Chemistry: "$$\\text{2H}_2 + \\text{O}_2 \\rightarrow \\text{2H}_2\\text{O}$$"
+        - Physics: "$$F = ma = m\\frac{d^2x}{dt^2}$$"
+    
+    🚨 PROGRAMMING CONTENT REQUIREMENTS (CRITICAL - MUST FOLLOW FOR ANY CODE/PROGRAMMING CONTENT):
+    - If the content involves PROGRAMMING, CODING, FUNCTIONS, or ALGORITHMS:
+      - ALWAYS use FENCED CODE BLOCKS with triple backticks and language specification
+      - Format: Start with \`\`\`python (or javascript, java, etc.) on its own line, then code, then \`\`\` on its own line
+      - NEVER show code inline like \`print()\` for examples - ALWAYS use full fenced code blocks
+      - Every code example MUST be in a fenced code block, even simple one-liners
+      - Include COMPLETE, RUNNABLE code with comments explaining each part
+      - MANDATORY: Include at least ONE 'code-playground' widget for hands-on practice
+      - MANDATORY: Include at least ONE 'code-explanation' widget for step-by-step walkthrough
+      
+      EXAMPLE of proper code block in content:
+      "Here is how to use the print function:
+      
+      \`\`\`python
+      # Basic print statement
+      print('Hello, World!')
+      
+      # Print with multiple arguments
+      print('My name is', 'Alice')
+      
+      # Print with custom separator
+      print('apple', 'banana', 'cherry', sep=', ')
+      \`\`\`
+      
+      The code above demonstrates..."
+    
     Return a JSON object with the following structure:
     {
       "sections": [
         { 
           "id": "unique_id", 
           "title": "Section Title", 
-          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. AT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
+          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. For programming content, ALWAYS include full fenced code blocks like:\\n\\n\`\`\`python\\ncode here\\n\`\`\`\\n\\nAT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
           "imagePrompt": null,
           "widget": {
-            "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection",
+            "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection" | "code-playground" | "code-explanation",
             "data": {
               // For 'reveal':
               "title": "Did you know?",
@@ -357,7 +459,26 @@ export const streamAnalyzeDocumentForImmersive = async (
               // For 'reflection' (open-ended thinking prompt):
               "title": "Reflect & Think",
               "reflectionPrompt": "How might this concept apply to...?",
-              "sampleResponse": "A good response might consider..."
+              "sampleResponse": "A good response might consider...",
+              
+              // For 'code-playground' (REQUIRED for programming exercises):
+              "title": "Try It Yourself!",
+              "code": "# Starter code here\\ndef example():\\n    pass",
+              "language": "python",
+              "challenge": "Modify the code to achieve...",
+              "expectedOutput": "Expected result when code runs correctly",
+              "hints": ["Hint 1: Think about...", "Hint 2: Remember to..."],
+              
+              // For 'code-explanation' (REQUIRED for explaining code):
+              "title": "Code Walkthrough",
+              "codeLanguage": "python",
+              "overallExplanation": "This code demonstrates the concept of...",
+              "codeLines": [
+                { "line": "def factorial(n):", "explanation": "Define a function named factorial that takes n as parameter" },
+                { "line": "    if n <= 1:", "explanation": "Base case: check if n is 0 or 1" },
+                { "line": "        return 1", "explanation": "Return 1 for the base case" },
+                { "line": "    return n * factorial(n-1)", "explanation": "Recursive case: multiply n by factorial of (n-1)" }
+              ]
             }
           }
         }
@@ -377,23 +498,26 @@ export const streamAnalyzeDocumentForImmersive = async (
        - Wrap key terms in **double asterisks** for highlighting (minimum 3 per paragraph)
        - Wrap important phrases/sentences in *single asterisks* for underlining (minimum 1 per paragraph)
        - Example: "The **rate of reaction** depends on *several critical factors that we must understand*."
-    4. For EACH section, include ONE interactive widget. PREFER interactive activities over images:
-       - Use 'fill-blank' for key concepts and definitions.
-       - Use 'matching' for terminology and relationships.
-       - Use 'ordering' for processes, sequences, or steps.
-       - Use 'labeling' for parts and their functions.
-       - Use 'true-false' for common misconceptions.
-       - Use 'quiz' for complex concepts that need checking.
-       - Use 'reveal' for surprising facts or "aha!" moments.
-       - Use 'reflection' for deeper thinking prompts.
-    5. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
-    6. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
-    7. Focus on rich, detailed text content and engaging interactive activities instead of images.
-    8. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration. Include:
-       - The specific scientific subject and key components to show
-       - The type of scientific visualization (diagram, cross-section, molecular structure, process flow, microscopy view, etc.)
-       - Specific scientific details that must be accurate (structures, labels, relationships)
-       - Example: "Scientific diagram of the electron transport chain in mitochondria showing Complex I-IV, ATP synthase, proton gradient across inner membrane, NADH and FADH2 entry points, cytochrome c, and oxygen as final electron acceptor, textbook illustration style, publication quality"
+    4. MATHEMATICS (REQUIRED): If the document contains ANY math, physics, chemistry, or equations:
+       - Use $...$ for inline LaTeX math expressions (e.g., $E = mc^2$)
+       - Use $$...$$ for block/display LaTeX equations
+       - Include ALL formulas, equations, and mathematical notation in proper LaTeX
+       - Show complete step-by-step solutions and derivations
+       - For chemistry: Use \\text{} for element symbols in equations
+    5. PROGRAMMING (REQUIRED): If the document contains ANY programming, coding, or algorithms:
+       - Use \`\`\`language fenced code blocks for ALL code examples
+       - ALWAYS include 'code-playground' widget for practice exercises
+       - ALWAYS include 'code-explanation' widget for explaining how code works
+       - Include complete, runnable code with detailed comments
+       - Provide example inputs/outputs
+    6. For EACH section, include ONE interactive widget:
+       - For MATH content: Use 'fill-blank' (for formulas), 'ordering' (for solving steps), or 'quiz'
+       - For PROGRAMMING content: Use 'code-playground' or 'code-explanation' (MANDATORY)
+       - For other content: Use appropriate widget type from the list
+    7. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
+    8. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
+    9. Focus on rich, detailed text content and engaging interactive activities instead of images.
+    10. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration.
 
     Text to Analyze:
     ${text.slice(0, 10000)}
