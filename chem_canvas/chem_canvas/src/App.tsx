@@ -407,10 +407,15 @@ const App: React.FC = () => {
     } else {
       // Restore the default handler when Excalidraw is closed
       updateGeminiHandlers();
-      // Disable excalidraw-only mode - restore normal canvas outputs
-      setExcalidrawOnlyMode(false);
+      // Keep excalidraw-only mode forced on so outputs stay on Excalidraw
+      setExcalidrawOnlyMode(true);
     }
   }, [showExcalidrawCanvas, setCanvasHandwritingHandler, setExcalidrawOnlyMode, updateGeminiHandlers]);
+
+  // Force Excalidraw-only mode globally to bypass learning canvas
+  useEffect(() => {
+    setExcalidrawOnlyMode(true);
+  }, [setExcalidrawOnlyMode]);
 
   const registerWorkspaceHandler = useCallback(
     <K extends keyof CanvasWorkspaceHandlers,>(
