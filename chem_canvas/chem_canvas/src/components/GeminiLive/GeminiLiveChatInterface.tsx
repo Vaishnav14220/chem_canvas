@@ -163,17 +163,22 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
   const SuggestionCard = ({ icon: Icon, text, onClick }: { icon: any, text: string, onClick: () => void }) => (
     <button 
       onClick={onClick}
-      className="flex flex-col gap-3 p-4 rounded-xl bg-[#1e1f20] hover:bg-[#333537] text-left transition-colors h-full"
+      className="group flex flex-col gap-3 p-4 rounded-2xl bg-gradient-to-b from-slate-900/80 via-slate-900 to-slate-950 border border-slate-800/80 text-left transition-all duration-200 h-full shadow-[0_10px_30px_rgba(0,0,0,0.35)] hover:-translate-y-[2px] hover:border-cyan-400/60 hover:shadow-[0_16px_40px_rgba(34,211,238,0.18)]"
     >
-      <div className="p-2 w-fit rounded-full bg-[#131314] text-slate-200">
+      <div className="p-2 w-fit rounded-xl bg-slate-800/70 text-slate-100 ring-1 ring-white/5 shadow-inner shadow-black/30">
         <Icon size={18} />
       </div>
-      <span className="text-sm text-slate-300 font-medium">{text}</span>
+      <span className="text-sm text-slate-200 font-semibold leading-snug">{text}</span>
     </button>
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#131314] overflow-hidden relative">
+    <div
+      className="flex flex-col h-full bg-[#0f1115] overflow-hidden relative"
+      style={{
+        backgroundImage: 'radial-gradient(circle at 15% 20%, rgba(34,211,238,0.05), transparent 28%), radial-gradient(circle at 80% 0%, rgba(168,85,247,0.06), transparent 26%)'
+      }}
+    >
       {/* Messages Area */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <Conversation
@@ -185,10 +190,10 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
           <ConversationContent className="max-w-3xl mx-auto w-full">
             {allMessages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center mt-12 mb-32 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                 <h1 className="text-5xl md:text-6xl font-medium mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-rose-400 pb-2 text-center">
+                 <h1 className="text-5xl md:text-6xl font-semibold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 pb-2 text-center drop-shadow-[0_10px_30px_rgba(56,189,248,0.25)]">
                    Hello, Dev.
                  </h1>
-                 <h2 className="text-4xl md:text-5xl font-medium text-slate-500 mb-16 text-center">
+                 <h2 className="text-4xl md:text-5xl font-medium text-slate-400 mb-16 text-center">
                    How can I help you today?
                  </h2>
 
@@ -220,10 +225,10 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
                 {allMessages.map((msg) => (
                   <div key={`${msg.id}-${msg.timestamp.getTime()}`} className={cn("flex gap-6 group", msg.role === 'user' ? 'flex-row-reverse' : '')}>
                     <div className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1",
+                      "w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 mt-1 shadow-[0_12px_28px_rgba(0,0,0,0.35)] ring-1 ring-white/5",
                       msg.role === 'user' 
-                        ? "bg-slate-700 text-slate-200" 
-                        : "bg-gradient-to-br from-blue-500 to-purple-600 text-white"
+                        ? "bg-gradient-to-br from-slate-700 to-slate-600 text-slate-100" 
+                        : "bg-gradient-to-br from-blue-500 via-cyan-500 to-purple-600 text-white"
                     )}>
                       {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                     </div>
@@ -231,10 +236,10 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
                     <div className={cn("flex flex-col gap-2 max-w-[85%]", msg.role === 'user' ? 'items-end' : 'items-start')}>
                       {/* Message Bubble */}
                       <div className={cn(
-                        "text-base leading-relaxed",
+                        "text-base leading-relaxed rounded-3xl px-5 py-4 shadow-[0_20px_45px_rgba(0,0,0,0.35)] border border-white/5",
                         msg.role === 'user'
-                          ? "text-slate-100 bg-[#28292a] px-5 py-3 rounded-3xl rounded-tr-sm"
-                          : "text-slate-200"
+                          ? "text-slate-50 bg-gradient-to-br from-slate-800 to-slate-900"
+                          : "text-slate-200 bg-gradient-to-br from-slate-900/80 to-slate-950"
                       )}>
                         {msg.image && (
                           <div className="relative mb-3 rounded-xl overflow-hidden border border-slate-700/50 group-image">
@@ -294,10 +299,10 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className="flex-none p-6 bg-[#131314] border-t border-slate-800/50 z-10">
+      <div className="flex-none p-6 bg-[#0f1115] border-t border-slate-800/60 z-10 backdrop-blur">
         <div className="max-w-3xl mx-auto">
           {selectedImage && (
-            <div className="absolute bottom-full left-0 mb-4 flex items-center gap-2 bg-[#1e1f20] p-2 rounded-xl border border-[#28292a]">
+            <div className="absolute bottom-full left-0 mb-4 flex items-center gap-2 bg-slate-900/80 p-2 rounded-2xl border border-slate-800/80 shadow-[0_12px_30px_rgba(0,0,0,0.35)] backdrop-blur">
               <div className="relative w-12 h-12 overflow-hidden rounded-lg bg-black/20 border border-white/10">
                  <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
               </div>
@@ -305,13 +310,13 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
                 <span className="text-xs font-medium text-slate-200">Image attached</span>
                 <span className="text-[10px] text-slate-400">Ready to analyze</span>
               </div>
-              <button onClick={() => setSelectedImage(null)} className="p-1.5 hover:bg-[#333537] rounded-full text-slate-400 hover:text-slate-200 transition-colors ml-2">
+              <button onClick={() => setSelectedImage(null)} className="p-1.5 hover:bg-slate-800/70 rounded-full text-slate-300 hover:text-white transition-colors ml-2">
                  <X size={14} />
               </button>
             </div>
           )}
 
-          <div className="flex items-center gap-2 bg-[#1e1f20] rounded-full p-2 pl-6 border border-[#28292a] shadow-lg focus-within:ring-1 focus-within:ring-slate-600 transition-all">
+          <div className="flex items-center gap-2 bg-slate-900/80 rounded-full p-2 pl-6 border border-slate-800/80 shadow-[0_14px_36px_rgba(0,0,0,0.4)] ring-1 ring-white/5 focus-within:ring-1 focus-within:ring-cyan-400/60 transition-all">
             <input
               type="file"
               ref={fileInputRef}
@@ -325,7 +330,7 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Enter a prompt here"
-              className="flex-1 bg-transparent border-none py-3 text-base text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-0 resize-none max-h-32 min-h-[24px] leading-relaxed"
+              className="flex-1 bg-transparent border-none py-3 text-base text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-0 resize-none max-h-32 min-h-[24px] leading-relaxed"
               rows={1}
               style={{ height: 'auto' }}
             />
@@ -333,7 +338,7 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
             <div className="flex items-center gap-1 pr-1">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2.5 text-slate-400 hover:text-slate-200 hover:bg-[#333537] rounded-full transition-all"
+                className="p-2.5 text-slate-300 hover:text-white hover:bg-slate-800/70 rounded-full transition-all"
                 title="Upload Image"
               >
                 <ImageIcon size={20} />
@@ -343,14 +348,14 @@ const GeminiLiveChatInterface: React.FC<GeminiLiveChatInterfaceProps> = ({
                 <button
                   onClick={() => handleSend()}
                   disabled={isLoading}
-                  className="p-2.5 bg-slate-200 text-slate-900 hover:bg-white rounded-full transition-all"
+                  className="p-2.5 bg-gradient-to-br from-cyan-400 via-blue-400 to-violet-400 text-slate-950 hover:shadow-[0_12px_30px_rgba(34,211,238,0.35)] rounded-full transition-all disabled:opacity-60"
                 >
                   {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className="ml-0.5" />}
                 </button>
               ) : (
                 <button
                   onClick={onStartVoiceSession}
-                  className="p-2.5 text-slate-400 hover:text-slate-200 hover:bg-[#333537] rounded-full transition-all"
+                  className="p-2.5 text-slate-300 hover:text-white hover:bg-slate-800/70 rounded-full transition-all"
                   title="Use Microphone"
                 >
                   <Mic size={20} />
