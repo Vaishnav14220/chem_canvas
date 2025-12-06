@@ -40,46 +40,57 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-100 font-sans animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-100 font-sans animate-in fade-in duration-200"
+             style={{
+                 backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(34,211,238,0.08), transparent 32%), radial-gradient(circle at 80% 10%, rgba(168,85,247,0.10), transparent 30%)'
+             }}
+        >
             {/* Header */}
-            <header className="flex items-center justify-between border-b border-slate-800 bg-slate-950/90 px-6 py-4 backdrop-blur-md">
+            <header className="flex items-center justify-between border-b border-slate-800/80 bg-slate-950/90 px-6 py-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
-                        <Waves className="h-6 w-6 text-white" />
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 via-cyan-400 to-teal-600 shadow-lg shadow-emerald-500/30 ring-1 ring-white/10">
+                        <Waves className="h-6 w-6 text-white drop-shadow" />
                     </div>
                     <div>
                         <h1 className="text-xl font-bold tracking-tight text-white">Gemini Live Tutor</h1>
-                        <p className="text-xs font-medium text-slate-400">Real-time Voice AI • Kinetics Simulation</p>
+                        <p className="text-xs font-semibold text-slate-300/90">Realtime voice • Kinetics • Visuals</p>
                     </div>
                 </div>
-                <button
-                    onClick={onClose}
-                    className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-                >
-                    <X className="h-6 w-6" />
-                </button>
+                <div className="flex items-center gap-2">
+                    <span className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-semibold text-emerald-200 bg-emerald-500/10 border border-emerald-500/40 shadow-[0_0_18px_rgba(16,185,129,0.25)]">
+                        <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" /> Live
+                    </span>
+                    <button
+                        onClick={onClose}
+                        className="rounded-xl p-2.5 text-slate-300 transition-all hover:text-white hover:bg-slate-800/80 border border-slate-800/80 shadow-inner shadow-black/30"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
             </header>
 
             <main className="flex-1 overflow-hidden">
-                <div className="w-full h-full grid grid-cols-1 lg:grid-cols-12 gap-0">
+                <div className="w-full h-full grid grid-cols-1 lg:grid-cols-12 gap-4 px-4 pb-6">
 
                     {/* Tab Navigation */}
                     <div className="lg:col-span-12 flex justify-center mb-2">
-                        <div className="bg-slate-900/50 p-1 rounded-full border border-slate-800 inline-flex">
+                        <div className="bg-slate-900/70 p-1.5 rounded-full border border-slate-800/80 inline-flex shadow-[0_10px_35px_rgba(0,0,0,0.35)] backdrop-blur">
                             <button
                                 onClick={() => setActiveTab('VOICE')}
-                                className={`px-6 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition-all ${activeTab === 'VOICE'
-                                        ? 'bg-slate-800 text-white shadow-lg shadow-black/20'
-                                        : 'text-slate-400 hover:text-slate-200'
+                                className={`px-6 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all ${
+                                    activeTab === 'VOICE'
+                                        ? 'bg-gradient-to-r from-emerald-500/80 to-cyan-500/80 text-white shadow-[0_12px_30px_rgba(34,211,238,0.25)]'
+                                        : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
                                     }`}
                             >
                                 <Waves size={16} /> Voice Tutor
                             </button>
                             <button
                                 onClick={() => setActiveTab('TEXT')}
-                                className={`px-6 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition-all ${activeTab === 'TEXT'
-                                        ? 'bg-slate-800 text-white shadow-lg shadow-black/20'
-                                        : 'text-slate-400 hover:text-slate-200'
+                                className={`px-6 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-all ${
+                                    activeTab === 'TEXT'
+                                        ? 'bg-gradient-to-r from-purple-500/80 to-blue-500/80 text-white shadow-[0_12px_30px_rgba(168,85,247,0.25)]'
+                                        : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
                                     }`}
                             >
                                 <MessageSquareText size={16} /> Text & Visuals
@@ -93,9 +104,10 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                             <div className="lg:col-span-7 flex flex-col gap-6">
 
                                 {/* Hero Section / Status */}
-                                <div className="bg-slate-900/50 rounded-2xl p-6 md:p-8 border border-slate-800 backdrop-blur relative overflow-hidden">
+                                <div className="bg-slate-900/70 rounded-3xl p-6 md:p-8 border border-slate-800/80 backdrop-blur relative overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.45)]">
                                     {/* Background decoration */}
-                                    <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                                    <div className="absolute -top-28 -right-16 w-80 h-80 bg-emerald-500/12 rounded-full blur-3xl pointer-events-none"></div>
+                                    <div className="absolute -bottom-32 -left-10 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
                                     <div className="relative z-10">
                                         <h2 className="text-2xl md:text-3xl font-bold mb-2 flex items-center gap-2 text-white">
@@ -117,11 +129,11 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                                                 onClick={handleToggleConnection}
                                                 disabled={isConnecting}
                                                 className={`
-                          flex items-center gap-2 px-6 py-3 rounded-full font-semibold transition-all duration-200 w-full sm:w-auto justify-center
+                          flex items-center gap-2 px-7 py-3.5 rounded-full font-semibold transition-all duration-200 w-full sm:w-auto justify-center ring-1 ring-white/10
                           ${isConnected
-                                                        ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/50'
-                                                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:shadow-lg hover:shadow-emerald-500/25'}
-                          ${isConnecting ? 'opacity-70 cursor-wait' : ''}
+                                                        ? 'bg-gradient-to-r from-rose-600 to-red-500 text-white hover:shadow-[0_18px_36px_rgba(248,113,113,0.25)]'
+                                                        : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white hover:shadow-[0_18px_36px_rgba(34,211,238,0.25)]'}
+                          ${isConnecting ? 'opacity-70 cursor-wait' : 'hover:-translate-y-[1px]'}
                         `}
                                             >
                                                 {isConnecting ? (
@@ -166,7 +178,7 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
 
                                     {/* Tips Section */}
                                     <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                                        <div className="bg-slate-900/70 border border-slate-800/80 p-4 rounded-xl shadow-inner shadow-black/30">
                                             <div className="flex items-start gap-3">
                                                 <Info className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
                                                 <div>
@@ -175,7 +187,7 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                                        <div className="bg-slate-900/70 border border-slate-800/80 p-4 rounded-xl shadow-inner shadow-black/30">
                                             <div className="flex items-start gap-3">
                                                 <BrainCircuit className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
                                                 <div>
@@ -189,11 +201,12 @@ const GeminiLiveWorkspace: React.FC<GeminiLiveWorkspaceProps> = ({ onClose, apiK
                             </div>
 
                             {/* Right Panel: Transcript */}
-                            <div className="lg:col-span-5 h-[500px] lg:h-auto bg-slate-900/30 rounded-2xl border border-slate-800 flex flex-col overflow-hidden">
-                                <div className="p-4 border-b border-slate-800 bg-slate-900/50 backdrop-blur">
-                                    <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                            <div className="lg:col-span-5 h-[500px] lg:h-auto bg-slate-900/60 rounded-3xl border border-slate-800/80 flex flex-col overflow-hidden shadow-[0_22px_48px_rgba(0,0,0,0.45)]">
+                                <div className="p-4 border-b border-slate-800/80 bg-slate-900/80 backdrop-blur flex items-center justify-between">
+                                    <h3 className="font-semibold text-slate-100 flex items-center gap-2">
                                         Live Transcript
                                     </h3>
+                                    <span className="text-[11px] text-slate-400 font-mono">Auto-scrolling</span>
                                 </div>
                                 <div className="flex-1 relative">
                                     <div className="absolute inset-0">
