@@ -737,7 +737,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const canvasReactionInsertionHandlerRef = useRef<((payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) | null>(null);
   const canvasConceptImageInsertionHandlerRef = useRef<((payload: CanvasConceptImagePayload) => Promise<boolean> | boolean) | null>(null);
   const canvasSurfaceActiveRef = useRef<boolean>(false);
-  const excalidrawOnlyModeRef = useRef<boolean>(false); // When true, skip pushTextToCanvas and only use handwriting
+  const excalidrawOnlyModeRef = useRef<boolean>(true); // Force Excalidraw-only mode by default
 
   const currentInputRef = useRef<string>('');
   const currentOutputRef = useRef<string>('');
@@ -809,8 +809,9 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   // When excalidraw-only mode is enabled, responses only go to handwriting handler (Excalidraw)
   // and NOT to the regular canvas text/markdown handlers
   const setExcalidrawOnlyMode = useCallback((enabled: boolean) => {
-    excalidrawOnlyModeRef.current = enabled;
-    console.log('[GeminiLive] Excalidraw-only mode:', enabled ? 'ENABLED' : 'DISABLED');
+    // Always keep Excalidraw-only mode enabled to bypass learning canvas
+    excalidrawOnlyModeRef.current = true;
+    console.log('[GeminiLive] Excalidraw-only mode: FORCED ENABLED');
   }, []);
 
   const stopScreenShare = useCallback(() => {
@@ -1955,12 +1956,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 const userLastMsg = lastUserMessageRef.current || '';
                 const shouldTrigger = /explain|show|break down|visualize|steps|how to|derive|mechanism/i.test(userLastMsg);
 
-                // Skip Learning Canvas updates when in Excalidraw-only mode
-                if (!excalidrawOnlyModeRef.current && !learningCanvasUpdatedThisTurnRef.current && completedText.trim().length > 0 && shouldTrigger) {
-                  pushFallbackLearningCanvas(completedText);
-                  learningCanvasUpdatedThisTurnRef.current = true;
-                }
-
+                // Skip Learning Canvas updates entirely (Excalidraw-only)
                 learningCanvasUpdatedThisTurnRef.current = false;
 
                 const trimmedResponse = completedText.trim();
