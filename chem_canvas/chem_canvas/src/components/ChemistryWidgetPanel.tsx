@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Maximize2, Minimize2, Layers3, Atom, Waves, RefreshCw, Sparkles } from 'lucide-react';
+import { Maximize2, Minimize2, Layers3, Atom, Waves, RefreshCw } from 'lucide-react';
 import MolecularVisualizationWorkspace from './MolecularVisualizationWorkspace';
 
 interface ChemistryWidgetPanelProps {
@@ -66,25 +66,21 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({
           </div>
         </div>
 
-        <div className="p-4 h-full overflow-y-auto bg-slate-900">
-          <MolecularVisualizationWorkspace />
-        </div>
-
-        {/* Compact Magic-UI style dock (inline, non-overlapping) */}
-        <div className="px-4 pb-6 pt-2">
-          <div className="mx-auto mt-3 flex w-full max-w-xl items-center justify-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/90 px-3 py-2 shadow-xl backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
+        {/* Compact Magic UI dock for quick presets */}
+        <div className="px-4 pb-4 pt-2">
+          <div className="mx-auto flex w-full max-w-2xl items-center justify-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/90 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
             {[
-              { id: 'ball', label: 'Ball & Stick', icon: Layers3 },
-              { id: 'density', label: 'Electron Density', icon: Atom },
-              { id: 'surface', label: 'Surface', icon: Waves },
-              { id: 'reset', label: 'Reset View', icon: RefreshCw },
+              { id: 'dock-ball', label: 'Ball & Stick', icon: Layers3 },
+              { id: 'dock-density', label: 'Density', icon: Atom },
+              { id: 'dock-surface', label: 'Surface', icon: Waves },
+              { id: 'dock-reset', label: 'Reset', icon: RefreshCw },
             ].map((item) => (
               <button
                 key={item.id}
-                className="group relative flex h-12 flex-1 items-center justify-center overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/80 hover:text-white"
+                className="group relative flex h-11 flex-1 items-center justify-center overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/80 hover:text-white"
                 title={item.label}
               >
-                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br from-blue-500/10 via-cyan-400/10 to-blue-600/10 blur-[20px] transition-opacity" />
+                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br from-blue-500/10 via-cyan-400/10 to-blue-600/10 blur-[18px] transition-opacity" />
                 <div className="relative flex items-center gap-2">
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>
@@ -92,6 +88,10 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="p-4 h-full overflow-y-auto bg-slate-900">
+          <MolecularVisualizationWorkspace />
         </div>
       </div>
     </div>
