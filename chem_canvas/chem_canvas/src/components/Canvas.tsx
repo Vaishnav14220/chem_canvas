@@ -897,25 +897,12 @@ export default function Canvas({
   }, []);
 
   const appendMarkdownEntry = useCallback(
-    (text: string, heading?: string) => {
-      const steps = parseTextIntoSteps(text);
-      if (!steps.length) {
-        return;
-      }
-      const entry: MarkdownEntry = {
-        id: `markdown-${Date.now()}`,
-        title: heading?.trim() || 'Canvas Explanation',
-        steps,
-        createdAt: Date.now()
-      };
-      setMarkdownEntries(prev => {
-        const next = [...prev, entry];
-        return next.slice(-6);
-      });
-      setIsMarkdownVisible(true);
-      setIsMarkdownCollapsed(false);
+    (text: string) => {
+      // Instead of a side panel, inject explanations directly onto the canvas
+      if (!text?.trim()) return;
+      handleExternalTextInjection(text);
     },
-    [parseTextIntoSteps]
+    [handleExternalTextInjection]
   );
 
   const clearMarkdownEntries = useCallback(() => {
@@ -7624,7 +7611,7 @@ export default function Canvas({
         </div>
       )}
 
-      {isMarkdownVisible && (
+      {false && isMarkdownVisible && (
         <div
           className="group absolute z-40 max-w-[92vw] pointer-events-auto"
           style={{
