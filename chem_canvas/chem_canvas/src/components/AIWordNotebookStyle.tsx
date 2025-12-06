@@ -2058,8 +2058,8 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                         ))}
                       </div>
 
-                      {/* File List */}
-                      <div className="flex-1 overflow-y-auto border border-white/10 rounded-lg bg-[#1a1a1a]">
+                      {/* File Grid (Drive-like cards) */}
+                      <div className="flex-1 overflow-y-auto border border-white/10 rounded-lg bg-[#111216]">
                         {driveLoading ? (
                           <div className="flex items-center justify-center py-12">
                             <Loader2 className="h-8 w-8 animate-spin text-green-400" />
@@ -2070,67 +2070,65 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                             <p>No files found</p>
                           </div>
                         ) : (
-                          <div className="divide-y divide-white/5">
+                          <div className="p-3 space-y-3">
                             {/* Back button if not at root */}
                             {driveFolderStack.length > 1 && (
                               <button
                                 onClick={navigateBack}
-                                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#2d2d2d] transition-colors text-left"
+                                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-[#16181d] hover:bg-[#1e2027] text-sm text-gray-300 transition-colors border border-white/5"
                               >
-                                <ArrowLeft className="h-5 w-5 text-gray-400" />
-                                <span className="text-gray-400">..</span>
+                                <ArrowLeft className="h-4 w-4 text-gray-400" />
+                                Up one level
                               </button>
                             )}
 
-                            {/* Files */}
-                            {driveFiles.map((file) => {
-                              const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
-                              const isSelected = selectedDriveFiles.some(f => f.id === file.id);
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {driveFiles.map((file) => {
+                                const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
+                                const isSelected = selectedDriveFiles.some(f => f.id === file.id);
+                                const accent =
+                                  file.mimeType?.includes('presentation') ? 'text-amber-300' :
+                                  file.mimeType?.includes('spreadsheet') ? 'text-emerald-300' :
+                                  file.mimeType?.includes('document') ? 'text-blue-300' :
+                                  isFolder ? 'text-yellow-300' : 'text-purple-200';
 
-                              return (
-                                <div
-                                  key={file.id}
-                                  className={`flex items-center gap-3 px-4 py-3 hover:bg-[#2d2d2d] transition-colors cursor-pointer ${isSelected ? 'bg-green-500/10 border-l-2 border-green-500' : ''
+                                return (
+                                  <button
+                                    key={file.id}
+                                    onClick={() => {
+                                      if (isFolder) {
+                                        navigateToFolder(file);
+                                      } else {
+                                        toggleDriveFileSelection(file);
+                                      }
+                                    }}
+                                    className={`relative flex flex-col items-start gap-2 px-4 py-3 rounded-2xl text-left border transition-all duration-150 shadow-[0_10px_28px_rgba(0,0,0,0.35)] bg-gradient-to-br from-[#171a21] to-[#111216] hover:border-white/10 ${
+                                      isSelected ? 'border-emerald-400/60 ring-1 ring-emerald-400/40' : 'border-white/5'
                                     }`}
-                                  onClick={() => {
-                                    if (isFolder) {
-                                      navigateToFolder(file);
-                                    } else {
-                                      toggleDriveFileSelection(file);
-                                    }
-                                  }}
-                                >
-                                  {/* Checkbox for non-folders */}
-                                  {!isFolder && (
-                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${isSelected
-                                      ? 'bg-green-500 border-green-500'
-                                      : 'border-gray-600 hover:border-green-400'
-                                      }`}>
-                                      {isSelected && <Check className="h-3 w-3 text-white" />}
+                                  >
+                                    <div className="flex items-start gap-3 w-full">
+                                      <div className={`flex-shrink-0 rounded-xl bg-white/5 p-2 ${accent}`}>
+                                        {getFileIcon(file.mimeType)}
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold text-white truncate">{file.name}</p>
+                                        <p className="text-[11px] text-gray-500">
+                                          {new Date(file.modifiedTime).toLocaleDateString()}
+                                          {file.size && ` • ${(parseInt(file.size) / 1024).toFixed(1)} KB`}
+                                        </p>
+                                      </div>
+                                      {isFolder && <ChevronRight className="h-4 w-4 text-gray-500 flex-shrink-0" />}
                                     </div>
-                                  )}
-
-                                  {/* File icon */}
-                                  <div className="flex-shrink-0">
-                                    {getFileIcon(file.mimeType)}
-                                  </div>
-
-                                  {/* File info */}
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium truncate">{file.name}</p>
-                                    <p className="text-xs text-gray-500">
-                                      {new Date(file.modifiedTime).toLocaleDateString()}
-                                      {file.size && ` • ${(parseInt(file.size) / 1024).toFixed(1)} KB`}
-                                    </p>
-                                  </div>
-
-                                  {/* Folder arrow */}
-                                  {isFolder && (
-                                    <ChevronRight className="h-5 w-5 text-gray-500" />
-                                  )}
-                                </div>
-                              );
-                            })}
+                                    {!isFolder && (
+                                      <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                                        <div className={`h-2 w-2 rounded-full ${isSelected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                                        {isSelected ? 'Selected' : 'Click to select'}
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
                       </div>
