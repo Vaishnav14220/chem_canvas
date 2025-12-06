@@ -1825,7 +1825,7 @@ Here is the learner's question: ${message}`;
                   className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-blue-500/25 transition-transform hover:scale-[1.02]"
                 >
                   <PenLine className="h-4 w-4" />
-                  AI Word
+                  Doc Studio
                 </button>
 
                 <button

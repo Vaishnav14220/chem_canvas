@@ -1104,7 +1104,7 @@ const AIWordRedesigned: React.FC<AIWordProps> = ({ onClose }) => {
         <div className="flex items-center gap-4">
           <span>Powered by Gemini AI</span>
           <span>•</span>
-          <span>© 2025 AI Word</span>
+          <span>© 2025 Doc Studio</span>
         </div>
         <div className="flex items-center gap-6">
           <span>[EDITOR MODE]</span>

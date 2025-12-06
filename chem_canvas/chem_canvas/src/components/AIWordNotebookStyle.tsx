@@ -819,7 +819,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
     setIsGoogleLoading(true);
     try {
-      const title = `AI Word Document - ${new Date().toLocaleDateString()}`;
+      const title = `Doc Studio Document - ${new Date().toLocaleDateString()}`;
       const result = await createGoogleDoc(title);
 
       if (result.success && result.document) {
@@ -853,7 +853,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
     setIsGoogleLoading(true);
     try {
-      const title = `AI Word Export - ${new Date().toLocaleDateString()}`;
+      const title = `Doc Studio Export - ${new Date().toLocaleDateString()}`;
       const result = await createGoogleDoc(title);
 
       if (result.success && result.document) {
@@ -1633,7 +1633,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
           </button>
           <input
             type="text"
-            defaultValue="AI Word Document"
+            defaultValue="Doc Studio Document"
             className="bg-transparent text-white text-lg font-medium border-none outline-none focus:ring-0 max-w-[300px]"
           />
         </div>
@@ -2623,7 +2623,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-xs text-gray-500">〰️</span>
                 </div>
-                <h1 className="text-2xl font-semibold mb-2">AI Word Assistant</h1>
+                <h1 className="text-2xl font-semibold mb-2">Doc Studio Assistant</h1>
                 <p className="text-sm text-gray-400">{sources.filter(s => s.selected).length} source{sources.filter(s => s.selected).length !== 1 ? 's' : ''} selected</p>
 
                 {/* Quick Action Buttons */}
@@ -3383,7 +3383,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
         <div className="flex items-center gap-4 text-xs text-gray-500">
           <span>Powered by Gemini AI</span>
           <span>•</span>
-          <span>© 2025 AI Word</span>
+          <span>© 2025 Doc Studio</span>
         </div>
         <div className="flex items-center gap-4 text-xs text-gray-500">
           <span>{activeView === 'editor' ? '[EDITOR MODE]' : '[AI TOOLS]'}</span>
