@@ -1733,15 +1733,6 @@ Here is the learner's question: ${message}`;
                 </button>
 
                 <button
-                  onClick={handleHeaderUploadClick}
-                  className={`${pillButtonClasses} border-dashed border-blue-500/50 bg-blue-500/5 text-blue-100 hover:text-white`}
-                  title="Upload a PDF, image, or text doc directly to the canvas"
-                >
-                  <Upload className="h-4 w-4" />
-                  Upload to Canvas
-                </button>
-
-                <button
                   onClick={() => {
                     setShowSrlCoachWorkspace(true);
                     setShowChatPanel(false);
