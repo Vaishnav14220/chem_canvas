@@ -1529,8 +1529,22 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
     const userInput = inputText.trim();
     const sourceList = selected.map(s => s.name).join(', ');
-    const intent = `${tool.label}: ${userInput || 'Generate using selected sources.'}`;
-    const prompt = `${intent}\nSources: ${sourceList}`;
+
+    // Specialized intents per tile to drive subagents
+    const intents: Record<string, string> = {
+      reports: 'Produce a structured report with sections, evidence, and references.',
+      qa: 'Generate concise question-and-answer pairs for study.',
+      notes: 'Create study notes with clear bullets and short explanations.',
+      summary: 'Summarize key formulas with symbols, variable definitions, and usage notes.',
+      keypoints: 'List the most critical takeaways and key points.'
+    };
+
+    const baseIntent = intents[tool.id] || tool.label;
+    const intent = userInput
+      ? `${tool.label}: ${userInput}`
+      : baseIntent;
+
+    const prompt = `${intent}\nSources: ${sourceList}\nIf formulas are present, format with LaTeX. Keep outputs concise and directly usable.`;
 
     handleDeepAgentResearch(prompt);
   }, [handleDeepAgentResearch, inputText, showNotification, sources]);
