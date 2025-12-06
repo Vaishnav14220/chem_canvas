@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Maximize2, Minimize2, Layers3 } from 'lucide-react';
+import { Maximize2, Minimize2, Layers3, Atom, Waves, RefreshCw, Sparkles } from 'lucide-react';
 import MolecularVisualizationWorkspace from './MolecularVisualizationWorkspace';
 
 interface ChemistryWidgetPanelProps {
@@ -72,19 +72,23 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({
 
         {/* Compact Magic-UI style dock */}
         <div className="sticky bottom-0 z-10 px-4 pb-4">
-          <div className="mx-auto flex w-full max-w-xl items-center justify-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/80 px-3 py-2 shadow-xl backdrop-blur">
+          <div className="mx-auto flex w-full max-w-xl items-center justify-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/80 px-3 py-2 shadow-xl backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
             {[
-              { id: 'ball', label: 'Ball&Stick' },
-              { id: 'density', label: 'Density' },
-              { id: 'surface', label: 'Surface' },
-              { id: 'reset', label: 'Reset' },
+              { id: 'ball', label: 'Ball & Stick', icon: Layers3 },
+              { id: 'density', label: 'Electron Density', icon: Atom },
+              { id: 'surface', label: 'Surface', icon: Waves },
+              { id: 'reset', label: 'Reset View', icon: RefreshCw },
             ].map((item) => (
               <button
                 key={item.id}
-                className="flex h-10 flex-1 items-center justify-center rounded-xl bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:bg-slate-800 hover:text-white border border-slate-800/70"
+                className="group relative flex h-12 flex-1 items-center justify-center overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/80 hover:text-white"
                 title={item.label}
               >
-                {item.label}
+                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br from-blue-500/10 via-cyan-400/10 to-blue-600/10 blur-[20px] transition-opacity" />
+                <div className="relative flex items-center gap-2">
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </div>
               </button>
             ))}
           </div>
