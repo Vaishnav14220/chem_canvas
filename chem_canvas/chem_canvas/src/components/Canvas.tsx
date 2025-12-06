@@ -896,14 +896,6 @@ export default function Canvas({
     return [normalized];
   }, []);
 
-  const appendMarkdownEntry = useCallback(
-    (text: string) => {
-      // Instead of a side panel, inject explanations directly onto the canvas
-      if (!text?.trim()) return;
-      insertTextBlock(text, { autoPlacement: true });
-    },
-    [insertTextBlock]
-  );
 
   const clearMarkdownEntries = useCallback(() => {
     setMarkdownEntries([]);
@@ -2026,6 +2018,16 @@ export default function Canvas({
   const handleExternalTextInjection = useCallback((content: string) => {
     insertTextBlock(content, { autoPlacement: true });
   }, [insertTextBlock]);
+
+  // Append markdown/explanations directly onto canvas as text
+  const appendMarkdownEntry = useCallback(
+    (text: string) => {
+      const content = text?.trim();
+      if (!content) return;
+      insertTextBlock(content, { autoPlacement: true });
+    },
+    [insertTextBlock]
+  );
 
   // Find empty space on canvas for handwriting placement - intelligent positioning
   const findEmptySpace = useCallback((textWidth: number, textHeight: number): { x: number; y: number } => {
