@@ -266,7 +266,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
   // View State
   const [viewMode, setViewMode] = useState<'chat' | 'workflow'>('chat');
   const [conciseMode, setConciseMode] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'chat' | 'artifacts'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'workflow' | 'graph' | 'artifacts'>('chat');
   const [showSidebar, setShowSidebar] = useState(false);
   const [metaOpen, setMetaOpen] = useState<'tasks' | 'files' | null>(null);
 
@@ -865,7 +865,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
       {/* Header removed by user request */}
 
       {/* Tab Navigation */}
-      <div className="flex border-b border-gray-700 bg-gray-800/50">
+      <div className="flex border-b border-gray-700 bg-gray-800/50 flex-wrap">
         <button
           onClick={() => setActiveTab('chat')}
           className={`flex-1 py-2 px-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'chat'
@@ -875,6 +875,27 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
         >
           <Brain className="w-4 h-4" />
           Chat
+        </button>
+        <button
+          onClick={() => setActiveTab('workflow')}
+          disabled={conciseMode}
+          className={`flex-1 py-2 px-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'workflow'
+            ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-800/50'
+            : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+            } ${conciseMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        >
+          <GitBranch className="w-4 h-4" />
+          Workflow
+        </button>
+        <button
+          onClick={() => setActiveTab('graph')}
+          className={`flex-1 py-2 px-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'graph'
+            ? 'text-cyan-400 border-b-2 border-cyan-400 bg-gray-800/50'
+            : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+            }`}
+        >
+          <GitBranch className="w-4 h-4 rotate-90" />
+          Link Graph
         </button>
         <button
           onClick={() => {
@@ -1708,6 +1729,76 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
             )}
           </div>
         )
+        }
+
+        {/* Artifacts Tab */}
+        {
+          activeTab === 'graph' && (
+            <div className="flex-1 overflow-y-auto bg-gray-900 p-4">
+              <div className="max-w-5xl mx-auto space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <GitBranch className="w-5 h-5 text-cyan-400" />
+                      Link Graph
+                    </h3>
+                    <p className="text-sm text-gray-400">Artifacts connected to the final document (Obsidian-style)</p>
+                  </div>
+                  {finalDocument && (
+                    <div className="text-xs text-gray-400 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
+                      Final Doc: {finalDocument.title}
+                    </div>
+                  )}
+                </div>
+
+                {/* Nodes */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {finalDocument && (
+                    <div className="p-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10">
+                      <div className="text-xs uppercase text-cyan-300 mb-1">Final Document</div>
+                      <div className="text-sm font-semibold text-white truncate">{finalDocument.title}</div>
+                      <div className="text-[11px] text-gray-400 mt-1">{(finalDocument.content || '').slice(0, 80)}{(finalDocument.content || '').length > 80 ? '…' : ''}</div>
+                    </div>
+                  )}
+                  {artifactsList.map((a) => (
+                    <div key={a.id} className="p-3 rounded-xl border border-gray-700 bg-gray-850">
+                      <div className="text-xs uppercase text-gray-400 mb-1">{a.type}</div>
+                      <div className="text-sm font-semibold text-white truncate">{a.title}</div>
+                      <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{a.content.slice(0, 120)}{a.content.length > 120 ? '…' : ''}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Edges */}
+                <div className="p-3 rounded-xl border border-gray-700 bg-gray-850">
+                  <div className="text-sm font-semibold text-white mb-2">Connections</div>
+                  <div className="space-y-2 text-sm text-gray-300">
+                    {finalDocument ? (
+                      artifactsList.length > 0 ? (
+                        artifactsList.map((a) => (
+                          <div key={`edge-${a.id}`} className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-cyan-400" />
+                            <span className="text-white font-medium">{a.title}</span>
+                            <span className="text-gray-500">→</span>
+                            <span className="text-cyan-300">{finalDocument.title}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-gray-500">No artifacts linked yet.</div>
+                      )
+                    ) : (
+                      <div className="text-gray-500">No final document available.</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Hint */}
+                <div className="text-xs text-gray-500">
+                  For richer graphs, add source metadata to artifacts and recompute edges.
+                </div>
+              </div>
+            </div>
+          )
         }
 
         {/* Artifacts Tab */}
