@@ -70,9 +70,9 @@ const ChemistryWidgetPanel: React.FC<ChemistryWidgetPanelProps> = ({
           <MolecularVisualizationWorkspace />
         </div>
 
-        {/* Compact Magic-UI style dock */}
-        <div className="sticky bottom-0 z-10 px-4 pb-4">
-          <div className="mx-auto flex w-full max-w-xl items-center justify-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/90 px-3 py-2 shadow-xl backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg translate-y-2">
+        {/* Compact Magic-UI style dock (inline, non-overlapping) */}
+        <div className="px-4 pb-6 pt-2">
+          <div className="mx-auto mt-3 flex w-full max-w-xl items-center justify-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/90 px-3 py-2 shadow-xl backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
             {[
               { id: 'ball', label: 'Ball & Stick', icon: Layers3 },
               { id: 'density', label: 'Electron Density', icon: Atom },
