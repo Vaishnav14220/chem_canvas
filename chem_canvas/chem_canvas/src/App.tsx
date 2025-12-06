@@ -1733,6 +1733,15 @@ Here is the learner's question: ${message}`;
                 </button>
 
                 <button
+                  onClick={handleHeaderUploadClick}
+                  className={`${pillButtonClasses} border-dashed border-blue-500/50 bg-blue-500/5 text-blue-100 hover:text-white`}
+                  title="Upload a PDF, image, or text doc directly to the canvas"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload to Canvas
+                </button>
+
+                <button
                   onClick={() => {
                     setShowSrlCoachWorkspace(true);
                     setShowChatPanel(false);
@@ -1774,28 +1783,6 @@ Here is the learner's question: ${message}`;
                 >
                   <LineChart className="h-4 w-4" />
                   NMR Lab
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowGeminiLiveWorkspace(true);
-                    setShowSrlCoachWorkspace(false);
-
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowChatPanel(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                    void captureToolClick('gemini_live');
-                    startFeature('gemini_live');
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-green-600 to-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-green-500/25 transition-transform hover:scale-[1.02]"
-                >
-                  <Mic className="h-4 w-4" />
-                  Gemini Live
                 </button>
 
                 <button
