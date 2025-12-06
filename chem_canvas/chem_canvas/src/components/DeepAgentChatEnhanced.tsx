@@ -265,6 +265,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
 
   // View State
   const [viewMode, setViewMode] = useState<'chat' | 'workflow'>('chat');
+  const [conciseMode, setConciseMode] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'artifacts'>('chat');
   const [showSidebar, setShowSidebar] = useState(false);
   const [metaOpen, setMetaOpen] = useState<'tasks' | 'files' | null>(null);
@@ -821,7 +822,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
   // ==========================================
 
   const ViewToggle = (
-    <div className="flex justify-center py-2">
+    <div className="flex justify-between items-center py-2 gap-3 flex-wrap">
       <div className="flex h-8 items-center gap-0 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 p-1 text-xs shadow-sm">
         <button
           onClick={() => setViewMode('chat')}
@@ -832,12 +833,26 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
         </button>
         <button
           onClick={() => setViewMode('workflow')}
+          disabled={conciseMode}
           className={`flex h-full items-center justify-center px-4 rounded transition-colors ${viewMode === 'workflow' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-white'
-            }`}
+            } ${conciseMode ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           Workflow
         </button>
       </div>
+      <label className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800/60 border border-gray-700 rounded-full px-3 py-1">
+        <input
+          type="checkbox"
+          checked={conciseMode}
+          onChange={(e) => {
+            const v = e.target.checked;
+            setConciseMode(v);
+            if (v && viewMode === 'workflow') setViewMode('chat');
+          }}
+          className="accent-purple-500"
+        />
+        Concise mode (final report only)
+      </label>
     </div>
   );
 
@@ -973,7 +988,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
             {ViewToggle}
 
             {/* Workflow View */}
-            {viewMode === 'workflow' && (
+            {viewMode === 'workflow' && !conciseMode && (
               <div className="flex-1 overflow-y-auto bg-gray-850 p-6">
                 <div className="max-w-4xl mx-auto">
                   {/* Workflow Header */}
@@ -1109,7 +1124,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                   )}
 
                   {/* Tool Calls Timeline */}
-                  {toolCalls.length > 0 && (
+                  {!conciseMode && toolCalls.length > 0 && (
                     <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
                       <h4 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
                         <Wrench className="w-4 h-4 text-yellow-400" />
@@ -1148,7 +1163,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                   )}
 
                   {/* SubAgents Section */}
-                  {subAgents.length > 0 && (
+                  {!conciseMode && subAgents.length > 0 && (
                     <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
                       <h4 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
                         <Users className="w-4 h-4 text-purple-400" />
