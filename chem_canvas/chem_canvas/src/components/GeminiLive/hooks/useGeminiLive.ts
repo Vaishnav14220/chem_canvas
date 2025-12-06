@@ -1138,19 +1138,8 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   }, []);
 
   const pushFallbackLearningCanvas = useCallback((text: string) => {
-    const fallback = createFallbackLearningCanvas(text);
-    if (!fallback) return;
-
-    setSimulationState(prev => ({
-      isActive: true,
-      type: 'LEARNING_CANVAS',
-      kineticsParams: prev.kineticsParams,
-      molecule3DParams: prev.molecule3DParams,
-      learningCanvasParams: {
-        ...fallback,
-        image: undefined
-      }
-    }));
+    // Learning canvas disabled globally
+    return;
   }, [createFallbackLearningCanvas]);
 
   const initializeConceptImage = useCallback((rawArgs: ConceptImageToolArgs) => {
