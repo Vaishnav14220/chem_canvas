@@ -725,7 +725,7 @@ const App: React.FC = () => {
   }, []);
 
   const pillButtonClasses =
-    'inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground';
+    'inline-flex items-center gap-1.75 rounded-full border border-slate-700/70 bg-gradient-to-b from-slate-950/90 via-slate-900 to-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-100 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur transition-all duration-200 hover:-translate-y-[1px] hover:border-cyan-400/70 hover:shadow-[0_1px_0_rgba(255,255,255,0.14)_inset,0_14px_38px_rgba(34,211,238,0.25)] active:translate-y-0';
   const dispatchCanvasCommand = useCallback((command: CanvasCommand) => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent<CanvasCommand>('canvas-command', { detail: command }));
@@ -1654,12 +1654,14 @@ Here is the learner's question: ${message}`;
               <div className="flex-1 min-w-[220px] max-w-xl">
                 <button
                   onClick={() => setCommandPaletteOpen(true)}
-                  className="group inline-flex h-10 w-full items-center justify-between rounded-xl border border-border/50 bg-background/80 px-3.5 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                  className="group inline-flex h-11 w-full items-center justify-between rounded-2xl border border-slate-700/70 bg-gradient-to-b from-slate-950/90 via-slate-900 to-slate-950 px-4 text-sm font-semibold text-slate-100 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,0_14px_36px_rgba(0,0,0,0.35)] backdrop-blur transition-all duration-200 hover:-translate-y-[1px] hover:border-cyan-400/70 hover:shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_16px_44px_rgba(34,211,238,0.25)]"
                 >
                   <span className="flex items-center gap-2 text-left">
-                    <Search className="h-4 w-4 text-foreground/70 group-hover:text-foreground" />
-                    <span className="text-foreground font-semibold">Quick Search</span>
-                    <span className="hidden sm:inline text-xs text-muted-foreground">docs, tools, AI</span>
+                    <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-slate-800/70 text-cyan-300 shadow-inner shadow-black/50 ring-1 ring-slate-700/70 group-hover:ring-cyan-400/60">
+                      <Search className="h-4 w-4" />
+                    </div>
+                    <span className="text-slate-50 font-semibold">Quick Search</span>
+                    <span className="hidden sm:inline text-xs text-slate-400">docs, tools, AI</span>
                   </span>
                   <kbd className="pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded-lg border border-border/50 bg-muted/50 px-3 font-mono text-[11px] uppercase tracking-wide opacity-80">
                     ⌘K
