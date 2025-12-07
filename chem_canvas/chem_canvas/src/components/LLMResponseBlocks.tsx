@@ -15,14 +15,14 @@ const extractSmilesCandidates = (text: string): string[] => {
 
   for (const match of text.matchAll(SMILES_CODE_REGEX)) {
     const candidate = match[1]?.trim();
-    if (candidate) {
+    if (candidate && !/[{}\n]/.test(candidate) && candidate.length <= 200) {
       results.add(candidate);
     }
   }
 
   for (const match of text.matchAll(SMILES_LABEL_REGEX)) {
     const candidate = match[1]?.trim();
-    if (candidate) {
+    if (candidate && !/[{}\n]/.test(candidate) && candidate.length <= 200) {
       results.add(candidate);
     }
   }
@@ -30,9 +30,25 @@ const extractSmilesCandidates = (text: string): string[] => {
   return Array.from(results);
 };
 
+const isLikelySmiles = (value: string): boolean => {
+  if (!value) return false;
+  const tooLong = value.length > 120;
+  const hasNewlines = /\r|\n/.test(value);
+  const hasBraces = /[{}]/.test(value);
+  if (tooLong || hasNewlines || hasBraces) return false;
+  // Rough SMILES character whitelist
+  return /^[A-Za-z0-9@+\-\[\]\(\)\\\/=#$%\.]+$/.test(value);
+};
+
 const verifySmilesList = async (candidates: string[]): Promise<string[]> => {
   const verified: string[] = [];
   for (const candidate of candidates) {
+    // If it already looks like SMILES, keep it and skip canonicalization (reduces noisy 400s)
+    if (isLikelySmiles(candidate)) {
+      verified.push(candidate);
+      continue;
+    }
+
     try {
       const canonical = await fetchCanonicalSmiles(candidate);
       if (canonical) {

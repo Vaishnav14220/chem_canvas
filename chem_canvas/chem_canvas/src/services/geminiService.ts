@@ -384,6 +384,233 @@ export interface MoleculeResolutionResult {
   source: 'gemini' | 'pubchem';
 }
 
+export interface NmrAction {
+  action: string;
+  params?: Record<string, any>;
+  rationale?: string;
+  priority?: 'action' | 'info';
+}
+
+/**
+ * Generate an NMR-specific response using Gemini 2.5 Pro (fallbacks to flash) with
+ * function calling to surface structured actions for the NMRium viewer.
+ */
+export const generateNmrAssistantPlan = async (
+  userPrompt: string,
+  options?: { context?: string }
+): Promise<{ text: string; actions: NmrAction[]; modelUsed: string }> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  const toolDeclarations = [
+    {
+      name: 'load_smiles',
+      description: 'Load or replace the molecule in NMRium using a SMILES string.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          smiles: { type: Type.STRING, description: 'SMILES string for the molecule' },
+          label: { type: Type.STRING, description: 'Optional label to display' },
+        },
+        required: ['smiles'],
+      },
+    },
+    {
+      name: 'load_jcamp',
+      description: 'Load a JCAMP-DX spectrum file by URL.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          url: { type: Type.STRING, description: 'Public URL to JCAMP file' },
+          title: { type: Type.STRING, description: 'Display title for the spectrum' },
+        },
+        required: ['url'],
+      },
+    },
+    {
+      name: 'set_nucleus',
+      description: 'Set the active nucleus (e.g., 1H, 13C).',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          nucleus: { type: Type.STRING, description: 'Nucleus code, e.g., 1H, 13C, 19F' },
+        },
+        required: ['nucleus'],
+      },
+    },
+    {
+      name: 'toggle_peak_picking',
+      description: 'Enable or disable automatic peak picking.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          enabled: { type: Type.BOOLEAN, description: 'true to enable, false to disable' },
+        },
+        required: ['enabled'],
+      },
+    },
+    {
+      name: 'integrate_region',
+      description: 'Integrate a specific chemical shift window.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          from: { type: Type.NUMBER, description: 'Start of ppm window' },
+          to: { type: Type.NUMBER, description: 'End of ppm window' },
+          nucleus: { type: Type.STRING, description: 'Optional nucleus code' },
+        },
+        required: ['from', 'to'],
+      },
+    },
+    {
+      name: 'zoom_region',
+      description: 'Zoom into a ppm region.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          from: { type: Type.NUMBER, description: 'Start of ppm window' },
+          to: { type: Type.NUMBER, description: 'End of ppm window' },
+        },
+        required: ['from', 'to'],
+      },
+    },
+    {
+      name: 'phase_correct',
+      description: 'Perform automatic or manual phase correction.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          mode: { type: Type.STRING, description: 'auto | manual' },
+        },
+        required: ['mode'],
+      },
+    },
+    {
+      name: 'add_assignment',
+      description: 'Assign a peak or multiplet to an atom/group.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          ppm: { type: Type.NUMBER, description: 'Center ppm value' },
+          label: { type: Type.STRING, description: 'Label or atom/group' },
+          note: { type: Type.STRING, description: 'Optional short note' },
+        },
+        required: ['ppm', 'label'],
+      },
+    },
+    {
+      name: 'overlay_spectrum',
+      description: 'Overlay a second spectrum for comparison.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          url: { type: Type.STRING, description: 'Public URL to JCAMP file' },
+          color: { type: Type.STRING, description: 'Optional CSS color string' },
+          label: { type: Type.STRING, description: 'Label for overlay' },
+        },
+        required: ['url'],
+      },
+    },
+    {
+      name: 'export_spectrum',
+      description: 'Export the current spectrum or annotations.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          format: { type: Type.STRING, description: 'pdf | png | svg | json' },
+          includeAnnotations: { type: Type.BOOLEAN, description: 'Whether to include peak labels' },
+        },
+        required: ['format'],
+      },
+    },
+    {
+      name: 'add_note',
+      description: 'Add a short procedural note for the user.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          text: { type: Type.STRING, description: 'Note text' },
+          category: { type: Type.STRING, description: 'safety | tip | workflow' },
+        },
+        required: ['text'],
+      },
+    },
+    {
+      name: 'reset_view',
+      description: 'Reset zoom and overlays to defaults.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {},
+      },
+    },
+  ];
+
+  const modelCandidates = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-flash-latest'];
+  const combinedPrompt = `${options?.context ?? ''}\n${userPrompt}`.trim();
+
+  let lastError: any = null;
+
+  for (const modelName of modelCandidates) {
+    try {
+      const result = await executeWithRotation(async (apiKey) => {
+        if (apiKey !== currentApiKey) {
+          genAI = new GoogleGenAI({ apiKey });
+          currentApiKey = apiKey;
+          cachedModelName = null;
+        }
+
+        const response = await genAI!.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `Act as an NMRium operator. Provide concise Markdown guidance AND emit function calls for actions.\n${combinedPrompt}` }],
+            },
+          ],
+          tools: [{ functionDeclarations: toolDeclarations }],
+          toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
+        });
+
+        const actions: NmrAction[] = [];
+        const textParts: string[] = [];
+
+        const collectFromParts = (parts: any[] | undefined) => {
+          if (!Array.isArray(parts)) return;
+          parts.forEach((part) => {
+            if (typeof part?.text === 'string') {
+              textParts.push(part.text);
+            }
+            if (part?.functionCall) {
+              actions.push({
+                action: part.functionCall.name,
+                params: part.functionCall.args || {},
+                rationale: part.functionCall.reasoning || undefined,
+              });
+            }
+          });
+        };
+
+        collectFromParts(response?.candidates?.[0]?.content?.parts);
+        collectFromParts(response?.content?.parts);
+
+        const text = response?.text || textParts.join('\n').trim() || 'Here is your NMR guidance.';
+
+        return { text, actions, modelUsed: modelName };
+      });
+
+      return result;
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`NMR assistant call failed for model ${modelName}:`, error?.message || error);
+      continue;
+    }
+  }
+
+  throw lastError || new Error('Failed to generate NMR assistant response');
+};
+
 export const resolveMoleculeDescription = async (
   description: string
 ): Promise<MoleculeResolutionResult> => {

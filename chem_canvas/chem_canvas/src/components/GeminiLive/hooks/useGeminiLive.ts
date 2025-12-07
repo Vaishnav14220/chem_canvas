@@ -1950,33 +1950,28 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
 
                 const trimmedResponse = completedText.trim();
                 
-                // Skip pushTextToCanvas when in Excalidraw-only mode - only use handwriting handler
-                if (!excalidrawOnlyModeRef.current) {
-                  const pendingWrite = pendingCanvasWriteRef.current;
-                  if (pendingWrite && trimmedResponse.length > 0) {
-                    const heading = pendingWrite.reason === 'answer' ? 'Solution' : 'Similar Example';
-                    const inserted = pushTextToCanvas(trimmedResponse, heading);
-                    if (inserted) {
-                      canvasWritePerformedThisTurnRef.current = true;
-                    } else {
-                      console.warn('Failed to push assistant response to canvas despite user request');
-                    }
-                    pendingCanvasWriteRef.current = null;
-                  } else if (
-                    trimmedResponse.length > 0 &&
-                    canvasSurfaceActiveRef.current &&
-                    !canvasWritePerformedThisTurnRef.current
-                  ) {
-                    const inserted = pushTextToCanvas(trimmedResponse, DEFAULT_AUTO_CANVAS_HEADING);
-                    if (inserted) {
-                      canvasWritePerformedThisTurnRef.current = true;
-                    } else {
-                      console.warn('Failed to push assistant response to canvas by default');
-                    }
+                // Always push structured text to canvas (markdown handler if available)
+                const pendingWrite = pendingCanvasWriteRef.current;
+                if (pendingWrite && trimmedResponse.length > 0) {
+                  const heading = pendingWrite.reason === 'answer' ? 'Solution' : 'Similar Example';
+                  const inserted = pushTextToCanvas(trimmedResponse, heading);
+                  if (inserted) {
+                    canvasWritePerformedThisTurnRef.current = true;
+                  } else {
+                    console.warn('Failed to push assistant response to canvas despite user request');
                   }
-                } else {
-                  // Clear pending write in excalidraw mode
                   pendingCanvasWriteRef.current = null;
+                } else if (
+                  trimmedResponse.length > 0 &&
+                  canvasSurfaceActiveRef.current &&
+                  !canvasWritePerformedThisTurnRef.current
+                ) {
+                  const inserted = pushTextToCanvas(trimmedResponse, DEFAULT_AUTO_CANVAS_HEADING);
+                  if (inserted) {
+                    canvasWritePerformedThisTurnRef.current = true;
+                  } else {
+                    console.warn('Failed to push assistant response to canvas by default');
+                  }
                 }
 
                 // ALWAYS push response as handwritten text to canvas when Gemini Live responds

@@ -839,38 +839,49 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
     }
   };
 
-  // Save current output to Google Doc
-  const handleSaveToGoogleDoc = async () => {
+  const saveContentToGoogleDoc = async (content: string, titlePrefix = 'Doc Studio Export') => {
     if (!checkIsSignedIn()) {
       showNotification('Please sign in to Google first');
-      return;
+      return null;
     }
 
-    if (!outputText) {
+    const trimmed = content?.trim();
+    if (!trimmed) {
       showNotification('No output to save');
-      return;
+      return null;
     }
 
     setIsGoogleLoading(true);
     try {
-      const title = `Doc Studio Export - ${new Date().toLocaleDateString()}`;
+      const title = `${titlePrefix} - ${new Date().toLocaleDateString()}`;
       const result = await createGoogleDoc(title);
 
       if (result.success && result.document) {
-        // Update the doc with content
-        await updateGoogleDoc(result.document.documentId, outputText);
+        await updateGoogleDoc(result.document.documentId, trimmed);
         showNotification(`✓ Saved to Google Docs: ${title}`);
         window.open(`https://docs.google.com/document/d/${result.document.documentId}/edit`, '_blank');
         await loadGoogleDocs();
+        return result.document.documentId;
       } else {
         showNotification('Failed to save to Google Docs');
+        return null;
       }
     } catch (error) {
       console.error('Failed to save to Google Docs:', error);
       showNotification('Failed to save to Google Docs');
+      return null;
     } finally {
       setIsGoogleLoading(false);
     }
+  };
+
+  // Save current output to Google Doc
+  const handleSaveToGoogleDoc = async () => {
+    if (!outputText) {
+      showNotification('No output to save');
+      return;
+    }
+    await saveContentToGoogleDoc(outputText, 'Doc Studio Export');
   };
 
   // Use Google Doc content as input
@@ -1529,25 +1540,115 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
 
     const userInput = inputText.trim();
     const sourceList = selected.map(s => s.name).join(', ');
+    const selectedText = selected
+      .map(s => s.content || '')
+      .filter(Boolean)
+      .join('\n\n')
+      .slice(0, 20000);
 
-    // Specialized intents per tile to drive subagents
-    const intents: Record<string, string> = {
-      reports: 'Produce a structured report with sections, evidence, and references.',
-      qa: 'Generate concise question-and-answer pairs for study.',
-      notes: 'Create study notes with clear bullets and short explanations.',
-      summary: 'Summarize key formulas with symbols, variable definitions, and usage notes.',
-      keypoints: 'List the most critical takeaways and key points.'
+    const docTextBlock = selectedText || 'No document text provided.';
+    const userDirective = userInput ? `\n\nUser customization: ${userInput}` : '';
+
+    const promptBuilders: Record<string, string> = {
+      reports: `You are an expert Academic Analyst. Your task is to read the provided text and generate a structured Executive Report.
+
+Follow this structure strictly:
+1. Executive Summary: A 3-5 sentence paragraph summarizing the core thesis or main topic of the document.
+2. Topic Breakdown: Identify the 3-5 major themes or chapters. Briefly explain the scope of each.
+3. Target Audience: Briefly state who this document is intended for (e.g., beginners, advanced engineers, history students).
+4. Conclusion: A final wrapping sentence on the value of this material.
+
+Do not get into minute details; focus on the macro structure and intent of the document.
+
+Input Text:
+${docTextBlock}${userDirective}`,
+
+      qa: `You are an expert Examiner and Curriculum Designer. Your task is to generate a comprehensive Quiz based on the provided text.
+
+Create 10 distinct questions mixed between:
+* Multiple Choice (4 options)
+* Short Answer (1-2 sentences)
+* True/False
+
+Output Format:
+Section 1: The Quiz
+List all questions clearly numbered. Do not show the answers here.
+
+Section 2: Answer Key
+Provide the correct answer for each question corresponding to the numbers above. For every answer, provide a brief "Explanation" of why it is correct based on the text.
+
+Input Text:
+${docTextBlock}${userDirective}`,
+
+      notes: `You are an expert Note Taker utilizing the Smart Hierarchy Method. Your goal is to convert the raw text into highly readable, organized study notes.
+
+Guidelines:
+* Hierarchy: Use clear Markdown headers (#, ##, ###) to structure the notes.
+* Definitions: Identify key terminology. Bold the term and provide a concise definition immediately after.
+* Examples: If the text provides an example, indent it and label it as Example:.
+* Clarity: Rewrite complex sentences into simple, digestible language.
+* Formatting: Use bullet points for lists to maximize readability.
+
+Input Text:
+${docTextBlock}${userDirective}`,
+
+      summary: `You are a Technical Data Scientist. Your task is to extract all mathematical formulas, scientific equations, or structural logic models from the text.
+
+Instructions:
+1. Identify every distinct formula or equation.
+2. Present the formula using LaTeX format (enclosed in $$).
+3. Under the formula, list the Variables (e.g., where $E$ = Energy).
+4. Provide a Context sentence explaining when this formula is applied.
+
+Critical Fallback:
+If the text contains no math or science formulas (e.g., it is a literature or history text), do not hallucinate equations. Instead, extract 'Key Dates' or 'Logical Frameworks' present in the text.
+
+Input Text:
+${docTextBlock}${userDirective}`,
+
+      keypoints: `You are a Knowledge Distiller. Your task is to extract the Core Insights from the text for quick review.
+
+Guidelines:
+* Generate a list of 10-15 bullet points.
+* Each point must be a complete, standalone thought.
+* Keep each point under 25 words.
+* Focus on facts, findings, and critical rules.
+* Avoid fluff words like 'The text discusses that...'; just state the fact directly.
+
+Input Text:
+${docTextBlock}${userDirective}`,
     };
 
-    const baseIntent = intents[tool.id] || tool.label;
-    const intent = userInput
-      ? `${tool.label}: ${userInput}`
-      : baseIntent;
+    const prompt = promptBuilders[tool.id] || `${tool.label}\n\nInput Text:\n${docTextBlock}${userDirective}\n\nSources: ${sourceList}`;
 
-    const prompt = `${intent}\nSources: ${sourceList}\nIf formulas are present, format with LaTeX. Keep outputs concise and directly usable.`;
+    const run = async () => {
+      setIsProcessing(true);
+      try {
+        const response = await generateContentWithGemini(prompt);
+        if (response) {
+          setOutputText(response);
+          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: response, timestamp: new Date() }]);
 
-    handleDeepAgentResearch(prompt);
-  }, [handleDeepAgentResearch, inputText, showNotification, sources]);
+          // Save to Google Doc if signed in; otherwise keep it in markdown only
+          const savedId = await saveContentToGoogleDoc(response, tool.label);
+          if (savedId) {
+            showNotification(`✓ Generated ${tool.label} and saved to Google Docs`);
+          } else {
+            showNotification(`✓ Generated ${tool.label}. Not saved to Google Docs (not signed in).`);
+          }
+        } else {
+          showNotification('No content generated');
+        }
+      } catch (err) {
+        console.error('Studio tool generation failed:', err);
+        showNotification('Failed to generate content. Try again.');
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    void run();
+  }, [generateContentWithGemini, inputText, saveContentToGoogleDoc, setMessages, setOutputText, showNotification, sources]);
 
   // Load document from URL
   const handleLoadDocument = useCallback(() => {

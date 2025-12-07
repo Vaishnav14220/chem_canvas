@@ -12,6 +12,9 @@ import {
   Loader2,
   Waves,
 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import JSmolViewer from './JSmolViewer';
 import SymmetryQuiz from './SymmetryQuiz';
 import ReactionMechanismAnimator from './ReactionMechanismAnimator';
@@ -19,6 +22,7 @@ import ResolvedReactionPath from './ResolvedReactionPath';
 import type { ReactionResolutionResult } from '../services/reactionResolver';
 import { fetchCanonicalSmiles } from '../services/pubchemService';
 import { initializeGemini, isGeminiInitialized, resolveMoleculeDescription } from '../services/geminiService';
+import { generateTextContent } from '../services/geminiService';
 
 const PDB_REFERENCE = 'https://files.rcsb.org/download/1CRN.pdb';
 const NACL_CIF_INLINE = `
@@ -334,6 +338,9 @@ const MolecularVisualizationWorkspace: React.FC = () => {
     }
   }, [selectedCategory]);
   const [quizOpen, setQuizOpen] = useState(false);
+  const [aiCommand, setAiCommand] = useState('');
+  const [aiFeedback, setAiFeedback] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const handleRunDemo = (demo: VisualizationDemo) => {
     setActiveDemo(demo.id);
@@ -486,6 +493,55 @@ const MolecularVisualizationWorkspace: React.FC = () => {
     }
   };
 
+  // AI-driven JSmol command helper
+  const runAiJsmolCommand = async (userCommand?: string) => {
+    const cmd = (userCommand ?? aiCommand).trim();
+    if (!cmd) {
+      setAiFeedback('Enter an instruction to send to JSmol.');
+      return;
+    }
+    setAiLoading(true);
+    setAiFeedback(null);
+    try {
+      // Ensure Gemini is initialized with the shared key
+      if (!isGeminiInitialized()) {
+        await initializeGemini();
+      }
+
+      const prompt = `
+You are a JSmol scripting assistant. Given a user instruction, return ONLY a concise JSmol script that applies to the currently loaded structure. Do not add explanations.
+User instruction: ${cmd}
+Ensure:
+- keep it short
+- do not clear the molecule unless asked
+- prefer cpk/ball&stick, unitcell/axes when relevant
+- allow animations (spin) if requested
+Output: raw JSmol commands only.`;
+      const raw = await generateTextContent(prompt);
+      // Extract a usable JSmol script (strip code fences / prose)
+      const extractScript = (text?: string) => {
+        if (!text) return '';
+        const fenced = text.match(/```(?:[a-zA-Z]*)?\s*([\s\S]*?)```/);
+        if (fenced && fenced[1]) return fenced[1].trim();
+        return text.trim();
+      };
+      const cleaned = extractScript(raw);
+      if (cleaned) {
+        // Append to current script so the view updates
+        setScript((prev) => `${prev}\n${cleaned}`);
+        setAiFeedback('Applied AI command to JSmol.');
+      } else {
+        setAiFeedback('No script returned. Try another instruction.');
+      }
+    } catch (err) {
+      console.error('AI JSmol Copilot error:', err);
+      setAiFeedback('Failed to run AI command. Please try again.');
+    } finally {
+      setAiLoading(false);
+      setAiCommand('');
+    }
+  };
+
   const renderPresetCard = () => (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -605,163 +661,134 @@ const MolecularVisualizationWorkspace: React.FC = () => {
 
   return (
     <div className="space-y-5 text-slate-100">
-      <section className="rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-950/80 to-slate-900/80 p-5 space-y-4 shadow-2xl ring-1 ring-slate-900/50">
-        {/* Hero header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Layers3 className="h-5 w-5 text-white" />
+      <Card className="border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-950/80 to-slate-900/80 shadow-2xl ring-1 ring-slate-900/50">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <Layers3 className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-white leading-tight">3D Explorer</CardTitle>
+                <CardDescription>Load molecules, proteins, crystals, or reactions with one tap.</CardDescription>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-white leading-tight">3D Explorer</h2>
-              <p className="text-xs text-slate-400">Load molecules, proteins, crystals, or reactions with one tap.</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] text-slate-300">JSmol Live</span>
-            <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] text-slate-300">AI Assist</span>
-            <button
-              onClick={loadSampleStructure}
-              className="inline-flex items-center gap-2 rounded-full bg-indigo-600/80 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm shadow-indigo-500/30 hover:bg-indigo-600"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Load sample
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {CATEGORY_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setSelectedCategory(tab.id)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition shadow-sm ${
-                  selectedCategory === tab.id
-                    ? 'bg-indigo-500 text-white shadow-indigo-500/20'
-                    : 'bg-slate-900/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] text-slate-300">JSmol Live</span>
+              <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] text-slate-300">AI Assist</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-full bg-indigo-600/80 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm shadow-indigo-500/30 hover:bg-indigo-600"
+                onClick={loadSampleStructure}
               >
-                {tab.label}
-              </button>
+                <Download className="h-3.5 w-3.5" />
+                Load sample
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {CATEGORY_TABS.map((tab) => (
+                <Button
+                  key={tab.id}
+                  variant={selectedCategory === tab.id ? "default" : "outline"}
+                  size="sm"
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm ${selectedCategory === tab.id ? '' : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:text-white'}`}
+                  onClick={() => setSelectedCategory(tab.id)}
+                >
+                  {tab.label}
+                </Button>
+              ))}
+            </div>
+            {searchFeedback && (
+              <span className="text-[11px] text-slate-400 bg-slate-900/70 border border-slate-800/70 px-2 py-1 rounded-full">
+                {searchFeedback}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void handleSearch();
+                }
+              }}
+              placeholder="Search molecules, proteins, crystals, or paste a URL..."
+              className="flex-1 min-w-[260px] bg-slate-900/80 text-white placeholder:text-slate-500"
+            />
+            <Button
+              onClick={() => void handleSearch()}
+              disabled={isSearchLoading}
+              className="inline-flex items-center gap-2"
+            >
+              {isSearchLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading
+                </>
+              ) : (
+                'Load'
+              )}
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+            {CATEGORY_HINTS[selectedCategory].map((hint) => (
+              <Button
+                key={hint}
+                variant="outline"
+                size="sm"
+                className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-slate-300 hover:border-indigo-400 hover:text-white"
+                onClick={() => {
+                  setSearchQuery(hint);
+                  void handleSearch(hint);
+                }}
+              >
+                {hint}
+              </Button>
             ))}
           </div>
-          {searchFeedback && (
-            <span className="text-[11px] text-slate-400 bg-slate-900/70 border border-slate-800/70 px-2 py-1 rounded-full">
-              {searchFeedback}
-            </span>
-          )}
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                void handleSearch();
-              }
-            }}
-            placeholder="Search molecules, proteins, crystals, or paste a URL..."
-            className="flex-1 min-w-[260px] rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/70"
-          />
-          <button
-            onClick={() => void handleSearch()}
-            disabled={isSearchLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-500/70 bg-indigo-600/90 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-60"
-          >
-            {isSearchLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading
-              </>
-            ) : (
-              'Load'
-            )}
-          </button>
-        </div>
-
-        <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
-          {CATEGORY_HINTS[selectedCategory].map((hint) => (
-            <button
-              key={hint}
-              onClick={() => {
-                setSearchQuery(hint);
-                void handleSearch(hint);
-              }}
-              className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 hover:border-indigo-400 hover:text-white"
-            >
-              {hint}
-            </button>
-          ))}
-        </div>
-
-        {/* Compact preset dock */}
-        <div className="mx-auto flex w-full max-w-2xl items-center justify-center gap-2 rounded-2xl border border-slate-800/70 bg-slate-950/90 px-2 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
-          {[
-            { id: 'dock-ball', label: 'Ball & Stick', icon: Layers3 },
-            { id: 'dock-density', label: 'Density', icon: Gem },
-            { id: 'dock-surface', label: 'Surface', icon: Waves },
-            { id: 'dock-reset', label: 'Reset', icon: RefreshCcw },
-          ].map((item) => (
-            <button
-              key={item.id}
-              className="group relative flex h-10 flex-1 items-center justify-center overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/80 hover:text-white"
-              title={item.label}
-              onClick={() => {
-                if (item.id === 'dock-ball') handleRunDemo(visualizationDemos[0]);
-                if (item.id === 'dock-density') setScript(visualizationDemos.find(d => d.id === 'electron_density')?.script || visualizationDemos[0].script);
-                if (item.id === 'dock-surface') setScript(visualizationDemos.find(d => d.id === 'solvent_surface')?.script || visualizationDemos[0].script);
-                if (item.id === 'dock-reset') handleResetView();
-              }}
-            >
-              <span className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br from-blue-500/10 via-cyan-400/10 to-blue-600/10 blur-[12px] transition-opacity" />
-              <div className="relative flex items-center gap-2">
-                <item.icon className="h-4 w-4" />
-                <span>{item.label}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
-        {/* Sidebar: presets + quiz */}
-        <div className="space-y-4">
-          {renderCategoryTools()}
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
-            <div className="flex items-center gap-3">
-              <Beaker className="w-5 h-5 text-cyan-300" />
-              <div>
-                <h4 className="text-sm font-semibold text-white">Symmetry quiz</h4>
-                <p className="text-xs text-slate-400">Launch when you want to test recognition.</p>
-              </div>
-            </div>
-            {!quizOpen ? (
-              <button
-                onClick={() => setQuizOpen(true)}
-                className="w-full rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600"
+          {/* Compact preset dock */}
+          <div className="mx-auto flex w-full max-w-2xl items-center justify-center gap-2 rounded-2xl border border-slate-800/70 bg-slate-950/90 px-2 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
+            {[
+              { id: 'dock-ball', label: 'Ball & Stick', icon: Layers3 },
+              { id: 'dock-density', label: 'Density', icon: Gem },
+              { id: 'dock-surface', label: 'Surface', icon: Waves },
+              { id: 'dock-reset', label: 'Reset', icon: RefreshCcw },
+            ].map((item) => (
+              <Button
+                key={item.id}
+                variant="ghost"
+                className="group relative flex h-10 flex-1 items-center justify-center overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/80 hover:text-white"
+                title={item.label}
+                onClick={() => {
+                  if (item.id === 'dock-ball') handleRunDemo(visualizationDemos[0]);
+                  if (item.id === 'dock-density') setScript(visualizationDemos.find(d => d.id === 'electron_density')?.script || visualizationDemos[0].script);
+                  if (item.id === 'dock-surface') setScript(visualizationDemos.find(d => d.id === 'solvent_surface')?.script || visualizationDemos[0].script);
+                  if (item.id === 'dock-reset') handleResetView();
+                }}
               >
-                Start Quiz
-              </button>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => setQuizOpen(false)}
-                    className="text-xs text-slate-400 hover:text-white"
-                  >
-                    Close quiz
-                  </button>
+                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br from-blue-500/10 via-cyan-400/10 to-blue-600/10 blur-[12px] transition-opacity" />
+                <div className="relative flex items-center gap-2">
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.label}</span>
                 </div>
-                <SymmetryQuiz onScriptChange={setScript} />
-              </div>
-            )}
-          </section>
-        </div>
+              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
+      <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
         {/* Main canvas */}
         <div className="space-y-4">
           <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
@@ -798,6 +825,97 @@ const MolecularVisualizationWorkspace: React.FC = () => {
                 <ResolvedReactionPath resolution={reactionResolution} onScriptChange={setScript} />
               </div>
             )}
+          </section>
+        </div>
+
+        {/* Sidebar: presets + quiz + AI */}
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+            {renderCategoryTools()}
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <Beaker className="w-5 h-5 text-cyan-300" />
+              <div>
+                <h4 className="text-sm font-semibold text-white">Symmetry quiz</h4>
+                <p className="text-xs text-slate-400">Launch when you want to test recognition.</p>
+              </div>
+            </div>
+            {!quizOpen ? (
+              <button
+                onClick={() => setQuizOpen(true)}
+                className="w-full rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600"
+              >
+                Start Quiz
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setQuizOpen(false)}
+                    className="text-xs text-slate-400 hover:text-white"
+                  >
+                    Close quiz
+                  </button>
+                </div>
+                <SymmetryQuiz onScriptChange={setScript} />
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Gem className="h-5 w-5 text-cyan-300" />
+                <div>
+                  <h4 className="text-sm font-semibold text-white">AI JSmol Copilot</h4>
+                  <p className="text-[11px] text-slate-400">Type an instruction to manipulate the 3D scene.</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={aiCommand}
+                  onChange={(e) => setAiCommand(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void runAiJsmolCommand();
+                    }
+                  }}
+                  placeholder="e.g., color carbons red and spin y 5"
+                  className="flex-1 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/70"
+                />
+                <button
+                  onClick={() => void runAiJsmolCommand()}
+                  disabled={aiLoading}
+                  className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/70 bg-indigo-600/90 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-60"
+                >
+                  {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Send
+                </button>
+              </div>
+              {aiFeedback && <p className="text-[11px] text-slate-400">{aiFeedback}</p>}
+              <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+                {[
+                  'color by element and show axes',
+                  'ball and stick with light spin',
+                  'show symmetry axes and unit cell',
+                  'surface translucent and hide labels',
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    onClick={() => void runAiJsmolCommand(preset)}
+                    className="rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1 hover:border-indigo-400 hover:text-white"
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
           </section>
         </div>
       </div>

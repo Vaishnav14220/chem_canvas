@@ -227,6 +227,8 @@ const App: React.FC = () => {
   const streamingQueueRef = useRef<string[]>([]);
   const streamingMessageIdRef = useRef<string | null>(null);
   const streamingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const nmrIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [nmrIframeSrc, setNmrIframeSrc] = useState<string>('https://nmrium.nmrxiv.org?workspace=default');
 
   // Sources state
   const [sources, setSources] = useState<SourceEntry[]>([]);
@@ -1363,6 +1365,48 @@ const App: React.FC = () => {
     streamingQueueRef.current = [];
     streamingMessageIdRef.current = null;
   };
+
+  const applyNmrActions = useCallback((actions: any[] = []) => {
+    if (!actions.length) return;
+    actions.forEach(action => {
+      try {
+        // Try to drive NMRium by URL for load_smiles (best-effort)
+        if (action.action === 'load_smiles' && action.params?.smiles) {
+          const nextSrc = `https://nmrium.nmrxiv.org?workspace=default&smiles=${encodeURIComponent(
+            action.params.smiles
+          )}`;
+          setNmrIframeSrc(nextSrc);
+        }
+
+        const payload = {
+          type: 'nmr-command',
+          action: action.action || action.name,
+          params: action.params || action.arguments || {},
+          source: 'chem_canvas',
+        };
+
+        // Send multiple variants to maximize compatibility with the public NMRium embed
+        const targetWindow = nmrIframeRef.current?.contentWindow;
+        if (targetWindow) {
+          targetWindow.postMessage(payload, '*');
+          targetWindow.postMessage({ type: 'nmrium', ...payload }, '*');
+          targetWindow.postMessage({ type: 'nmrium-load', ...payload }, '*');
+          if (payload.action === 'load_smiles' && payload.params?.smiles) {
+            targetWindow.postMessage(
+              {
+                type: 'nmrium',
+                action: 'loadMolecule',
+                payload: { smiles: payload.params.smiles, label: payload.params.label },
+              },
+              '*'
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to post NMR action to NMRium iframe:', err);
+      }
+    });
+  }, []);
   const handleSendMessage = async (
     message: string,
     options?: { mode?: InteractionMode; context?: string }
@@ -1473,6 +1517,67 @@ Here is the learner's question: ${message}`;
       };
 
       void runToolRouting();
+
+      if (isNmrAssistantActive) {
+        try {
+          const nmrResult = await geminiService.generateNmrAssistantPlan(fullPrompt, { context: 'Use NMRium controls; keep responses concise.' });
+
+          // Ensure we push a SMILES load if user asked for a molecule but no tool call was produced
+          let actions = Array.isArray(nmrResult.actions) ? [...nmrResult.actions] : [];
+          const hasLoadSmiles = actions.some(a => a.action === 'load_smiles');
+
+          if (!hasLoadSmiles) {
+            try {
+              const resolved = await geminiService.resolveMoleculeDescription(message);
+              if (resolved?.smiles) {
+                actions.push({
+                  action: 'load_smiles',
+                  params: {
+                    smiles: resolved.smiles,
+                    label: resolved.name || resolved.smiles
+                  },
+                  rationale: 'Auto-added SMILES from user request'
+                });
+              }
+            } catch (autoSmilesError) {
+              console.warn('Auto SMILES injection failed:', autoSmilesError);
+            }
+          }
+
+          const actionSummary = actions.length
+            ? `\n\n### NMRium Actions\n${actions.map((a) => `- ${a.action}${a.params ? ': ' + JSON.stringify(a.params) : ''}`).join('\n')}`
+            : '';
+          const finalText = `${nmrResult.text || ''}${actionSummary}`;
+
+          applyNmrActions(actions);
+
+          setInteractions(prev => prev.map(interaction =>
+            interaction.id === assistantId
+              ? { ...interaction, response: finalText, toolResponses: actions }
+              : interaction
+          ));
+        } catch (nmrError) {
+          console.warn('NMR structured call failed, falling back to streaming:', nmrError);
+
+          startCharacterStreaming(assistantId);
+
+          const fallbackResponse = await geminiService.streamTextContent(fullPrompt, (chunk) => {
+            if (!chunk) return;
+            streamingQueueRef.current.push(...chunk.split(""));
+          }, { model: "gemini-2.5-flash" });
+
+          setTimeout(() => {
+            stopCharacterStreaming();
+          }, 100);
+
+          setInteractions(prev => prev.map(interaction =>
+            interaction.id === assistantId ? { ...interaction, response: fallbackResponse } : interaction
+          ));
+        }
+
+        setLoading(false);
+        return;
+      }
 
       startCharacterStreaming(assistantId);
 
@@ -1965,8 +2070,9 @@ Here is the learner's question: ${message}`;
             <div className="flex flex-1 overflow-hidden">
               <div className={`flex-1 overflow-hidden ${showNmrAssistant ? 'lg:pr-0' : ''}`}>
                 <iframe
+                  ref={nmrIframeRef}
                   title="nmrium-fullscreen"
-                  src="https://nmrium.nmrxiv.org?workspace=default"
+                  src={nmrIframeSrc}
                   className="h-full w-full"
                   allowFullScreen
                 />

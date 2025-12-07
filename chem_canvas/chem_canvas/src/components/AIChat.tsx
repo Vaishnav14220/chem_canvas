@@ -153,8 +153,8 @@ const AIChat: React.FC<AIChatProps> = ({
                     </div>
                     {interaction.toolResponses?.length ? (
                       <div className="space-y-3">
-                        {interaction.toolResponses.map(tool => (
-                          <AIToolResponseCard key={tool.id} response={tool} />
+                        {interaction.toolResponses.map((tool, idx) => (
+                          <AIToolResponseCard key={tool.id || `${tool.tool || 'tool'}-${idx}`} response={tool} />
                         ))}
                       </div>
                     ) : null}

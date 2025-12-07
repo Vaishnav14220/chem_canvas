@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { generateTextContent } from '../services/geminiService';
 
 interface SymmetryQuizProps {
   onScriptChange: (script: string) => void;
@@ -56,31 +57,57 @@ const SymmetryQuiz: React.FC<SymmetryQuizProps> = ({ onScriptChange }) => {
   const [selected, setSelected] = useState<string[]>([]);
   const [feedback, setFeedback] = useState('');
   const [showAnswer, setShowAnswer] = useState(false);
+  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
 
-  const loadStructure = (idx: number) => {
+  const loadStructure = async (idx: number) => {
     const structure = structures[idx];
     setCurrentIdx(idx);
     setSelected([]);
     setFeedback('');
     setShowAnswer(false);
     
+    // Try Gemini to generate a JSmol script tailored to the structure
     if (structure.smiles) {
-      onScriptChange(`load $${structure.smiles}; ${structure.unitCell}; unitcell on; axes on; set frank off; color cpk;`);
+      setIsGeminiLoading(true);
+      try {
+        const prompt = `
+You are a JSmol scripting expert. Given a structure, output ONLY JSmol commands to load and present it with symmetry context. 
+Target structure: ${structure.name} (${structure.description})
+SMILES: ${structure.smiles}
+Unit cell command: ${structure.unitCell}
+Goals:
+- load the molecule quickly
+- enable unit cell / axes if relevant
+- use clear coloring (cpk) and a sensible view
+- keep script concise, no comments or extra prose.
+Output: plain JSmol script only.`;
+        const script = await generateTextContent(prompt);
+        const cleaned = script?.trim();
+        if (cleaned) {
+          onScriptChange(cleaned);
+        } else {
+          onScriptChange(`load $${structure.smiles}; ${structure.unitCell}; unitcell on; axes on; set frank off; color cpk;`);
+        }
+      } catch (err) {
+        onScriptChange(`load $${structure.smiles}; ${structure.unitCell}; unitcell on; axes on; set frank off; color cpk;`);
+      } finally {
+        setIsGeminiLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadStructure(0);
+    void loadStructure(0);
   }, []);
 
   const loadNext = () => {
     const nextIdx = (currentIdx + 1) % structures.length;
-    loadStructure(nextIdx);
+    void loadStructure(nextIdx);
   };
 
   const loadRandom = () => {
     const randomIdx = Math.floor(Math.random() * structures.length);
-    loadStructure(randomIdx);
+    void loadStructure(randomIdx);
   };
 
   const highlight = (type: string) => {
