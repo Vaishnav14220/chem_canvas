@@ -737,7 +737,8 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const canvasReactionInsertionHandlerRef = useRef<((payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) | null>(null);
   const canvasConceptImageInsertionHandlerRef = useRef<((payload: CanvasConceptImagePayload) => Promise<boolean> | boolean) | null>(null);
   const canvasSurfaceActiveRef = useRef<boolean>(false);
-  const excalidrawOnlyModeRef = useRef<boolean>(true); // Force Excalidraw-only mode by default
+  // Default to full canvas mode; Excalidraw-only can be toggled on demand
+  const excalidrawOnlyModeRef = useRef<boolean>(false);
 
   const currentInputRef = useRef<string>('');
   const currentOutputRef = useRef<string>('');
@@ -809,9 +810,8 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   // When excalidraw-only mode is enabled, responses only go to handwriting handler (Excalidraw)
   // and NOT to the regular canvas text/markdown handlers
   const setExcalidrawOnlyMode = useCallback((enabled: boolean) => {
-    // Always keep Excalidraw-only mode enabled to bypass learning canvas
-    excalidrawOnlyModeRef.current = true;
-    console.log('[GeminiLive] Excalidraw-only mode: FORCED ENABLED');
+    excalidrawOnlyModeRef.current = enabled;
+    console.log(`[GeminiLive] Excalidraw-only mode: ${enabled ? 'ENABLED' : 'DISABLED'}`);
   }, []);
 
   const stopScreenShare = useCallback(() => {
