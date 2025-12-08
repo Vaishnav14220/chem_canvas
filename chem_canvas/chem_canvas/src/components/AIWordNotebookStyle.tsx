@@ -60,6 +60,7 @@ interface Source {
   name: string;
   type: 'pdf' | 'text' | 'url' | 'doc';
   selected: boolean;
+  content?: string;
 }
 
 interface ChatMessage {
@@ -407,9 +408,7 @@ const AIWordNotebookStyle: React.FC<AIWordProps> = ({ onClose, initialContent = 
   const [activeView, setActiveView] = useState<'chat' | 'editor' | 'googledoc' | 'latex' | 'deep-agent' | 'research'>('chat');
 
   // Sources state
-  const [sources, setSources] = useState<Source[]>([
-    { id: '1', name: 'Document_1.pdf', type: 'pdf', selected: false },
-  ]);
+  const [sources, setSources] = useState<Source[]>([]);
   const [selectAllSources, setSelectAllSources] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -2214,9 +2213,9 @@ ${docTextBlock}${userDirective}`,
                                 const isSelected = selectedDriveFiles.some(f => f.id === file.id);
                                 const accent =
                                   file.mimeType?.includes('presentation') ? 'text-amber-300' :
-                                  file.mimeType?.includes('spreadsheet') ? 'text-emerald-300' :
-                                  file.mimeType?.includes('document') ? 'text-blue-300' :
-                                  isFolder ? 'text-yellow-300' : 'text-purple-200';
+                                    file.mimeType?.includes('spreadsheet') ? 'text-emerald-300' :
+                                      file.mimeType?.includes('document') ? 'text-blue-300' :
+                                        isFolder ? 'text-yellow-300' : 'text-purple-200';
 
                                 return (
                                   <button
@@ -2228,9 +2227,8 @@ ${docTextBlock}${userDirective}`,
                                         toggleDriveFileSelection(file);
                                       }
                                     }}
-                                    className={`relative flex flex-col gap-2 px-4 py-3 rounded-xl text-left border transition-all duration-150 shadow-[0_10px_26px_rgba(0,0,0,0.32)] bg-[#14161c] hover:bg-[#191b22] ${
-                                      isSelected ? 'border-emerald-400/60 ring-1 ring-emerald-400/30' : 'border-white/6'
-                                    }`}
+                                    className={`relative flex flex-col gap-2 px-4 py-3 rounded-xl text-left border transition-all duration-150 shadow-[0_10px_26px_rgba(0,0,0,0.32)] bg-[#14161c] hover:bg-[#191b22] ${isSelected ? 'border-emerald-400/60 ring-1 ring-emerald-400/30' : 'border-white/6'
+                                      }`}
                                   >
                                     <div className="flex items-center gap-3 w-full">
                                       <div className={`flex-shrink-0 rounded-lg bg-white/5 p-2 ${accent}`}>

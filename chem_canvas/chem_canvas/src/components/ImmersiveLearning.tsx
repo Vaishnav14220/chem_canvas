@@ -6,6 +6,7 @@ import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
 import { python } from '@codemirror/lang-python';
 import { SrlCoachWorkspace } from './SrlCoachWorkspace';
 import { InteractiveAssignmentWorkspace } from './InteractiveAssignmentWorkspace';
+import { LaTeXAssignmentPrep } from './LaTeXAssignmentPrep';
 import { javascript } from '@codemirror/lang-javascript';
 import { java } from '@codemirror/lang-java';
 import { cpp } from '@codemirror/lang-cpp';
@@ -77,7 +78,7 @@ interface ImmersiveLearningProps {
     apiKey?: string;
 }
 
-type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity' | 'code-lab' | 'assignment';
+type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity' | 'code-lab' | 'assignment' | 'latex-assignment';
 
 type CodeLabLanguage = 'python' | 'javascript' | 'java' | 'cpp';
 
@@ -798,34 +799,18 @@ Respond in JSON format only:
             if (saved) {
                 const workspaces = JSON.parse(saved);
                 setSavedWorkspaces(workspaces);
+                setIsLoadingWorkspaces(false);
 
-                // Check for active workspace and auto-restore it
-                const activeId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-                if (activeId) {
-                    const activeWs = workspaces.find((ws: any) => ws.id === activeId);
-                    if (activeWs) {
-                        // Restore all state from workspace
-                        documentTextRef.current = activeWs.documentText;
-                        setImmersiveContent(activeWs.immersiveContent);
-                        setSectionImages(activeWs.sectionImages || {});
-                        setWidgetImages(activeWs.widgetImages || {});
-                        setQuiz(activeWs.quiz || []);
-                        setAudioScript(activeWs.audioScript || '');
-                        setReactFlowData(activeWs.reactFlowData);
-                        setRelevantVideos(activeWs.relevantVideos || []);
-                        setPdfUrl(activeWs.pdfUrl);
-                        setUploadedFileName(activeWs.documentFileName);
-                        setActiveSectionId(activeWs.activeSectionId || activeWs.immersiveContent?.sections?.[0]?.id || '');
+                // Auto-open logic disabled to ensure clean state and prevent 'ghost' content
 
-                        setActiveWorkspaceId(activeId);
-                        setShowWorkspaceManager(false);
-                        setActiveMode('immersive-text'); // Switch to content view
-                    }
-                }
+            } else {
+                setIsLoadingWorkspaces(false);
             }
         } catch (e) {
             console.error('Failed to load workspaces:', e);
+            setIsLoadingWorkspaces(false);
         } finally {
+            // Ensure loading is always false at end
             setIsLoadingWorkspaces(false);
         }
     }, []);
@@ -2044,7 +2029,8 @@ Respond in JSON format only:
         { id: 'viewer3d', icon: <Viewer3DIcon active={activeMode === 'viewer3d'} />, label: '3D Viewer', activeColor: '#7c3aed', activeBg: '#ede9fe' },
         { id: 'image-activity', icon: <ImageActivityIcon active={activeMode === 'image-activity'} />, label: 'Image Activity', activeColor: '#f97316', activeBg: '#ffedd5' },
         { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' },
-        { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Assignment', activeColor: '#1a73e8', activeBg: '#e8f0fe' }
+        { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Assignment', activeColor: '#1a73e8', activeBg: '#e8f0fe' },
+        { id: 'latex-assignment', icon: <Code2 className={`w-5 h-5 ${activeMode === 'latex-assignment' ? 'text-orange-600' : 'text-slate-400'}`} />, label: 'LaTeX', activeColor: '#f97316', activeBg: '#ffedd5' }
     ];
 
 
@@ -2679,21 +2665,23 @@ Respond in JSON format only:
                 </div>
 
                 {/* Feedback */}
-                {selectedAnswer !== null && q && (
-                    <div className={`px-4 pb-4 pt-0`}>
-                        <p className={`text-[13px] ${q.correctAnswerIndex === q.options.indexOf(selectedAnswer) ? 'text-[#137333]' : 'text-[#c5221f]'}`}>
-                            {q.correctAnswerIndex === q.options.indexOf(selectedAnswer)
-                                ? "That's right!"
-                                : "Not quite."}
-                        </p>
-                        {q.explanation && (
-                            <p className="text-[12px] text-[#5f6368] mt-1.5 leading-relaxed">
-                                {q.explanation}
+                {
+                    selectedAnswer !== null && q && (
+                        <div className={`px-4 pb-4 pt-0`}>
+                            <p className={`text-[13px] ${q.correctAnswerIndex === q.options.indexOf(selectedAnswer) ? 'text-[#137333]' : 'text-[#c5221f]'}`}>
+                                {q.correctAnswerIndex === q.options.indexOf(selectedAnswer)
+                                    ? "That's right!"
+                                    : "Not quite."}
                             </p>
-                        )}
-                    </div>
-                )}
-            </div>
+                            {q.explanation && (
+                                <p className="text-[12px] text-[#5f6368] mt-1.5 leading-relaxed">
+                                    {q.explanation}
+                                </p>
+                            )}
+                        </div>
+                    )
+                }
+            </div >
         );
     };
 
@@ -7613,6 +7601,9 @@ sys.stderr = StringIO()
 
             case 'assignment':
                 return <InteractiveAssignmentWorkspace />;
+
+            case 'latex-assignment':
+                return <LaTeXAssignmentPrep />;
 
             default:
                 return null;

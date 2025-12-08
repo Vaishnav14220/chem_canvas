@@ -441,7 +441,7 @@ Publisher Name.
   writeFile(path: string, content: string, type?: 'tex' | 'bib' | 'cls' | 'sty' | 'image' | 'other'): void {
     const fileName = path.split('/').pop() || 'untitled';
     const fileType = type || this.inferFileType(fileName);
-    
+
     this.files.set(path, {
       name: fileName,
       path,
@@ -455,7 +455,7 @@ Publisher Name.
   editFile(path: string, oldContent: string, newContent: string): boolean {
     const file = this.files.get(path);
     if (!file) return false;
-    
+
     if (file.content.includes(oldContent)) {
       file.content = file.content.replace(oldContent, newContent);
       file.lastModified = new Date();
@@ -474,11 +474,11 @@ Publisher Name.
   grep(searchText: string, filePattern?: string): Array<{ path: string; line: number; content: string }> {
     const results: Array<{ path: string; line: number; content: string }> = [];
     const filesToSearch = filePattern ? this.glob(filePattern) : Array.from(this.files.keys());
-    
+
     for (const path of filesToSearch) {
       const file = this.files.get(path);
       if (!file) continue;
-      
+
       const lines = file.content.split('\n');
       lines.forEach((line, index) => {
         if (line.includes(searchText)) {
@@ -593,6 +593,16 @@ class SwiftLaTeXEngine {
       };
     }
 
+    // Try Gemini Code Execution (High Priority)
+    try {
+      const result = await this.tryGeminiCodeExecution(mainFileData.content, mainFile);
+      if (result.success) {
+        return result;
+      }
+    } catch (e) {
+      console.log('Gemini Code Execution compile failed:', e);
+    }
+
     // Try Netlify function first (works in production, no CORS)
     try {
       const result = await this.tryNetlifyCompile(mainFileData.content, mainFile);
@@ -674,7 +684,7 @@ class SwiftLaTeXEngine {
       formData.append('filename[]', filename || 'main.tex');
       formData.append('engine', 'pdflatex');
       formData.append('return', 'pdf');
-      
+
       const response = await fetch('https://texlive.net/cgi-bin/latexcgi', {
         method: 'POST',
         body: formData
@@ -705,9 +715,99 @@ class SwiftLaTeXEngine {
     throw new Error('All direct LaTeX APIs failed');
   }
 
+  private async tryGeminiCodeExecution(content: string, filename: string): Promise<CompileResult> {
+    console.log('🚀 Attempting LaTeX compilation via Gemini Code Execution...');
+
+    // We construct a Python script that writes the tex file, compiles it, and returns the PDF as base64
+    // We explicitly verify pylatex presence as requested by user, though we use subprocess for direct compilation of raw tex
+    const pythonScript = `
+import subprocess
+import base64
+import os
+import sys
+
+# Check for tools
+try:
+    import pylatex
+    print("Using environment with pylatex installed")
+except ImportError:
+    print("pylatex not found, proceeding with system tools")
+
+# Write content to file
+with open('${filename}', 'w') as f:
+    f.write(r"""${content}""")
+
+# Compile
+# -interaction=nonstopmode prevents hanging on errors
+print("Starting compilation...")
+result = subprocess.run(['pdflatex', '-interaction=nonstopmode', '${filename}'], capture_output=True, text=True)
+
+if result.returncode != 0:
+    print("COMPILATION_ERROR")
+    print(result.stdout)
+    print(result.stderr)
+else:
+    pdf_filename = '${filename}'.replace('.tex', '.pdf')
+    if os.path.exists(pdf_filename):
+        with open(pdf_filename, 'rb') as f:
+            pdf_data = f.read()
+            b64_pdf = base64.b64encode(pdf_data).decode('utf-8')
+            print("PDF_START")
+            print(b64_pdf)
+            print("PDF_END")
+    else:
+        print("PDF_NOT_FOUND")
+`;
+
+    // Import lazily to avoid circular dependencies if any
+    const { generateContentWithCodeExecution } = await import('./geminiService');
+
+    const result = await generateContentWithCodeExecution(
+      `Please execute this Python script to compile the LaTeX document. \n\n\`\`\`python\n${pythonScript}\n\`\`\``
+    );
+
+    const executionOutput = result.codeExecutionResult || '';
+
+    if (executionOutput.includes('PDF_START') && executionOutput.includes('PDF_END')) {
+      const parts = executionOutput.split('PDF_START');
+      const base64Part = parts[1].split('PDF_END')[0].trim();
+
+      // Convert base64 to Blob URL
+      const binaryString = atob(base64Part);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const pdfUrl = URL.createObjectURL(blob);
+
+      return {
+        success: true,
+        pdfUrl,
+        log: 'Compiled successfully via Gemini Code Execution',
+        errors: [],
+        warnings: []
+      };
+    } else {
+      // Parse errors
+      if (executionOutput.includes('COMPILATION_ERROR')) {
+        const errorStart = executionOutput.indexOf('COMPILATION_ERROR');
+        const log = executionOutput.substring(errorStart);
+        return {
+          success: false,
+          log: log,
+          errors: ['Compilation failed in Code Execution environment'],
+          warnings: []
+        };
+      }
+
+      throw new Error('Code execution did not return a PDF. Output: ' + executionOutput.substring(0, 200) + '...');
+    }
+  }
+
   private async tryNetlifyCompile(content: string, filename: string): Promise<CompileResult> {
     // Use Netlify serverless function to compile (bypasses CORS)
-    const netlifyUrl = window.location.hostname === 'localhost' 
+    const netlifyUrl = window.location.hostname === 'localhost'
       ? 'http://localhost:8888/.netlify/functions/compile_latex'
       : '/.netlify/functions/compile_latex';
 
@@ -724,7 +824,7 @@ class SwiftLaTeXEngine {
     }
 
     const result = await response.json();
-    
+
     if (result.success && result.pdf) {
       // Decode base64 PDF
       const pdfBinary = atob(result.pdf);
@@ -750,16 +850,16 @@ class SwiftLaTeXEngine {
   private generatePreviewPdf(files: LaTeXFile[], mainFile: string, errorMsg: string): CompileResult {
     // Create a beautiful HTML preview for when compilation fails
     const mainFileData = files.find(f => f.path === mainFile || f.path === `/${mainFile}`);
-    
+
     // Extract title and content from LaTeX
     const content = mainFileData?.content || '';
     const titleMatch = content.match(/\\title\{([^}]+)\}/);
     const authorMatch = content.match(/\\author\{([^}]+)\}/);
     const title = titleMatch ? titleMatch[1].replace(/\\textbf\{([^}]+)\}/, '$1').replace(/\\\\/g, ' ') : 'LaTeX Document';
     const author = authorMatch ? authorMatch[1].replace(/\\\\/g, ', ') : '';
-    
+
     // Extract sections for preview
-    const sections: {title: string, content: string}[] = [];
+    const sections: { title: string, content: string }[] = [];
     const sectionRegex = /\\section\{([^}]+)\}([^]*?)(?=\\section\{|\\end\{document\}|$)/g;
     let sectionMatch;
     while ((sectionMatch = sectionRegex.exec(content)) !== null) {
@@ -768,7 +868,7 @@ class SwiftLaTeXEngine {
         content: sectionMatch[2].substring(0, 500).trim()
       });
     }
-    
+
     // Escape HTML in content
     const escapeHtml = (text: string) => {
       return text
@@ -778,7 +878,7 @@ class SwiftLaTeXEngine {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
     };
-    
+
     // Create an HTML preview that looks like a document
     const previewHtml = `
       <!DOCTYPE html>
@@ -964,7 +1064,7 @@ class SwiftLaTeXEngine {
       }
     }
     return [...new Set(errors)];
-  }  private extractWarnings(log: string): string[] {
+  } private extractWarnings(log: string): string[] {
     const warnings: string[] = [];
     const warningPatterns = [
       /Warning: (.+)/gi,
@@ -1065,7 +1165,7 @@ const subagents: Map<string, SubAgent> = new Map([
 Always output a structured plan that can be executed step by step.`,
     tools: ['write_todos', 'write_file']
   }],
-  
+
   ['content-writer', {
     name: 'content-writer',
     description: 'Expert at writing high-quality academic and technical content. Use for drafting sections, paragraphs, and explanations.',
@@ -1079,7 +1179,7 @@ Always output a structured plan that can be executed step by step.`,
 Write in LaTeX format with proper commands and environments.`,
     tools: ['write_file', 'edit_file', 'read_file']
   }],
-  
+
   ['math-typesetter', {
     name: 'math-typesetter',
     description: 'Specialized in mathematical content, equations, proofs, and theorems. Use for any mathematical notation.',
@@ -1093,7 +1193,7 @@ Write in LaTeX format with proper commands and environments.`,
 Use proper LaTeX math packages like amsmath, amssymb, amsthm.`,
     tools: ['write_file', 'edit_file']
   }],
-  
+
   ['figure-creator', {
     name: 'figure-creator',
     description: 'Creates figures, diagrams, and visualizations using TikZ and other LaTeX graphics packages.',
@@ -1107,7 +1207,7 @@ Use proper LaTeX math packages like amsmath, amssymb, amsthm.`,
 Use tikz, pgfplots, and other graphics packages effectively.`,
     tools: ['write_file', 'edit_file']
   }],
-  
+
   ['table-formatter', {
     name: 'table-formatter',
     description: 'Expert at creating and formatting tables in LaTeX using booktabs and other packages.',
@@ -1121,7 +1221,7 @@ Use tikz, pgfplots, and other graphics packages effectively.`,
 Use booktabs, tabularx, longtable packages as needed.`,
     tools: ['write_file', 'edit_file']
   }],
-  
+
   ['bibliography-manager', {
     name: 'bibliography-manager',
     description: 'Manages references, citations, and bibliographies using BibTeX/BibLaTeX.',
@@ -1135,7 +1235,7 @@ Use booktabs, tabularx, longtable packages as needed.`,
 Use biblatex or bibtex with appropriate style files.`,
     tools: ['write_file', 'edit_file', 'read_file']
   }],
-  
+
   ['latex-debugger', {
     name: 'latex-debugger',
     description: 'Analyzes and fixes LaTeX compilation errors and warnings.',
@@ -1178,7 +1278,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       return JSON.stringify({ files });
     }
   }],
-  
+
   ['read_file', {
     name: 'read_file',
     description: 'Read the contents of a file',
@@ -1187,7 +1287,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       if (!file) {
         return JSON.stringify({ error: `File not found: ${params.path}` });
       }
-      
+
       let content = file.content;
       if (params.startLine || params.endLine) {
         const lines = content.split('\n');
@@ -1195,11 +1295,11 @@ const tools: Map<string, ToolDefinition> = new Map([
         const end = params.endLine || lines.length;
         content = lines.slice(start, end).join('\n');
       }
-      
+
       return JSON.stringify({ path: params.path, content, type: file.type });
     }
   }],
-  
+
   ['write_file', {
     name: 'write_file',
     description: 'Create or overwrite a file with content',
@@ -1208,7 +1308,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       return JSON.stringify({ success: true, path: params.path, message: `File written: ${params.path}` });
     }
   }],
-  
+
   ['edit_file', {
     name: 'edit_file',
     description: 'Edit a specific part of a file by replacing old content with new content',
@@ -1220,7 +1320,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       return JSON.stringify({ error: `Could not find content to replace in ${params.path}` });
     }
   }],
-  
+
   ['glob', {
     name: 'glob',
     description: 'Find files matching a pattern (e.g., "*.tex" or "chapters/*.tex")',
@@ -1229,7 +1329,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       return JSON.stringify({ files });
     }
   }],
-  
+
   ['grep', {
     name: 'grep',
     description: 'Search for text within files',
@@ -1238,7 +1338,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       return JSON.stringify({ results });
     }
   }],
-  
+
   // Planning Tools
   ['write_todos', {
     name: 'write_todos',
@@ -1269,7 +1369,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       return JSON.stringify({ success: true, todos, summary: context.todoManager.getSummary() });
     }
   }],
-  
+
   ['update_todo', {
     name: 'update_todo',
     description: 'Update the status of a specific task',
@@ -1278,7 +1378,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       return JSON.stringify({ success, summary: context.todoManager.getSummary() });
     }
   }],
-  
+
   // Compilation Tools
   ['compile', {
     name: 'compile',
@@ -1294,7 +1394,7 @@ const tools: Map<string, ToolDefinition> = new Map([
       });
     }
   }],
-  
+
   // Document Generation Tools
   ['generate_section', {
     name: 'generate_section',
@@ -1312,7 +1412,7 @@ Output ONLY the LaTeX content for this section, starting with \\section{${params
           model: 'gemini-2.0-flash',
           contents: [{ role: 'user', parts: [{ text: prompt }] }]
         });
-        
+
         const content = response.text || '';
         return JSON.stringify({ success: true, content });
       } catch (err) {
@@ -1320,7 +1420,7 @@ Output ONLY the LaTeX content for this section, starting with \\section{${params
       }
     }
   }],
-  
+
   ['suggest_packages', {
     name: 'suggest_packages',
     description: 'Suggest LaTeX packages based on document requirements',
@@ -1338,7 +1438,7 @@ Return a JSON object with:
           model: 'gemini-2.0-flash',
           contents: [{ role: 'user', parts: [{ text: prompt }] }]
         });
-        
+
         return response.text || JSON.stringify({ packages: [] });
       } catch (err) {
         return JSON.stringify({ error: `Failed to suggest packages: ${err}` });
@@ -1487,7 +1587,7 @@ Always structure your response:
 
       // Process tool calls
       const toolResults = await this.processToolCalls(responseText);
-      
+
       // Process subagent delegations
       const delegationResults = await this.processDelegations(responseText);
 
@@ -1577,12 +1677,12 @@ Always structure your response:
   private async processToolCalls(text: string): Promise<Array<{ tool: string; result: string }>> {
     const results: Array<{ tool: string; result: string }> = [];
     const toolPattern = /\[TOOL:\s*(\w+)\]\s*([\s\S]*?)\s*\[\/TOOL\]/g;
-    
+
     let match;
     while ((match = toolPattern.exec(text)) !== null) {
       const toolName = match[1];
       const paramsStr = match[2].trim();
-      
+
       const tool = tools.get(toolName);
       if (tool) {
         try {
@@ -1594,19 +1694,19 @@ Always structure your response:
         }
       }
     }
-    
+
     return results;
   }
 
   private async processDelegations(text: string): Promise<Array<{ subagent: string; result: string }>> {
     const results: Array<{ subagent: string; result: string }> = [];
     const delegatePattern = /\[DELEGATE:\s*([\w-]+)\]\s*([\s\S]*?)\s*\[\/DELEGATE\]/g;
-    
+
     let match;
     while ((match = delegatePattern.exec(text)) !== null) {
       const subagentName = match[1];
       const task = match[2].trim();
-      
+
       const subagent = subagents.get(subagentName);
       if (subagent && this.genAI) {
         try {
@@ -1617,7 +1717,7 @@ Always structure your response:
               { role: 'user', parts: [{ text: `Task: ${task}\n\nCurrent files: ${this.fileSystem.ls('/').join(', ')}` }] }
             ]
           });
-          
+
           const result = response.text || 'No response from subagent';
           results.push({ subagent: subagentName, result });
           this.currentSubagent = subagentName;
@@ -1626,34 +1726,34 @@ Always structure your response:
         }
       }
     }
-    
+
     return results;
   }
 
   private extractModifiedFiles(text: string, toolResults: Array<{ tool: string; result: string }>): string[] {
     const files: string[] = [];
-    
+
     for (const result of toolResults) {
       if (result.tool === 'write_file' || result.tool === 'edit_file') {
         try {
           const parsed = JSON.parse(result.result);
           if (parsed.path) files.push(parsed.path);
-        } catch {}
+        } catch { }
       }
     }
-    
+
     return [...new Set(files)];
   }
 
   private extractToolsUsed(text: string): string[] {
     const tools: string[] = [];
     const pattern = /\[TOOL:\s*(\w+)\]/g;
-    
+
     let match;
     while ((match = pattern.exec(text)) !== null) {
       tools.push(match[1]);
     }
-    
+
     return [...new Set(tools)];
   }
 
@@ -1801,4 +1901,114 @@ export const isLatexEngineReady = (): boolean => {
 export const loadLatexEngine = async (): Promise<void> => {
   const agent = getLatexAgent();
   await agent.loadEngine();
+};
+
+// ==========================================
+// Standalone Compile Function
+// ==========================================
+
+export const compileLatexWithGemini = async (content: string, filename: string = 'main.tex'): Promise<CompileResult> => {
+  console.log('🚀 Attempting LaTeX compilation via Gemini Code Execution...');
+
+  // Clean the content to ensure we only have the LaTeX part
+  // Look for \documentclass and start there
+  const documentClassIndex = content.indexOf('\\documentclass');
+  let cleanContent = content;
+  if (documentClassIndex !== -1) {
+    cleanContent = content.substring(documentClassIndex);
+  }
+
+  // We construct a Python script that writes the tex file, compiles it, and returns the PDF as base64
+  const pythonScript = `
+import subprocess
+import base64
+import os
+import sys
+
+# Check for tools
+try:
+    import pylatex
+    print("Using environment with pylatex installed")
+except ImportError:
+    print("pylatex not found, proceeding with system tools")
+
+# Write content to file
+with open('${filename}', 'w') as f:
+    f.write(r"""${cleanContent}""")
+
+# Compile
+print("Starting compilation...")
+try:
+    # -interaction=nonstopmode prevents hanging on errors
+    result = subprocess.run(['pdflatex', '-interaction=nonstopmode', '${filename}'], capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print("COMPILATION_ERROR")
+        print("STDOUT:", result.stdout)
+        print("STDERR:", result.stderr)
+    else:
+        pdf_filename = '${filename}'.replace('.tex', '.pdf')
+        if os.path.exists(pdf_filename):
+            with open(pdf_filename, 'rb') as f:
+                pdf_data = f.read()
+                b64_pdf = base64.b64encode(pdf_data).decode('utf-8')
+                print("PDF_START")
+                print(b64_pdf)
+                print("PDF_END")
+        else:
+            print("PDF_NOT_FOUND")
+            print("Expected PDF file not found at:", pdf_filename)
+            print("STDOUT:", result.stdout)
+            print("STDERR:", result.stderr)
+
+except FileNotFoundError:
+    print("SYSTEM_ERROR: pdflatex command not found. Is TeX Live installed in the environment?")
+except Exception as e:
+    print(f"SYSTEM_ERROR: {str(e)}")
+`;
+
+  // Import lazily to avoid circular dependencies if any
+  const { generateContentWithCodeExecution } = await import('./geminiService');
+
+  const result = await generateContentWithCodeExecution(
+    `Please execute this Python script to compile the LaTeX document. \n\n\`\`\`python\n${pythonScript}\n\`\`\``
+  );
+
+  const executionOutput = result.codeExecutionResult || '';
+
+  if (executionOutput.includes('PDF_START') && executionOutput.includes('PDF_END')) {
+    const parts = executionOutput.split('PDF_START');
+    const base64Part = parts[1].split('PDF_END')[0].trim();
+
+    // Convert base64 to Blob URL
+    const binaryString = atob(base64Part);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const pdfUrl = URL.createObjectURL(blob);
+
+    return {
+      success: true,
+      pdfUrl,
+      log: 'Compiled successfully via Gemini Code Execution',
+      errors: [],
+      warnings: []
+    };
+  } else {
+    // Parse errors
+    if (executionOutput.includes('COMPILATION_ERROR')) {
+      const errorStart = executionOutput.indexOf('COMPILATION_ERROR');
+      const log = executionOutput.substring(errorStart);
+      return {
+        success: false,
+        log: log,
+        errors: ['Compilation failed in Code Execution environment'],
+        warnings: []
+      };
+    }
+
+    throw new Error('Code execution did not return a PDF. Output: ' + executionOutput.substring(0, 1000));
+  }
 };

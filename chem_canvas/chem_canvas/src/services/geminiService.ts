@@ -366,42 +366,76 @@ export const streamTextContent = async (
       });
 
       let fullText = '';
+      let accumulatedThought = '';
+      const thoughtChunkDelay = 100; // ms to batch small thought chunks
+      let thoughtTimeout: NodeJS.Timeout | null = null;
+
+      const flushThought = () => {
+        if (accumulatedThought && options?.onThought) {
+          options.onThought(accumulatedThought);
+          accumulatedThought = '';
+        }
+      };
 
       for await (const chunk of stream) {
         // Handle parts if they exist directly
         const parts = chunk.candidates?.[0]?.content?.parts;
-        if (parts) {
+        if (parts && parts.length > 0) {
           for (const part of parts) {
-            // Check for thought property (experimental)
-            // Note: The specific field for "thought" in the stream needs to be checked.
-            // Standard API usually puts thoughts in text but marked differently?
-            // Actually, for Gemini 2.0 Flash Thinking, thoughts come as a separate part type or field.
-
-            // Try multiple access patterns for "thought"
-            const thoughtContent = (part as any).thought || (part as any).thought_content;
+            // Check for thought in multiple formats (Gemini 3 Pro compatibility)
+            const thoughtContent = (part as any).thought ||
+              (part as any).thinking ||
+              ((part as any).type === 'thought' ? (part as any).text : null) ||
+              ((part as any).type === 'thinking' ? (part as any).text : null);
 
             if (thoughtContent && typeof thoughtContent === 'string') {
-              options?.onThought?.(thoughtContent);
-              continue; // It's a thought chunk, don't append to fullText yet
+              // Accumulate thoughts and emit them with batching
+              accumulatedThought += thoughtContent;
+
+              if (thoughtTimeout) {
+                clearTimeout(thoughtTimeout);
+              }
+
+              thoughtTimeout = setTimeout(() => {
+                flushThought();
+              }, thoughtChunkDelay);
+
+              continue; // Don't add thoughts to fullText, they're metadata
             }
 
-            // Sometimes thought is just text but we need to see if it's marked
-            // If the part has NO text but has something else, log it (for debugging if needed)
-
+            // Check if this is a text part
             if (part.text) {
+              // Flush any pending thoughts before emitting actual text
+              if (thoughtTimeout) {
+                clearTimeout(thoughtTimeout);
+              }
+              flushThought();
+
               fullText += part.text;
               onChunk(part.text);
             }
           }
-        } else {
-          // Fallback for standard text-only chunks if structure differs
+        } else if (chunk.text) {
+          // Fallback for standard text-only chunks
           const text = chunk.text();
           if (text) {
+            // Flush any pending thoughts before emitting actual text
+            if (thoughtTimeout) {
+              clearTimeout(thoughtTimeout);
+            }
+            flushThought();
+
             fullText += text;
             onChunk(text);
           }
         }
       }
+
+      // Flush any remaining thought content
+      if (thoughtTimeout) {
+        clearTimeout(thoughtTimeout);
+      }
+      flushThought();
 
       return fullText;
     });
@@ -434,6 +468,74 @@ export const streamTextContent = async (
     }
 
     // Re-throw error if it's not a 503/overloaded error
+    throw error;
+  }
+};
+
+export const generateContentWithCodeExecution = async (
+  prompt: string,
+  options?: {
+    model?: string;
+  }
+): Promise<{ text: string; executableCode?: string; codeExecutionResult?: string }> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  // Use a model known to support code execution well
+  // User requested gemini-3-pro-preview for better reliability
+  const modelName = options?.model ?? 'gemini-3-pro-preview';
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      console.log(`🚀 Sending Code Execution request to ${modelName}`);
+
+      const tools = [
+        {
+          codeExecution: {},
+        },
+      ];
+
+      const response = await genAI!.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        tools: tools,
+      });
+
+      const candidate = response.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+
+      let text = '';
+      let executableCode = '';
+      let codeExecutionResult = '';
+
+      for (const part of parts) {
+        if (part.text) {
+          text += part.text;
+        }
+        if (part.executableCode) {
+          executableCode += '// Language: ' + part.executableCode.language + '\n' + part.executableCode.code + '\n';
+        }
+        if (part.codeExecutionResult) {
+          codeExecutionResult += part.codeExecutionResult.output || '';
+        }
+      }
+
+      return {
+        text,
+        executableCode,
+        codeExecutionResult
+      };
+    });
+  } catch (error: any) {
+    console.error('❌ Code execution failed:', error);
     throw error;
   }
 };
@@ -2028,6 +2130,39 @@ export const generateMultiSpeakerAudio = async (
 
   } catch (error: any) {
     console.error('Error generating multi-speaker audio:', error);
+    throw error;
+  }
+};
+
+/**
+ * Executes code using Gemini to generate content (e.g. for LaTeX compilation).
+ * This forces the model to use the code execution tool.
+ */
+export const generateContentWithCodeExecution = async (prompt: string): Promise<string> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized.');
+  }
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      const model = genAI!.getGenerativeModel({
+        model: 'gemini-3-pro-preview',
+        tools: [{ codeExecution: {} }]
+      });
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    });
+  } catch (error) {
+    console.error("Code Execution Error:", error);
     throw error;
   }
 };

@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight, X } from 'lucide-react';
 import { streamTextContent } from '../services/geminiService';
 
 export const InteractiveAssignmentWorkspace: React.FC = () => {
@@ -13,6 +13,8 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
     const [loadingStep, setLoadingStep] = useState<string>('Ready');
     const [thoughtLog, setThoughtLog] = useState<string[]>([]);
     const [isStreamingThoughts, setIsStreamingThoughts] = useState(false);
+    const [showCursor, setShowCursor] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
     const terminalRef = useRef<HTMLDivElement>(null);
     // Remove any external polyfill.io scripts the model might inject so previews don't fail on blocked domains
     const stripPolyfillScripts = (html: string) =>
@@ -20,6 +22,18 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
             /<script[^>]+src=[\"']https?:\/\/(?:cdn\.)?polyfill\.io\/[^\"']+[\"'][^>]*>\s*<\/script>/gi,
             ''
         );
+
+    // Animated cursor effect
+    useEffect(() => {
+        if (!isStreamingThoughts) {
+            setShowCursor(false);
+            return;
+        }
+        const interval = setInterval(() => {
+            setShowCursor((prev) => !prev);
+        }, 500);
+        return () => clearInterval(interval);
+    }, [isStreamingThoughts]);
 
     // Auto-scroll terminal
     React.useEffect(() => {
@@ -168,181 +182,230 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
     const disableGenerate = isGenerating || !canGenerate;
 
     return (
-        <div className="flex flex-1 h-full min-h-0 bg-slate-50 overflow-hidden">
-            {/* Sidebar / Configuration Panel */}
-            <div className="w-96 flex-shrink-0 bg-white border-r border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto z-10 shadow-sm">
-                <div className="flex items-center gap-3 text-indigo-600 mb-2">
-                    <Sparkles className="w-6 h-6" />
-                    <h2 className="text-xl font-bold text-slate-800">Interactive Tutor</h2>
-                </div>
-
-                <p className="text-slate-600 text-sm">
-                    Upload your assignment or notes, and Gemini will create an interactive HTML simulation for you.
-                </p>
-
-                {/* File Upload */}
-                <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">1. Upload Source Material (Optional)</label>
-                    <div
-                        onClick={() => fileInputRef.current?.click()}
-                        className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group"
-                    >
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            className="hidden"
-                            accept=".txt,.md,.pdf,.html" // Note: PDF parsing needs a separate service, assuming text for now or raw pass
-                            onChange={handleFileUpload}
-                        />
-                        {fileName ? (
-                            <div className="flex flex-col items-center text-indigo-600">
-                                <Check className="w-8 h-8 mb-2" />
-                                <span className="text-sm font-medium text-center break-all">{fileName}</span>
-                                <span className="text-xs text-indigo-400 mt-1">Click to replace</span>
+        <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-slate-900 overflow-hidden">
+            {/* Left Sidebar - Input & Thinking Stream */}
+            {sidebarOpen && (
+                <div className="w-96 flex-shrink-0 bg-slate-950 border-r border-slate-700 flex flex-col overflow-hidden z-20 shadow-2xl h-screen">
+                    {/* Main Content Area */}
+                    <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                        {/* Header */}
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                                <Sparkles className="w-5 h-5 text-white" />
                             </div>
-                        ) : (
-                            <div className="flex flex-col items-center text-slate-400 group-hover:text-indigo-500">
-                                <FileUp className="w-8 h-8 mb-2" />
-                                <span className="text-sm font-medium">Upload Assignment / Notes</span>
-                                <span className="text-xs mt-1">Text files supported</span>
+                            <div>
+                                <h2 className="text-lg font-bold text-white">Interactive Tutor</h2>
+                                <p className="text-xs text-slate-400">Powered by Gemini 3 Pro</p>
                             </div>
-                        )}
-                    </div>
-                </div>
+                        </div>
 
-                {/* Topic Input */}
-                <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">2. Topic / Concept Name</label>
-                    <input
-                        type="text"
-                        placeholder="e.g. Projectile Motion, Calculus Limits..."
-                        value={topic}
-                        onChange={(e) => setTopic(e.target.value)}
-                        className="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                    />
-                </div>
+                        <p className="text-slate-400 text-sm leading-relaxed">
+                            Upload your assignment or describe a topic. Gemini will create an interactive HTML simulation with live reasoning.
+                        </p>
 
-                {/* Generate Button */}
-                <button
-                    onClick={handleGenerate}
-                    disabled={disableGenerate}
-                    className={`
-            w-full py-3 rounded-xl flex items-center justify-center gap-2 font-semibold text-white shadow-lg transition-all
+                        {/* File Upload */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Source Material</label>
+                            <div
+                                onClick={() => fileInputRef.current?.click()}
+                                className="border-2 border-dashed border-slate-600 hover:border-indigo-500 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-900/50 transition-all group"
+                            >
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    accept=".txt,.md,.pdf,.html"
+                                    onChange={handleFileUpload}
+                                />
+                                {fileName ? (
+                                    <div className="flex flex-col items-center text-indigo-400">
+                                        <Check className="w-7 h-7 mb-2" />
+                                        <span className="text-xs font-medium text-center break-all">{fileName}</span>
+                                        <span className="text-[11px] text-slate-500 mt-1">Click to replace</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center text-slate-500 group-hover:text-indigo-400 transition-colors">
+                                        <FileUp className="w-6 h-6 mb-2" />
+                                        <span className="text-xs font-medium">Upload / Paste Notes</span>
+                                        <span className="text-[11px] mt-1">PDF, Text, or Markdown</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Topic Input */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Topic / Concept</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. Projectile Motion..."
+                                value={topic}
+                                onChange={(e) => setTopic(e.target.value)}
+                                className="w-full px-4 py-2 bg-slate-800 border border-slate-600 text-white placeholder-slate-500 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                            />
+                        </div>
+
+                        {/* Generate Button */}
+                        <button
+                            onClick={handleGenerate}
+                            disabled={disableGenerate}
+                            className={`
+            w-full py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm uppercase tracking-wide transition-all
             ${disableGenerate
-                            ? 'bg-slate-400 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:shadow-indigo-500/25 active:scale-95'}
+                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-lg hover:shadow-indigo-500/50 active:scale-95'}
           `}
-                >
-                    {isGenerating ? (
-                        <>
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                            <span>{loadingStep}</span>
-                        </>
-                    ) : (
-                        <>
-                            <Sparkles className="w-5 h-5" />
-                            <span>Generate Interaction</span>
-                        </>
-                    )}
-                </button>
+                        >
+                            {isGenerating ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span className="text-xs">{loadingStep}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles className="w-4 h-4" />
+                                    <span>Generate</span>
+                                </>
+                            )}
+                        </button>
 
-                <div className="mt-auto flex flex-col gap-3">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 shadow-inner">
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                        <div className="h-px bg-slate-700"></div>
+                    </div>
+
+                    {/* Thinking Stream Panel */}
+                    <div className="border-t border-slate-700 bg-slate-900/50 flex-shrink-0">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 bg-slate-800/30">
                             <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                <span className="text-xs font-semibold tracking-wide uppercase text-emerald-100">Gemini 3 Pro Thinking</span>
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span className="text-xs font-bold text-emerald-300 uppercase tracking-wide">Thinking Stream</span>
                             </div>
-                            <span className="text-[11px] font-mono text-slate-400">
-                                {isGenerating ? 'Streaming' : 'Idle'}
+                            <span className="text-[10px] font-mono text-slate-500">
+                                {isGenerating ? '◉ Live' : '○ Idle'}
                             </span>
                         </div>
                         <div
                             ref={terminalRef}
-                            className="p-4 h-44 overflow-y-auto space-y-3 text-[13px] leading-relaxed font-mono custom-scrollbar"
+                            className="p-3 h-64 overflow-y-auto space-y-2 text-[12px] leading-relaxed font-mono custom-scrollbar bg-slate-950/80"
                         >
                             {thoughtLog.length === 0 ? (
-                                <div className="text-slate-500 italic flex items-center gap-3">
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>{isGenerating ? 'Initializing reasoning context...' : 'No thoughts yet.'}</span>
+                                <div className="text-slate-600 italic flex items-center gap-2 py-8">
+                                    <span className="text-[11px]">Awaiting reasoning output...</span>
                                 </div>
                             ) : (
                                 thoughtLog.map((log, idx) => (
-                                    <div key={idx} className="flex gap-3 text-emerald-100/90">
-                                        <ChevronRight className="w-4 h-4 flex-shrink-0 mt-1 text-emerald-300/70" />
-                                        <span className="whitespace-pre-wrap">
+                                    <div key={idx} className="flex gap-2 text-emerald-100/85">
+                                        <span className="text-emerald-500/60 flex-shrink-0">›</span>
+                                        <span className="break-words whitespace-pre-wrap">
                                             {log}
-                                            {idx === thoughtLog.length - 1 && isStreamingThoughts && (
-                                                <span className="inline-block w-2 h-4 bg-emerald-400 ml-1 align-middle animate-pulse rounded-sm" />
+                                            {idx === thoughtLog.length - 1 && isStreamingThoughts && showCursor && (
+                                                <span className="inline-block w-1.5 h-4 bg-emerald-400 ml-0.5 align-text-bottom animate-pulse" />
                                             )}
                                         </span>
                                     </div>
                                 ))
                             )}
-                            {isGenerating && thoughtLog.length > 0 && (
-                                <div className="flex items-center gap-2 text-emerald-300/80">
-                                    <span className="inline-block w-2 h-4 bg-emerald-400 animate-pulse rounded-sm"></span>
-                                    <span className="text-xs">Live cursor streaming</span>
-                                </div>
-                            )}
                             {isGenerating && thoughtLog.length === 0 && (
-                                <div className="flex items-center gap-2 text-emerald-300/80">
-                                    <span className="inline-block w-2 h-4 bg-emerald-400 animate-pulse rounded-sm"></span>
-                                    <span className="text-xs">Spinning up context...</span>
+                                <div className="flex items-center gap-2 text-emerald-400/70 text-[11px] py-8">
+                                    <span className="inline-block w-1.5 h-3 bg-emerald-400 animate-pulse rounded-sm"></span>
+                                    <span>Initializing Gemini 3 Pro reasoning...</span>
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm text-blue-800">
-                        <strong>Tip:</strong> Be specific with the topic name for better simulations. The generated file is self-contained and runs offline.
+                    {/* Collapse Button */}
+                    <div className="border-t border-slate-700 p-3">
+                        <button
+                            onClick={() => setSidebarOpen(false)}
+                            className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 rounded transition-colors flex items-center justify-center gap-2"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                            <span>Collapse Panel</span>
+                        </button>
                     </div>
                 </div>
-            </div>
+            )}
 
-            {/* Preview Area */}
-            <div className="flex-1 bg-slate-100 h-full overflow-hidden flex flex-col relative text-left">
-                <div className="flex-1 bg-white shadow-sm border-l border-slate-200 overflow-hidden relative flex flex-col min-h-0">
+            {/* Right Side - Full Width HTML Preview */}
+            <div className="flex-1 bg-white w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+                {!sidebarOpen && (
+                    <button
+                        onClick={() => setSidebarOpen(true)}
+                        className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 rounded-lg transition-colors z-10 shadow-lg"
+                        title="Open sidebar"
+                    >
+                        <ChevronRight className="w-5 h-5 transform rotate-180" />
+                    </button>
+                )}
+
+                {/* HTML Preview - FULL HEIGHT */}
+                <div className="flex-1 w-full h-full min-h-0 overflow-auto">
                     {previewDoc ? (
                         <iframe
                             srcDoc={previewDoc}
-                            className="w-full h-full border-0 block flex-1"
+                            className="w-full h-full min-h-screen border-0 block"
                             title="Interactive Preview"
                             sandbox="allow-scripts allow-same-origin"
                         />
                     ) : (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 text-slate-400 px-6">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 text-slate-400 px-8 overflow-auto">
                             {isGenerating ? (
-                                <div className="flex flex-col items-center gap-4 text-center">
-                                    <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                                <div className="flex flex-col items-center gap-6 text-center max-w-md">
+                                    <div className="relative w-16 h-16">
+                                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg opacity-20 blur-xl"></div>
+                                        <Loader2 className="w-16 h-16 animate-spin text-indigo-600 relative" />
+                                    </div>
                                     <div>
-                                        <p className="text-slate-500 font-medium">Gemini 3 Pro is generating your HTML</p>
-                                        <p className="text-sm text-slate-400">Thinking stream stays on the left. Preview appears here after generation completes.</p>
+                                        <p className="text-lg font-bold text-slate-700 mb-2">Generating Interactive Content</p>
+                                        <p className="text-sm text-slate-500 mb-4">Watch the thinking stream on the left for live reasoning process</p>
+                                        <div className="flex items-center justify-center gap-2 text-xs text-emerald-600">
+                                            <span className="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                                            <span>Gemini 3 Pro is thinking...</span>
+                                        </div>
                                     </div>
                                 </div>
                             ) : (
-                                <>
-                                    <div className="w-32 h-32 bg-slate-100 rounded-full flex items-center justify-center mb-6">
-                                        <BookOpen className="w-12 h-12 text-slate-300" />
+                                <div className="flex flex-col items-center gap-6 text-center max-w-xl">
+                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
+                                        <BookOpen className="w-12 h-12 text-indigo-600" />
                                     </div>
-                                    <h3 className="text-xl font-semibold text-slate-500 mb-2">Ready to Learn</h3>
-                                    <p className="max-w-md text-center text-slate-400">
-                                        Your generated interactive assignment will appear here.
-                                    </p>
-                                </>
+                                    <div>
+                                        <h3 className="text-2xl font-bold text-slate-700 mb-2">Ready to Explore</h3>
+                                        <p className="text-slate-500 mb-6">
+                                            Upload a file or enter a topic, then generate an interactive learning experience powered by Gemini 3 Pro with live reasoning.
+                                        </p>
+                                        <div className="flex items-center justify-center gap-4 text-sm text-slate-500">
+                                            <div className="flex items-center gap-2">
+                                                <FileUp className="w-4 h-4" />
+                                                <span>Upload or paste</span>
+                                            </div>
+                                            <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                                            <div className="flex items-center gap-2">
+                                                <Sparkles className="w-4 h-4" />
+                                                <span>Generate</span>
+                                            </div>
+                                            <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                                            <div className="flex items-center gap-2">
+                                                <BookOpen className="w-4 h-4" />
+                                                <span>Learn</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     )}
                 </div>
 
-                {/* Toolbar */}
+                {/* Toolbar - Bottom when content is ready */}
                 {generatedHtml && (
-                    <div className="h-16 mt-4 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-between px-6 flex-shrink-0 mx-4 mb-4">
-                        <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                            <span className="text-sm font-medium text-slate-600">Preview Active</span>
-                        </div>
+                    <div className="h-16 border-t border-slate-200 bg-white flex items-center justify-between px-6 flex-shrink-0">
                         <div className="flex items-center gap-3">
+                            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className="text-sm font-medium text-slate-600">Preview Active</span>
+                            <span className="text-xs text-slate-400">• Self-contained HTML file</span>
+                        </div>
+                        <div className="flex items-center gap-4">
                             <button
                                 onClick={handleGenerate}
                                 className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
@@ -353,7 +416,7 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                             <div className="h-6 w-px bg-slate-200"></div>
                             <button
                                 onClick={handleDownload}
-                                className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors font-medium text-sm"
+                                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all font-medium text-sm"
                             >
                                 <Download className="w-4 h-4" />
                                 Download HTML
