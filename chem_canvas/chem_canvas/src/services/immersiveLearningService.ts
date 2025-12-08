@@ -389,7 +389,21 @@ export const streamAnalyzeDocumentForImmersive = async (
     `;
 
     const featuresJson = await generateTextContent(extractFeaturesPrompt, { model: ANALYSIS_MODEL });
-    const features = JSON.parse(extractJsonBlock(featuresJson));
+    const fallbackFeatures = {
+      title: 'Immersive Learning Session',
+      universityLevel: 'Undergraduate',
+      schoolLevel: 'College',
+      topic: 'General Science',
+      depth: 'Intermediate',
+      individual_sections: [
+        'Introduction and overview',
+        'Key concepts',
+        'Detailed explanation',
+        'Applications',
+        'Summary and review'
+      ]
+    };
+    const features = safeJsonParse<typeof fallbackFeatures>(extractJsonBlock(featuresJson), fallbackFeatures);
 
     // === PHASE 2: Generate Content for 5 Sections ===
     onStreamUpdate(`📝 Phase 2/4: Generating content - creating 5 sections with 4 paragraphs each (20 total paragraphs) based on extracted features...`, false);
@@ -430,7 +444,20 @@ export const streamAnalyzeDocumentForImmersive = async (
     `;
 
     const contentJson = await generateTextContent(contentPrompt, { model: CONTENT_MODEL });
-    const sections = JSON.parse(extractJsonBlock(contentJson));
+    const defaultSections = (features.individual_sections || []).map((focus, idx) => ({
+      section_number: idx + 1,
+      title: focus || `Section ${idx + 1}`,
+      paragraphs: [
+        `Overview of ${focus || 'this section'}.`,
+        'Key details and explanations.',
+        'Further elaboration with examples.',
+        'Summary and next steps.'
+      ]
+    }));
+    let sections = safeJsonParse<any[]>(extractJsonBlock(contentJson), defaultSections);
+    if (!sections || sections.length === 0) {
+      sections = defaultSections;
+    }
 
     // === PHASE 3: Generate 5 Images (1 per section) ===
     onStreamUpdate(`🎨 Phase 3/4: Generating 5 images (1 per section/page) using nano-bana-pro at proper academic level...`, false);
@@ -446,9 +473,14 @@ export const streamAnalyzeDocumentForImmersive = async (
         Clean white background, publication-ready illustration
       `;
       
-      // Generate image prompt description
-      const imageDescript = await generateTextContent(imagePrompt, { model: CONTENT_MODEL });
-      sectionImages[`section-${i}`] = imageDescript;
+      try {
+        // Generate image prompt description
+        const imageDescript = await generateTextContent(imagePrompt, { model: CONTENT_MODEL });
+        sectionImages[`section-${i}`] = imageDescript;
+      } catch (e) {
+        console.warn('Image prompt generation failed, using fallback description', e);
+        sectionImages[`section-${i}`] = `Academic illustration of ${section.title} (${features.topic}) with labeled components.`;
+      }
     }
 
     // === PHASE 4: Create 1 Interactive Activity per Section ===
@@ -488,7 +520,7 @@ export const streamAnalyzeDocumentForImmersive = async (
       const activityJson = await generateTextContent(activityPrompt, { model: IMAGE_MODEL });
       let activityData;
       try { 
-        activityData = JSON.parse(extractJsonBlock(activityJson)); 
+        activityData = safeJsonParse(extractJsonBlock(activityJson), { type: 'interactive-activity', html: '<p>Activity placeholder</p>' }); 
       } catch (e) { 
         activityData = { type: 'interactive-activity', html: '<p>Activity placeholder</p>' };
       }
