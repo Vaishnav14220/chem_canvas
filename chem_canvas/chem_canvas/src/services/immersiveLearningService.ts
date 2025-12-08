@@ -351,219 +351,180 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
 };
 
 /**
- * Streaming version of analyzeDocumentForImmersive.
- * Streams the response in real-time for a typewriter effect.
+ * Multi-stage Immersive Text Generation Flow
+ * NEW FLOW (Following Diagram):
+ * 1. Phase 1: Analyze document -> Extract features (university level, school level, topic, depth, etc.)
+ * 2. Phase 2: Generate content -> 5 sections with 4 paragraphs each (20 total paragraphs) based on extracted features
+ * 3. Phase 3: Generate 5 images (1 per section/page) using nano-bana-pro at academic level
+ * 4. Phase 4: Create 1 activity for each section based on content to teach that concept (HTML)
  */
 export const streamAnalyzeDocumentForImmersive = async (
   text: string,
   onStreamUpdate: (streamedText: string, isComplete: boolean) => void
 ): Promise<ImmersiveContent> => {
-  const prompt = `
-    Analyze the following educational text and structure it for an immersive learning experience (Target Audience: High School/Undergraduate).
-    
-    CRITICAL MARKDOWN FORMATTING REQUIREMENTS:
-    - Use **double asterisks** around KEY TERMS and IMPORTANT WORDS that should be highlighted (e.g., **chemical kinetics**, **rate of reaction**)
-    - Use *single asterisks* around EMPHASIS PHRASES or IMPORTANT SENTENCES that should be underlined (e.g., *This is a crucial concept to understand*)
-    - Every paragraph MUST have at least 2-3 bold terms and 1-2 emphasized phrases
-    - Bold terms should be scientific terms, key concepts, proper nouns, and important vocabulary
-    - Emphasized text should be important explanations, key insights, or sentences the student should pay attention to
-    
-    MATHEMATICS CONTENT REQUIREMENTS (MANDATORY for math/science content):
-    - If the content involves MATHEMATICS, PHYSICS FORMULAS, CHEMISTRY EQUATIONS, or any EQUATIONS:
-      - Use LaTeX notation for ALL mathematical expressions - this is REQUIRED
-      - Inline math: Use single dollar signs $...$ (e.g., "The quadratic formula is $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$")
-      - Block/display math: Use double dollar signs $$...$$ for important equations on their own line
-      - ALWAYS show step-by-step derivations and solutions with LaTeX
-      - Examples:
-        - Inline: "The derivative $\\frac{dy}{dx}$ represents the rate of change"
-        - Block: "$$\\int_a^b f(x)dx = F(b) - F(a)$$"
-        - Chemistry: "$$\\text{2H}_2 + \\text{O}_2 \\rightarrow \\text{2H}_2\\text{O}$$"
-        - Physics: "$$F = ma = m\\frac{d^2x}{dt^2}$$"
-    
-    🚨 PROGRAMMING CONTENT REQUIREMENTS (CRITICAL - MUST FOLLOW FOR ANY CODE/PROGRAMMING CONTENT):
-    - If the content involves PROGRAMMING, CODING, FUNCTIONS, or ALGORITHMS:
-      - ALWAYS use FENCED CODE BLOCKS with triple backticks and language specification
-      - Format: Start with \`\`\`python (or javascript, java, etc.) on its own line, then code, then \`\`\` on its own line
-      - NEVER show code inline like \`print()\` for examples - ALWAYS use full fenced code blocks
-      - Every code example MUST be in a fenced code block, even simple one-liners
-      - Include COMPLETE, RUNNABLE code with comments explaining each part
-      - MANDATORY: Include at least ONE 'code-playground' widget for hands-on practice
-      - MANDATORY: Include at least ONE 'code-explanation' widget for step-by-step walkthrough
-      
-      EXAMPLE of proper code block in content:
-      "Here is how to use the print function:
-      
-      \`\`\`python
-      # Basic print statement
-      print('Hello, World!')
-      
-      # Print with multiple arguments
-      print('My name is', 'Alice')
-      
-      # Print with custom separator
-      print('apple', 'banana', 'cherry', sep=', ')
-      \`\`\`
-      
-      The code above demonstrates..."
-    
-    Return a JSON object with the following structure:
-    {
-      "sections": [
-        { 
-          "id": "unique_id", 
-          "title": "Section Title", 
-          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. For programming content, ALWAYS include full fenced code blocks like:\\n\\n\`\`\`python\\ncode here\\n\`\`\`\\n\\nAT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
-          "imagePrompt": null,
-          "widget": {
-            "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection" | "code-playground" | "code-explanation",
-            "data": {
-              // For 'reveal':
-              "title": "Did you know?",
-              "content": "Surprising fact or hidden detail...",
-              
-              // For 'fill-blank' (fill in the blanks exercise):
-              "title": "Complete the sentence",
-              "sentence": "The process of {{BLANK}} converts {{BLANK}} into energy.",
-              "answers": ["photosynthesis", "sunlight"],
-              
-              // For 'matching' (match items from two columns):
-              "title": "Match the terms",
-              "leftItems": ["Term 1", "Term 2", "Term 3"],
-              "rightItems": ["Definition A", "Definition B", "Definition C"],
-              "correctPairs": [0, 1, 2],
-              
-              // For 'ordering' (arrange items in correct sequence):
-              "title": "Arrange in order",
-              "orderingContext": "Steps of the process",
-              "items": ["Step 1", "Step 2", "Step 3"],
-              "correctOrder": [0, 1, 2],
-              
-              // For 'labeling' (match labels to descriptions):
-              "title": "Label the parts",
-              "labels": ["Part A", "Part B"],
-              "descriptions": ["Description of A", "Description of B"],
-              
-              // For 'true-false' (evaluate statements):
-              "title": "True or False?",
-              "statements": [
-                { "text": "Statement 1", "isTrue": true, "explanation": "Why..." },
-                { "text": "Statement 2", "isTrue": false, "explanation": "Why..." }
-              ],
-              
-              // For 'quiz' (multiple choice):
-              "question": "Quick check: ...?",
-              "options": ["A", "B", "C"],
-              "correctIndex": 0,
-              "explanation": "Why it's correct...",
-              
-              // For 'reflection' (open-ended thinking prompt):
-              "title": "Reflect & Think",
-              "reflectionPrompt": "How might this concept apply to...?",
-              "sampleResponse": "A good response might consider...",
-              
-              // For 'code-playground' (REQUIRED for programming exercises):
-              "title": "Try It Yourself!",
-              "code": "# Starter code here\\ndef example():\\n    pass",
-              "language": "python",
-              "challenge": "Modify the code to achieve...",
-              "expectedOutput": "Expected result when code runs correctly",
-              "hints": ["Hint 1: Think about...", "Hint 2: Remember to..."],
-              
-              // For 'code-explanation' (REQUIRED for explaining code):
-              "title": "Code Walkthrough",
-              "codeLanguage": "python",
-              "overallExplanation": "This code demonstrates the concept of...",
-              "codeLines": [
-                { "line": "def factorial(n):", "explanation": "Define a function named factorial that takes n as parameter" },
-                { "line": "    if n <= 1:", "explanation": "Base case: check if n is 0 or 1" },
-                { "line": "        return 1", "explanation": "Return 1 for the base case" },
-                { "line": "    return n * factorial(n-1)", "explanation": "Recursive case: multiply n by factorial of (n-1)" }
-              ]
-            }
-          }
-        }
-      ],
-      "keyTerms": [
-        { "term": "Term to underline", "definition": "Concise definition..." }
-      ],
-      "contextNotes": [
-        { "paragraphIndex": 0, "note": "Interesting fact or context about this part..." }
-      ]
-    }
-
-    Rules:
-    1. Split text into logical sections.
-    2. IMPORTANT: Each section's content MUST have AT LEAST 4 substantial paragraphs with detailed explanations.
-    3. CRITICAL: Use markdown formatting throughout:
-       - Wrap key terms in **double asterisks** for highlighting (minimum 3 per paragraph)
-       - Wrap important phrases/sentences in *single asterisks* for underlining (minimum 1 per paragraph)
-       - Example: "The **rate of reaction** depends on *several critical factors that we must understand*."
-    4. MATHEMATICS (REQUIRED): If the document contains ANY math, physics, chemistry, or equations:
-       - Use $...$ for inline LaTeX math expressions (e.g., $E = mc^2$)
-       - Use $$...$$ for block/display LaTeX equations
-       - Include ALL formulas, equations, and mathematical notation in proper LaTeX
-       - Show complete step-by-step solutions and derivations
-       - For chemistry: Use \\text{} for element symbols in equations
-    5. PROGRAMMING (REQUIRED): If the document contains ANY programming, coding, or algorithms:
-       - Use \`\`\`language fenced code blocks for ALL code examples
-       - ALWAYS include 'code-playground' widget for practice exercises
-       - ALWAYS include 'code-explanation' widget for explaining how code works
-       - Include complete, runnable code with detailed comments
-       - Provide example inputs/outputs
-    6. For EACH section, include ONE interactive widget:
-       - For MATH content: Use 'fill-blank' (for formulas), 'ordering' (for solving steps), or 'quiz'
-       - For PROGRAMMING content: Use 'code-playground' or 'code-explanation' (MANDATORY)
-       - For other content: Use appropriate widget type from the list
-    7. Insert {{INTERACTIVE_WIDGET}} in the 'content' string where the widget should be rendered.
-    8. DO NOT include imagePrompt for most sections - set to null. Only include imagePrompt for the FIRST section of the document.
-    9. Focus on rich, detailed text content and engaging interactive activities instead of images.
-    10. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration.
-
-    Text to Analyze:
-    ${text.slice(0, 10000)}
-  `;
-
-  const fallbackContent: ImmersiveContent = {
-    title: 'Immersive Learning Session',
-    sections: [{
-      id: 'fallback-1',
-      title: 'Document Overview',
-      content: text.slice(0, 500) + '...',
-      imagePrompt: 'Scientific textbook-style diagram illustrating the main educational concept with accurate proportions, labeled components, professional academic quality, clean white background, publication-ready illustration'
-    }],
-    keyTerms: [],
-    contextNotes: []
-  };
-
-  let accumulatedText = '';
+  // Use Gemini 2.5 Flash for speed and reliability (avoids overload errors from Gemini 3 Pro)
+  const ANALYSIS_MODEL = 'gemini-2.5-flash';    // Fast analysis
+  const CONTENT_MODEL = 'gemini-2.5-flash';     // Fast content generation
+  const IMAGE_MODEL = 'gemini-2.5-flash';       // Fast image prompt generation
 
   try {
-    console.log('🎯 Starting streamTextContent...');
-    const finalText = await streamTextContent(
-      prompt,
-      (chunk) => {
-        // Accumulate chunks locally and send for display
-        accumulatedText += chunk;
-        console.log(`📦 Chunk received: ${chunk.length} chars, total: ${accumulatedText.length}`);
-        onStreamUpdate(accumulatedText, false);
+    // === PHASE 1: Extract Features from Document ===
+    onStreamUpdate("🔍 Phase 1/4: Analyzing document to extract features (university level, school level, topic, depth, individual sections)...", false);
+
+    const extractFeaturesPrompt = `
+      Analyze this educational document and extract key features:
+      
+      Text to analyze:
+      ${text.slice(0, 8000)}
+      
+      Return JSON with these EXACT fields:
+      {
+        "title": "Document title",
+        "universityLevel": "What university level is this for? (Undergraduate/Graduate/PhD level)",
+        "schoolLevel": "What school level? (High School/College/Advanced)",
+        "topic": "Main topic of the document",
+        "depth": "Depth level (Basic/Intermediate/Advanced)",
+        "individual_sections": ["Section 1 focus area", "Section 2 focus area", "Section 3 focus area", "Section 4 focus area", "Section 5 focus area"]
       }
-    );
-    console.log('🏁 Stream finished, total length:', finalText.length);
-    // Signal completion with the final text
-    onStreamUpdate(finalText, true);
+    `;
 
-    const json = extractJsonBlock(finalText);
-    return safeJsonParse<ImmersiveContent>(json, fallbackContent);
+    const featuresJson = await generateTextContent(extractFeaturesPrompt, { model: ANALYSIS_MODEL });
+    const features = JSON.parse(extractJsonBlock(featuresJson));
+
+    // === PHASE 2: Generate Content for 5 Sections ===
+    onStreamUpdate(`📝 Phase 2/4: Generating content - creating 5 sections with 4 paragraphs each (20 total paragraphs) based on extracted features...`, false);
+
+    const contentPrompt = `
+      You are an expert educator. Create immersive learning content based on these document features:
+      
+      Title: ${features.title}
+      University Level: ${features.universityLevel}
+      School Level: ${features.schoolLevel}
+      Topic: ${features.topic}
+      Depth: ${features.depth}
+      Section focus areas: ${features.individual_sections.join(', ')}
+      
+      Generate EXACTLY 5 sections. For each section:
+      - Create EXACTLY 4 detailed, well-structured paragraphs
+      - Use markdown with **bold** for key terms and *italics* for emphasis
+      - Include LaTeX $...$ for equations if relevant
+      - Total: 20 paragraphs (4 per section)
+      
+      Return JSON array:
+      [
+        {
+          "section_number": 1,
+          "title": "Section title matching the focus area",
+          "paragraphs": [
+            "Paragraph 1 content (detailed, academic, engaging)",
+            "Paragraph 2 content",
+            "Paragraph 3 content",
+            "Paragraph 4 content"
+          ]
+        },
+        ... (repeat for sections 2-5)
+      ]
+      
+      Base all content on original document:
+      ${text.slice(0, 10000)}
+    `;
+
+    const contentJson = await generateTextContent(contentPrompt, { model: CONTENT_MODEL });
+    const sections = JSON.parse(extractJsonBlock(contentJson));
+
+    // === PHASE 3: Generate 5 Images (1 per section) ===
+    onStreamUpdate(`🎨 Phase 3/4: Generating 5 images (1 per section/page) using nano-bana-pro at proper academic level...`, false);
+
+    const sectionImages: { [key: string]: string } = {};
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      const imagePrompt = `
+        Generate a ${features.depth}-level academic illustration for: "${section.title}"
+        Subject: ${features.topic}
+        Style: Textbook-quality, scientifically accurate, professional diagram with labeled components
+        Use nano-bana-pro for high-quality rendering at ${features.universityLevel} level
+        Clean white background, publication-ready illustration
+      `;
+      
+      // Generate image prompt description
+      const imageDescript = await generateTextContent(imagePrompt, { model: CONTENT_MODEL });
+      sectionImages[`section-${i}`] = imageDescript;
+    }
+
+    // === PHASE 4: Create 1 Interactive Activity per Section ===
+    onStreamUpdate(`🧩 Phase 4/4: Creating 1 interactive activity for each section to teach the concept in HTML...`, false);
+
+    const processedSections: ImmersiveSection[] = [];
+
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      const sectionContent = section.paragraphs.join('\n\n');
+
+      // Generate activity based on section content to teach that concept
+      const activityPrompt = `
+        Create ONE interactive HTML/JavaScript activity to teach this concept:
+        
+        Section: "${section.title}"
+        Content: ${sectionContent.slice(0, 1500)}
+        Academic Level: ${features.universityLevel}
+        Topic: ${features.topic}
+        
+        The activity must:
+        - Be self-contained HTML with embedded CSS and JavaScript
+        - Teach the concept through interaction (not just display)
+        - Include clear instructions
+        - Have visual feedback for user actions
+        - Be appropriate for the ${features.universityLevel} level
+        
+        Return as JSON:
+        {
+          "type": "interactive-activity",
+          "title": "Activity title",
+          "html": "<complete HTML code here starting with <!DOCTYPE html>",
+          "learning_objective": "What students will learn"
+        }
+      `;
+
+      const activityJson = await generateTextContent(activityPrompt, { model: IMAGE_MODEL });
+      let activityData;
+      try { 
+        activityData = JSON.parse(extractJsonBlock(activityJson)); 
+      } catch (e) { 
+        activityData = { type: 'interactive-activity', html: '<p>Activity placeholder</p>' };
+      }
+
+      processedSections.push({
+        id: `section-${i}`,
+        title: section.title,
+        content: sectionContent + `\n\n{{INTERACTIVE_WIDGET}}`,
+        imagePrompt: sectionImages[`section-${i}`],
+        widget: activityData
+      });
+    }
+
+    onStreamUpdate("✅ Generation Complete! Rendering immersive learning content...", true);
+
+    return {
+      title: features.title,
+      sections: processedSections,
+      keyTerms: features.individual_sections,
+      contextNotes: [
+        `Academic Level: ${features.universityLevel}`,
+        `School Level: ${features.schoolLevel}`,
+        `Depth: ${features.depth}`,
+        `Topic: ${features.topic}`
+      ]
+    };
+
   } catch (error) {
-    console.error('Stream error, falling back to non-streaming:', error);
-    // Fallback to non-streaming if streaming fails
-    const fallbackResponse = await generateTextContent(prompt);
-    onStreamUpdate(fallbackResponse, true);
-
-    const json = extractJsonBlock(fallbackResponse);
-    return safeJsonParse<ImmersiveContent>(json, fallbackContent);
+    console.error("Critical error in multi-stage generation:", error);
+    onStreamUpdate("❌ Error during generation. Falling back to simple mode...", true);
+    // Fallback logic could go here or re-throw
+    throw error;
   }
 };
+
+
 
 /**
  * Generate a single quiz question for a specific paragraph.

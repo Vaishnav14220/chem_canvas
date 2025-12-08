@@ -167,7 +167,7 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
       return await executeWithRotation(async (apiKey) => {
         // Reinitialize with new key if rate limit hit
         if (apiKey !== currentApiKey) {
-          genAI = new GoogleGenAI({ apiKey });
+          genAI = new GoogleGenAI(apiKey);
           currentApiKey = apiKey;
           cachedModelName = null; // Reset model cache with new key
         }
@@ -179,16 +179,36 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
           config = { ...config, maxOutputTokens: options.maxOutputTokens };
         }
         if (options?.thinking) {
-          // Gemini Thinking experimental config
-          const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
-
-          config = {
-            ...config,
-            thinkingConfig: {
-              includeThoughts: true,
-              thinking_level: thinkingLevel,
-            }
-          };
+          // Determine thinking config based on model
+          const isGemini3Pro = modelName?.includes('gemini-3') || modelName?.includes('3-pro');
+          const thinkingValue = typeof options.thinking === 'string' ? options.thinking : 'high';
+          
+          if (isGemini3Pro) {
+            // Gemini 3 Pro uses thinkingLevel parameter
+            config = {
+              ...config,
+              thinkingConfig: {
+                includeThoughts: true,
+                thinking_level: thinkingValue,
+              }
+            };
+          } else {
+            // Gemini 2.5 and earlier use thinkingBudget parameter
+            const budgetMap: { [key: string]: number } = {
+              'high': 8000,
+              'low': 2000,
+              'true': 5000,
+            };
+            const thinkingBudget = budgetMap[String(thinkingValue)] || 5000;
+            
+            config = {
+              ...config,
+              thinkingConfig: {
+                includeThoughts: true,
+                thinking_budget: thinkingBudget,
+              }
+            };
+          }
           // Increase token limit for thinking models if not explicitly set
           if (!config.maxOutputTokens) {
             config.maxOutputTokens = 65536;
@@ -208,6 +228,16 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
       const errorCode = error?.error?.code || error?.code;
       const is503 = errorCode === 503 || errorMessage.includes('503') ||
         errorMessage.includes('overloaded') || errorMessage.includes('unavailable');
+      
+      const isThinkingNotSupported = errorMessage.includes('thinking level is not supported') || 
+                                     errorMessage.includes('thinkinglevel is not supported');
+
+      // If thinking level is not supported, retry without thinking
+      if (isThinkingNotSupported && options?.thinking && retry < maxRetries - 1) {
+        console.log('⚠️ Model does not support thinking level, retrying without thinking...');
+        const retryOptions = { ...options, thinking: false };
+        return await generateTextContent(prompt, retryOptions);
+      }
 
       if (is503 && retry < maxRetries - 1) {
         // Exponential backoff with jitter
@@ -243,7 +273,7 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
         }
       }
 
-      // Re-throw error if it's not a 503/overloaded error
+      // Re-throw error if it's not a 503/overloaded error or thinking level error
       throw error;
     }
   }
@@ -328,7 +358,7 @@ export const streamTextContent = async (
   try {
     return await executeWithRotation(async (apiKey) => {
       if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
+        genAI = new GoogleGenAI(apiKey);
         currentApiKey = apiKey;
         cachedModelName = null;
       }
@@ -337,15 +367,38 @@ export const streamTextContent = async (
 
       let config: any = undefined;
       if (options?.thinking) {
-        const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
-        config = {
-          ...config,
-          thinkingConfig: {
-            includeThoughts: true,
-            thinking_level: thinkingLevel,
-          },
-          maxOutputTokens: 65536
-        };
+        // Determine thinking config based on model
+        const isGemini3Pro = modelName?.includes('gemini-3') || modelName?.includes('3-pro');
+        const thinkingValue = typeof options.thinking === 'string' ? options.thinking : 'high';
+        
+        if (isGemini3Pro) {
+          // Gemini 3 Pro uses thinkingLevel parameter
+          config = {
+            ...config,
+            thinkingConfig: {
+              includeThoughts: true,
+              thinking_level: thinkingValue,
+            },
+            maxOutputTokens: 65536
+          };
+        } else {
+          // Gemini 2.5 and earlier use thinkingBudget parameter
+          const budgetMap: { [key: string]: number } = {
+            'high': 8000,
+            'low': 2000,
+            'true': 5000,
+          };
+          const thinkingBudget = budgetMap[String(thinkingValue)] || 5000;
+          
+          config = {
+            ...config,
+            thinkingConfig: {
+              includeThoughts: true,
+              thinking_budget: thinkingBudget,
+            },
+            maxOutputTokens: 65536
+          };
+        }
       }
 
       // Construct content with inline data if present
@@ -440,105 +493,54 @@ export const streamTextContent = async (
       return fullText;
     });
   } catch (error: any) {
-    // Check if error is a 503 (model overloaded) and Vertex AI is available
+    // Check if error is a "thinking level not supported" error for Gemini 2.5
     const errorMessage = error?.message?.toLowerCase() || '';
+    const isThinkingNotSupported = errorMessage.includes('thinking level is not supported') || 
+                                   errorMessage.includes('thinkinglevel is not supported');
+    
+    if (isThinkingNotSupported && !options?.model?.includes('gemini-2.5')) {
+      // Retry with Gemini 2.5 Pro which uses thinkingBudget instead
+      if (options?.model === 'gemini-2.5-pro' || options?.model === 'gemini-2.5-flash') {
+        throw error;
+      }
+
+      console.log('⚠️ Model does not support thinking_level, attempting Gemini 2.5 Pro with thinkingBudget...');
+
+      try {
+        // Use Gemini 2.5 Pro as fallback, let the config handler use thinkingBudget
+        return await streamTextContent(prompt, onChunk, { ...options, model: 'gemini-2.5-pro' });
+      } catch (fallbackError) {
+        console.error('❌ Gemini 2.5 Pro fallback also failed:', fallbackError);
+        throw error; // Throw original error if both fail
+      }
+    }
+    
+    // Check if error is a 503 (model overloaded) and retry with fallback
     if ((errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('unavailable'))
       && !errorMessage.includes('vertex')) {
 
-      console.log('⚠️ Gemini API streaming overloaded, attempting to use Vertex AI fallback...');
-
-      // Try to initialize Vertex AI if not already done
-      if (!isVertexAIAvailable()) {
-        const vertexInitialized = await initializeVertexAI();
-        if (!vertexInitialized) {
-          console.warn('❌ Vertex AI fallback not available for streaming');
-          throw error; // Re-throw original error if Vertex AI is not available
-        }
+      // Check if we are already using the fallback model to prevent infinite loops
+      if (options?.model === 'gemini-2.5-pro') {
+        throw error;
       }
 
+      console.log('⚠️ Gemini API streaming overloaded, attempting to use Gemini 2.5 Pro fallback...');
+
       try {
-        // Use Vertex AI streaming as fallback
-        const result = await streamContentWithVertexAI(prompt, onChunk);
-        console.log('✅ Successfully used Vertex AI streaming fallback');
-        return result;
-      } catch (vertexError) {
-        console.error('❌ Vertex AI streaming fallback also failed:', vertexError);
+        // Use Gemini 2.5 Pro as specific fallback
+        return await streamTextContent(prompt, onChunk, { ...options, model: 'gemini-2.5-pro' });
+      } catch (fallbackError) {
+        console.error('❌ Gemini 2.5 Pro fallback also failed:', fallbackError);
         throw error; // Throw original error if both fail
       }
     }
 
-    // Re-throw error if it's not a 503/overloaded error
+    // Re-throw error if it's not a 503/overloaded error or thinking level error
     throw error;
   }
 };
 
-export const generateContentWithCodeExecution = async (
-  prompt: string,
-  options?: {
-    model?: string;
-  }
-): Promise<{ text: string; executableCode?: string; codeExecutionResult?: string }> => {
-  await ensureInitializedAsync();
-  if (!genAI) {
-    throw new Error('Gemini API not initialized. Please provide an API key.');
-  }
 
-  // Use a model known to support code execution well
-  // User requested gemini-3-pro-preview for better reliability
-  const modelName = options?.model ?? 'gemini-3-pro-preview';
-
-  try {
-    return await executeWithRotation(async (apiKey) => {
-      if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
-        currentApiKey = apiKey;
-        cachedModelName = null;
-      }
-
-      console.log(`🚀 Sending Code Execution request to ${modelName}`);
-
-      const tools = [
-        {
-          codeExecution: {},
-        },
-      ];
-
-      const response = await genAI!.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        tools: tools,
-      });
-
-      const candidate = response.candidates?.[0];
-      const parts = candidate?.content?.parts || [];
-
-      let text = '';
-      let executableCode = '';
-      let codeExecutionResult = '';
-
-      for (const part of parts) {
-        if (part.text) {
-          text += part.text;
-        }
-        if (part.executableCode) {
-          executableCode += '// Language: ' + part.executableCode.language + '\n' + part.executableCode.code + '\n';
-        }
-        if (part.codeExecutionResult) {
-          codeExecutionResult += part.codeExecutionResult.output || '';
-        }
-      }
-
-      return {
-        text,
-        executableCode,
-        codeExecutionResult
-      };
-    });
-  } catch (error: any) {
-    console.error('❌ Code execution failed:', error);
-    throw error;
-  }
-};
 
 export const extractJsonBlock = (rawText: string): string => {
   const trimmed = rawText.trim();
@@ -738,7 +740,7 @@ export const generateNmrAssistantPlan = async (
     try {
       const result = await executeWithRotation(async (apiKey) => {
         if (apiKey !== currentApiKey) {
-          genAI = new GoogleGenAI({ apiKey });
+          genAI = new GoogleGenAI(apiKey);
           currentApiKey = apiKey;
           cachedModelName = null;
         }
@@ -1244,7 +1246,7 @@ export const generateImage = async (
     // Use rotation to get a fresh key if needed
     return await executeWithRotation(async (apiKey) => {
       if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
+        genAI = new GoogleGenAI(apiKey);
         currentApiKey = apiKey;
       }
 
@@ -1311,7 +1313,7 @@ export const generateEducationalImage = async (
     return await executeWithRotation(async (apiKey) => {
       // Reinitialize with new key if needed
       if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
+        genAI = new GoogleGenAI(apiKey);
         currentApiKey = apiKey;
         cachedModelName = null;
       }
@@ -1456,7 +1458,7 @@ export const analyzeImageForLearning = async (base64Image: string): Promise<Inte
   try {
     return await executeWithRotation(async (apiKey) => {
       if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
+        genAI = new GoogleGenAI(apiKey);
         currentApiKey = apiKey;
         cachedModelName = null;
       }
@@ -1516,7 +1518,7 @@ export const sendStudiumChatMessage = async (
   try {
     return await executeWithRotation(async (apiKey) => {
       if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
+        genAI = new GoogleGenAI(apiKey);
         currentApiKey = apiKey;
         cachedModelName = null;
       }
@@ -1579,7 +1581,7 @@ export const fetchGroundingSources = async (
   try {
     return await executeWithRotation(async (apiKey) => {
       if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
+        genAI = new GoogleGenAI(apiKey);
         currentApiKey = apiKey;
         cachedModelName = null;
       }
@@ -2147,7 +2149,7 @@ export const generateContentWithCodeExecution = async (prompt: string): Promise<
   try {
     return await executeWithRotation(async (apiKey) => {
       if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
+        genAI = new GoogleGenAI(apiKey);
         currentApiKey = apiKey;
         cachedModelName = null;
       }
