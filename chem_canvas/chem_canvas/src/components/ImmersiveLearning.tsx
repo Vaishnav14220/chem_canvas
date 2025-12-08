@@ -4,6 +4,8 @@ import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLe
 import CodeMirror from '@uiw/react-codemirror';
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
 import { python } from '@codemirror/lang-python';
+import { SrlCoachWorkspace } from './SrlCoachWorkspace';
+import { InteractiveAssignmentWorkspace } from './InteractiveAssignmentWorkspace';
 import { javascript } from '@codemirror/lang-javascript';
 import { java } from '@codemirror/lang-java';
 import { cpp } from '@codemirror/lang-cpp';
@@ -75,7 +77,7 @@ interface ImmersiveLearningProps {
     apiKey?: string;
 }
 
-type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity' | 'code-lab';
+type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity' | 'code-lab' | 'assignment';
 
 type CodeLabLanguage = 'python' | 'javascript' | 'java' | 'cpp';
 
@@ -214,10 +216,19 @@ const CodeLabIcon = ({ active }: { active?: boolean }) => (
     </svg>
 );
 
+const AssignmentIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="3" width="16" height="18" rx="2" fill={active ? "#8ab4f8" : "#9aa0a6"} fillOpacity="0.2" stroke={active ? "#8ab4f8" : "#9aa0a6"} strokeWidth="1.5" />
+        <path d="M8 12L11 15L16 9" stroke={active ? "#1a73e8" : "white"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="8" y1="7" x2="16" y2="7" stroke={active ? "#1a73e8" : "white"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="8" y1="17" x2="12" y2="17" stroke={active ? "#1a73e8" : "white"} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+);
+
 const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }) => {
     // Initialize Gemini Live
     const geminiLiveState = useGeminiLive(apiKey || '');
-    
+
     // Dock characters for MessageDock
     const dockCharacters: Character[] = [
         { emoji: "✨", name: "Sparkle", online: false, backgroundColor: "bg-amber-200", gradientColors: "#fde68a, #fffbeb" },
@@ -297,19 +308,19 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     // Helper function to match sources to paragraphs based on content similarity
     const getSourcesForParagraph = useCallback((paragraph: string, allSources: Array<{ url: string; title: string; snippet?: string }>, paragraphIndex: number, totalParagraphs: number): number[] => {
         if (!allSources.length) return [];
-        
+
         const paragraphLower = paragraph.toLowerCase();
         const matchedIndices: number[] = [];
-        
+
         // Check each source for relevance to this paragraph
         allSources.forEach((source, idx) => {
             // Check if source snippet or title relates to paragraph content
             const snippetLower = (source.snippet || '').toLowerCase();
             const titleLower = (source.title || '').toLowerCase();
-            
+
             // Extract key terms from paragraph (words longer than 4 chars)
             const paragraphTerms = paragraphLower.match(/\b[a-z]{5,}\b/g) || [];
-            
+
             // Check for term matches in snippet or title
             let matchScore = 0;
             paragraphTerms.forEach(term => {
@@ -317,25 +328,25 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
                     matchScore++;
                 }
             });
-            
+
             // If decent match score, include this source for this paragraph
             if (matchScore >= 2) {
                 matchedIndices.push(idx);
             }
         });
-        
+
         // If no specific matches found, distribute sources evenly across paragraphs
         if (matchedIndices.length === 0 && allSources.length > 0) {
             // Distribute sources across paragraphs
             const sourcesPerParagraph = Math.ceil(allSources.length / totalParagraphs);
             const startIdx = paragraphIndex * sourcesPerParagraph;
             const endIdx = Math.min(startIdx + sourcesPerParagraph, allSources.length);
-            
+
             for (let i = startIdx; i < endIdx; i++) {
                 matchedIndices.push(i);
             }
         }
-        
+
         return matchedIndices;
     }, []);
 
@@ -426,7 +437,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [simulationHTML, setSimulationHTML] = useState<string | null>(null);
     const [isGeneratingSimulation, setIsGeneratingSimulation] = useState(false);
     const [simulationProgress, setSimulationProgress] = useState<string>('');
-    const [simulationProgressSteps, setSimulationProgressSteps] = useState<{step: string, status: 'pending' | 'active' | 'done'}[]>([]);
+    const [simulationProgressSteps, setSimulationProgressSteps] = useState<{ step: string, status: 'pending' | 'active' | 'done' }[]>([]);
     const [simulationError, setSimulationError] = useState<string | null>(null);
     const [isSimulationFullscreen, setIsSimulationFullscreen] = useState(true);
     const simulationIframeRef = useRef<HTMLIFrameElement>(null);
@@ -439,6 +450,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
     const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [activeTab, setActiveTab] = useState<'subject' | 'simulator' | 'research' | 'coach' | 'latex' | 'assignment'>('subject');
     const [analysisMode, setAnalysisMode] = useState<'detect' | 'boxes' | 'classify' | 'count' | 'question' | 'hand'>('detect');
     const [roboticsQuery, setRoboticsQuery] = useState('');
     const [sceneDescription, setSceneDescription] = useState<string | null>(null);
@@ -553,7 +565,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [needsContinueGeneration, setNeedsContinueGeneration] = useState(false);
 
     // ========== WORKSPACE MANAGEMENT FUNCTIONS ==========
-    
+
     // Generate intelligent workspace name using Gemini
     const generateWorkspaceName = async (content: ImmersiveContent | null, fileName: string): Promise<{ name: string; description: string; emoji: string }> => {
         try {
@@ -608,7 +620,7 @@ Respond in JSON format only:
         setIsCreatingWorkspace(true);
         try {
             const { name, description, emoji } = await generateWorkspaceName(immersiveContent, uploadedFileName);
-            
+
             const workspace = {
                 id: `workspace_${Date.now()}_${Math.random().toString(36).substring(7)}`,
                 name,
@@ -658,7 +670,7 @@ Respond in JSON format only:
         setIsCreatingWorkspace(true);
         try {
             const { name, description, emoji } = await generateWorkspaceName(content, fileName);
-            
+
             const workspace = {
                 id: `workspace_${Date.now()}_${Math.random().toString(36).substring(7)}`,
                 name,
@@ -724,7 +736,7 @@ Respond in JSON format only:
     // Open an existing workspace
     const openWorkspace = (workspace: typeof savedWorkspaces[0]) => {
         console.log('📂 Opening workspace:', workspace.name);
-        
+
         // Restore all state from workspace
         documentTextRef.current = workspace.documentText;
         setImmersiveContent(workspace.immersiveContent);
@@ -737,7 +749,7 @@ Respond in JSON format only:
         setPdfUrl(workspace.pdfUrl);
         setUploadedFileName(workspace.documentFileName);
         setActiveSectionId(workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || '');
-        
+
         setActiveWorkspaceId(workspace.id);
         localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
         setShowWorkspaceManager(false);
@@ -749,7 +761,7 @@ Respond in JSON format only:
         const updatedWorkspaces = savedWorkspaces.filter(ws => ws.id !== workspaceId);
         localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
         setSavedWorkspaces(updatedWorkspaces);
-        
+
         if (activeWorkspaceId === workspaceId) {
             setActiveWorkspaceId(null);
             localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
@@ -786,7 +798,7 @@ Respond in JSON format only:
             if (saved) {
                 const workspaces = JSON.parse(saved);
                 setSavedWorkspaces(workspaces);
-                
+
                 // Check for active workspace and auto-restore it
                 const activeId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
                 if (activeId) {
@@ -804,7 +816,7 @@ Respond in JSON format only:
                         setPdfUrl(activeWs.pdfUrl);
                         setUploadedFileName(activeWs.documentFileName);
                         setActiveSectionId(activeWs.activeSectionId || activeWs.immersiveContent?.sections?.[0]?.id || '');
-                        
+
                         setActiveWorkspaceId(activeId);
                         setShowWorkspaceManager(false);
                         setActiveMode('immersive-text'); // Switch to content view
@@ -836,7 +848,7 @@ Respond in JSON format only:
             if (savedData) {
                 const parsed = JSON.parse(savedData);
                 console.log('📂 Restoring saved immersive learning content...');
-                
+
                 // Restore immersive content
                 if (parsed.immersiveContent) {
                     setImmersiveContent(parsed.immersiveContent);
@@ -844,12 +856,12 @@ Respond in JSON format only:
                         setActiveSectionId(parsed.activeSectionId || parsed.immersiveContent.sections[0].id);
                     }
                 }
-                
+
                 // Restore document text
                 if (parsed.documentText) {
                     documentTextRef.current = parsed.documentText;
                 }
-                
+
                 // Restore images
                 if (parsed.sectionImages) {
                     setSectionImages(parsed.sectionImages);
@@ -857,7 +869,7 @@ Respond in JSON format only:
                 if (parsed.widgetImages) {
                     setWidgetImages(parsed.widgetImages);
                 }
-                
+
                 // Restore file name
                 if (parsed.uploadedFileName) {
                     setUploadedFileName(parsed.uploadedFileName);
@@ -888,7 +900,7 @@ Respond in JSON format only:
                     // Flag to continue generating any missing components
                     setNeedsContinueGeneration(true);
                 }
-                
+
                 console.log('✅ Content restored successfully!');
             }
         } catch (error) {
@@ -911,8 +923,8 @@ Respond in JSON format only:
         const missingComponents: string[] = [];
 
         // Check what's missing and needs to be generated
-        const needsImages = Object.keys(sectionImages).length === 0 && 
-                           immersiveContent.sections.some(s => s.imagePrompt);
+        const needsImages = Object.keys(sectionImages).length === 0 &&
+            immersiveContent.sections.some(s => s.imagePrompt);
         const needsQuiz = quiz.length === 0;
         const needsAudio = !audioScript;
         const needsMindMap = !reactFlowData;
@@ -934,11 +946,11 @@ Respond in JSON format only:
         // Generate missing images
         const generateMissingImages = async () => {
             if (!needsImages) return;
-            
+
             const MAX_IMAGES_PER_PAGE = 1;
             let imagesGenerated = 0;
             const sectionsWithImages = immersiveContent.sections.filter(s => s.imagePrompt);
-            
+
             if (sectionsWithImages.length > 0) {
                 const loadingState: { [key: string]: boolean } = {};
                 loadingState[sectionsWithImages[0].id] = true;
@@ -1240,7 +1252,7 @@ Respond in JSON format only:
         setIsGeneratingSimulation(true);
         setSimulationError(null);
         setSimulationProgress('Initializing simulation generation...');
-        
+
         // Initialize progress steps
         setSimulationProgressSteps([
             { step: 'Connecting to Gemini AI', status: 'active' },
@@ -2031,7 +2043,8 @@ Respond in JSON format only:
         { id: 'robotics', icon: <RoboticsIcon active={activeMode === 'robotics'} />, label: 'Robotics Vision', activeColor: '#00bcd4', activeBg: '#e0f7fa' },
         { id: 'viewer3d', icon: <Viewer3DIcon active={activeMode === 'viewer3d'} />, label: '3D Viewer', activeColor: '#7c3aed', activeBg: '#ede9fe' },
         { id: 'image-activity', icon: <ImageActivityIcon active={activeMode === 'image-activity'} />, label: 'Image Activity', activeColor: '#f97316', activeBg: '#ffedd5' },
-        { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' }
+        { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' },
+        { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Assignment', activeColor: '#1a73e8', activeBg: '#e8f0fe' }
     ];
 
 
@@ -2074,7 +2087,7 @@ Respond in JSON format only:
 
             const { extractTextFromDocument } = await import('../utils/documentTextExtractor');
             setTerminalSubSteps(prev => [...prev, 'Parsing document structure...']);
-            
+
             const { text } = await extractTextFromDocument(file);
             setTerminalSubSteps(prev => [...prev, `Extracted ${text.length.toLocaleString()} characters`]);
 
@@ -2149,7 +2162,7 @@ Respond in JSON format only:
 
                 // Find sections with imagePrompts (should only be first section based on new prompt)
                 const sectionsWithImages = analysis.sections.filter(s => s.imagePrompt);
-                
+
                 // Mark only the first section as loading
                 const loadingState: { [key: string]: boolean } = {};
                 if (sectionsWithImages.length > 0 && imagesGenerated < MAX_IMAGES_PER_PAGE) {
@@ -2185,7 +2198,7 @@ Respond in JSON format only:
                         console.log(`⏭️ Skipping comparison widget images for section ${section.id} to save costs. Use interactive activities instead.`);
                     }
                 }
-                
+
                 console.log(`✅ Image generation complete. Generated ${imagesGenerated} image(s).`);
             };
 
@@ -2435,7 +2448,7 @@ Respond in JSON format only:
         setEnhancedTermTab('definition');
         setBrainTeaserRevealed(false);
         setEnhancedQuizAnswer(null);
-        
+
         // Load enhanced info in background
         setIsLoadingEnhancedTerm(true);
         try {
@@ -2785,7 +2798,7 @@ Respond in JSON format only:
         const [submitted, setSubmitted] = useState(false);
 
         const parts = (data.sentence || '').split('{{BLANK}}');
-        
+
         const handleSubmit = () => setSubmitted(true);
         const handleReset = () => {
             setAnswers(Array(data.answers?.length || 0).fill(''));
@@ -2817,13 +2830,12 @@ Respond in JSON format only:
                                         setAnswers(newAnswers);
                                     }}
                                     disabled={submitted}
-                                    className={`inline-block w-32 px-3 py-1 mx-1 rounded-lg border-2 font-medium text-center transition-all ${
-                                        submitted
-                                            ? isCorrect(idx)
-                                                ? 'bg-green-100 border-green-400 text-green-700'
-                                                : 'bg-red-100 border-red-400 text-red-700'
-                                            : 'bg-white border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-gray-800 placeholder-gray-400'
-                                    }`}
+                                    className={`inline-block w-32 px-3 py-1 mx-1 rounded-lg border-2 font-medium text-center transition-all ${submitted
+                                        ? isCorrect(idx)
+                                            ? 'bg-green-100 border-green-400 text-green-700'
+                                            : 'bg-red-100 border-red-400 text-red-700'
+                                        : 'bg-white border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-gray-800 placeholder-gray-400'
+                                        }`}
                                     placeholder="..."
                                 />
                             )}
@@ -2896,19 +2908,18 @@ Respond in JSON format only:
                             <button
                                 key={idx}
                                 onClick={() => handleLeftClick(idx)}
-                                className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${
-                                    submitted
-                                        ? isCorrect(idx)
-                                            ? 'bg-green-100 border-green-400 text-green-700'
-                                            : matches[idx] !== undefined
+                                className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${submitted
+                                    ? isCorrect(idx)
+                                        ? 'bg-green-100 border-green-400 text-green-700'
+                                        : matches[idx] !== undefined
                                             ? 'bg-red-100 border-red-400 text-red-700'
                                             : 'bg-gray-100 border-gray-300 text-gray-700'
-                                        : selectedLeft === idx
+                                    : selectedLeft === idx
                                         ? 'bg-teal-100 border-teal-500 ring-2 ring-teal-200 text-teal-800'
                                         : matches[idx] !== undefined
-                                        ? 'bg-teal-50 border-teal-300 text-teal-700'
-                                        : 'bg-white border-gray-200 hover:border-teal-400 text-gray-800'
-                                }`}
+                                            ? 'bg-teal-50 border-teal-300 text-teal-700'
+                                            : 'bg-white border-gray-200 hover:border-teal-400 text-gray-800'
+                                    }`}
                             >
                                 {item}
                                 {matches[idx] !== undefined && (
@@ -2923,13 +2934,12 @@ Respond in JSON format only:
                                 key={idx}
                                 onClick={() => handleRightClick(idx)}
                                 disabled={submitted}
-                                className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${
-                                    submitted
-                                        ? 'bg-gray-50 border-gray-200 text-gray-700'
-                                        : selectedLeft !== null
+                                className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${submitted
+                                    ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                    : selectedLeft !== null
                                         ? 'bg-white border-gray-200 hover:border-teal-400 hover:bg-teal-50 cursor-pointer text-gray-800'
                                         : 'bg-gray-50 border-gray-200 text-gray-700'
-                                }`}
+                                    }`}
                             >
                                 <span className="text-teal-600 font-bold mr-2">{String.fromCharCode(65 + idx)}.</span>
                                 {item}
@@ -3001,15 +3011,14 @@ Respond in JSON format only:
                             onDragStart={() => handleDragStart(idx)}
                             onDragOver={(e) => handleDragOver(e, idx)}
                             onDragEnd={handleDragEnd}
-                            className={`p-3 rounded-lg border-2 transition-all font-medium cursor-move flex items-center gap-3 ${
-                                submitted
-                                    ? item === correctOrder[idx]
-                                        ? 'bg-green-100 border-green-400 text-green-700'
-                                        : 'bg-red-100 border-red-400 text-red-700'
-                                    : draggedIdx === idx
+                            className={`p-3 rounded-lg border-2 transition-all font-medium cursor-move flex items-center gap-3 ${submitted
+                                ? item === correctOrder[idx]
+                                    ? 'bg-green-100 border-green-400 text-green-700'
+                                    : 'bg-red-100 border-red-400 text-red-700'
+                                : draggedIdx === idx
                                     ? 'bg-amber-100 border-amber-500 scale-105 shadow-lg text-amber-800'
                                     : 'bg-white border-gray-200 hover:border-amber-400 text-gray-800'
-                            }`}
+                                }`}
                         >
                             <span className="w-6 h-6 bg-amber-200 rounded-full flex items-center justify-center text-sm font-bold text-amber-700">
                                 {idx + 1}
@@ -3066,40 +3075,37 @@ Respond in JSON format only:
                 </div>
                 <div className="space-y-4">
                     {data.statements?.map((statement: any, idx: number) => (
-                        <div key={idx} className={`p-4 rounded-lg border-2 transition-all ${
-                            submitted
-                                ? answers[idx] === statement.isTrue
-                                    ? 'bg-green-50 border-green-300'
-                                    : 'bg-red-50 border-red-300'
-                                : 'bg-white border-gray-200'
-                        }`}>
+                        <div key={idx} className={`p-4 rounded-lg border-2 transition-all ${submitted
+                            ? answers[idx] === statement.isTrue
+                                ? 'bg-green-50 border-green-300'
+                                : 'bg-red-50 border-red-300'
+                            : 'bg-white border-gray-200'
+                            }`}>
                             <p className="font-medium text-[#1f1f1f] mb-3">{statement.text}</p>
                             <div className="flex gap-3">
                                 <button
                                     onClick={() => handleAnswer(idx, true)}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                                        answers[idx] === true
-                                            ? submitted && statement.isTrue
-                                                ? 'bg-green-500 text-white'
-                                                : submitted
+                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${answers[idx] === true
+                                        ? submitted && statement.isTrue
+                                            ? 'bg-green-500 text-white'
+                                            : submitted
                                                 ? 'bg-red-500 text-white'
                                                 : 'bg-blue-500 text-white'
-                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                                    }`}
+                                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                        }`}
                                 >
                                     True
                                 </button>
                                 <button
                                     onClick={() => handleAnswer(idx, false)}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                                        answers[idx] === false
-                                            ? submitted && !statement.isTrue
-                                                ? 'bg-green-500 text-white'
-                                                : submitted
+                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${answers[idx] === false
+                                        ? submitted && !statement.isTrue
+                                            ? 'bg-green-500 text-white'
+                                            : submitted
                                                 ? 'bg-red-500 text-white'
                                                 : 'bg-blue-500 text-white'
-                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                                    }`}
+                                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                        }`}
                                 >
                                     False
                                 </button>
@@ -3161,13 +3167,12 @@ Respond in JSON format only:
                 <div className="space-y-3">
                     {data.labels?.map((label: string, labelIdx: number) => (
                         <div key={labelIdx} className="flex items-center gap-4">
-                            <span className={`px-3 py-2 rounded-lg font-bold min-w-[120px] ${
-                                submitted
-                                    ? matches[labelIdx] === labelIdx
-                                        ? 'bg-green-100 text-green-700 border-2 border-green-400'
-                                        : 'bg-red-100 text-red-700 border-2 border-red-400'
-                                    : 'bg-pink-100 text-pink-700 border-2 border-pink-300'
-                            }`}>
+                            <span className={`px-3 py-2 rounded-lg font-bold min-w-[120px] ${submitted
+                                ? matches[labelIdx] === labelIdx
+                                    ? 'bg-green-100 text-green-700 border-2 border-green-400'
+                                    : 'bg-red-100 text-red-700 border-2 border-red-400'
+                                : 'bg-pink-100 text-pink-700 border-2 border-pink-300'
+                                }`}>
                                 {label}
                             </span>
                             <span className="text-gray-400">→</span>
@@ -3175,13 +3180,12 @@ Respond in JSON format only:
                                 value={matches[labelIdx] ?? ''}
                                 onChange={(e) => handleMatch(labelIdx, Number(e.target.value))}
                                 disabled={submitted}
-                                className={`flex-1 p-2 rounded-lg border-2 font-medium text-gray-800 ${
-                                    submitted
-                                        ? matches[labelIdx] === labelIdx
-                                            ? 'bg-green-50 border-green-400 text-green-700'
-                                            : 'bg-red-50 border-red-400 text-red-700'
-                                        : 'bg-white border-gray-200 focus:border-pink-400'
-                                }`}
+                                className={`flex-1 p-2 rounded-lg border-2 font-medium text-gray-800 ${submitted
+                                    ? matches[labelIdx] === labelIdx
+                                        ? 'bg-green-50 border-green-400 text-green-700'
+                                        : 'bg-red-50 border-red-400 text-red-700'
+                                    : 'bg-white border-gray-200 focus:border-pink-400'
+                                    }`}
                             >
                                 <option value="">Select description...</option>
                                 {data.descriptions?.map((desc: string, descIdx: number) => (
@@ -3259,7 +3263,7 @@ Respond in JSON format only:
     const loadPyodide = async () => {
         if (pyodideRef.current) return pyodideRef.current;
         if (pyodideLoading) return null;
-        
+
         setPyodideLoading(true);
         try {
             // Dynamically load Pyodide script
@@ -3272,11 +3276,11 @@ Respond in JSON format only:
                     document.head.appendChild(script);
                 });
             }
-            
+
             const pyodide = await (window as any).loadPyodide({
                 indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/'
             });
-            
+
             pyodideRef.current = pyodide;
             setPyodideReady(true);
             return pyodide;
@@ -3302,7 +3306,7 @@ Respond in JSON format only:
             setIsPyodideLoading(!pyodideReady);
             const pyodide = await loadPyodide();
             setIsPyodideLoading(false);
-            
+
             if (!pyodide) {
                 return 'Error: Failed to load Python runtime. Please try again.';
             }
@@ -3341,7 +3345,7 @@ sys.stderr = sys.__stderr__
                 if (result !== undefined && result !== null && !stdout) {
                     output += String(result);
                 }
-                
+
                 return output.trim() || 'Code executed successfully (no output)';
             } catch (error: any) {
                 return `Error: ${error.message}`;
@@ -3351,7 +3355,7 @@ sys.stderr = sys.__stderr__
         const handleRunCode = async () => {
             setIsRunning(true);
             setOutput('');
-            
+
             try {
                 if (data.language === 'python' || !data.language) {
                     // Use Pyodide for Python
@@ -3363,10 +3367,10 @@ sys.stderr = sys.__stderr__
                         const logs: string[] = [];
                         const originalLog = console.log;
                         console.log = (...args) => logs.push(args.map(String).join(' '));
-                        
+
                         // eslint-disable-next-line no-new-func
                         const result = new Function(code)();
-                        
+
                         console.log = originalLog;
                         let output = logs.join('\n');
                         if (result !== undefined) {
@@ -3514,9 +3518,8 @@ sys.stderr = sys.__stderr__
                             <span>Output</span>
                             {output.startsWith('Error') && <span className="text-red-400">⚠️</span>}
                         </div>
-                        <pre className={`bg-gray-800 p-4 font-mono text-sm overflow-x-auto whitespace-pre-wrap ${
-                            output.startsWith('Error') ? 'text-red-400' : 'text-green-400'
-                        }`}>
+                        <pre className={`bg-gray-800 p-4 font-mono text-sm overflow-x-auto whitespace-pre-wrap ${output.startsWith('Error') ? 'text-red-400' : 'text-green-400'
+                            }`}>
                             {output}
                         </pre>
                     </div>
@@ -3565,13 +3568,13 @@ sys.stderr = sys.__stderr__
 
         const executeCommand = async () => {
             if (!currentInput.trim() || isLoading) return;
-            
+
             const pyodide = pyodideRef.current;
             if (!pyodide) {
-                setHistory(prev => [...prev, { 
-                    input: currentInput, 
-                    output: 'Error: Python runtime not ready. Please wait...', 
-                    isError: true 
+                setHistory(prev => [...prev, {
+                    input: currentInput,
+                    output: 'Error: Python runtime not ready. Please wait...',
+                    isError: true
                 }]);
                 return;
             }
@@ -3599,7 +3602,7 @@ sys.stderr = _stderr_capture
                     result = pyodide.runPython(command);
                     const stdout = pyodide.runPython('_stdout_capture.getvalue()');
                     const stderr = pyodide.runPython('_stderr_capture.getvalue()');
-                    
+
                     if (stdout) output += stdout;
                     if (stderr) {
                         output += stderr;
@@ -3619,16 +3622,16 @@ sys.stdout = sys.__stdout__
 sys.stderr = sys.__stderr__
                 `);
 
-                setHistory(prev => [...prev, { 
-                    input: command, 
-                    output: output.trim() || '', 
-                    isError: hasError 
+                setHistory(prev => [...prev, {
+                    input: command,
+                    output: output.trim() || '',
+                    isError: hasError
                 }]);
             } catch (error: any) {
-                setHistory(prev => [...prev, { 
-                    input: command, 
-                    output: error.message, 
-                    isError: true 
+                setHistory(prev => [...prev, {
+                    input: command,
+                    output: error.message,
+                    isError: true
                 }]);
             } finally {
                 setIsLoading(false);
@@ -3657,14 +3660,14 @@ sys.stderr = sys.__stderr__
                 </div>
 
                 {/* Terminal output */}
-                <div 
+                <div
                     ref={outputRef}
                     className="bg-gray-900 p-4 font-mono text-sm max-h-[400px] overflow-y-auto"
                     onClick={() => inputRef.current?.focus()}
                 >
                     {/* Welcome message */}
                     <div className="text-gray-400 mb-2">
-                        Python 3.11.3 (Pyodide) on WebAssembly/Emscripten<br/>
+                        Python 3.11.3 (Pyodide) on WebAssembly/Emscripten<br />
                         Type Python commands below. Press Enter to execute.
                     </div>
 
@@ -3761,11 +3764,10 @@ sys.stderr = sys.__stderr__
                             <div key={idx} className="group">
                                 <div
                                     onClick={() => setActiveLineIndex(activeLineIndex === idx ? null : idx)}
-                                    className={`flex items-stretch cursor-pointer transition-all ${
-                                        activeLineIndex === idx 
-                                            ? 'bg-sky-900/40' 
-                                            : 'hover:bg-gray-800/50'
-                                    }`}
+                                    className={`flex items-stretch cursor-pointer transition-all ${activeLineIndex === idx
+                                        ? 'bg-sky-900/40'
+                                        : 'hover:bg-gray-800/50'
+                                        }`}
                                 >
                                     {/* Line number */}
                                     <div className="w-12 flex-shrink-0 bg-gray-800/50 text-gray-500 text-right pr-3 py-1 select-none font-mono text-sm border-r border-gray-700">
@@ -3776,9 +3778,8 @@ sys.stderr = sys.__stderr__
                                         <code>{lineData.line}</code>
                                     </pre>
                                     {/* Indicator */}
-                                    <div className={`w-8 flex items-center justify-center ${
-                                        activeLineIndex === idx ? 'text-sky-400' : 'text-gray-600 group-hover:text-gray-400'
-                                    }`}>
+                                    <div className={`w-8 flex items-center justify-center ${activeLineIndex === idx ? 'text-sky-400' : 'text-gray-600 group-hover:text-gray-400'
+                                        }`}>
                                         <ChevronRight className={`w-4 h-4 transition-transform ${activeLineIndex === idx ? 'rotate-90' : ''}`} />
                                     </div>
                                 </div>
@@ -4191,23 +4192,23 @@ sys.stderr = StringIO()
                 // Show processing animation when loading - Terminal Style
                 if (isLoading) {
                     const terminalStages = [
-                        { 
-                            name: 'Uploading', 
-                            status: processingStage === 'uploading' ? 'loading' : 
-                                   ['extracting', 'analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
+                        {
+                            name: 'Uploading',
+                            status: processingStage === 'uploading' ? 'loading' :
+                                ['extracting', 'analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
                         },
-                        { 
-                            name: 'Extracting Content', 
-                            status: processingStage === 'extracting' ? 'loading' : 
-                                   ['analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
+                        {
+                            name: 'Extracting Content',
+                            status: processingStage === 'extracting' ? 'loading' :
+                                ['analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
                         },
-                        { 
-                            name: 'Analyzing Structure', 
-                            status: processingStage === 'analyzing' ? 'loading' : 
-                                   processingStage === 'generating' ? 'complete' : 'pending' as const
+                        {
+                            name: 'Analyzing Structure',
+                            status: processingStage === 'analyzing' ? 'loading' :
+                                processingStage === 'generating' ? 'complete' : 'pending' as const
                         },
-                        { 
-                            name: 'Generating Experience', 
+                        {
+                            name: 'Generating Experience',
                             status: processingStage === 'generating' ? 'loading' : 'pending' as const
                         }
                     ];
@@ -4257,7 +4258,7 @@ sys.stderr = StringIO()
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8ab4f8] to-[#669df6] flex items-center justify-center">
                                         <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
                                         </svg>
                                     </div>
                                     <div>
@@ -4375,7 +4376,7 @@ sys.stderr = StringIO()
                                                     'from-[#78d9ec] to-[#8ab4f8]', // Cyan to Blue
                                                 ];
                                                 const gradient = gradients[index % gradients.length];
-                                                
+
                                                 return (
                                                     <div
                                                         key={workspace.id}
@@ -4396,21 +4397,21 @@ sys.stderr = StringIO()
                                                                 <span className="text-5xl drop-shadow-lg">{workspace.thumbnailEmoji}</span>
                                                             </div>
                                                         </div>
-                                                        
+
                                                         {/* Content */}
                                                         <div className="p-4">
                                                             <h3 className="font-medium text-white text-sm truncate mb-1">{workspace.name}</h3>
                                                             <p className="text-xs text-[#9aa0a6] line-clamp-1">{workspace.description}</p>
-                                                            
+
                                                             {/* Footer */}
                                                             <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
                                                                 <span className="text-xs text-[#5f6368]">
-                                                                    {new Date(workspace.updatedAt).toLocaleDateString('en-US', { 
-                                                                        month: 'short', 
+                                                                    {new Date(workspace.updatedAt).toLocaleDateString('en-US', {
+                                                                        month: 'short',
                                                                         day: 'numeric'
                                                                     })}
                                                                 </span>
-                                                                
+
                                                                 {/* Menu Button */}
                                                                 <button
                                                                     onClick={(e) => {
@@ -4444,10 +4445,10 @@ sys.stderr = StringIO()
                     // Parse streamed text to extract progress info
                     const hasStarted = streamedText.length > 0;
                     const progressPercent = Math.min(95, Math.round(streamedText.length / 50));
-                    
+
                     return (
                         <div className="flex w-full h-full min-h-[calc(100vh-120px)]">
-                            <WarpBackground 
+                            <WarpBackground
                                 className="flex-1 flex items-center justify-center border-0 p-0 bg-slate-950"
                                 perspective={150}
                                 beamsPerSide={4}
@@ -4468,22 +4469,22 @@ sys.stderr = StringIO()
                                                 gemini analyze --mode immersive
                                             </TypingAnimation>
                                         </div>
-                                        
+
                                         {/* Step 1 */}
                                         <AnimatedSpan delay={1200} className="text-slate-300">
                                             <span className="text-green-400">✔</span> Connected to Gemini AI
                                         </AnimatedSpan>
-                                        
+
                                         {/* Step 2 */}
                                         <AnimatedSpan delay={1800} className="text-slate-300">
                                             <span className="text-green-400">✔</span> Document parsed successfully
                                         </AnimatedSpan>
-                                        
+
                                         {/* Step 3 */}
                                         <AnimatedSpan delay={2400} className="text-slate-300">
                                             <span className="text-green-400">✔</span> Extracting key concepts
                                         </AnimatedSpan>
-                                        
+
                                         {/* Step 4 - Shows when content starts streaming */}
                                         <AnimatedSpan delay={3000} className="text-slate-300">
                                             {hasStarted ? (
@@ -4492,30 +4493,30 @@ sys.stderr = StringIO()
                                                 <><span className="text-yellow-400 animate-pulse">●</span> Analyzing document structure...</>
                                             )}
                                         </AnimatedSpan>
-                                        
+
                                         {hasStarted && (
                                             <>
                                                 {/* Step 5 */}
                                                 <AnimatedSpan delay={3600} className="text-slate-300">
                                                     <span className="text-blue-400 animate-pulse">●</span> Generating immersive content...
                                                 </AnimatedSpan>
-                                                
+
                                                 {/* Step 6 */}
                                                 <AnimatedSpan delay={4200} className="text-slate-300">
                                                     <span className="text-blue-400 animate-pulse">●</span> Creating interactive widgets
                                                 </AnimatedSpan>
-                                                
+
                                                 {/* Step 7 */}
                                                 <AnimatedSpan delay={4800} className="text-slate-300">
                                                     <span className="text-yellow-400 animate-spin inline-block">⟳</span> Preparing visual elements
                                                 </AnimatedSpan>
-                                                
+
                                                 {/* Progress bar */}
                                                 <AnimatedSpan delay={5400} className="mt-4 pt-3 border-t border-slate-800">
                                                     <div className="flex items-center gap-3">
                                                         <span className="text-slate-500 text-xs">Progress:</span>
                                                         <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[200px]">
-                                                            <div 
+                                                            <div
                                                                 className="h-full bg-gradient-to-r from-green-500 to-cyan-400 transition-all duration-500"
                                                                 style={{ width: `${progressPercent}%` }}
                                                             />
@@ -4523,14 +4524,14 @@ sys.stderr = StringIO()
                                                         <span className="text-cyan-400 text-xs font-mono">{progressPercent}%</span>
                                                     </div>
                                                 </AnimatedSpan>
-                                                
+
                                                 {/* Character count - live updating */}
                                                 <AnimatedSpan delay={5600} className="text-slate-500 text-xs">
                                                     <span className="text-slate-600">ℹ</span> Streaming: {streamedText.length.toLocaleString()} characters received
                                                 </AnimatedSpan>
                                             </>
                                         )}
-                                        
+
                                         {!hasStarted && (
                                             <AnimatedSpan delay={3600} className="text-blue-400 flex items-center gap-2">
                                                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -4610,14 +4611,14 @@ sys.stderr = StringIO()
                                                 setShowPdfSidebar(true);
                                             }}
                                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] transition-colors ${activeSource?.url === source.url
-                                                    ? 'bg-indigo-600 text-white'
-                                                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
                                                 }`}
                                             title={source.url}
                                         >
                                             <span className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full ${activeSource?.url === source.url
-                                                    ? 'bg-white/30 text-white'
-                                                    : 'bg-blue-200 text-blue-700'
+                                                ? 'bg-white/30 text-white'
+                                                : 'bg-blue-200 text-blue-700'
                                                 }`}>
                                                 {idx + 1}
                                             </span>
@@ -4655,9 +4656,9 @@ sys.stderr = StringIO()
                                                                 onClick={() => handleTermClick(def.term, def.definition)}
                                                                 className="cursor-pointer"
                                                             >
-                                                                <Highlighter 
-                                                                    action="highlight" 
-                                                                    color="#FBBF24" 
+                                                                <Highlighter
+                                                                    action="highlight"
+                                                                    color="#FBBF24"
                                                                     animationDuration={1200}
                                                                     iterations={1}
                                                                 >
@@ -4667,9 +4668,9 @@ sys.stderr = StringIO()
                                                                 </Highlighter>
                                                             </span>
                                                         ) : (
-                                                            <Highlighter 
-                                                                action="highlight" 
-                                                                color="#FBBF24" 
+                                                            <Highlighter
+                                                                action="highlight"
+                                                                color="#FBBF24"
                                                                 animationDuration={1200}
                                                                 iterations={1}
                                                             >
@@ -4678,9 +4679,9 @@ sys.stderr = StringIO()
                                                         );
                                                     },
                                                     em: ({ children }) => (
-                                                        <Highlighter 
-                                                            action="underline" 
-                                                            color="#3B82F6" 
+                                                        <Highlighter
+                                                            action="underline"
+                                                            color="#3B82F6"
                                                             strokeWidth={2}
                                                             animationDuration={800}
                                                             iterations={1}
@@ -4772,9 +4773,9 @@ sys.stderr = StringIO()
                                                                 onClick={() => handleTermClick(def.term, def.definition)}
                                                                 className="cursor-pointer"
                                                             >
-                                                                <Highlighter 
-                                                                    action="highlight" 
-                                                                    color="#FBBF24" 
+                                                                <Highlighter
+                                                                    action="highlight"
+                                                                    color="#FBBF24"
                                                                     animationDuration={1200}
                                                                     iterations={1}
                                                                 >
@@ -4784,9 +4785,9 @@ sys.stderr = StringIO()
                                                                 </Highlighter>
                                                             </span>
                                                         ) : (
-                                                            <Highlighter 
-                                                                action="highlight" 
-                                                                color="#FBBF24" 
+                                                            <Highlighter
+                                                                action="highlight"
+                                                                color="#FBBF24"
                                                                 animationDuration={1200}
                                                                 iterations={1}
                                                             >
@@ -4795,9 +4796,9 @@ sys.stderr = StringIO()
                                                         );
                                                     },
                                                     em: ({ children }) => (
-                                                        <Highlighter 
-                                                            action="underline" 
-                                                            color="#3B82F6" 
+                                                        <Highlighter
+                                                            action="underline"
+                                                            color="#3B82F6"
                                                             strokeWidth={2}
                                                             animationDuration={800}
                                                             iterations={1}
@@ -5139,11 +5140,10 @@ sys.stderr = StringIO()
                                             <button
                                                 key={tab.id}
                                                 onClick={() => setEnhancedTermTab(tab.id as any)}
-                                                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-all border-b-2 ${
-                                                    enhancedTermTab === tab.id
-                                                        ? 'border-blue-500 text-blue-600 bg-white'
-                                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                                                }`}
+                                                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-all border-b-2 ${enhancedTermTab === tab.id
+                                                    ? 'border-blue-500 text-blue-600 bg-white'
+                                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                                    }`}
                                             >
                                                 {tab.icon}
                                                 {tab.label}
@@ -5224,7 +5224,7 @@ sys.stderr = StringIO()
                                                                 <span className="font-bold text-indigo-700">Brain Teaser Challenge</span>
                                                             </div>
                                                             <p className="text-gray-800 text-lg font-medium mb-4">{enhancedTermInfo.brainTeaser.question}</p>
-                                                            
+
                                                             {!brainTeaserRevealed ? (
                                                                 <div className="space-y-3">
                                                                     <button
@@ -5264,15 +5264,14 @@ sys.stderr = StringIO()
                                                                         key={idx}
                                                                         onClick={() => setEnhancedQuizAnswer(idx)}
                                                                         disabled={enhancedQuizAnswer !== null}
-                                                                        className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${
-                                                                            enhancedQuizAnswer !== null
-                                                                                ? idx === enhancedTermInfo.quickQuiz.correctIndex
-                                                                                    ? 'bg-green-100 border-green-400 text-green-700'
-                                                                                    : enhancedQuizAnswer === idx
+                                                                        className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${enhancedQuizAnswer !== null
+                                                                            ? idx === enhancedTermInfo.quickQuiz.correctIndex
+                                                                                ? 'bg-green-100 border-green-400 text-green-700'
+                                                                                : enhancedQuizAnswer === idx
                                                                                     ? 'bg-red-100 border-red-400 text-red-700'
                                                                                     : 'bg-gray-50 border-gray-200 text-gray-500'
-                                                                                : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50'
-                                                                        }`}
+                                                                            : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50'
+                                                                            }`}
                                                                     >
                                                                         <span className="font-bold mr-2">{String.fromCharCode(65 + idx)}.</span>
                                                                         {option}
@@ -5342,7 +5341,7 @@ sys.stderr = StringIO()
                                             <p className="text-gray-700 font-medium">🎯 Your Challenge:</p>
                                             <p className="text-gray-800 mt-1 font-semibold">{brainstormActivity.challenge}</p>
                                         </div>
-                                        
+
                                         {/* Hints */}
                                         <div className="space-y-2">
                                             <p className="font-medium text-gray-700">💡 Need hints?</p>
@@ -5354,11 +5353,10 @@ sys.stderr = StringIO()
                                                         newHints[idx] = true;
                                                         setShowBrainstormHints(newHints);
                                                     }}
-                                                    className={`w-full text-left p-3 rounded-lg border transition-all ${
-                                                        showBrainstormHints[idx]
-                                                            ? 'bg-amber-50 border-amber-200'
-                                                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                                                    }`}
+                                                    className={`w-full text-left p-3 rounded-lg border transition-all ${showBrainstormHints[idx]
+                                                        ? 'bg-amber-50 border-amber-200'
+                                                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                                        }`}
                                                 >
                                                     {showBrainstormHints[idx] ? (
                                                         <span className="text-amber-700">{hint}</span>
@@ -5444,7 +5442,7 @@ sys.stderr = StringIO()
                                         <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-100">
                                             <p className="text-gray-700">{whatIfActivity.baseScenario}</p>
                                         </div>
-                                        
+
                                         {whatIfActivity.whatIfQuestions.map((q, idx) => (
                                             <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
                                                 <button
@@ -6342,7 +6340,7 @@ sys.stderr = StringIO()
 
                             {/* Loading State - Terminal Style with WarpBackground */}
                             {isGeneratingSimulation && (
-                                <WarpBackground 
+                                <WarpBackground
                                     className="flex-1 flex items-center justify-center h-full border-0 p-0 bg-slate-950"
                                     perspective={150}
                                     beamsPerSide={4}
@@ -6363,7 +6361,7 @@ sys.stderr = StringIO()
                                                     gemini generate --mode 3d-simulation
                                                 </TypingAnimation>
                                             </div>
-                                            
+
                                             {/* Dynamic Progress Steps */}
                                             {simulationProgressSteps.map((step, idx) => (
                                                 <AnimatedSpan key={idx} delay={800 + (idx * 600)} className="text-slate-300">
@@ -6378,7 +6376,7 @@ sys.stderr = StringIO()
                                                     )}
                                                 </AnimatedSpan>
                                             ))}
-                                            
+
                                             {/* Current Status */}
                                             {simulationProgress && (
                                                 <AnimatedSpan delay={5000} className="text-amber-400 flex items-center gap-2 mt-2">
@@ -6386,13 +6384,13 @@ sys.stderr = StringIO()
                                                     <span>{simulationProgress}</span>
                                                 </AnimatedSpan>
                                             )}
-                                            
+
                                             {/* Progress bar */}
                                             <AnimatedSpan delay={5200} className="mt-4 pt-3 border-t border-slate-800">
                                                 <div className="flex items-center gap-3">
                                                     <span className="text-slate-500 text-xs">Progress:</span>
                                                     <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[200px]">
-                                                        <div 
+                                                        <div
                                                             className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500"
                                                             style={{ width: `${Math.round((simulationProgressSteps.filter(s => s.status === 'done').length / simulationProgressSteps.length) * 100)}%` }}
                                                         />
@@ -7612,6 +7610,9 @@ sys.stderr = StringIO()
 
             case 'code-lab':
                 return <CodeLabView />;
+
+            case 'assignment':
+                return <InteractiveAssignmentWorkspace />;
 
             default:
                 return null;

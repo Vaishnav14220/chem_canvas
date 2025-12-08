@@ -106,7 +106,7 @@ export const isGeminiInitialized = () => {
   return genAI !== null;
 };
 
-const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-flash-latest'];
+const MODEL_CANDIDATES = ['gemini-3-pro-preview', 'gemini-2.0-flash-thinking-exp', 'gemini-2.0-flash-exp', 'gemini-2.5-flash', 'gemini-flash-latest'];
 
 const resolveModelForClient = async (client: GoogleGenAI): Promise<string> => {
   for (const modelName of MODEL_CANDIDATES) {
@@ -152,7 +152,7 @@ const getAvailableModel = async (
   });
 };
 
-export const generateTextContent = async (prompt: string, options?: { maxOutputTokens?: number }): Promise<string> => {
+export const generateTextContent = async (prompt: string, options?: { maxOutputTokens?: number, model?: string, thinking?: boolean | 'high' | 'low' }): Promise<string> => {
   await ensureInitializedAsync();
   if (!genAI) {
     throw new Error('Gemini API not initialized. Please provide an API key.');
@@ -172,13 +172,33 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
           cachedModelName = null; // Reset model cache with new key
         }
 
-        const modelName = await getAvailableModel(genAI!, { skipRotation: true });
+        const modelName = options?.model ?? await getAvailableModel(genAI!, { skipRotation: true });
+
+        let config: any = undefined;
+        if (options?.maxOutputTokens) {
+          config = { ...config, maxOutputTokens: options.maxOutputTokens };
+        }
+        if (options?.thinking) {
+          // Gemini Thinking experimental config
+          const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
+
+          config = {
+            ...config,
+            thinkingConfig: {
+              includeThoughts: true,
+              thinking_level: thinkingLevel,
+            }
+          };
+          // Increase token limit for thinking models if not explicitly set
+          if (!config.maxOutputTokens) {
+            config.maxOutputTokens = 65536;
+          }
+        }
+
         const response = await genAI!.models.generateContent({
           model: modelName,
           contents: prompt,
-          config: options?.maxOutputTokens ? {
-            maxOutputTokens: options.maxOutputTokens
-          } : undefined,
+          config: config,
         });
         return response.text ?? '';
       });
@@ -293,7 +313,12 @@ export const generateContentWithGemini = async (
 export const streamTextContent = async (
   prompt: string,
   onChunk: (chunk: string) => void,
-  options?: { model?: string }
+  options?: {
+    model?: string,
+    thinking?: boolean | 'high' | 'low',
+    onThought?: (thought: string) => void,
+    inlineData?: { mimeType: string, data: string }
+  }
 ): Promise<string> => {
   await ensureInitializedAsync();
   if (!genAI) {
@@ -309,18 +334,73 @@ export const streamTextContent = async (
       }
 
       const modelName = options?.model ?? (await getAvailableModel(genAI!, { skipRotation: true }));
+
+      let config: any = undefined;
+      if (options?.thinking) {
+        const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
+        config = {
+          ...config,
+          thinkingConfig: {
+            includeThoughts: true,
+            thinking_level: thinkingLevel,
+          },
+          maxOutputTokens: 65536
+        };
+      }
+
+      // Construct content with inline data if present
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            ...(options?.inlineData ? [{ inlineData: options.inlineData }] : []),
+            { text: prompt }
+          ]
+        }
+      ];
+
       const stream = await genAI!.models.generateContentStream({
         model: modelName,
-        contents: prompt,
+        contents: contents,
+        config: config
       });
 
       let fullText = '';
 
       for await (const chunk of stream) {
-        const text = chunk.text ?? '';
-        if (!text) continue;
-        fullText += text;
-        onChunk(text);
+        // Handle parts if they exist directly
+        const parts = chunk.candidates?.[0]?.content?.parts;
+        if (parts) {
+          for (const part of parts) {
+            // Check for thought property (experimental)
+            // Note: The specific field for "thought" in the stream needs to be checked.
+            // Standard API usually puts thoughts in text but marked differently?
+            // Actually, for Gemini 2.0 Flash Thinking, thoughts come as a separate part type or field.
+
+            // Try multiple access patterns for "thought"
+            const thoughtContent = (part as any).thought || (part as any).thought_content;
+
+            if (thoughtContent && typeof thoughtContent === 'string') {
+              options?.onThought?.(thoughtContent);
+              continue; // It's a thought chunk, don't append to fullText yet
+            }
+
+            // Sometimes thought is just text but we need to see if it's marked
+            // If the part has NO text but has something else, log it (for debugging if needed)
+
+            if (part.text) {
+              fullText += part.text;
+              onChunk(part.text);
+            }
+          }
+        } else {
+          // Fallback for standard text-only chunks if structure differs
+          const text = chunk.text();
+          if (text) {
+            fullText += text;
+            onChunk(text);
+          }
+        }
       }
 
       return fullText;
@@ -1141,11 +1221,14 @@ export const generateEducationalImage = async (
           tools: [{ googleSearch: {} }],
           thinkingConfig: { thinkingBudget: 1024 }
         },
-        contents: [{ role: 'user', parts: [{ text: `Research the scientific/academic topic: "${topic}". Find accurate visual representations, diagrams, and scientific illustrations used in academic textbooks, research papers, and educational materials. Focus on:
+        contents: [{
+          role: 'user', parts: [{
+            text: `Research the scientific/academic topic: "${topic}". Find accurate visual representations, diagrams, and scientific illustrations used in academic textbooks, research papers, and educational materials. Focus on:
 1. What are the key visual elements and components that MUST be shown?
 2. What is the scientifically accurate representation?
 3. What style is commonly used in academic/textbook illustrations?
-4. What are common mistakes to avoid in depicting this topic?` }] }]
+4. What are common mistakes to avoid in depicting this topic?` }]
+        }]
       });
 
       const researchContext = researchResult.text || '';
