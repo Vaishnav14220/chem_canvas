@@ -4088,7 +4088,7 @@ sys.stderr = StringIO()
         // Only show "Start Learning" fallback when NOT streaming
         // During streaming, let case 'immersive-text' handle the streaming UI
         // Robotics, 3D Viewer, and Code Lab work independently without needing uploaded content
-        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && !isStreaming) {
+        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && !isStreaming) {
             return (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 p-8">
                     <div className="text-center space-y-3 max-w-md">
@@ -4177,7 +4177,7 @@ sys.stderr = StringIO()
                     );
                 }
 
-                // NotebookLM-style Workspace Manager UI - Dark Theme
+                // Immersive Learning Workspace Manager UI - Dark Theme
                 return (
                     <div className="flex flex-col h-full bg-[#131314] overflow-hidden">
                         {/* Header */}
@@ -4213,7 +4213,7 @@ sys.stderr = StringIO()
                                     <Loader2 className="w-8 h-8 text-[#8ab4f8] animate-spin" />
                                 </div>
                             ) : filteredWorkspaces.length === 0 && !workspaceSearchQuery ? (
-                                /* Empty State - NotebookLM Style */
+                                /* Empty State - Immersive Learning */
                                 <div className="flex flex-col items-center justify-center h-full">
                                     <div className="max-w-md text-center">
                                         {/* Animated gradient icon */}
@@ -4222,9 +4222,9 @@ sys.stderr = StringIO()
                                                 <span className="text-5xl">✨</span>
                                             </div>
                                         </div>
-                                        <h2 className="text-2xl font-normal text-white mb-3">Welcome to NotebookLM</h2>
+                                        <h2 className="text-2xl font-normal text-white mb-3">Welcome to Immersive Learning</h2>
                                         <p className="text-[#9aa0a6] text-sm mb-8 leading-relaxed">
-                                            Upload your documents, and NotebookLM will help you understand them better with AI-powered insights, summaries, and interactive learning.
+                                            Upload your documents, and Immersive Learning will help you understand them better with AI-powered insights, summaries, and interactive learning.
                                         </p>
                                         <input
                                             ref={fileInputRef}

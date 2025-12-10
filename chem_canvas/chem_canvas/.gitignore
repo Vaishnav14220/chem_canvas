@@ -27,3 +27,10 @@ dist-ssr
 
 # Ignore markdown files
 *.md
+
+# Temporary debug folders
+temp_base/
+temp_latex/
+temp_texlive/
+temp_texlive_2/
+temp_texlive_fonts/
