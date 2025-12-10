@@ -15,6 +15,7 @@ import {
     Play,
     FileText
 } from 'lucide-react';
+import { extractLatexCode } from '../utils/latexUtils';
 import { streamTextContent } from '../services/geminiService';
 import { compileLatexWithGemini } from '../services/latexAgentService';
 import CodeMirror from '@uiw/react-codemirror';
@@ -200,6 +201,7 @@ Special Instructions:
                 {
                     model: 'gemini-3-pro-preview',
                     thinking: 'high' as const,
+                    timeout: 300000, // 5 minutes for long LaTeX generation
                     onThought: () => { }, // Not needed for LaTeX output
                     inlineData: fileData ? {
                         mimeType: fileData.type,
@@ -220,8 +222,10 @@ Special Instructions:
     const handleDownload = () => {
         if (!latexOutput) return;
 
+        const cleanLatex = extractLatexCode(latexOutput);
+
         const element = document.createElement('a');
-        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(latexOutput));
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(cleanLatex));
         element.setAttribute('download', 'assignment.tex');
         element.style.display = 'none';
         document.body.appendChild(element);
@@ -231,7 +235,8 @@ Special Instructions:
 
     const handleCopy = async () => {
         try {
-            await navigator.clipboard.writeText(latexOutput);
+            const cleanLatex = extractLatexCode(latexOutput);
+            await navigator.clipboard.writeText(cleanLatex);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch (err) {
@@ -248,7 +253,8 @@ Special Instructions:
         setActiveTab('pdf'); // Switch to PDF tab to show loading state
 
         try {
-            const result = await compileLatexWithGemini(latexOutput, 'main.tex');
+            const cleanLatex = extractLatexCode(latexOutput);
+            const result = await compileLatexWithGemini(cleanLatex, 'main.tex');
 
             if (result.success && result.pdfUrl) {
                 setPdfUrl(result.pdfUrl);

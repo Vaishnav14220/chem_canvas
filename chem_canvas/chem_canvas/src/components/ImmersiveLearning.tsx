@@ -273,8 +273,8 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         activeSectionId: string | null;
     }>>([]);
     const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
-    const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
-    const [showWorkspaceManager, setShowWorkspaceManager] = useState(true);
+    const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
+    const [showWorkspaceManager, setShowWorkspaceManager] = useState(false);
     const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
     const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState('');
 
@@ -792,7 +792,8 @@ Respond in JSON format only:
         }, 100);
     };
 
-    // Load workspaces on mount
+    // Load workspaces on mount - DISABLED per user request
+    /*
     useEffect(() => {
         try {
             const saved = localStorage.getItem(WORKSPACES_STORAGE_KEY);
@@ -800,9 +801,6 @@ Respond in JSON format only:
                 const workspaces = JSON.parse(saved);
                 setSavedWorkspaces(workspaces);
                 setIsLoadingWorkspaces(false);
-
-                // Auto-open logic disabled to ensure clean state and prevent 'ghost' content
-
             } else {
                 setIsLoadingWorkspaces(false);
             }
@@ -810,90 +808,32 @@ Respond in JSON format only:
             console.error('Failed to load workspaces:', e);
             setIsLoadingWorkspaces(false);
         } finally {
-            // Ensure loading is always false at end
             setIsLoadingWorkspaces(false);
         }
     }, []);
+    */
 
-    // Auto-save to active workspace when content changes
+    // Auto-save to active workspace when content changes - DISABLED per user request (no storage)
+    /*
     useEffect(() => {
         if (activeWorkspaceId && immersiveContent) {
-            const timeoutId = setTimeout(() => {
-                updateWorkspace(activeWorkspaceId);
-                console.log('🔄 Auto-saved to workspace');
-            }, 5000); // Debounce 5 seconds
-            return () => clearTimeout(timeoutId);
+           // ... logic removed ...
         }
     }, [activeWorkspaceId, immersiveContent, sectionImages, quiz, audioScript, reactFlowData, relevantVideos]);
+    */
 
-    // Load saved content from localStorage on mount
+    // Load saved content from localStorage on mount - DISABLED per user request (always fresh start)
+    /*
     useEffect(() => {
         try {
-            const savedData = localStorage.getItem(STORAGE_KEY);
-            if (savedData) {
-                const parsed = JSON.parse(savedData);
-                console.log('📂 Restoring saved immersive learning content...');
-
-                // Restore immersive content
-                if (parsed.immersiveContent) {
-                    setImmersiveContent(parsed.immersiveContent);
-                    if (parsed.immersiveContent.sections?.length > 0) {
-                        setActiveSectionId(parsed.activeSectionId || parsed.immersiveContent.sections[0].id);
-                    }
-                }
-
-                // Restore document text
-                if (parsed.documentText) {
-                    documentTextRef.current = parsed.documentText;
-                }
-
-                // Restore images
-                if (parsed.sectionImages) {
-                    setSectionImages(parsed.sectionImages);
-                }
-                if (parsed.widgetImages) {
-                    setWidgetImages(parsed.widgetImages);
-                }
-
-                // Restore file name
-                if (parsed.uploadedFileName) {
-                    setUploadedFileName(parsed.uploadedFileName);
-                }
-
-                // Restore PDF URL if available
-                if (parsed.pdfUrl) {
-                    setPdfUrl(parsed.pdfUrl);
-                }
-
-                // Restore additional generated content
-                if (parsed.quiz && parsed.quiz.length > 0) {
-                    setQuiz(parsed.quiz);
-                }
-                if (parsed.audioScript) {
-                    setAudioScript(parsed.audioScript);
-                }
-                if (parsed.reactFlowData) {
-                    setReactFlowData(parsed.reactFlowData);
-                }
-                if (parsed.relevantVideos && parsed.relevantVideos.length > 0) {
-                    setRelevantVideos(parsed.relevantVideos);
-                }
-
-                // Set mode to immersive-text if we have content
-                if (parsed.immersiveContent) {
-                    setActiveMode('immersive-text');
-                    // Flag to continue generating any missing components
-                    setNeedsContinueGeneration(true);
-                }
-
-                console.log('✅ Content restored successfully!');
-            }
-        } catch (error) {
-            console.error('Failed to load saved content:', error);
-            // Clear corrupted data
-            localStorage.removeItem(STORAGE_KEY);
+            // ... restore logic removed ...
+            console.log('✅ Content restored successfully!');
+        } catch (e) {
+            console.error('Failed to restore content:', e);
         }
     }, []);
+    */
+
 
     // Continue generating missing components after restore
     useEffect(() => {
@@ -7777,20 +7717,20 @@ sys.stderr = StringIO()
                                             className={`
                                                 w-full flex items-center gap-3 pl-6 pr-4 py-3 text-left transition-all duration-150
                                                 ${isActive
-                                                    ? 'border-l-[3px] border-l-[#ff8b66] bg-[#fff5f0]'
-                                                    : 'border-l-[3px] border-l-transparent hover:bg-[#f5f0e8]'
+                                                    ? 'bg-[#f4efe8]'
+                                                    : 'hover:bg-[#f5f0e8]'
                                                 }
                                             `}
                                         >
-                                            {/* Circle indicator */}
+                                            {/* Checkbox indicator */}
                                             <div className={`
-                                                w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 border-[1.5px] transition-colors
+                                                w-4 h-4 rounded-[4px] flex items-center justify-center flex-shrink-0 border transition-colors
                                                 ${isActive
-                                                    ? 'border-[#ff8b66]'
-                                                    : 'border-[#9aa0a6]'
+                                                    ? 'border-[#5f6368] bg-transparent'
+                                                    : 'border-[#9aa0a6] hover:border-[#5f6368]'
                                                 }
                                             `}>
-                                                {isActive && <div className="w-2 h-2 rounded-full bg-[#ff8b66]" />}
+                                                {/* Hidden checkmark for now, just the box style to match reference */}
                                             </div>
                                             <span className={`text-[14px] leading-snug ${isActive ? 'text-[#1f1f1f] font-medium' : 'text-[#5f6368]'}`}>
                                                 {section.title}

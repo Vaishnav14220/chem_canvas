@@ -13,6 +13,36 @@ import {
   isVertexAIAvailable
 } from './vertexAiService';
 
+export class SafetyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SafetyError';
+  }
+}
+
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+const handleGeminiError = (error: any): never => {
+  const errorMessage = error?.message?.toLowerCase() || '';
+
+  // Handle Safety Errors
+  if (errorMessage.includes('safety') || error?.response?.promptFeedback?.blockReason) {
+    throw new SafetyError('Content generation blocked due to safety settings.');
+  }
+
+  // Handle Timeouts
+  if (errorMessage.includes('timeout') || error?.name === 'TimeoutError') {
+    throw new TimeoutError('Request timed out.');
+  }
+
+  throw error;
+};
+
 // Initialize Gemini API
 let genAI: GoogleGenAI | null = null;
 let cachedModelName: string | null = null;
@@ -152,14 +182,16 @@ const getAvailableModel = async (
   });
 };
 
-export const generateTextContent = async (prompt: string, options?: { maxOutputTokens?: number, model?: string, thinking?: boolean | 'high' | 'low' }): Promise<string> => {
+export const generateTextContent = async (prompt: string, options?: { maxOutputTokens?: number, model?: string, thinking?: boolean | 'high' | 'low', timeout?: number }): Promise<string> => {
   await ensureInitializedAsync();
   if (!genAI) {
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
 
   // Internal retry for 503 errors with exponential backoff
-  const maxRetries = 5;
+  const maxRetries = 10;
+  const timeoutMs = options?.timeout ?? 60000; // Default 60s timeout
+
   let lastError: any;
 
   for (let retry = 0; retry < maxRetries; retry++) {
@@ -195,24 +227,53 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
           }
         }
 
-        const response = await genAI!.models.generateContent({
+        const fetchPromise = genAI!.models.generateContent({
           model: modelName,
           contents: prompt,
           config: config,
         });
+
+        // Race against timeout
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new TimeoutError(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+        });
+
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
         return response.text ?? '';
       });
     } catch (error: any) {
-      lastError = error;
+      // First, try to handle specific errors using our helper
+      try {
+        handleGeminiError(error);
+      } catch (handledError) {
+        if (handledError instanceof SafetyError || handledError instanceof TimeoutError) {
+          // For Safety errors, we probably shouldn't retry unless we think it's a fluke (unlikely).
+          // For Timeout errors, we MIGHT want to retry if it was a transient hang.
+          // However, handleGeminiError throws, so we catch it here.
+          // If it is SafetyError, we throw immediately (break loop).
+          if (handledError instanceof SafetyError) throw handledError;
+
+          // If it is TimeoutError, we can treat it as retryable if we want, or throw. 
+          // Let's treat Timeout as retryable for now, as networks can be flaky.
+          lastError = handledError;
+        } else {
+          lastError = handledError;
+        }
+      }
+
       const errorMessage = error?.message?.toLowerCase() || '';
       const errorCode = error?.error?.code || error?.code;
       const is503 = errorCode === 503 || errorMessage.includes('503') ||
         errorMessage.includes('overloaded') || errorMessage.includes('unavailable');
 
-      if (is503 && retry < maxRetries - 1) {
+      if ((is503 || isRetryableGeminiError(error) || error instanceof TimeoutError) && retry < maxRetries - 1) {
         // Exponential backoff with jitter
-        const delay = Math.min(2000 * Math.pow(2, retry) + Math.random() * 1000, 30000);
-        console.log(`⏳ API overloaded (attempt ${retry + 1}/${maxRetries}). Waiting ${Math.round(delay / 1000)}s before retry...`);
+        // More aggressive backoff for 503s to wait out the overload
+        const baseDelay = is503 ? 5000 : 2000; // 5s base for 503s
+        const maxDelay = is503 ? 60000 : 30000; // Allow up to 60s wait
+        const delay = Math.min(baseDelay * Math.pow(1.5, retry) + Math.random() * 1000, maxDelay);
+
+        console.log(`⏳ API error (attempt ${retry + 1}/${maxRetries}): ${errorMessage || error.name}. Waiting ${Math.round(delay / 1000)}s before retry...`);
         await sleep(delay);
         continue;
       }
@@ -243,8 +304,8 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
         }
       }
 
-      // Re-throw error if it's not a 503/overloaded error
-      throw error;
+      // Re-throw if not retryable
+      throw lastError || error;
     }
   }
 
@@ -260,10 +321,13 @@ const isRetryableGeminiError = (error: any) => {
   const code = Number(error?.error?.code ?? error?.code);
   const message = error?.error?.message ?? error?.message ?? '';
   const retryableStatuses = ['UNAVAILABLE', 'RESOURCE_EXHAUSTED', 'INTERNAL', 'DEADLINE_EXCEEDED'];
+  // Added 502, 504 and more explicit 500 handling
   const retryableCodes = [429, 500, 502, 503, 504];
+
   if (retryableCodes.includes(code)) return true;
   if (typeof status === 'string' && retryableStatuses.includes(status)) return true;
-  if (typeof message === 'string' && /overloaded|try again|unavailable|rate/i.test(message)) return true;
+  if (typeof message === 'string' && /overloaded|try again|unavailable|rate|timeout|deadline/i.test(message)) return true;
+
   return false;
 };
 
@@ -317,13 +381,18 @@ export const streamTextContent = async (
     model?: string,
     thinking?: boolean | 'high' | 'low',
     onThought?: (thought: string) => void,
-    inlineData?: { mimeType: string, data: string }
+    inlineData?: { mimeType: string, data: string },
+    timeout?: number
   }
 ): Promise<string> => {
   await ensureInitializedAsync();
   if (!genAI) {
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
+
+  // Default timeout: 60s for standard models, 180s for thinking models (which are slower)
+  const isThinkingModel = options?.thinking || options?.model?.includes('thinking') || options?.model?.includes('gemini-3');
+  const timeoutMs = options?.timeout ?? (isThinkingModel ? 180000 : 60000);
 
   try {
     return await executeWithRotation(async (apiKey) => {
@@ -333,7 +402,9 @@ export const streamTextContent = async (
         cachedModelName = null;
       }
 
+      console.log('DEBUG: streamTextContent called with options:', JSON.stringify(options));
       const modelName = options?.model ?? (await getAvailableModel(genAI!, { skipRotation: true }));
+      console.log('DEBUG: streamTextContent using model:', modelName);
 
       let config: any = undefined;
       if (options?.thinking) {
@@ -359,115 +430,105 @@ export const streamTextContent = async (
         }
       ];
 
-      const stream = await genAI!.models.generateContentStream({
-        model: modelName,
-        contents: contents,
-        config: config
-      });
+      // Create stream promise
+      const streamPromise = async () => {
+        const stream = await genAI!.models.generateContentStream({
+          model: modelName,
+          contents: contents,
+          config: config
+        });
 
-      let fullText = '';
-      let accumulatedThought = '';
-      const thoughtChunkDelay = 100; // ms to batch small thought chunks
-      let thoughtTimeout: NodeJS.Timeout | null = null;
+        let fullText = '';
+        let accumulatedThought = '';
+        const thoughtChunkDelay = 100; // ms to batch small thought chunks
+        let thoughtTimeout: NodeJS.Timeout | null = null;
 
-      const flushThought = () => {
-        if (accumulatedThought && options?.onThought) {
-          options.onThought(accumulatedThought);
-          accumulatedThought = '';
-        }
-      };
+        const flushThought = () => {
+          if (accumulatedThought && options?.onThought) {
+            options.onThought(accumulatedThought);
+            accumulatedThought = '';
+          }
+        };
 
-      for await (const chunk of stream) {
-        // Handle parts if they exist directly
-        const parts = chunk.candidates?.[0]?.content?.parts;
-        if (parts && parts.length > 0) {
-          for (const part of parts) {
-            // Check for thought in multiple formats (Gemini 3 Pro compatibility)
-            const thoughtContent = (part as any).thought ||
-              (part as any).thinking ||
-              ((part as any).type === 'thought' ? (part as any).text : null) ||
-              ((part as any).type === 'thinking' ? (part as any).text : null);
+        for await (const chunk of stream) {
+          // Handle parts if they exist directly
+          const parts = chunk.candidates?.[0]?.content?.parts;
+          if (parts && parts.length > 0) {
+            for (const part of parts) {
+              // Check for thought in multiple formats (Gemini 3 Pro compatibility)
+              const thoughtContent = (part as any).thought ||
+                (part as any).thinking ||
+                ((part as any).type === 'thought' ? (part as any).text : null) ||
+                ((part as any).type === 'thinking' ? (part as any).text : null);
 
-            if (thoughtContent && typeof thoughtContent === 'string') {
-              // Accumulate thoughts and emit them with batching
-              accumulatedThought += thoughtContent;
+              if (thoughtContent && typeof thoughtContent === 'string') {
+                // Accumulate thoughts and emit them with batching
+                accumulatedThought += thoughtContent;
 
-              if (thoughtTimeout) {
-                clearTimeout(thoughtTimeout);
+                if (thoughtTimeout) {
+                  clearTimeout(thoughtTimeout);
+                }
+
+                thoughtTimeout = setTimeout(() => {
+                  flushThought();
+                }, thoughtChunkDelay);
+
+                continue; // Don't add thoughts to fullText, they're metadata
               }
 
-              thoughtTimeout = setTimeout(() => {
+              // Check if this is a text part
+              if (part.text) {
+                // Flush any pending thoughts before emitting actual text
+                if (thoughtTimeout) {
+                  clearTimeout(thoughtTimeout);
+                }
                 flushThought();
-              }, thoughtChunkDelay);
 
-              continue; // Don't add thoughts to fullText, they're metadata
+                fullText += part.text;
+                onChunk(part.text);
+              }
             }
-
-            // Check if this is a text part
-            if (part.text) {
+          } else if (chunk.text) {
+            // Fallback for standard text-only chunks
+            const text = chunk.text();
+            if (text) {
               // Flush any pending thoughts before emitting actual text
               if (thoughtTimeout) {
                 clearTimeout(thoughtTimeout);
               }
               flushThought();
 
-              fullText += part.text;
-              onChunk(part.text);
+              fullText += text;
+              onChunk(text);
             }
-          }
-        } else if (chunk.text) {
-          // Fallback for standard text-only chunks
-          const text = chunk.text();
-          if (text) {
-            // Flush any pending thoughts before emitting actual text
-            if (thoughtTimeout) {
-              clearTimeout(thoughtTimeout);
-            }
-            flushThought();
-
-            fullText += text;
-            onChunk(text);
           }
         }
-      }
 
-      // Flush any remaining thought content
-      if (thoughtTimeout) {
-        clearTimeout(thoughtTimeout);
-      }
-      flushThought();
+        // Flush any remaining thought content
+        if (thoughtTimeout) {
+          clearTimeout(thoughtTimeout);
+        }
+        flushThought();
 
-      return fullText;
+        return fullText;
+      };
+
+      // Race with timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new TimeoutError(`Streaming request timed out after ${timeoutMs}ms`)), timeoutMs);
+      });
+
+      return await Promise.race([streamPromise(), timeoutPromise]);
     });
   } catch (error: any) {
-    // Check if error is a 503 (model overloaded) and Vertex AI is available
-    const errorMessage = error?.message?.toLowerCase() || '';
-    if ((errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('unavailable'))
-      && !errorMessage.includes('vertex')) {
-
-      console.log('⚠️ Gemini API streaming overloaded, attempting to use Vertex AI fallback...');
-
-      // Try to initialize Vertex AI if not already done
-      if (!isVertexAIAvailable()) {
-        const vertexInitialized = await initializeVertexAI();
-        if (!vertexInitialized) {
-          console.warn('❌ Vertex AI fallback not available for streaming');
-          throw error; // Re-throw original error if Vertex AI is not available
-        }
-      }
-
-      try {
-        // Use Vertex AI streaming as fallback
-        const result = await streamContentWithVertexAI(prompt, onChunk);
-        console.log('✅ Successfully used Vertex AI streaming fallback');
-        return result;
-      } catch (vertexError) {
-        console.error('❌ Vertex AI streaming fallback also failed:', vertexError);
-        throw error; // Throw original error if both fail
-      }
+    try {
+      handleGeminiError(error);
+    } catch (e) {
+      if (e instanceof SafetyError) throw e;
+      // Proceed to fallback logic
     }
-
-    // Re-throw error if it's not a 503/overloaded error
+    console.error('Stream error:', error);
+    // Fallback logic disabled to prevent 401 noise - rely on retry logic
     throw error;
   }
 };
@@ -476,6 +537,7 @@ export const generateContentWithCodeExecution = async (
   prompt: string,
   options?: {
     model?: string;
+    timeout?: number;
   }
 ): Promise<{ text: string; executableCode?: string; codeExecutionResult?: string }> => {
   await ensureInitializedAsync();
@@ -486,6 +548,7 @@ export const generateContentWithCodeExecution = async (
   // Use a model known to support code execution well
   // User requested gemini-3-pro-preview for better reliability
   const modelName = options?.model ?? 'gemini-3-pro-preview';
+  const timeoutMs = options?.timeout ?? 60000;
 
   try {
     return await executeWithRotation(async (apiKey) => {
@@ -503,11 +566,17 @@ export const generateContentWithCodeExecution = async (
         },
       ];
 
-      const response = await genAI!.models.generateContent({
+      const fetchPromise = genAI!.models.generateContent({
         model: modelName,
         contents: prompt,
         tools: tools,
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new TimeoutError(`Code execution request timed out after ${timeoutMs}ms`)), timeoutMs);
+      });
+
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
 
       const candidate = response.candidates?.[0];
       const parts = candidate?.content?.parts || [];
@@ -535,6 +604,11 @@ export const generateContentWithCodeExecution = async (
       };
     });
   } catch (error: any) {
+    try {
+      handleGeminiError(error);
+    } catch (e) {
+      if (e instanceof SafetyError) throw e;
+    }
     console.error('❌ Code execution failed:', error);
     throw error;
   }
@@ -579,12 +653,21 @@ export interface NmrAction {
  */
 export const generateNmrAssistantPlan = async (
   userPrompt: string,
-  options?: { context?: string }
+  options?: { context?: string; timeout?: number }
 ): Promise<{ text: string; actions: NmrAction[]; modelUsed: string }> => {
   await ensureInitializedAsync();
   if (!genAI) {
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
+
+  const timeoutMs = options?.timeout ?? 60000;
+  // ... (toolDeclarations remain the same, omitting for brevity in this replace block if not changing them) ...
+  // Wait, I need to include the toolDeclarations in the replacement or split the replacement.
+  // Since I can't selectively keep lines in the middle easily without re-copying, I'll copy the whole function or use multi_replace.
+  // The function is large. I will use multi-replace to target the signature and the execution loop.
+  // Actually, standard replaces are better if I have the content. I have the content from view_file.
+
+  // Re-declaring tools here is verbose. Let's just update the error handling loop part.
 
   const toolDeclarations = [
     {
@@ -743,7 +826,7 @@ export const generateNmrAssistantPlan = async (
           cachedModelName = null;
         }
 
-        const response = await genAI!.models.generateContent({
+        const fetchPromise = genAI!.models.generateContent({
           model: modelName,
           contents: [
             {
@@ -754,6 +837,12 @@ export const generateNmrAssistantPlan = async (
           tools: [{ functionDeclarations: toolDeclarations }],
           toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
         });
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new TimeoutError(`NMR plan request timed out after ${timeoutMs}ms`)), timeoutMs);
+        });
+
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
 
         const actions: NmrAction[] = [];
         const textParts: string[] = [];
@@ -784,6 +873,13 @@ export const generateNmrAssistantPlan = async (
 
       return result;
     } catch (error: any) {
+      // Use handleGeminiError to check for Safety/Timeout, but we might just want to continue to next model if it's a generic failure
+      try {
+        handleGeminiError(error);
+      } catch (e) {
+        if (e instanceof SafetyError) throw e; // Stop if blocked by safety
+      }
+
       lastError = error;
       console.warn(`NMR assistant call failed for model ${modelName}:`, error?.message || error);
       continue;
@@ -2134,35 +2230,4 @@ export const generateMultiSpeakerAudio = async (
   }
 };
 
-/**
- * Executes code using Gemini to generate content (e.g. for LaTeX compilation).
- * This forces the model to use the code execution tool.
- */
-export const generateContentWithCodeExecution = async (prompt: string): Promise<string> => {
-  await ensureInitializedAsync();
-  if (!genAI) {
-    throw new Error('Gemini API not initialized.');
-  }
 
-  try {
-    return await executeWithRotation(async (apiKey) => {
-      if (apiKey !== currentApiKey) {
-        genAI = new GoogleGenAI({ apiKey });
-        currentApiKey = apiKey;
-        cachedModelName = null;
-      }
-
-      const model = genAI!.getGenerativeModel({
-        model: 'gemini-3-pro-preview',
-        tools: [{ codeExecution: {} }]
-      });
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
-    });
-  } catch (error) {
-    console.error("Code Execution Error:", error);
-    throw error;
-  }
-};

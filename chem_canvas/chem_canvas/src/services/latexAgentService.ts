@@ -533,9 +533,7 @@ Publisher Name.
 
 // ==========================================
 // SwiftLaTeX Engine Integration
-// Uses Netlify serverless function for CORS-free compilation
-// Generates beautiful HTML preview for local development
-// ==========================================
+// Uses local PdfTeXEngine for compilation
 
 // SwiftLaTeX Engine Status enum
 enum EngineStatus {
@@ -545,19 +543,45 @@ enum EngineStatus {
   Error = 4
 }
 
+// Add global declaration for PdfTeXEngine
+declare global {
+  interface Window {
+    PdfTeXEngine: any;
+    CompileResult: any;
+  }
+}
+
 class SwiftLaTeXEngine {
   private engineStatus: EngineStatus = EngineStatus.Init;
-  private files: Map<string, string> = new Map();
-  private mainFile: string = 'main.tex';
+  private realEngine: any = null;
 
   async loadEngine(): Promise<void> {
-    // No external resources needed - we compile via Netlify function or generate preview
-    this.engineStatus = EngineStatus.Ready;
-    console.log('LaTeX Engine ready (Netlify-based compilation)');
+    if (typeof window.PdfTeXEngine === 'undefined') {
+      console.error('PdfTeXEngine not loaded. Waiting for script...');
+      // Simple wait loop
+      for (let i = 0; i < 10; i++) {
+        if (typeof window.PdfTeXEngine !== 'undefined') break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+      if (typeof window.PdfTeXEngine === 'undefined') {
+        throw new Error('PdfTeXEngine library not found. Please ensure /swiftlatex/PdfTeXEngine.js is loaded.');
+      }
+    }
+
+    try {
+      this.realEngine = new window.PdfTeXEngine();
+      await this.realEngine.loadEngine();
+      this.engineStatus = EngineStatus.Ready;
+      console.log('✅ Local SwiftLaTeX Engine loaded successfully');
+    } catch (e) {
+      console.error('Failed to load SwiftLaTeX engine:', e);
+      this.engineStatus = EngineStatus.Error;
+      throw e;
+    }
   }
 
   isReady(): boolean {
-    return this.engineStatus === EngineStatus.Ready;
+    return this.engineStatus === EngineStatus.Ready && this.realEngine && this.realEngine.isReady();
   }
 
   isEngineReady(): boolean {
@@ -565,15 +589,21 @@ class SwiftLaTeXEngine {
   }
 
   writeMemFSFile(filename: string, content: string): void {
-    this.files.set(filename, content);
+    if (this.realEngine) {
+      this.realEngine.writeMemFSFile(filename, content);
+    }
   }
 
   setEngineMainFile(filename: string): void {
-    this.mainFile = filename;
+    if (this.realEngine) {
+      this.realEngine.setEngineMainFile(filename);
+    }
   }
 
   flushCache(): void {
-    this.files.clear();
+    if (this.realEngine) {
+      this.realEngine.flushCache();
+    }
   }
 
   async compile(files: LaTeXFile[], mainFile: string = 'main.tex'): Promise<CompileResult> {
@@ -582,269 +612,52 @@ class SwiftLaTeXEngine {
       await this.loadEngine();
     }
 
-    // Find main file
-    const mainFileData = files.find(f => f.path === mainFile || f.path === `/${mainFile}`);
-    if (!mainFileData) {
+    // Write all files to engine
+    for (const file of files) {
+      this.writeMemFSFile(file.name, file.content);
+    }
+
+    // Set main file
+    this.setEngineMainFile(mainFile);
+
+    console.log('🚀 Starting Local SwiftLaTeX Compilation...');
+
+    try {
+      const result = await this.realEngine.compileLaTeX();
+
+      // Map engine result to our CompileResult type
+      const success = result.status === 0 || (result.pdf && result.pdf.length > 0);
+
+      let pdfUrl = undefined;
+      // result.pdf is a Uint8Array
+      if (success && result.pdf) {
+        const blob = new Blob([result.pdf], { type: 'application/pdf' });
+        pdfUrl = URL.createObjectURL(blob);
+      }
+
       return {
-        success: false,
-        log: 'Main file not found',
-        errors: [`Could not find main file: ${mainFile}`],
-        warnings: []
+        success,
+        pdfUrl,
+        pdfData: result.pdf,
+        log: result.log,
+        errors: success ? [] : this.extractErrors(result.log || ''),
+        warnings: this.extractWarnings(result.log || '')
       };
-    }
 
-    // Try Gemini Code Execution (High Priority)
-    try {
-      const result = await this.tryGeminiCodeExecution(mainFileData.content, mainFile);
-      if (result.success) {
-        return result;
-      }
     } catch (e) {
-      console.log('Gemini Code Execution compile failed:', e);
+      console.error('Local compilation failed:', e);
+      // Fallback to preview if compilation fails hard
+      return this.generatePreviewPdf(files, mainFile, e instanceof Error ? e.message : 'Unknown compilation error');
     }
-
-    // Try Netlify function first (works in production, no CORS)
-    try {
-      const result = await this.tryNetlifyCompile(mainFileData.content, mainFile);
-      if (result.success) {
-        return result;
-      }
-    } catch (e) {
-      console.log('Netlify function not available, trying direct API...');
-    }
-
-    // Try direct LaTeX API calls (may have CORS issues in some browsers)
-    try {
-      const result = await this.tryDirectLatexAPIs(mainFileData.content, mainFile);
-      if (result.success) {
-        return result;
-      }
-    } catch (e) {
-      console.log('Direct LaTeX APIs failed:', e);
-    }
-
-    // Generate fallback preview with instructions
-    return this.generatePreviewPdf(files, mainFile, '');
   }
 
+  // Legacy/Fallback methods kept empty
   private async tryDirectLatexAPIs(content: string, filename: string): Promise<CompileResult> {
-    // Try YtoTech LaTeX API (most reliable, supports CORS)
-    try {
-      const response = await fetch('https://latex.ytotech.com/builds/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/pdf'
-        },
-        body: JSON.stringify({
-          compiler: 'pdflatex',
-          resources: [
-            {
-              path: filename || 'main.tex',
-              main: true,
-              content: content
-            }
-          ]
-        })
-      });
-
-      if (response.ok) {
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/pdf')) {
-          const pdfBuffer = await response.arrayBuffer();
-          // Create a copy of the ArrayBuffer to avoid detachment issues
-          const pdfArrayCopy = new Uint8Array(pdfBuffer).slice();
-          const pdfBlob = new Blob([pdfArrayCopy], { type: 'application/pdf' });
-          const pdfUrl = URL.createObjectURL(pdfBlob);
-
-          return {
-            success: true,
-            pdfUrl,
-            log: 'Compiled successfully with YtoTech LaTeX API',
-            errors: [],
-            warnings: []
-          };
-        } else {
-          // API returned error in JSON format
-          const errorData = await response.json().catch(() => ({}));
-          console.log('YtoTech returned non-PDF:', errorData);
-        }
-      } else {
-        const errorText = await response.text();
-        console.log('YtoTech API error:', response.status, errorText);
-      }
-    } catch (e) {
-      console.log('YtoTech API failed:', e);
-    }
-
-    // Try texlive.net as fallback (public TeXLive compiler)
-    try {
-      const formData = new FormData();
-      formData.append('filecontents[]', content);
-      formData.append('filename[]', filename || 'main.tex');
-      formData.append('engine', 'pdflatex');
-      formData.append('return', 'pdf');
-
-      const response = await fetch('https://texlive.net/cgi-bin/latexcgi', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (response.ok) {
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/pdf')) {
-          const pdfBuffer = await response.arrayBuffer();
-          // Create a copy of the ArrayBuffer to avoid detachment issues
-          const pdfArrayCopy = new Uint8Array(pdfBuffer).slice();
-          const pdfBlob = new Blob([pdfArrayCopy], { type: 'application/pdf' });
-          const pdfUrl = URL.createObjectURL(pdfBlob);
-
-          return {
-            success: true,
-            pdfUrl,
-            log: 'Compiled successfully with TeXLive.net',
-            errors: [],
-            warnings: []
-          };
-        }
-      }
-    } catch (e) {
-      console.log('texlive.net failed:', e);
-    }
-
-    throw new Error('All direct LaTeX APIs failed');
+    return { success: false, log: 'Direct API disabled', errors: [], warnings: [] };
   }
 
   private async tryGeminiCodeExecution(content: string, filename: string): Promise<CompileResult> {
-    console.log('🚀 Attempting LaTeX compilation via Gemini Code Execution...');
-
-    // We construct a Python script that writes the tex file, compiles it, and returns the PDF as base64
-    // We explicitly verify pylatex presence as requested by user, though we use subprocess for direct compilation of raw tex
-    const pythonScript = `
-import subprocess
-import base64
-import os
-import sys
-
-# Check for tools
-try:
-    import pylatex
-    print("Using environment with pylatex installed")
-except ImportError:
-    print("pylatex not found, proceeding with system tools")
-
-# Write content to file
-with open('${filename}', 'w') as f:
-    f.write(r"""${content}""")
-
-# Compile
-# -interaction=nonstopmode prevents hanging on errors
-print("Starting compilation...")
-result = subprocess.run(['pdflatex', '-interaction=nonstopmode', '${filename}'], capture_output=True, text=True)
-
-if result.returncode != 0:
-    print("COMPILATION_ERROR")
-    print(result.stdout)
-    print(result.stderr)
-else:
-    pdf_filename = '${filename}'.replace('.tex', '.pdf')
-    if os.path.exists(pdf_filename):
-        with open(pdf_filename, 'rb') as f:
-            pdf_data = f.read()
-            b64_pdf = base64.b64encode(pdf_data).decode('utf-8')
-            print("PDF_START")
-            print(b64_pdf)
-            print("PDF_END")
-    else:
-        print("PDF_NOT_FOUND")
-`;
-
-    // Import lazily to avoid circular dependencies if any
-    const { generateContentWithCodeExecution } = await import('./geminiService');
-
-    const result = await generateContentWithCodeExecution(
-      `Please execute this Python script to compile the LaTeX document. \n\n\`\`\`python\n${pythonScript}\n\`\`\``
-    );
-
-    const executionOutput = result.codeExecutionResult || '';
-
-    if (executionOutput.includes('PDF_START') && executionOutput.includes('PDF_END')) {
-      const parts = executionOutput.split('PDF_START');
-      const base64Part = parts[1].split('PDF_END')[0].trim();
-
-      // Convert base64 to Blob URL
-      const binaryString = atob(base64Part);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      const pdfUrl = URL.createObjectURL(blob);
-
-      return {
-        success: true,
-        pdfUrl,
-        log: 'Compiled successfully via Gemini Code Execution',
-        errors: [],
-        warnings: []
-      };
-    } else {
-      // Parse errors
-      if (executionOutput.includes('COMPILATION_ERROR')) {
-        const errorStart = executionOutput.indexOf('COMPILATION_ERROR');
-        const log = executionOutput.substring(errorStart);
-        return {
-          success: false,
-          log: log,
-          errors: ['Compilation failed in Code Execution environment'],
-          warnings: []
-        };
-      }
-
-      throw new Error('Code execution did not return a PDF. Output: ' + executionOutput.substring(0, 200) + '...');
-    }
-  }
-
-  private async tryNetlifyCompile(content: string, filename: string): Promise<CompileResult> {
-    // Use Netlify serverless function to compile (bypasses CORS)
-    const netlifyUrl = window.location.hostname === 'localhost'
-      ? 'http://localhost:8888/.netlify/functions/compile_latex'
-      : '/.netlify/functions/compile_latex';
-
-    const response = await fetch(netlifyUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ content, filename })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Netlify function returned ${response.status}`);
-    }
-
-    const result = await response.json();
-
-    if (result.success && result.pdf) {
-      // Decode base64 PDF
-      const pdfBinary = atob(result.pdf);
-      const pdfArray = new Uint8Array(pdfBinary.length);
-      for (let i = 0; i < pdfBinary.length; i++) {
-        pdfArray[i] = pdfBinary.charCodeAt(i);
-      }
-      const pdfBlob = new Blob([pdfArray], { type: 'application/pdf' });
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-
-      return {
-        success: true,
-        pdfUrl,
-        log: result.log || 'Compiled successfully via Netlify',
-        errors: [],
-        warnings: []
-      };
-    }
-
-    throw new Error(result.error || 'Compilation failed');
+    return { success: false, log: 'Code Execution disabled', errors: [], warnings: [] };
   }
 
   private generatePreviewPdf(files: LaTeXFile[], mainFile: string, errorMsg: string): CompileResult {
@@ -879,173 +692,11 @@ else:
         .replace(/'/g, '&#039;');
     };
 
-    // Create an HTML preview that looks like a document
-    const previewHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${escapeHtml(title)}</title>
-        <style>
-          * { box-sizing: border-box; }
-          body { 
-            font-family: 'Georgia', 'Times New Roman', serif; 
-            max-width: 800px; 
-            margin: 0 auto; 
-            padding: 40px 20px; 
-            line-height: 1.8;
-            background: #fff;
-            color: #333;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 40px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #333;
-          }
-          h1 { 
-            font-size: 28px;
-            margin-bottom: 10px;
-            font-weight: normal;
-          }
-          .author {
-            font-style: italic;
-            color: #666;
-            margin-bottom: 20px;
-          }
-          .preview-notice { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px; 
-            border-radius: 10px; 
-            margin: 30px 0;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-          }
-          .preview-notice h3 {
-            margin: 0 0 10px 0;
-            font-size: 18px;
-          }
-          .preview-notice p {
-            margin: 5px 0;
-            opacity: 0.9;
-          }
-          .actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-            flex-wrap: wrap;
-          }
-          .action-btn {
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            padding: 8px 16px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-          }
-          .action-btn:hover {
-            background: rgba(255,255,255,0.3);
-          }
-          .section {
-            margin: 30px 0;
-          }
-          .section h2 {
-            font-size: 20px;
-            color: #444;
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
-          }
-          .section-preview {
-            background: #f9f9f9;
-            padding: 15px;
-            border-radius: 5px;
-            border-left: 4px solid #667eea;
-            font-style: italic;
-            color: #555;
-          }
-          .source-code {
-            background: #1e1e1e;
-            color: #d4d4d4;
-            padding: 20px;
-            border-radius: 8px;
-            overflow-x: auto;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 13px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-          }
-          .source-code .comment { color: #6a9955; }
-          .source-code .command { color: #569cd6; }
-          .source-code .brace { color: #ffd700; }
-          .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            text-align: center;
-            color: #888;
-            font-size: 14px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>${escapeHtml(title)}</h1>
-          ${author ? `<div class="author">${escapeHtml(author)}</div>` : ''}
-        </div>
-        
-        <div class="preview-notice">
-          <h3>📄 Document Preview</h3>
-          <p>This is a preview of your LaTeX document. In-browser compilation is not available in development mode.</p>
-          <p style="font-size: 12px; opacity: 0.8;">After deployment, compilation will work automatically.</p>
-          <div class="actions">
-            <a href="https://www.overleaf.com/project" target="_blank" class="action-btn">
-              🚀 Open Overleaf
-            </a>
-            <button onclick="navigator.clipboard.writeText(document.getElementById('latex-source').textContent).then(() => alert('Copied!'))" class="action-btn">
-              📋 Copy Source
-            </button>
-          </div>
-        </div>
-
-        ${sections.length > 0 ? `
-        <div class="section">
-          <h2>Document Structure</h2>
-          ${sections.map(s => `
-            <div style="margin: 15px 0;">
-              <strong>${escapeHtml(s.title)}</strong>
-              <div class="section-preview">${escapeHtml(s.content.substring(0, 200))}${s.content.length > 200 ? '...' : ''}</div>
-            </div>
-          `).join('')}
-        </div>
-      ` : ''}
-      
-      <div class="section">
-        <h2>LaTeX Source Code</h2>
-        <div class="source-code" id="latex-source">${escapeHtml(content)}</div>
-      </div>
-      
-      <div class="footer">
-        Generated by LaTeX Document Agent • Use Overleaf or local LaTeX for PDF output
-      </div>
-    </body>
-    </html>
-  `;
-
-    // In development mode, don't set pdfUrl - let the UI show compile message
-    // This prevents react-pdf from trying to render HTML as PDF
     return {
       success: false,
-      // Don't set pdfUrl here since it's HTML, not PDF
-      // The UI will show proper guidance instead
-      log: `LaTeX Compilation Services Unavailable\n\nAll online LaTeX compilation services are currently unavailable.\n\nTo compile your document:\n1. Click "Copy Source" to copy your LaTeX code\n2. Paste into Overleaf (https://www.overleaf.com)\n3. Compile there for PDF output\n\nAlternatively, wait a moment and try compiling again.`,
-      errors: ['LaTeX compilation services temporarily unavailable'],
-      warnings: ['Use Overleaf or local LaTeX installation for PDF output']
+      log: `Local Compilation Failed: ${errorMsg}\n\nFalling back to preview mode.`,
+      errors: [errorMsg],
+      warnings: ['Using HTML preview due to compilation error']
     };
   }
 
@@ -1064,7 +715,9 @@ else:
       }
     }
     return [...new Set(errors)];
-  } private extractWarnings(log: string): string[] {
+  }
+
+  private extractWarnings(log: string): string[] {
     const warnings: string[] = [];
     const warningPatterns = [
       /Warning: (.+)/gi,
@@ -1082,15 +735,19 @@ else:
   }
 
   closeEngine(): void {
-    // No worker to terminate - just reset state
+    if (this.realEngine) {
+      try {
+        if (typeof this.realEngine.closeWorker === 'function') {
+          this.realEngine.closeWorker();
+        }
+      } catch (e) {
+        console.warn('Failed to close worker', e);
+      }
+    }
     this.engineStatus = EngineStatus.Init;
-    this.files.clear();
+    this.realEngine = null;
   }
 }
-
-// ==========================================
-// Todo List / Planning System
-// ==========================================
 
 class TodoManager {
   private todos: LaTeXTodoItem[] = [];
@@ -1763,6 +1420,18 @@ Always structure your response:
     return this.engine.compile(files, mainFile);
   }
 
+  // Compile raw content directly (stateless)
+  async compileContent(content: string, filename: string = 'main.tex'): Promise<CompileResult> {
+    const file: LaTeXFile = {
+      name: filename,
+      path: '/' + filename,
+      content: content,
+      type: 'tex',
+      lastModified: new Date()
+    };
+    return this.engine.compile([file], filename);
+  }
+
   // File system access
   getFiles(): LaTeXFile[] {
     return this.fileSystem.getAllFiles();
@@ -1908,107 +1577,6 @@ export const loadLatexEngine = async (): Promise<void> => {
 // ==========================================
 
 export const compileLatexWithGemini = async (content: string, filename: string = 'main.tex'): Promise<CompileResult> => {
-  console.log('🚀 Attempting LaTeX compilation via Gemini Code Execution...');
-
-  // Clean the content to ensure we only have the LaTeX part
-  // Look for \documentclass and start there
-  const documentClassIndex = content.indexOf('\\documentclass');
-  let cleanContent = content;
-  if (documentClassIndex !== -1) {
-    cleanContent = content.substring(documentClassIndex);
-  }
-
-  // We construct a Python script that writes the tex file, compiles it, and returns the PDF as base64
-  const pythonScript = `
-import subprocess
-import base64
-import os
-import sys
-
-# Check for tools
-try:
-    import pylatex
-    print("Using environment with pylatex installed")
-except ImportError:
-    print("pylatex not found, proceeding with system tools")
-
-# Write content to file
-with open('${filename}', 'w') as f:
-    f.write(r"""${cleanContent}""")
-
-# Compile
-print("Starting compilation...")
-try:
-    # -interaction=nonstopmode prevents hanging on errors
-    result = subprocess.run(['pdflatex', '-interaction=nonstopmode', '${filename}'], capture_output=True, text=True)
-    
-    if result.returncode != 0:
-        print("COMPILATION_ERROR")
-        print("STDOUT:", result.stdout)
-        print("STDERR:", result.stderr)
-    else:
-        pdf_filename = '${filename}'.replace('.tex', '.pdf')
-        if os.path.exists(pdf_filename):
-            with open(pdf_filename, 'rb') as f:
-                pdf_data = f.read()
-                b64_pdf = base64.b64encode(pdf_data).decode('utf-8')
-                print("PDF_START")
-                print(b64_pdf)
-                print("PDF_END")
-        else:
-            print("PDF_NOT_FOUND")
-            print("Expected PDF file not found at:", pdf_filename)
-            print("STDOUT:", result.stdout)
-            print("STDERR:", result.stderr)
-
-except FileNotFoundError:
-    print("SYSTEM_ERROR: pdflatex command not found. Is TeX Live installed in the environment?")
-except Exception as e:
-    print(f"SYSTEM_ERROR: {str(e)}")
-`;
-
-  // Import lazily to avoid circular dependencies if any
-  const { generateContentWithCodeExecution } = await import('./geminiService');
-
-  const result = await generateContentWithCodeExecution(
-    `Please execute this Python script to compile the LaTeX document. \n\n\`\`\`python\n${pythonScript}\n\`\`\``
-  );
-
-  const executionOutput = result.codeExecutionResult || '';
-
-  if (executionOutput.includes('PDF_START') && executionOutput.includes('PDF_END')) {
-    const parts = executionOutput.split('PDF_START');
-    const base64Part = parts[1].split('PDF_END')[0].trim();
-
-    // Convert base64 to Blob URL
-    const binaryString = atob(base64Part);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const pdfUrl = URL.createObjectURL(blob);
-
-    return {
-      success: true,
-      pdfUrl,
-      log: 'Compiled successfully via Gemini Code Execution',
-      errors: [],
-      warnings: []
-    };
-  } else {
-    // Parse errors
-    if (executionOutput.includes('COMPILATION_ERROR')) {
-      const errorStart = executionOutput.indexOf('COMPILATION_ERROR');
-      const log = executionOutput.substring(errorStart);
-      return {
-        success: false,
-        log: log,
-        errors: ['Compilation failed in Code Execution environment'],
-        warnings: []
-      };
-    }
-
-    throw new Error('Code execution did not return a PDF. Output: ' + executionOutput.substring(0, 1000));
-  }
+  const agent = getLatexAgent();
+  return agent.compileContent(content, filename);
 };

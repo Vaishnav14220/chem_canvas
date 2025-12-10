@@ -23,5 +23,12 @@ export default defineConfig({
     port: 1755,
     strictPort: true,
     host: '0.0.0.0',
+    proxy: {
+      '/swiftlatex/texlive': {
+        target: 'https://texlive2.swiftlatex.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/swiftlatex\/texlive/, '')
+      }
+    }
   },
 });

@@ -81,11 +81,22 @@ const safeJsonParse = <T>(jsonString: string, fallback: T): T => {
   } catch (e) {
     console.warn('Initial JSON parse failed, attempting repair...', e);
     try {
-      const repaired = repairJson(jsonString);
+      // Step 1: Fix bad escapes (remove backslashes that aren't valid JSON escapes)
+      const cleaned = jsonString.replace(/\\([^"\\/bfnrtu])/g, '$1');
+      // Step 2: Handle truncation via existing repairJson
+      const repaired = repairJson(cleaned);
       return JSON.parse(repaired);
     } catch (e2) {
-      console.error('JSON repair also failed:', e2);
-      return fallback;
+      // Step 3: Aggressive clean (replace all backslashes with forward slashes)
+      try {
+        console.warn('Standard repair failed, trying aggressive backslash replacement...');
+        const aggressive = jsonString.replace(/\\/g, '/');
+        const repairedAggressive = repairJson(aggressive);
+        return JSON.parse(repairedAggressive);
+      } catch (e3) {
+        console.error('All JSON repair attempts failed:', e2);
+        return fallback;
+      }
     }
   }
 };
@@ -303,7 +314,7 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     }
 
     Rules:
-    1. Split text into logical sections.
+    1. Split text into AT LEAST 4 distinct logical sections (e.g., Introduction, Key Concepts, Application, Advanced Analysis, Conclusion).
     2. IMPORTANT: Each section's content MUST have AT LEAST 4 substantial paragraphs with detailed explanations.
     3. CRITICAL: Use markdown formatting throughout:
        - Wrap key terms in **double asterisks** for highlighting (minimum 3 per paragraph)
@@ -332,7 +343,7 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     ${text.slice(0, 10000)}
   `;
 
-  const response = await generateTextContent(prompt);
+  const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
   const json = extractJsonBlock(response);
 
   const fallbackContent: ImmersiveContent = {
@@ -406,13 +417,17 @@ export const streamAnalyzeDocumentForImmersive = async (
       
       The code above demonstrates..."
     
+    Return a VALID JSON object.
+    IMPORTANT: Escape all double quotes inside content strings with backslashes (e.g., \\"). 
+    Do not use unescaped newlines in strings; use \\n.
+
     Return a JSON object with the following structure:
     {
       "sections": [
         { 
           "id": "unique_id", 
           "title": "Section Title", 
-          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. For programming content, ALWAYS include full fenced code blocks like:\\n\\n\`\`\`python\\ncode here\\n\`\`\`\\n\\nAT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
+          "content": "Full markdown text. Escape quotes! **bold terms**. At least 3 detailed paragraphs per section. Insert {{INTERACTIVE_WIDGET}} marker.",
           "imagePrompt": null,
           "widget": {
             "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection" | "code-playground" | "code-explanation",
@@ -492,8 +507,8 @@ export const streamAnalyzeDocumentForImmersive = async (
     }
 
     Rules:
-    1. Split text into logical sections.
-    2. IMPORTANT: Each section's content MUST have AT LEAST 4 substantial paragraphs with detailed explanations.
+    1. Split text into AT LEAST 4 distinct logical sections (e.g., Introduction, Key Concepts, Application, Advanced Analysis, Conclusion).
+    2. IMPORTANT: Each section's content MUST have AT LEAST 3 substantial paragraphs (reduced from 4 to ensure valid JSON generation) with detailed explanations.
     3. CRITICAL: Use markdown formatting throughout:
        - Wrap key terms in **double asterisks** for highlighting (minimum 3 per paragraph)
        - Wrap important phrases/sentences in *single asterisks* for underlining (minimum 1 per paragraph)
@@ -546,7 +561,8 @@ export const streamAnalyzeDocumentForImmersive = async (
         accumulatedText += chunk;
         console.log(`📦 Chunk received: ${chunk.length} chars, total: ${accumulatedText.length}`);
         onStreamUpdate(accumulatedText, false);
-      }
+      },
+      { model: 'gemini-2.5-flash', timeout: 180000 } // Extended timeout for long content
     );
     console.log('🏁 Stream finished, total length:', finalText.length);
     // Signal completion with the final text
@@ -555,9 +571,55 @@ export const streamAnalyzeDocumentForImmersive = async (
     const json = extractJsonBlock(finalText);
     return safeJsonParse<ImmersiveContent>(json, fallbackContent);
   } catch (error) {
-    console.error('Stream error, falling back to non-streaming:', error);
-    // Fallback to non-streaming if streaming fails
-    const fallbackResponse = await generateTextContent(prompt);
+    console.error('Stream error, checking for partial content:', error);
+
+    // Recovery: If we have substantial content, try to use it instead of failing
+    if (accumulatedText.length > 2000) {
+      console.log('⚠️ Recovering partial content from interrupted stream (length: ' + accumulatedText.length + ')');
+      try {
+        // 1. Try to extract and repair JSON
+        const rawJson = extractJsonBlock(accumulatedText);
+        // Clean up markdown/JSON fences if extractJsonBlock didn't catch them due to truncation
+        const cleanJson = rawJson.replace(/^```json\s*/i, '').replace(/```$/, '');
+
+        // Attempt aggressive JSON repair (append closing brackets)
+        const repairedJson = repairJson(cleanJson);
+        const parsedContext = JSON.parse(repairedJson);
+
+        // Validate it has sections
+        if (parsedContext && Array.isArray(parsedContext.sections)) {
+          console.log('✅ Successfully recovered partial JSON content');
+          // Ensure it matches interface
+          return { ...fallbackContent, ...parsedContext };
+        }
+      } catch (e) {
+        console.warn('Partial JSON repair failed, falling back to raw text recovery', e);
+      }
+
+      // 2. If JSON repair fails, return raw text as a single section
+      // Clean up the text for display (remove JSON tokens if they look like clutter)
+      let cleanText = accumulatedText;
+      // If it looks like it started with JSON markdown, strip the header
+      if (cleanText.trim().startsWith('```json')) {
+        cleanText = cleanText.replace(/^```json\s*/i, '');
+      }
+
+      return {
+        title: 'Immersive Learning (Partial)',
+        sections: [{
+          id: 'partial-recovery',
+          title: 'Generated Content (Interrupted)',
+          content: cleanText + '\n\n*(Note: Content generation was interrupted by the server. Showing partial results.)*',
+          imagePrompt: null
+        }],
+        keyTerms: [],
+        contextNotes: []
+      };
+    }
+
+    // Fallback to non-streaming if streaming fails AND we don't have enough partial content
+    console.log('Not enough partial content to recover, trying non-streaming fallback...');
+    const fallbackResponse = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
     onStreamUpdate(fallbackResponse, true);
 
     const json = extractJsonBlock(fallbackResponse);
@@ -864,7 +926,7 @@ export const generateAudioScript = async (text: string): Promise<string> => {
     ${text.slice(0, 10000)}
   `;
 
-  return await generateTextContent(prompt);
+  return await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
 };
 
 export const generateMindMapData = async (text: string): Promise<MindMapNode> => {
@@ -933,7 +995,7 @@ export const generateReactFlowData = async (text: string): Promise<ReactFlowData
     ${text.slice(0, 8000)}
   `;
 
-  const response = await generateTextContent(prompt);
+  const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
   const json = extractJsonBlock(response);
 
   const fallback: ReactFlowData = {
@@ -978,7 +1040,7 @@ export const extendMindMapNode = async (nodeLabel: string, context: string = '')
     - Focus on educational value and logical hierarchy.
   `;
 
-  const response = await generateTextContent(prompt);
+  const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
   const json = extractJsonBlock(response);
 
   const fallback: ReactFlowData = {
@@ -1285,7 +1347,7 @@ export const generateVideoSummary = async (
   `;
 
   try {
-    const response = await generateTextContent(prompt);
+    const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
     const json = extractJsonBlock(response);
 
     const fallback: VideoSummary = {
@@ -1558,7 +1620,7 @@ export const generatePodcastScript = async (
   `;
 
   try {
-    const response = await generateTextContent(prompt, { maxOutputTokens: 2000 });
+    const response = await generateTextContent(prompt, { maxOutputTokens: 2000, model: 'gemini-2.5-flash' });
     return response;
   } catch (error) {
     console.error('Failed to generate podcast script:', error);
