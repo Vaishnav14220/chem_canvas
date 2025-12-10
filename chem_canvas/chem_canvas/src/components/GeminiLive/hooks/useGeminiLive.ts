@@ -93,17 +93,17 @@ const FILLER_PATTERNS = [
 // Extract only the key content from AI response - removes filler and keeps important info
 const extractImportantContent = (text: string): string => {
   if (!text) return '';
-  
+
   let cleaned = text;
-  
+
   // Remove filler patterns
   FILLER_PATTERNS.forEach(pattern => {
     cleaned = cleaned.replace(pattern, ' ');
   });
-  
+
   // Remove excessive whitespace
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  
+
   // Remove sentences that are just conversational fluff
   const sentences = cleaned.split(/(?<=[.!?])\s+/);
   const importantSentences = sentences.filter(sentence => {
@@ -117,7 +117,7 @@ const extractImportantContent = (text: string): string => {
     if (/let me know if you (need|have|want)/i.test(lower)) return false;
     return true;
   });
-  
+
   return importantSentences.join(' ').trim();
 };
 
@@ -732,6 +732,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
   const canvasTextInsertionHandlerRef = useRef<((text: string) => void) | null>(null);
   const canvasMarkdownInsertionHandlerRef = useRef<((payload: { text: string; heading?: string }) => void) | null>(null);
   const canvasHandwritingHandlerRef = useRef<((text: string) => void) | null>(null);
+  const canvasNewSectionHandlerRef = useRef<(() => void) | null>(null);
   const canvasMoleculeInsertionHandlerRef = useRef<((payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) | null>(null);
   const canvasProteinInsertionHandlerRef = useRef<((payload: CanvasProteinPlacementRequest) => Promise<boolean> | boolean) | null>(null);
   const canvasReactionInsertionHandlerRef = useRef<((payload: CanvasReactionPlacementRequest) => Promise<boolean> | boolean) | null>(null);
@@ -784,6 +785,10 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
 
   const setCanvasHandwritingHandler = useCallback((handler: (text: string) => void) => {
     canvasHandwritingHandlerRef.current = handler;
+  }, []);
+
+  const setCanvasNewSectionHandler = useCallback((handler: () => void) => {
+    canvasNewSectionHandlerRef.current = handler;
   }, []);
 
   const setCanvasMoleculeInsertionHandler = useCallback((handler: (payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) => {
@@ -992,7 +997,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
 
   // Push handwritten text to canvas in small chunks - for Gemini Live streaming responses
   const pushHandwrittenChunkToCanvas = useCallback((text: string): boolean => {
-    if (!text || !text.trim()) {
+    if (!text) {
       return false;
     }
 
@@ -1003,7 +1008,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
 
     // Format text for handwriting - add bold markers for key terms
     // This will be processed by the canvas to highlight important parts
-    canvasHandwritingHandlerRef.current(text.trim());
+    canvasHandwritingHandlerRef.current(text);
     return true;
   }, []);
 
@@ -1014,7 +1019,7 @@ export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en'
       return false;
     }
 
-    const cleanText = text.replace(/[#*`]/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    const cleanText = text.replace(/[#*`]/g, '').replace(/\n{3,}/g, '\n\n');
     if (!cleanText) {
       return false;
     }
@@ -1877,10 +1882,22 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
             // Handle Transcription
             if (message.serverContent?.outputTranscription) {
               const text = message.serverContent.outputTranscription.text;
-              if (!currentModelIdRef.current) {
-                learningCanvasUpdatedThisTurnRef.current = false;
+              if (text) {
+                if (!currentModelIdRef.current) {
+                  learningCanvasUpdatedThisTurnRef.current = false;
+
+                  // Signal new section to canvas if in Excalidraw mode
+                  if (excalidrawOnlyModeRef.current && canvasNewSectionHandlerRef.current) {
+                    canvasNewSectionHandlerRef.current();
+                  }
+                }
+                currentOutputRef.current += text;
+
+                // Stream partial output directly to Excalidraw for realtime handwriting when in Excalidraw-only mode
+                if (excalidrawOnlyModeRef.current && canvasHandwritingHandlerRef.current) {
+                  pushHandwrittenChunkToCanvas(text);
+                }
               }
-              currentOutputRef.current += text;
 
               setTranscripts(prev => {
                 const id = currentModelIdRef.current || uuidv4();
@@ -1949,7 +1966,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 learningCanvasUpdatedThisTurnRef.current = false;
 
                 const trimmedResponse = completedText.trim();
-                
+
                 // Always push structured text to canvas (markdown handler if available)
                 const pendingWrite = pendingCanvasWriteRef.current;
                 if (pendingWrite && trimmedResponse.length > 0) {
@@ -2153,6 +2170,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     setCanvasTextInsertionHandler,
     setCanvasMarkdownInsertionHandler,
     setCanvasHandwritingHandler,
+    setCanvasNewSectionHandler,
     setCanvasMoleculeInsertionHandler,
     setCanvasProteinInsertionHandler,
     setCanvasReactionInsertionHandler,

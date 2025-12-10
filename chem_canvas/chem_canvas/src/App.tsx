@@ -361,13 +361,18 @@ const App: React.FC = () => {
 
   const updateGeminiHandlers = useCallback(() => {
     const handlers = workspaceHandlersRef.current[activeWorkspaceId];
-    setRequestCanvasSnapshot(handlers?.snapshot ?? noopSnapshotHandler);
-    setCanvasTextInsertionHandler(handlers?.text ?? noopTextHandler);
-    setCanvasMarkdownInsertionHandler(handlers?.markdown ?? noopMarkdownHandler);
-    setCanvasMoleculeInsertionHandler(handlers?.molecule ?? noopMoleculeHandler);
-    setCanvasProteinInsertionHandler(handlers?.protein ?? noopProteinHandler);
-    setCanvasReactionInsertionHandler(handlers?.reaction ?? noopReactionHandler);
+
+    // Force learning-canvas paths to no-ops; route handwriting only to Excalidraw
+    setRequestCanvasSnapshot(noopSnapshotHandler);
+    setCanvasTextInsertionHandler(noopTextHandler);
+    setCanvasMarkdownInsertionHandler(noopMarkdownHandler);
+    setCanvasMoleculeInsertionHandler(noopMoleculeHandler);
+    setCanvasProteinInsertionHandler(noopProteinHandler);
+    setCanvasReactionInsertionHandler(noopReactionHandler);
+
+    // Handwriting goes to Excalidraw if available, otherwise noop
     setCanvasHandwritingHandler(() => handlers?.handwriting ?? noopHandwritingHandler);
+    setExcalidrawOnlyMode(true);
   }, [
     activeWorkspaceId,
     noopMarkdownHandler,
@@ -383,7 +388,8 @@ const App: React.FC = () => {
     setCanvasReactionInsertionHandler,
     setCanvasTextInsertionHandler,
     setCanvasHandwritingHandler,
-    setRequestCanvasSnapshot
+    setRequestCanvasSnapshot,
+    setExcalidrawOnlyMode
   ]);
 
   useEffect(() => {
@@ -430,7 +436,7 @@ const App: React.FC = () => {
       if (currentHandlers && currentHandlers[key] === handler) {
         return; // Handler hasn't changed, skip update
       }
-      
+
       workspaceHandlersRef.current[workspaceId] = {
         ...(workspaceHandlersRef.current[workspaceId] || {}),
         [key]: handler
@@ -2206,7 +2212,7 @@ Here is the learner's question: ${message}`;
                                     loading="lazy"
                                   />
                                 ) : (
-                                  <div 
+                                  <div
                                     className="flex w-full items-center justify-center rounded-lg border border-dashed border-slate-700 text-muted-foreground bg-slate-900/50"
                                     style={{ aspectRatio: '16 / 9' }}
                                   >
@@ -2214,7 +2220,7 @@ Here is the learner's question: ${message}`;
                                   </div>
                                 )}
                               </div>
-                              
+
                               {/* Content */}
                               <div className="space-y-2">
                                 <h4 className="text-sm font-semibold text-white line-clamp-2 leading-tight">{source.title}</h4>
@@ -2238,7 +2244,7 @@ Here is the learner's question: ${message}`;
                                     <ExternalLink className="ml-1 h-3 w-3" />
                                   </a>
                                 )}
-                                
+
                                 {/* Action Buttons */}
                                 <div className="pt-2 flex flex-col gap-2">
                                   <button
@@ -2251,7 +2257,7 @@ Here is the learner's question: ${message}`;
                                   >
                                     {videoSummaryLoadingId === source.id ? 'Summarizing…' : 'Summarize to Canvas'}
                                   </button>
-                                  
+
                                   <div className="flex gap-2">
                                     {resolvedVideoId && (
                                       <button
@@ -2310,84 +2316,84 @@ Here is the learner's question: ${message}`;
                         >
                           {isWorkspaceTabsCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                         </button>
-                        
+
                         {!isWorkspaceTabsCollapsed && (
                           <>
-                        {canvasWorkspaces.map(workspace => {
-                          const isActive = workspace.id === activeWorkspaceId;
-                          return (
-                            <button
-                              key={workspace.id}
-                              onClick={() => handleSelectWorkspace(workspace.id)}
-                              className={`inline-flex items-center gap-2 rounded-2xl px-3 py-1.5 transition ${isActive
-                                ? 'bg-slate-800 text-slate-100 border border-slate-700 shadow-sm'
-                                : 'text-slate-400 border border-transparent hover:border-slate-700 hover:text-slate-100'
-                                }`}
-                            >
-                              <span className="font-medium">{workspace.title}</span>
-                              {canvasWorkspaces.length > 1 && (
-                                <span
-                                  role="button"
-                                  tabIndex={-1}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleCloseWorkspace(workspace.id);
-                                  }}
-                                  className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-slate-700/70"
+                            {canvasWorkspaces.map(workspace => {
+                              const isActive = workspace.id === activeWorkspaceId;
+                              return (
+                                <button
+                                  key={workspace.id}
+                                  onClick={() => handleSelectWorkspace(workspace.id)}
+                                  className={`inline-flex items-center gap-2 rounded-2xl px-3 py-1.5 transition ${isActive
+                                    ? 'bg-slate-800 text-slate-100 border border-slate-700 shadow-sm'
+                                    : 'text-slate-400 border border-transparent hover:border-slate-700 hover:text-slate-100'
+                                    }`}
                                 >
-                                  <X size={12} />
-                                </span>
-                              )}
+                                  <span className="font-medium">{workspace.title}</span>
+                                  {canvasWorkspaces.length > 1 && (
+                                    <span
+                                      role="button"
+                                      tabIndex={-1}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleCloseWorkspace(workspace.id);
+                                      }}
+                                      className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-slate-700/70"
+                                    >
+                                      <X size={12} />
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                            <button
+                              onClick={handleAddWorkspace}
+                              className="inline-flex items-center justify-center rounded-2xl border border-dashed border-slate-700 px-2.5 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
+                              title="Add workspace tab"
+                            >
+                              <Plus size={14} />
                             </button>
-                          );
-                        })}
-                        <button
-                          onClick={handleAddWorkspace}
-                          className="inline-flex items-center justify-center rounded-2xl border border-dashed border-slate-700 px-2.5 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
-                          title="Add workspace tab"
-                        >
-                          <Plus size={14} />
-                        </button>
 
-                        {/* Workspace Save/Load Controls */}
-                        <div className="ml-auto flex items-center gap-2">
-                          {/* Load saved workspaces */}
-                          <button
-                            onClick={handleLoadSavedWorkspaces}
-                            disabled={isLoadingWorkspaces}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/50 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition disabled:opacity-50"
-                            title="Open saved workspace"
-                          >
-                            {isLoadingWorkspaces ? (
-                              <LoaderIcon size={14} className="animate-spin" />
-                            ) : (
-                              <FolderOpen size={14} />
-                            )}
-                            <span className="hidden sm:inline">Open</span>
-                          </button>
+                            {/* Workspace Save/Load Controls */}
+                            <div className="ml-auto flex items-center gap-2">
+                              {/* Load saved workspaces */}
+                              <button
+                                onClick={handleLoadSavedWorkspaces}
+                                disabled={isLoadingWorkspaces}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/50 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition disabled:opacity-50"
+                                title="Open saved workspace"
+                              >
+                                {isLoadingWorkspaces ? (
+                                  <LoaderIcon size={14} className="animate-spin" />
+                                ) : (
+                                  <FolderOpen size={14} />
+                                )}
+                                <span className="hidden sm:inline">Open</span>
+                              </button>
 
-                          {/* Save current workspace */}
-                          <button
-                            onClick={handleSaveWorkspace}
-                            disabled={isSavingWorkspace}
-                            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition ${canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.hasUnsavedChanges
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-500 border border-emerald-500'
-                              : 'border border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-700 hover:text-white'
-                              } disabled:opacity-50`}
-                            title={canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? "Save changes" : "Save workspace to cloud"}
-                          >
-                            {isSavingWorkspace ? (
-                              <LoaderIcon size={14} className="animate-spin" />
-                            ) : canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? (
-                              <Cloud size={14} />
-                            ) : (
-                              <Save size={14} />
-                            )}
-                            <span className="hidden sm:inline">
-                              {canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? 'Saved' : 'Save'}
-                            </span>
-                          </button>
-                        </div>
+                              {/* Save current workspace */}
+                              <button
+                                onClick={handleSaveWorkspace}
+                                disabled={isSavingWorkspace}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition ${canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.hasUnsavedChanges
+                                  ? 'bg-emerald-600 text-white hover:bg-emerald-500 border border-emerald-500'
+                                  : 'border border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-700 hover:text-white'
+                                  } disabled:opacity-50`}
+                                title={canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? "Save changes" : "Save workspace to cloud"}
+                              >
+                                {isSavingWorkspace ? (
+                                  <LoaderIcon size={14} className="animate-spin" />
+                                ) : canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? (
+                                  <Cloud size={14} />
+                                ) : (
+                                  <Save size={14} />
+                                )}
+                                <span className="hidden sm:inline">
+                                  {canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? 'Saved' : 'Save'}
+                                </span>
+                              </button>
+                            </div>
                           </>
                         )}
                       </div>
@@ -2713,11 +2719,7 @@ Here is the learner's question: ${message}`;
         showShareCanvas={!showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace}
         analyser={geminiLiveState.analyser}
       />
-      {/* Gemini Live Overlay - Only handles Learning Canvas now */}
-      <GeminiLiveOverlay
-        geminiLiveState={geminiLiveState}
-        onExpandImage={handleCanvasImageExpand}
-      />
+      {/* Gemini Live Overlay disabled (learning canvas removed) */}
 
       {/* Excalidraw Canvas for Gemini Live handwritten responses */}
       <ExcalidrawCanvas

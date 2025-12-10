@@ -14,7 +14,7 @@ export default function Login({ onLogin }: LoginProps) {
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
   const [googleUserProfile, setGoogleUserProfile] = useState<UserProfile | null>(null);
   const [username, setUsername] = useState('vai123');
-  
+
   // Test Firebase connection
   useEffect(() => {
     const testFirebase = async () => {
@@ -32,7 +32,7 @@ export default function Login({ onLogin }: LoginProps) {
         console.error('Firebase connection error:', error);
       }
     };
-    
+
     testFirebase();
   }, []);
 
@@ -40,10 +40,10 @@ export default function Login({ onLogin }: LoginProps) {
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     setError('');
-    
+
     try {
       const result = await signInWithGoogle();
-      
+
       if (result.needsProfileCompletion) {
         // Show profile completion form
         setGoogleUserProfile(result.userProfile);
@@ -81,7 +81,7 @@ export default function Login({ onLogin }: LoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Debug logging
     console.log('Form submission:', {
       isLogin,
@@ -92,7 +92,7 @@ export default function Login({ onLogin }: LoginProps) {
       university,
       termsAccepted
     });
-    
+
     if (isLogin) {
       if (!username || !password) {
         setError('Please fill in all fields');
@@ -162,14 +162,14 @@ export default function Login({ onLogin }: LoginProps) {
             return;
           }
         }
-        
+
         // Firebase sign in
         try {
           const userProfile = await signInUser(username, password);
           onLogin(userProfile);
         } catch (firebaseError: any) {
           console.error('Firebase login error:', firebaseError);
-          
+
           // If Firebase fails, try demo credentials
           if (firebaseError.message.includes('Firebase') || firebaseError.message.includes('auth')) {
             console.log('Firebase not available, using demo credentials...');
@@ -191,7 +191,7 @@ export default function Login({ onLogin }: LoginProps) {
           onLogin(userProfile);
         } catch (firebaseError: any) {
           console.error('Firebase registration error:', firebaseError);
-          
+
           // If Firebase fails, create a local profile for testing
           if (firebaseError.message.includes('Firebase') || firebaseError.message.includes('auth')) {
             console.log('Creating local profile for testing...');
@@ -245,9 +245,9 @@ export default function Login({ onLogin }: LoginProps) {
   // Show profile completion if needed
   if (showProfileCompletion && googleUserProfile) {
     return (
-      <ProfileCompletion 
-        userProfile={googleUserProfile} 
-        onComplete={handleProfileCompletion} 
+      <ProfileCompletion
+        userProfile={googleUserProfile}
+        onComplete={handleProfileCompletion}
       />
     );
   }
@@ -496,12 +496,12 @@ export default function Login({ onLogin }: LoginProps) {
                 </>
               )}
 
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                <p className="text-red-200 text-sm">{error}</p>
-              </div>
-            )}
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+                  <p className="text-red-200 text-sm">{error}</p>
+                </div>
+              )}
 
               {/* Submit Button */}
               <button
@@ -563,15 +563,14 @@ export default function Login({ onLogin }: LoginProps) {
               <h3 className="text-sm font-medium text-gray-200 mb-2">System Status:</h3>
               <div className="text-xs text-gray-300 space-y-1">
                 <p>
-                  Firebase: 
-                  <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                    firebaseStatus === 'connected' ? 'bg-green-500/20 text-green-400' :
-                    firebaseStatus === 'error' ? 'bg-red-500/20 text-red-400' :
-                    'bg-yellow-500/20 text-yellow-400'
-                  }`}>
+                  Firebase:
+                  <span className={`ml-2 px-2 py-1 rounded text-xs ${firebaseStatus === 'connected' ? 'bg-green-500/20 text-green-400' :
+                      firebaseStatus === 'error' ? 'bg-red-500/20 text-red-400' :
+                        'bg-yellow-500/20 text-yellow-400'
+                    }`}>
                     {firebaseStatus === 'connected' ? 'Connected' :
-                     firebaseStatus === 'error' ? 'Offline Mode' :
-                     'Checking...'}
+                      firebaseStatus === 'error' ? 'Offline Mode' :
+                        'Checking...'}
                   </span>
                 </p>
                 {firebaseStatus === 'error' && (
