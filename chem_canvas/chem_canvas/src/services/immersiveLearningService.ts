@@ -81,15 +81,18 @@ const safeJsonParse = <T>(jsonString: string, fallback: T): T => {
   } catch (e) {
     console.warn('Initial JSON parse failed, attempting repair...', e);
     try {
-      // Step 1: Fix bad escapes (remove backslashes that aren't valid JSON escapes)
-      const cleaned = jsonString.replace(/\\([^"\\/bfnrtu])/g, '$1');
+      // Step 1: Fix bad escapes (escape backslashes that aren't valid JSON escapes to preserve LaTeX)
+      // We diligently replace \x where x is NOT a valid escape char with \\x
+      const cleaned = jsonString.replace(/\\([^"\\/bfnrtu])/g, '\\\\$1');
+
       // Step 2: Handle truncation via existing repairJson
       const repaired = repairJson(cleaned);
       return JSON.parse(repaired);
     } catch (e2) {
-      // Step 3: Aggressive clean (replace all backslashes with forward slashes)
+      // Step 3: Aggressive clean (replace all backslashes with forward slashes) - ONLY as last resort
       try {
         console.warn('Standard repair failed, trying aggressive backslash replacement...');
+        // This destroys LaTeX but saves the JSON structure
         const aggressive = jsonString.replace(/\\/g, '/');
         const repairedAggressive = repairJson(aggressive);
         return JSON.parse(repairedAggressive);
@@ -156,7 +159,7 @@ export interface ImmersiveSection {
   id: string;
   title: string;
   content: string;
-  imagePrompt?: string;
+  imagePrompt?: string | null;
   widget?: InteractiveWidget;
 }
 
@@ -195,8 +198,9 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     MATHEMATICS CONTENT REQUIREMENTS:
     - If the content involves MATHEMATICS, FORMULAS, or EQUATIONS:
       - Use LaTeX notation for ALL mathematical expressions
-      - Inline math: Use single dollar signs $...$ (e.g., "The quadratic formula is $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$")
+      - Inline math: Use single dollar signs $...$ (e.g., "The quadratic formula is $x = \\\\frac{-b \\\\pm \\\\sqrt{b^2 - 4ac}}{2a}$")
       - Block/display math: Use double dollar signs $$...$$ for important equations on their own line
+      - CRITICAL: You MUST use DOUBLE BACKSLASHES for all LaTeX commands in the JSON string (e.g., \\\\alpha, \\\\int, \\\\frac).
       - Include step-by-step derivations where appropriate
       - Example: "$$\\int_a^b f(x)dx = F(b) - F(a)$$"
     
@@ -234,7 +238,7 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
         { 
           "id": "unique_id", 
           "title": "Section Title", 
-          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. Include $inline math$ and $$block math$$ for mathematical content. For programming content, ALWAYS include full fenced code blocks like:\\n\\n\`\`\`python\\ncode here\\n\`\`\`\\n\\nAT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
+          "content": "Full markdown text with **bold key terms** and *emphasized important phrases*. Include $inline math$ and $$block math$$ for mathematical content. REMEMBER TO DOUBLE ESCAPE BACKSLASHES (\\\\) FOR LATEX. For programming content, ALWAYS include full fenced code blocks like:\\n\\n\`\`\`python\\ncode here\\n\`\`\`\\n\\nAT LEAST 4 detailed paragraphs... Insert {{INTERACTIVE_WIDGET}} marker where the widget should appear.",
           "imagePrompt": null,
           "widget": {
             "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection" | "code-playground" | "code-explanation",
@@ -323,6 +327,7 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     4. MATHEMATICS: If the document contains math content:
        - Use $...$ for inline LaTeX math expressions
        - Use $$...$$ for block/display LaTeX equations
+       - CRITICAL: ESCAPE ALL BACKSLASHES IN LATEX COMMANDS (e.g., \\\\frac, \\\\int)
        - Include ALL formulas, equations, and mathematical notation in proper LaTeX
        - Show step-by-step solutions where relevant
     5. PROGRAMMING: If the document contains programming/coding content:
@@ -382,14 +387,15 @@ export const streamAnalyzeDocumentForImmersive = async (
     MATHEMATICS CONTENT REQUIREMENTS (MANDATORY for math/science content):
     - If the content involves MATHEMATICS, PHYSICS FORMULAS, CHEMISTRY EQUATIONS, or any EQUATIONS:
       - Use LaTeX notation for ALL mathematical expressions - this is REQUIRED
-      - Inline math: Use single dollar signs $...$ (e.g., "The quadratic formula is $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$")
+      - Inline math: Use single dollar signs $...$ (e.g., "The quadratic formula is $x = \\\\frac{-b \\\\pm \\\\sqrt{b^2 - 4ac}}{2a}$")
       - Block/display math: Use double dollar signs $$...$$ for important equations on their own line
+      - CRITICAL: You MUST use DOUBLE BACKSLASHES for all LaTeX commands in the JSON string (e.g., \\\\alpha, \\\\int, \\\\frac).
       - ALWAYS show step-by-step derivations and solutions with LaTeX
       - Examples:
-        - Inline: "The derivative $\\frac{dy}{dx}$ represents the rate of change"
-        - Block: "$$\\int_a^b f(x)dx = F(b) - F(a)$$"
-        - Chemistry: "$$\\text{2H}_2 + \\text{O}_2 \\rightarrow \\text{2H}_2\\text{O}$$"
-        - Physics: "$$F = ma = m\\frac{d^2x}{dt^2}$$"
+        - Inline: "The derivative $\\\\frac{dy}{dx}$ represents the rate of change"
+        - Block: "$$\\\\int_a^b f(x)dx = F(b) - F(a)$$"
+        - Chemistry: "$$\\text{2H}_2 + \\text{O}_2 \\\\rightarrow \\text{2H}_2\\text{O}$$"
+        - Physics: "$$F = ma = m\\\\frac{d^2x}{dt^2}$$"
     
     🚨 PROGRAMMING CONTENT REQUIREMENTS (CRITICAL - MUST FOLLOW FOR ANY CODE/PROGRAMMING CONTENT):
     - If the content involves PROGRAMMING, CODING, FUNCTIONS, or ALGORITHMS:
@@ -419,6 +425,7 @@ export const streamAnalyzeDocumentForImmersive = async (
     
     Return a VALID JSON object.
     IMPORTANT: Escape all double quotes inside content strings with backslashes (e.g., \\"). 
+    IMPORTANT: Escape all backslashes in LaTeX with another backslash (e.g., \\\\frac).
     Do not use unescaped newlines in strings; use \\n.
 
     Return a JSON object with the following structure:
@@ -518,7 +525,8 @@ export const streamAnalyzeDocumentForImmersive = async (
        - Use $$...$$ for block/display LaTeX equations
        - Include ALL formulas, equations, and mathematical notation in proper LaTeX
        - Show complete step-by-step solutions and derivations
-       - For chemistry: Use \\text{} for element symbols in equations
+       - For chemistry: Use \\\\text{} for element symbols in equations (ESCAPE BACKSLASH)
+       - CRITICAL: ESCAPE ALL BACKSLASHES IN LATEX (e.g., \\\\frac, \\\\sqrt)
     5. PROGRAMMING (REQUIRED): If the document contains ANY programming, coding, or algorithms:
        - Use \`\`\`language fenced code blocks for ALL code examples
        - ALWAYS include 'code-playground' widget for practice exercises
