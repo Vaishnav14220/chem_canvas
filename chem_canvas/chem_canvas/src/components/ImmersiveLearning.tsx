@@ -581,18 +581,10 @@ Respond in JSON format only:
   "emoji": "Single relevant emoji"
 }`;
 
-            const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + import.meta.env.VITE_GEMINI_API_KEY, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { temperature: 0.7 }
-                })
-            });
+            // Use the service to handle API keys and model selection reliably
+            const responseText = await generateTextContent(prompt, { model: 'gemini-1.5-flash', timeout: 30000 });
 
-            const data = await response.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
                 return {
