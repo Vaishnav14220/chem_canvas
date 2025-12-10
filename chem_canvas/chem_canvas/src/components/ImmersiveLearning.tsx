@@ -67,7 +67,7 @@ import {
     BoundingBox,
     ReactFlowData
 } from '../services/immersiveLearningService';
-import { sendStudiumChatMessage } from '../services/geminiService';
+import { sendStudiumChatMessage, generateTextContent, generateEducationalImage } from '../services/geminiService';
 import { generateStreamingContent } from '../services/geminiStreaming';
 import { fetchGroundingSources } from '../services/geminiService';
 import ReactFlowMindMap from './ReactFlowMindMap';
