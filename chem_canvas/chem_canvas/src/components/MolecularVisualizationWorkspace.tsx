@@ -159,16 +159,19 @@ interface MineralStructure {
 const createCifScript = (cif: string, extraCommands = '') => `
       load data "CIF"
 ${cif.trim()}
-END "CIF";
+END "CIF" {1 1 1};
       unitcell on;
-      axes 2;
+      axes 3;
       boundbox on;
+      set perspectiveDepth true;
       select all;
+      spacefill 25%;
+      wireframe 0.15;
       color atoms cpk;
-      set spinY 5;
       ${extraCommands}
       spin y 3;
     `;
+
 
 const mineralStructures: MineralStructure[] = [
   // Solid State Basic Systems (VChem3D style)
@@ -195,8 +198,8 @@ _atom_site_fract_x
 _atom_site_fract_y
 _atom_site_fract_z
 Fe1 Fe 0.0 0.0 0.0
-END "CIF";
-      unitcell 1;
+END "CIF" {1 1 1};
+      unitcell on;
       axes 2;
       boundbox on;
       select all;
@@ -232,8 +235,8 @@ _atom_site_fract_x
 _atom_site_fract_y
 _atom_site_fract_z
 Cu1 Cu 0.0 0.0 0.0
-END "CIF";
-      unitcell 1;
+END "CIF" {1 1 1};
+      unitcell on;
       axes 2;
       boundbox on;
       select all;
@@ -269,8 +272,8 @@ _atom_site_fract_y
 _atom_site_fract_z
 Mg1 Mg 0.333333 0.666667 0.25
 Mg2 Mg 0.666667 0.333333 0.75
-END "CIF";
-      unitcell 1;
+END "CIF" {1 1 1};
+      unitcell on;
       axes 2;
       boundbox on;
       select all;
