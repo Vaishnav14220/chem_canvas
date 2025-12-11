@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Search, Sparkles, FlaskConical, Beaker } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { Loader2, Search, Sparkles, FlaskConical, Beaker, Play, Pause, SkipBack, SkipForward, RotateCcw, Repeat, Square, Eye, EyeOff } from 'lucide-react';
 import ReactionMechanismScene from './ReactionMechanismScene';
 import { resolveReactionQuery, type ReactionComponentDetails, type ReactionResolutionResult } from '../services/reactionResolver';
 
@@ -8,16 +8,28 @@ const STAGE_INFO: Array<{
   label: string;
   colour: string;
 }> = [
-  { key: 'reactant', label: 'Reactants', colour: '#c084fc' },
-  { key: 'agent', label: 'Reagents & catalysts', colour: '#34d399' },
-  { key: 'product', label: 'Products', colour: '#38bdf8' }
-];
+    { key: 'reactant', label: 'Reactants', colour: '#c084fc' },
+    { key: 'agent', label: 'Reagents & catalysts', colour: '#34d399' },
+    { key: 'product', label: 'Products', colour: '#38bdf8' }
+  ];
 
 const SAMPLE_PROMPTS = [
-  'Friedel-Crafts acylation of benzene with acetyl chloride',
-  'Suzuki coupling between bromobenzene and phenylboronic acid',
-  'Diels–Alder reaction: cyclopentadiene + maleic anhydride'
+  'SN2 reaction of bromomethane with hydroxide',
+  'Diels–Alder reaction: cyclopentadiene + maleic anhydride',
+  'Aldol condensation between acetone and benzaldehyde'
 ];
+
+// ChemTube3D-style display modes
+type DisplayMode = 'ballstick' | 'spacefill' | 'sticks';
+
+const DISPLAY_MODES: Array<{ id: DisplayMode; label: string; script: string }> = [
+  { id: 'ballstick', label: 'Ball & Stick', script: 'select all; spacefill 20%; wireframe 0.15;' },
+  { id: 'spacefill', label: 'Spacefill', script: 'select all; spacefill 100%; wireframe off;' },
+  { id: 'sticks', label: 'Sticks', script: 'select all; spacefill off; wireframe 0.1;' },
+];
+
+// Animation mode types
+type AnimationMode = 'once' | 'loop' | 'palindrome';
 
 interface ReactionMechanismAnimatorProps {
   onScriptChange?: (script: string) => void;
@@ -47,6 +59,13 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState<string | null>(null);
 
+  // ChemTube3D-style animation state
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [animationMode, setAnimationMode] = useState<AnimationMode>('once');
+  const [currentStageIndex, setCurrentStageIndex] = useState(0);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('ballstick');
+  const [showHydrogens, setShowHydrogens] = useState(true);
+
   const isLoading = status === 'loading';
 
   const groupedComponents = useMemo(
@@ -57,6 +76,84 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
       })),
     [resolution]
   );
+
+  // Get all viewable components (those with SMILES)
+  const viewableComponents = useMemo(() => {
+    if (!resolution?.components) return [];
+    return resolution.components.filter(c => c.smiles || c.canonicalSmiles);
+  }, [resolution]);
+
+  // ChemTube3D-style animation controls
+  const playAnimation = useCallback(() => {
+    if (!onScriptChange || viewableComponents.length === 0) return;
+    setIsPlaying(true);
+
+    const modeCommand = animationMode === 'loop'
+      ? 'anim mode loop 1 2;'
+      : animationMode === 'palindrome'
+        ? 'anim mode palindrome 1 2;'
+        : 'anim mode once;';
+
+    onScriptChange(`${modeCommand} delay 0.5; frame play;`);
+  }, [onScriptChange, animationMode, viewableComponents]);
+
+  const stopAnimation = useCallback(() => {
+    if (!onScriptChange) return;
+    setIsPlaying(false);
+    onScriptChange('anim off;');
+  }, [onScriptChange]);
+
+  const rewindAnimation = useCallback(() => {
+    if (!onScriptChange) return;
+    setCurrentStageIndex(0);
+    onScriptChange('anim rewind;');
+
+    // Load first component
+    if (viewableComponents.length > 0) {
+      const smiles = viewableComponents[0].smiles ?? viewableComponents[0].canonicalSmiles;
+      if (smiles) {
+        onScriptChange(buildViewerScript(smiles.replace(/"/g, '')));
+      }
+    }
+  }, [onScriptChange, viewableComponents]);
+
+  const nextFrame = useCallback(() => {
+    if (!onScriptChange || viewableComponents.length === 0) return;
+    const nextIndex = Math.min(currentStageIndex + 1, viewableComponents.length - 1);
+    setCurrentStageIndex(nextIndex);
+
+    const smiles = viewableComponents[nextIndex].smiles ?? viewableComponents[nextIndex].canonicalSmiles;
+    if (smiles) {
+      onScriptChange(buildViewerScript(smiles.replace(/"/g, '')));
+    }
+  }, [onScriptChange, currentStageIndex, viewableComponents]);
+
+  const prevFrame = useCallback(() => {
+    if (!onScriptChange || viewableComponents.length === 0) return;
+    const prevIndex = Math.max(currentStageIndex - 1, 0);
+    setCurrentStageIndex(prevIndex);
+
+    const smiles = viewableComponents[prevIndex].smiles ?? viewableComponents[prevIndex].canonicalSmiles;
+    if (smiles) {
+      onScriptChange(buildViewerScript(smiles.replace(/"/g, '')));
+    }
+  }, [onScriptChange, currentStageIndex, viewableComponents]);
+
+  const applyDisplayMode = useCallback((mode: DisplayMode) => {
+    if (!onScriptChange) return;
+    setDisplayMode(mode);
+    const modeConfig = DISPLAY_MODES.find(m => m.id === mode);
+    if (modeConfig) {
+      onScriptChange(modeConfig.script);
+    }
+  }, [onScriptChange]);
+
+  const toggleHydrogens = useCallback(() => {
+    if (!onScriptChange) return;
+    const newValue = !showHydrogens;
+    setShowHydrogens(newValue);
+    onScriptChange(`select all; set showHydrogens ${newValue ? 'TRUE' : 'FALSE'};`);
+  }, [onScriptChange, showHydrogens]);
 
   const handleSearch = async (prompt?: string) => {
     const value = (prompt ?? query).trim();
@@ -174,6 +271,108 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
       {resolution ? (
         <div className="space-y-3">
           <ReactionMechanismScene resolution={resolution} />
+
+          {/* ChemTube3D-style Animation Controls */}
+          {viewableComponents.length > 0 && (
+            <div className="rounded-xl border border-purple-500/40 bg-slate-900/90 p-3 space-y-3">
+              {/* Progress Indicator */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-400">Stage:</span>
+                <span className="text-white font-medium">{currentStageIndex + 1} / {viewableComponents.length}</span>
+                <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                    style={{ width: `${((currentStageIndex + 1) / viewableComponents.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Playback Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={rewindAnimation}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white text-[11px]"
+                  title="First Frame"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={prevFrame}
+                  disabled={currentStageIndex === 0}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-40 text-[11px]"
+                  title="Previous"
+                >
+                  <SkipBack className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={isPlaying ? stopAnimation : playAnimation}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium ${isPlaying
+                      ? 'bg-amber-600 text-white hover:bg-amber-500'
+                      : 'bg-green-600 text-white hover:bg-green-500'
+                    }`}
+                >
+                  {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                  {isPlaying ? 'Pause' : 'Play'}
+                </button>
+                <button
+                  onClick={nextFrame}
+                  disabled={currentStageIndex >= viewableComponents.length - 1}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-40 text-[11px]"
+                  title="Next"
+                >
+                  <SkipForward className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={stopAnimation}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white text-[11px]"
+                  title="Stop"
+                >
+                  <Square className="h-3 w-3" />
+                </button>
+
+                {/* Animation Mode Toggle */}
+                <div className="flex items-center gap-1 ml-auto">
+                  {(['once', 'loop', 'palindrome'] as AnimationMode[]).map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => setAnimationMode(mode)}
+                      className={`px-2 py-1 rounded text-[10px] ${animationMode === mode
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                    >
+                      {mode === 'once' ? 'Once' : mode === 'loop' ? 'Loop' : '↔️'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Display Controls */}
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider">Display:</span>
+                {DISPLAY_MODES.map(mode => (
+                  <button
+                    key={mode.id}
+                    onClick={() => applyDisplayMode(mode.id)}
+                    className={`px-2 py-1 rounded text-[10px] ${displayMode === mode.id
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+                <button
+                  onClick={toggleHydrogens}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] ml-auto ${showHydrogens ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}
+                >
+                  {showHydrogens ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                  H
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-xs text-slate-200 space-y-1">
             <div className="flex items-center justify-between text-white text-sm font-semibold">
