@@ -174,17 +174,17 @@ END "CIF" {1 1 1};
 
 
 const mineralStructures: MineralStructure[] = [
-  // Simple molecules that load reliably
+  // Simple molecules loaded from NIH resolver (most reliable)
   {
     id: 'nacl',
     name: 'NaCl (Rock Salt)',
     formula: 'NaCl',
     system: 'Cubic',
-    description: 'Classic ionic crystal structure.',
+    description: 'Classic ionic crystal - Na+ and Cl- ions.',
     script: `
-      load $sodium chloride;
-      spacefill 25%;
-      wireframe 0.15;
+      load :NaCl;
+      spacefill 30%;
+      wireframe off;
       color atoms cpk;
       spin y 3;
     `,
@@ -194,51 +194,9 @@ const mineralStructures: MineralStructure[] = [
     name: 'Diamond',
     formula: 'C',
     system: 'Cubic',
-    description: 'Diamond cubic carbon structure.',
+    description: 'Diamond cubic carbon structure with sp3 bonding.',
     script: `
-      load $diamond;
-      spacefill 25%;
-      wireframe 0.15;
-      color atoms cpk;
-      spin y 3;
-    `,
-  },
-  {
-    id: 'quartz',
-    name: 'Quartz',
-    formula: 'SiO₂',
-    system: 'Trigonal',
-    description: 'Silicon dioxide crystal.',
-    script: `
-      load $quartz;
-      spacefill 25%;
-      wireframe 0.15;
-      color atoms cpk;
-      spin y 3;
-    `,
-  },
-  {
-    id: 'calcite',
-    name: 'Calcite',
-    formula: 'CaCO₃',
-    system: 'Trigonal',
-    description: 'Calcium carbonate mineral.',
-    script: `
-      load $calcium carbonate;
-      spacefill 25%;
-      wireframe 0.15;
-      color atoms cpk;
-      spin y 3;
-    `,
-  },
-  {
-    id: 'ice',
-    name: 'Ice',
-    formula: 'H₂O',
-    system: 'Hexagonal',
-    description: 'Water ice crystal structure.',
-    script: `
-      load $ice;
+      load :diamond;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
@@ -250,16 +208,90 @@ const mineralStructures: MineralStructure[] = [
     name: 'Graphite',
     formula: 'C',
     system: 'Hexagonal',
-    description: 'Layered carbon structure.',
+    description: 'Layered carbon structure with sp2 bonding.',
     script: `
-      load $graphite;
+      load :graphite;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
       spin y 3;
     `,
   },
+  {
+    id: 'quartz',
+    name: 'Quartz',
+    formula: 'SiO₂',
+    system: 'Trigonal',
+    description: 'Silicon dioxide crystal structure.',
+    script: `
+      load :SiO2;
+      spacefill 25%;
+      wireframe 0.15;
+      select silicon;
+      color yellow;
+      select oxygen;
+      color [150,200,255];
+      spin y 3;
+    `,
+  },
+  {
+    id: 'water-ice',
+    name: 'Water / Ice',
+    formula: 'H₂O',
+    system: 'Hexagonal',
+    description: 'Water molecule / Ice crystal.',
+    script: `
+      load :water;
+      spacefill 25%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
+  },
+  {
+    id: 'caffeine',
+    name: 'Caffeine',
+    formula: 'C₈H₁₀N₄O₂',
+    system: 'Orthorhombic',
+    description: 'Caffeine molecule crystal.',
+    script: `
+      load $caffeine;
+      spacefill 23%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
+  },
+  {
+    id: 'aspirin',
+    name: 'Aspirin',
+    formula: 'C₉H₈O₄',
+    system: 'Monoclinic',
+    description: 'Acetylsalicylic acid crystal.',
+    script: `
+      load :aspirin;
+      spacefill 23%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
+  },
+  {
+    id: 'sucrose',
+    name: 'Sucrose (Sugar)',
+    formula: 'C₁₂H₂₂O₁₁',
+    system: 'Monoclinic',
+    description: 'Table sugar crystal structure.',
+    script: `
+      load :sucrose;
+      spacefill 23%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
+  },
 ];
+
 
 
 
