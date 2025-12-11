@@ -1,0 +1,69 @@
+
+\input{test2e}
+
+\documentclass{article}
+
+% On the first run this produces 3 pages as colaction generates extra pages not knowing what to do.
+% On the second run 1 page but shipout adds an extra page as it expected 3 pages.
+% The third run would then be correct.
+%
+% This means we need 3 runs to ensure that the tests do not depend on order of execution
+
+\DebugShipoutsOn
+
+\usepackage[colaction]{multicol}
+
+% An application of \docolaction. We put the whole wrapfigure into the
+% args so that the  internal label used is placed after wrapfigure.
+
+\newcommand\test{\docolaction*{\columnbreak}{\columnbreak}{(last col)}}
+
+
+\setlength\columnseprule{.7pt}
+\setlength\emergencystretch{2em}
+
+\begin{document}
+
+\START
+
+\begin{multicols}{3}
+  Some text to test column actions We are now in column \test.
+
+  One extra line in middle column.
+  Some text to test column actions We are now in column \test.
+
+  Some text to test column actions We are now in column \test.
+\end{multicols}
+
+\begin{multicols}{2}
+  Some text to test column actions We are now in column \test.
+
+  Some text to test column actions We are now in column \test.
+
+  Some text to test column actions We are now in column \test.
+\end{multicols}
+
+
+\RLmulticolcolumns
+
+\begin{multicols}{3}
+  Now we do right to left \ldots
+  Some text to test column actions We are now in column \test.
+
+  Some text to test column actions We are now in column \test.
+
+  Some text to test column actions We are now in column \test.
+\end{multicols}
+
+\begin{multicols}{2}
+  Now we do right to left \ldots
+  Some text to test column actions We are now in column \test.
+
+  Some text to test column actions We are now in column \test.
+
+  Some text to test column actions We are now in column \test.
+\end{multicols}
+
+\showoutput
+
+\end{document}

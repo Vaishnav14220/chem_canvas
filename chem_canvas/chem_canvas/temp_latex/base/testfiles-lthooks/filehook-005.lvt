@@ -1,0 +1,62 @@
+\ExplSyntaxOn
+\debug_on:n { check-declarations , deprecation }
+\ExplSyntaxOff
+
+\documentclass{article}
+
+\input{regression-test}
+\START
+
+\begin{document}
+
+\makeatletter
+
+\def\test#1{%
+  \typeout{===============}%
+  \input{#1}}
+
+\AddToHook{file/test/before}    {\typeout{> file/test/before}}
+\AddToHook{file/test/after}     {\typeout{> file/test/after}}
+\AddToHook{file/test.tex/before}{\typeout{> file/test.tex/before}}
+\AddToHook{file/test.tex/after} {\typeout{> file/test.tex/after}}
+
+\test{test}
+\test{test.tex}
+\test{test.dtx}
+
+\AddToHook{file/blub/before}    {\typeout{> file/blub/before}}
+\AddToHook{file/blub/after}     {\typeout{> file/blub/after}}
+\AddToHook{file/blub.tex/before}{\typeout{> file/blub.tex/before}}
+\AddToHook{file/blub.tex/after} {\typeout{> file/blub.tex/after}}
+
+\test{blub}
+\test{blub.tex}
+
+\AddToHook{file/zzzz/before}    {\typeout{> file/zzzz/before}}
+\AddToHook{file/zzzz/after}     {\typeout{> file/zzzz/after}}
+\AddToHook{file/zzzz.tex/before}{\typeout{> file/zzzz.tex/before}}
+\AddToHook{file/zzzz.tex/after} {\typeout{> file/zzzz.tex/after}}
+
+\test{zzzz}
+
+\AddToHook{file/no sympathy/before}    {\typeout{> file/no sympathy/before}}
+\AddToHook{file/no sympathy/after}     {\typeout{> file/no sympathy/after}}
+\AddToHook{file/no sympathy.tex/before}{\typeout{> file/no sympathy.tex/before}}
+\AddToHook{file/no sympathy.tex/after} {\typeout{> file/no sympathy.tex/after}}
+
+\test{no sympathy}
+\test{no sympathy.tex}
+
+\test{../test-config-lthooks/test}
+\test{../test-config-lthooks/test.tex}
+
+\AddToHook{file/deep/before}    {\typeout{> file/deep/before}}
+\AddToHook{file/deep/after}     {\typeout{> file/deep/after}}
+\AddToHook{file/deep.tex/before}{\typeout{> file/deep.tex/before}}
+\AddToHook{file/deep.tex/after} {\typeout{> file/deep.tex/after}}
+
+\def\input@path{{testpath/}}
+
+\test{deep}
+
+\END

@@ -1,0 +1,54 @@
+This is a generated file for the LaTeX2e validation system.
+Don't change this file in any respect.
+LaTeX Font Info:    Trying to load font information for T1+lmr on input line ....
+=========== Testing standard shape declarations LM ==========
+\upshape -> n (should be n)
+\scshape -> sc (should be sc)
+LaTeX Font Warning: Font shape `T1/lmr/m/scit' undefined
+(Font)              using `T1/lmr/m/scsl' instead on input line ....
+\itshape -> scsl (should be scsl after trying scit)
+\upshape -> sc (should be sc)
+\upshape -> n (should be n)
+\ulcshape -> n (should be n)
+\slshape -> sl (should be sl)
+\scshape -> scsl (should be scsl)
+\upshape -> sc (should be sc)
+\ulcshape -> n (should be n)
+=========== Testing standard shape declarations CM ==========
+\upshape -> n (should be n)
+\itshape -> it (should be it)
+LaTeX Font Warning: Font shape `T1/cmr/m/scit' undefined
+(Font)              using `T1/cmr/m/scsl' instead on input line ....
+\scshape -> scsl (should be sc after trying scsl/scit)
+\slshape -> scsl (should be sl after trying scsl/scit)
+\ulcshape -> sl (should be sl)
+\upshape -> n (should be n)
+=========== Testing low-level \fontshape declarations ==========
+\fontshape{n} -> n (should be n)
+\fontshape{sc} -> n (should be sc)
+\fontshape{it} -> sc (should be it after trying scit)
+LaTeX Font Warning: Font shape `T1/cmr/m/scit' undefined
+(Font)              using `T1/cmr/m/scsl' instead on input line ....
+\fontshape{sl} -> scsl (should be sl)
+\fontshape{n} -> scsl (should be n)
+\fontshape{ulc} -> n (should be n)
+=========== Testing low-level \fontseries declarations ==========
+\fontseries{bx} -> m (should be bx)
+\fontseries{l} -> bx (should be l after trying lx (even though l doesn't exist either - found later))
+LaTeX Font Warning: Font shape `T1/cmr/lx/n' undefined
+(Font)              using `T1/cmr/l/n' instead on input line ....
+LaTeX Font Warning: Font shape `T1/cmr/l/n' undefined
+(Font)              using `T1/cmr/m/n' instead on input line ....
+\fontseries{c} -> l (should be l after trying lc)
+LaTeX Font Warning: Font shape `T1/cmr/lc/n' undefined
+(Font)              using `T1/cmr/l/n' instead on input line ....
+\fontseries{m} -> l (should be m)
+\fontseries{c} -> m (should be m after trying c)
+LaTeX Font Warning: Font shape `T1/cmr/c/n' undefined
+(Font)              using `T1/cmr/m/n' instead on input line ....
+\fontseries{b} -> m (should be b)
+\fontseries{bx} -> b (should be bx)
+\fontseries{foo} -> bx (should be foo even though it doesn't exist)
+LaTeX Font Warning: Font shape `T1/cmr/foo/n' undefined
+(Font)              using `T1/cmr/m/n' instead on input line ....
+\fontseries{m} -> foo (should be m)

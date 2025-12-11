@@ -1,0 +1,35 @@
+\documentclass{article}
+
+\newcommand\display[2]{\typeout{\string#1 -> \meaning#1 (#2)}}
+
+\input{test2e}
+
+\START
+\makeatletter
+\display\latinencoding{undefined} 
+\display\@fontenc@load@list{}
+
+\usepackage[T1,T2A]{fontenc}
+
+\display\latinencoding{undefined} 
+\display\@fontenc@load@list{}
+
+\usepackage[LY1,T2B]{fontenc}
+
+\display\latinencoding{undefined} 
+\display\@fontenc@load@list{}
+
+\usepackage[french,russian]{babel}
+
+\display\latinencoding{LY1 maybe, why is this T2B?} 
+\display\@fontenc@load@list{}
+
+\OMIT
+\begin{document}
+\TIMO
+
+\display\latinencoding{T1 why not LY1?} 
+\display\@fontenc@load@list{}
+
+\END
+

@@ -1,0 +1,14 @@
+\DocumentMetadata{
+  lang        = en,
+  tagging=on
+}
+\input{regression-test}
+
+\documentclass{book}
+\begin{document}
+\START
+\showoutput
+\part{Part ]}
+\chapter{ Chapter ] }
+Stuff
+\end{document} 

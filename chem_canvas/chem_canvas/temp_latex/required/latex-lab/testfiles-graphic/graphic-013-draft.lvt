@@ -1,0 +1,12 @@
+\ExplSyntaxOn
+\debug_on:n { check-declarations , deprecation }
+\ExplSyntaxOff
+\DocumentMetadata{tagging=on}
+\input{regression-test}
+\documentclass{article}
+
+\usepackage[draft]{graphicx}
+\begin{document}
+\START
+\includegraphics{example-image}
+\end{document} 

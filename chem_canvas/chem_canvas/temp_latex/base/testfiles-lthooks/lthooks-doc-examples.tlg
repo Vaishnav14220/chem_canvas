@@ -1,0 +1,132 @@
+This is a generated file for the l3build validation system.
+Don't change this file in any respect.
+[lthooks] Add to hook 'example-hook' (top-level) on input line ...
+[lthooks]    <- [code from 'top-level']
+[lthooks] Add to hook 'example-hook' (foo) on input line ...
+[lthooks]    <- [code from package 'foo']
+[lthooks] Add to hook 'example-hook' (bar) on input line ...
+[lthooks]    <- [from package 'bar']
+[lthooks] Add to hook 'example-hook' (baz) on input line ...
+[lthooks]    <- [package 'baz' is here]
+[lthooks] Add to hook 'example-hook' (next invocation only) on input line ...
+[lthooks]    <- [one-time code]
+[lthooks] Update code for hook 'example-hook' on input line ...:
+  normal rule foo|baz: > found
+ default rule baz|bar: < found
+Code labels for sorting:
+ foo, bar and baz
+Data structure for label rules:
+ foo = 1 -> 
+ bar = 1 -> 
+ baz = 0 -> foo -> bar
+[lthooks] Handled code for baz
+[lthooks] Handled code for foo
+[lthooks] Handled code for bar
+-> The hook 'example-hook':
+> Code chunks:
+>     foo -> [code from package 'foo']
+>     bar -> [from package 'bar']
+>     baz -> [package 'baz' is here]
+> Document-level (top-level) code (executed last):
+>     -> [code from 'top-level']
+> Extra code for next invocation:
+>     -> [one-time code]
+> Rules:
+>     foo|baz with relation >
+>     baz|bar with default relation <
+> Execution order (after applying rules):
+>     baz, foo, bar.
+<recently read> }
+l. ...\ShowHook{example-hook}
+============================================
+[lthooks] Add to hook 'myhook' (packageA) on input line ...
+[lthooks]    <- \typeout {A}
+[lthooks] Add to hook 'myhook' (packageB) on input line ...
+[lthooks]    <- \typeout {B}
+[lthooks] Add to hook 'myhook' (packageC) on input line ...
+[lthooks]    <- \typeout {C}
+[lthooks] Update code for hook 'myhook' on input line ...:
+Code labels for sorting:
+ packageA, packageB and packageC
+Data structure for label rules:
+ packageA = 0 -> 
+ packageB = 0 -> 
+ packageC = 0 -> 
+[lthooks] Handled code for packageA
+[lthooks] Handled code for packageB
+[lthooks] Handled code for packageC
+-> The hook 'myhook':
+> Code chunks:
+>     packageA -> \typeout {A}
+>     packageB -> \typeout {B}
+>     packageC -> \typeout {C}
+> Document-level (top-level) code (executed last):
+>     ---
+> Extra code for next invocation:
+>     ---
+> Rules:
+>     ---
+> Execution order:
+>     packageA, packageB, packageC.
+<recently read> }
+l. ...\ShowHook{myhook}
+============================================
+[lthooks] Update code for hook 'myhook' on input line ...:
+  normal rule packageB|packageA: > found
+Code labels for sorting:
+ packageA, packageB and packageC
+Data structure for label rules:
+ packageA = 0 -> packageB
+ packageB = 1 -> 
+ packageC = 0 -> 
+[lthooks] Handled code for packageA
+[lthooks] Handled code for packageC
+[lthooks] Handled code for packageB
+-> The hook 'myhook':
+> Code chunks:
+>     packageA -> \typeout {A}
+>     packageB -> \typeout {B}
+>     packageC -> \typeout {C}
+> Document-level (top-level) code (executed last):
+>     ---
+> Extra code for next invocation:
+>     ---
+> Rules:
+>     packageB|packageA with relation >
+> Execution order (after applying rules):
+>     packageA, packageC, packageB.
+<recently read> }
+l. ...\ShowHook{myhook}
+============================================
+[lthooks] Add to hook 'env/quote/before' (package-1) on input line ...
+[lthooks]    <- \begin {itshape}
+[lthooks] Add to hook 'env/quote/after' (package-1) on input line ...
+[lthooks]    <- \end {itshape}
+[lthooks] Add to hook 'env/quote/before' (package-too) on input line ...
+[lthooks]    <- \begin {color}{blue}
+[lthooks] Add to hook 'env/quote/after' (package-too) on input line ...
+[lthooks]    <- \end {color}
+[lthooks] Update code for hook 'env/quote/after' on input line ...:
+Code labels for sorting:
+ package-1 and package-too
+Data structure for label rules:
+ package-1 = 0 -> 
+ package-too = 0 -> 
+[lthooks] Handled code for package-1
+[lthooks] Handled code for package-too
+-> The generic hook 'env/quote/after':
+> Code chunks:
+>     package-1 -> \end {itshape}
+>     package-too -> \end {color}
+> Document-level (top-level) code (executed first):
+>     ---
+> Extra code for next invocation:
+>     ---
+> Rules:
+>     ---
+> Execution order (after reversal):
+>     package-too, package-1.
+<recently read> }
+l. ...\ShowHook{env/quote/after}
+============================================
+!!!! If this test changes the documentation needs updating !!!!

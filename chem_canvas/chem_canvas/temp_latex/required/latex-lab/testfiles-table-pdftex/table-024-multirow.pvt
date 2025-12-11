@@ -1,0 +1,16 @@
+\DocumentMetadata{tagging=on,pdfversion=1.7}
+\input{regression-test}
+\documentclass{article}
+\tagpdfsetup{attach-css=false}
+\begin{document}
+\tagpdfsetup{table/header-rows={1,-1}, table/header-columns={1,-1}}
+\begin{tabular}{llll}
+text & text & text & colhead\\ 
+\multicolumn{2}{c}{\tagpdfsetup{table/multirow={3}}multi} \\ 
+\\
+      &      & text & colhead\\
+head  & head & head & colhead\\ 
+\end{tabular}
+
+
+\end{document}

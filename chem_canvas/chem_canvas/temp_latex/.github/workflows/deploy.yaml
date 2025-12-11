@@ -1,0 +1,102 @@
+name: Create release
+
+# We create releases for all new tags that don't contain '/' in their names
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  # The l3build job contains the actual work. This is mostly the same as in main.yaml
+  # and should stay synchronized. Sadly it doesn't seem possible to reuse the instructions at the moment.
+  release:
+    runs-on: ubuntu-latest
+    name: Build release
+    environment: Release
+    steps:
+      # Boilerplate
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      # We need Ghostscript for dvips and XeTeX tests.
+      - name: Install Ghostscript
+        run: sudo apt-get update && sudo apt-get install ghostscript
+      - name: Install TeX Live
+        uses: zauguin/install-texlive@v4
+        with:
+          # List the required TeX Live packages in a separate file to allow reuse in
+          # different workflows.
+          package_file: .github/tl_packages
+      # For tags starting with dev- or release- we do full builds of all components
+      - name: Run l3build
+        if: ${{ startsWith(github.ref_name, 'dev-') || startsWith(github.ref_name, 'release-') }}
+        run: l3build ctan -q -H --show-log-on-error
+      # Otherwise we assume that the part before the first -2 is the name of the `required` package we want to
+      # build. Therefore we switch to the right directors first. Afterwards we have to move the generated artifacts
+      # back to the main directory so that they are found in the next step.
+      - name: Run l3build
+        if: ${{ !(startsWith(github.ref_name, 'dev-') || startsWith(github.ref_name, 'release-')) }}
+        env:
+          tagname: ${{github.ref_name}}
+        run: cd "required/${tagname%%-2*}" && l3build ctan -q -H --show-log-on-error && mv *.zip ../../
+      - name: Archive failed test output
+        if: ${{ always() }}
+        uses: zauguin/l3build-failure-artifacts@v1
+        with:
+          name: testfiles
+          # Decide how long to keep the test output artifact:
+          retention-days: 3
+      # Now create the release (this only runs if the previous steps were successful)
+      - name: Create GitHub release
+        uses: ncipollo/release-action@b7eabc95ff50cbeeedec83973935c8f306dfcd0b
+        id: release
+        with:
+          artifacts: "*.zip"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ startsWith(github.ref, 'refs/tags/dev-') }}
+      # While the normal notification job only informs about failed runs, we additionally want to notify about successful releases.
+      - name: Send mail
+        # The explicit commit hash ensures that this can't be used by dawidd6 as a
+        # backdoor to execute arbitrary code during our runs.
+        uses: dawidd6/action-send-mail@6d98ae34d733f9a723a9e04e94f2f24ba05e1402
+        with:
+          # Currently using my (Marcel's) mail server for sending mails.
+          server_address: typesetting.eu
+          server_port: 587
+          # These values can be changed in the repository settings.
+          username: ${{secrets.MAIL_USERNAME}}
+          password: ${{secrets.MAIL_PASSWORD}}
+          # If we want to send notifications to additional addresses, at them here as
+          # a comma separated list.
+          to: latex3-commits@tug.org
+          # The name is arbitrary, but if you want to change the address you need to
+          # coordinate it with the administrator of the mail server to allow the account
+          # to send from the mail address.
+          from: LaTeX CI <github@latex-project.org>
+          # Determine the subject and body of the mail.
+          subject: "Version ${{github.ref_name}} of ${{github.repository}} has been released"
+          body: |
+            The release ${{github.ref_name}} has been created for ${{github.repository}}.
+
+            More information can be found at
+            ${{steps.release.outputs.html_url}}
+      - name: Send failure notification
+        uses: dawidd6/action-send-mail@6d98ae34d733f9a723a9e04e94f2f24ba05e1402
+        if: ${{ failure() }}
+        with:
+          server_address: typesetting.eu
+          server_port: 587
+          username: ${{secrets.MAIL_USERNAME}}
+          password: ${{secrets.MAIL_PASSWORD}}
+          to: latex3-commits@tug.org
+          from: LaTeX CI <github@latex-project.org>
+          priority: high
+          # Determine the subject and body of the mail.
+          subject: "Test failure while trying to build release ${{github.ref_name}} in ${{github.repository}}"
+          body: |
+            Test failure for ${{github.repository}}
+            -------------------------------------------------------------
+
+            On tag:           ${{github.ref_name}} (${{github.sha}})
+            Initiated by:     ${{github.actor}}
+            Commit URL:       https://github.com/${{github.repository}}/commit/${{github.sha}}
+            More information: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}

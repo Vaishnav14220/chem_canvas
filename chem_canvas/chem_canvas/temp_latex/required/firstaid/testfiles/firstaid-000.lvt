@@ -1,0 +1,12 @@
+
+\input{regression-test}
+
+\ExplSyntaxOn
+\debug_on:n { check-declarations , deprecation }
+\ExplSyntaxOff
+
+\START
+
+\ifcsname LaTeXFirstAidVersion\endcsname \typeout{File loaded in kernel}\fi
+
+\END

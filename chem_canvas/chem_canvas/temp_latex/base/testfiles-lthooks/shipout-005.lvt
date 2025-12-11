@@ -1,0 +1,28 @@
+% testing atbegshi inclusion
+
+\ExplSyntaxOn
+\debug_on:n { check-declarations , deprecation }
+\ExplSyntaxOff
+
+\documentclass{article}
+
+\input{regression-test}
+
+
+
+\showoutput
+
+
+\START
+
+\AddToHook{shipout/firstpage}{firstpage\hss}
+\AddToHook{shipout/background}{background\hss}
+\AddToHook{shipout/foreground}{foreground\hss}
+\AddToHook{shipout/lastpage}{lastpage\hss}
+
+
+\begin{document}
+
+Content
+
+\end{document}

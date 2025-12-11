@@ -1,0 +1,16 @@
+% testing atbegshi and evershi inclusion
+
+\ExplSyntaxOn
+\debug_on:n { check-declarations , deprecation }
+\ExplSyntaxOff
+
+\documentclass{article}
+
+\input{regression-test}
+
+
+\START
+
+\usepackage{atbegshi}
+
+\END

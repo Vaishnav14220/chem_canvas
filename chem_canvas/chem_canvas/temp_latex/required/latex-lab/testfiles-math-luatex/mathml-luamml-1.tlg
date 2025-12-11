@@ -1,0 +1,94 @@
+This is a generated file for the l3build validation system.
+Don't change this file in any respect.
+-------- mathml-luamml-1-luamml-mathml.html (start) ---------
+(mathml-luamml-1-luamml-mathml.html) <!DOCTYPE html>[nl]
+<html xmlns="http://www.w3.org/1999/xhtml">[nl]
+[nl]
+<div>[nl]
+<h2>\mml 1</h2>[nl]
+<p>\begin {equation}\sqrt {x^2}=\lvert x\rvert \end {equation}</p>[nl]
+<p>97E0ED65D7DB327BEE6496118E96C5B1</p>[nl]
+[nl]
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML">[nl]
+ <mtable displaystyle="true">[nl]
+ <mtr>[nl]
+ <mtd intent=":equation-label">[nl]
+ <mtext>[nl]
+(1)[nl]
+ </mtext>[nl]
+ </mtd>[nl]
+ <mtd intent=":pause-medium">[nl]
+ <mrow/>[nl]
+ <msqrt>[nl]
+ <msup>[nl]
+ <mi>𝑥</mi>[nl]
+ <mn>2</mn>[nl]
+ </msup>[nl]
+ </msqrt>[nl]
+ <mo lspace="0.278em" rspace="0">=</mo>[nl]
+ <mo lspace="0.278em" rspace="0" stretchy="false">|</mo>[nl]
+ <mi>𝑥</mi>[nl]
+ <mo lspace="0" rspace="0" stretchy="false">|</mo>[nl]
+ </mtd>[nl]
+ </mtr>[nl]
+ </mtable>[nl]
+</math>[nl]
+</div>[nl]
+[nl]
+<div>[nl]
+<h2>\mml 2</h2>[nl]
+<p>\begin {equation*}\sqrt {x^2}=\lvert x\rvert \end {equation*}</p>[nl]
+<p>626AD6FB6CF94CF1BE7FF5A7B8335B53</p>[nl]
+[nl]
+<math display="block" xmlns="http://www.w3.org/1998/Math/MathML">[nl]
+ <msqrt>[nl]
+ <msup>[nl]
+ <mi>𝑥</mi>[nl]
+ <mn>2</mn>[nl]
+ </msup>[nl]
+ </msqrt>[nl]
+ <mo lspace="0.278em" rspace="0">=</mo>[nl]
+ <mo lspace="0.278em" rspace="0" stretchy="false">|</mo>[nl]
+ <mi>𝑥</mi>[nl]
+ <mo lspace="0" rspace="0" stretchy="false">|</mo>[nl]
+</math>[nl]
+</div>[nl]
+[nl]
+<div>[nl]
+<h2>\mml 3</h2>[nl]
+<p>$\varGamma $</p>[nl]
+<p>59E43DDDF43026AE640CBD33D3EF4739</p>[nl]
+[nl]
+<math xmlns="http://www.w3.org/1998/Math/MathML">[nl]
+ <mi>𝛤</mi>[nl]
+</math>[nl]
+</div>[nl]
+[nl]
+</html>[nl]
+-------- mathml-luamml-1-luamml-mathml.html (end) -----------
+[Math] ==> Inserting mathml with Hash 97E0ED65D7DB327BEE6496118E96C5B1
+[Math] ==> grabbed math=macro:->\sqrt {x^2}=\lvert x\rvert 
+[Math] ==> Inserting mathml with Hash 626AD6FB6CF94CF1BE7FF5A7B8335B53
+[Math] ==> grabbed math=macro:->\sqrt {x^2}=\lvert x\rvert 
+[Math] ==> Inserting mathml with Hash 59E43DDDF43026AE640CBD33D3EF4739
+[Math] ==> grabbed math=macro:->\varGamma 
+[1
+]<<latex-list-css.html>><<latex-align-css.html>> (mathml-luamml-1.aux)
+MathML statistic
+================
+==> 3 MathML fragments read
+==> 3 different MathML fragments
+==> 3 math fragments found
+==> 3 fitting MathML AF found
+==> 3 MathML AF attached
+Package tagpdf Info: Finalizing the tagging structure:
+(tagpdf)             Writing out ~12 structure objects
+(tagpdf)             with ~9 'MC' leaf nodes.
+(tagpdf)             Be patient if there are lots of objects!
+Package tagpdf Info: writing ParentTree
+Package tagpdf Info: writing IDTree
+Package tagpdf Info: writing RoleMap
+Package tagpdf Info: writing ClassMap
+Package tagpdf Info: writing NameSpaces
+Package tagpdf Info: writing StructElems
+Package tagpdf Info: writing Root

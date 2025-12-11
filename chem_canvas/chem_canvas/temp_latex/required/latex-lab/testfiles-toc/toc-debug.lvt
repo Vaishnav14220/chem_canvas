@@ -1,0 +1,12 @@
+\DocumentMetadata{tagging=on,debug=tagpdf}
+\input{regression-test}
+
+\documentclass{article}
+\usepackage{hyperref}
+\begin{document}
+\START
+\tableofcontents
+\section{blub}
+
+\AddToHook{tagpdf/finish/before}{\ShowTagging{debug/structures}}
+\end{document}

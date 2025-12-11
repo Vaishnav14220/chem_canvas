@@ -1,0 +1,19 @@
+This is a generated file for the l3build validation system.
+Don't change this file in any respect.
+-------------------------------
+before before.sty
+next before before.sty
+(before.sty)
+after before.sty
+next after before.sty
+-------------------------------
+before after.sty
+next before after.sty
+(after.sty)
+after after.sty
+next after after.sty
+-------------------------------
+LaTeX hooks Warning: Cannot remove chunk 'x' from hook 'package/after/after' because it does not exist in that hook.
+LaTeX hooks Warning: Cannot remove chunk 'x' from hook 'package/after/before' because it does not exist in that hook.
+LaTeX hooks Warning: Cannot remove chunk 'x' from hook 'package/before/after' because it does not exist in that hook.
+LaTeX hooks Warning: Cannot remove chunk 'x' from hook 'package/before/before' because it does not exist in that hook.

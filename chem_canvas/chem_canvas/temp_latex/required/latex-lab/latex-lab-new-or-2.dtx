@@ -1,0 +1,226 @@
+% \iffalse meta-comment
+%
+%% File: latex-lab-new-or-2.dtx
+% Copyright (C) 2022-2025 The LaTeX Project
+%
+% It may be distributed and/or modified under the conditions of the
+% LaTeX Project Public License (LPPL), either version 1.3c of this
+% license or (at your option) any later version.  The latest version
+% of this license is in the file
+%
+%    https://www.latex-project.org/lppl.txt
+%
+%
+% The development version of the bundle can be found below
+%
+%    https://github.com/latex3/latex2e/required/latex-lab
+%
+% for those people who are interested or want to report an issue.
+%
+\def\ltlabneworIIdate{2025-05-10}
+\def\ltlabneworIIversion{0.86d}
+
+%<*driver>
+\DocumentMetadata{tagging=on,pdfstandard=ua-2}
+\documentclass[kernel]{l3doc}
+\usepackage{latex-lab-testphase-l3doc}
+\EnableCrossrefs
+\CodelineIndex
+\begin{document}
+  \DocInput{latex-lab-new-or-2.dtx}
+\end{document}
+%</driver>
+%
+% \fi
+%
+%
+% \title{The \texttt{latex-lab-testphase-new-or-2} code}
+% \author{Frank Mittelbach, \LaTeX{} Project}
+% % \date{v\ltlabneworIIversion\ \ltlabneworIIdate}
+% \maketitle
+%
+% \newcommand\fmi[1]{\begin{quote} TODO: \itshape #1\end{quote}}
+% \newcommand\NEW[1]{\marginpar{\mbox{}\hfill\fbox{New: #1}}}
+% \providecommand\pkg[1]{\texttt{#1}}
+%
+% \providecommand\hook[1]{\texttt{#1\DescribeHook[noprint]{#1}}}
+% \providecommand\socket[1]{\texttt{#1\DescribeSocket[noprint]{#1}}}
+% \providecommand\plug[1]{\texttt{#1\DescribePlug[noprint]{#1}}}
+%
+% \NewDocElement[printtype=\textit{socket},idxtype=socket,idxgroup=Sockets]{Socket}{socketdecl}
+% \NewDocElement[printtype=\textit{plug},idxtype=plug,idxgroup=Plugs]{Plug}{plugdecl}
+% \NewDocElement[printtype=\textit{hook},idxtype=hook,idxgroup=Hooks]{Hook}{hookdecl}
+%
+%
+% \begin{abstract}
+%    This code implements changes to the output routine intended to be
+%    moved in the \LaTeX{} kernel at some point in the future.
+% \end{abstract}
+%
+%
+%
+%
+% \section{Introduction}
+%
+%
+%
+%
+% \StopEventually{\setlength\IndexMin{200pt}  \PrintIndex  }
+%
+%
+% \section{The Implementation}
+%
+%    \begin{macrocode}
+%<*package>
+%    \end{macrocode}
+%
+% \subsection{File declaration}
+%    \begin{macrocode}
+\ProvidesPackage{latex-lab-testphase-new-or-2}
+        [\ltlabneworIIdate\space v\ltlabneworIIversion\space 
+         Changes to the output routine]
+%    \end{macrocode}
+%        
+% \subsection{\cs{@makecol} reimplementation}
+%
+%  \begin{plugdecl}{footnote-floats}
+%    If \cs{DocumentMetadata} is used we use \plug{footnotes-floats}
+%    as the default. In 2e compatibility mode this should be changed to
+%    \plug{footnotes-floats-legacy}.
+%    \begin{macrocode}
+\AssignSocketPlug {build/column/outputbox}{footnotes-floats}
+%    \end{macrocode}
+% \end{plugdecl}
+%
+%
+%
+%  \begin{macro}[no-user-doc]{\@makecol@handlesplitfootnotes}
+%  \begin{macro}[no-user-doc]{\@makecol@splitfootnotemessagehook}
+%    This is only an early draft and doesn't do much.
+%    Contains  incomplete preparation for tagging commented out.
+% \fmi{Interfaces and code will change in the future}
+%    \begin{macrocode}
+\def\@makecol@handlesplitfootnotes {%
+%  \ifx\splitfootnote@continuation\@empty \else
+%    \setbox\footins\vbox{\splitfootnote@continuation\unvbox\footins}%
+%    \global\let\splitfootnote@continuation\@empty
+%  \fi
+  \ifnum\insertpenalties>\z@
+    \@makecol@splitfootnotemessagehook
+%    \setbox\footins\vbox{\unvbox\footins --- END at split}%
+%    \gdef\splitfootnote@continuation    {--- START after split}%
+  \fi
+}
+%\def\splitfootnote@continuation{}
+%    \end{macrocode}
+%    This  could issue warning if split footnotes are encountered.
+%    \begin{macrocode}
+\let \@makecol@splitfootnotemessagehook \@empty
+%    \end{macrocode}
+%  \end{macro}
+%  \end{macro}
+%
+%
+%
+%
+%
+%
+% \subsection{\cs{@outputpage} reimplementation}
+%
+%   We still have to deal with various plug setting for tagging:
+%    This needs documentation and moving.
+%
+%  \begin{plugdecl}{default}
+%    \begin{macrocode}
+\ExplSyntaxOn
+%    \end{macrocode}
+%    \fmi{where should these plug declarations go? tagpdf?}
+%    \begin{macrocode}
+\NewTaggingSocketPlug{build/page/header}{default}
+   {
+     \__tag_hook_kernel_before_head:
+     #2
+     \__tag_hook_kernel_after_head:
+   }
+%    \end{macrocode}
+%    
+%    \begin{macrocode}
+\AssignTaggingSocketPlug{build/page/header}{default}
+%    \end{macrocode}
+%
+%  \end{plugdecl}
+%
+%  \begin{plugdecl}{default}
+%    \begin{macrocode}
+\NewTaggingSocketPlug{build/page/footer}{default}
+   {
+     \__tag_hook_kernel_before_foot:
+     #2
+     \__tag_hook_kernel_after_foot:
+   }
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\AssignTaggingSocketPlug{build/page/footer}{default}
+%    \end{macrocode}
+%
+%  \end{plugdecl}
+%
+%  \begin{plugdecl}{default}
+%    \begin{macrocode}
+\NewTaggingSocketPlug{build/column/outputbox}{default}
+  {
+    \__tag_check_typeout_v:n { ====>~In~\token_to_str:N \@makecol
+                               \c_space_tl\the\c@page }
+    \tag_mc_add_missing_to_stream:Nn \@outputbox {main}
+  }
+%    \end{macrocode}
+% %  \end{plugdecl}
+%  \begin{plugdecl}{default}
+%    \begin{macrocode}
+\NewTaggingSocketPlug{build/column/footins}{default}
+   { \tag_mc_add_missing_to_stream:Nn \footins {footnote} }
+%    \end{macrocode}
+%    The two sockets do nothing (default \plug{noop}) if we
+%    are in lua mode. If not they get the \plug{default} assigned
+%    \begin{macrocode}
+\sys_if_engine_luatex:F   
+   {         
+     \AssignTaggingSocketPlug{build/column/outputbox}{default}
+     \AssignTaggingSocketPlug{build/column/footins}{default}
+   }
+\ExplSyntaxOff 
+%    \end{macrocode}
+%  \end{plugdecl}
+%
+%
+%
+%
+%
+% \section  {Replacement for the \pkg{footmisc} package}
+%
+%    The replacement for \pkg{footmisc}. If the new code is used, we must replace
+%    the package if it is loaded by the user:
+%    \begin{macrocode}
+\declare@file@substitution{footmisc.sty}{latex-lab-footmisc.ltx}
+%    \end{macrocode}
+%    This can be removed the moment the remaining hooks and sockets
+%    have been integrated into footmisc, which will probably not
+%    happen before the 2025/11 release.
+%
+%
+%
+% \section {Temp stuff that is related but should go to the kernel}
+%
+%    This is the code from \texttt{latex-lab-footnotes.dtx}.
+%    \begin{macrocode}
+\input{latex-lab-footnotes.ltx}
+%    \end{macrocode}
+%
+%
+%    \begin{macrocode}
+%</package>
+%    \end{macrocode}
+%
+% \Finale
+%

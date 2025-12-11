@@ -1,0 +1,12 @@
+\DocumentMetadata{tagging-setup={role/user-NS=latex}}
+\DebugMathOn
+\input{regression-test}
+\documentclass{article}
+\usepackage{amsbsy}
+
+\begin{document}
+\START
+
+$\pmb{a}$
+
+\end{document} 

@@ -1,0 +1,20 @@
+This is a generated file for the LaTeX2e validation system.
+Don't change this file in any respect.
+\Downarrow -> \Downarrow 
+---------------------------------------
+\protected macro:->\delimiter "322B37F  + \relax
+LaTeX Font Info:    Redeclaring math delimiter \Downarrow on input line ....
+\protected macro:->\delimiter "322B3AA  + \relax
+---------------------------------------
+\hbar -> \hbar 
+---------------------------------------
+macro:->\protect \hbar   + macro:->{\mathchar '26\mkern -9muh}
+LaTeX Font Info:    Redeclaring math symbol \hbar on input line ....
+\mathchar"021B + \relax
+---------------------------------------
+\clubsuit -> \clubsuit 
+---------------------------------------
+\mathchar"027C + \relax
+LaTeX Font Info:    Redeclaring math symbol \clubsuit on input line ....
+\mathchar"0277 + \relax
+---------------------------------------
