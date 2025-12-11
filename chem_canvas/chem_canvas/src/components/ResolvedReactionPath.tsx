@@ -102,11 +102,44 @@ animation fps 12;
 animation on;`;
 };
 
+// Fallback: Build a slideshow script that cycles through all stages using SMILES
+const buildSlideshowScript = (stageSmilesList: string[][]): string | null => {
+  if (stageSmilesList.length < 2) {
+    return null;
+  }
+
+  // Create a multi-model animation from SMILES
+  const commands: string[] = [];
+
+  stageSmilesList.forEach((smilesList, index) => {
+    const combinedSmiles = smilesList.join('.');
+    if (index === 0) {
+      commands.push(`load $${combinedSmiles};`);
+    } else {
+      commands.push(`load append $${combinedSmiles};`);
+    }
+  });
+
+  commands.push('select *;');
+  commands.push('wireframe 0.18;');
+  commands.push('spacefill 18%;');
+  commands.push('color cpk;');
+  commands.push('label %a;');
+  commands.push('set fontsize 14;');
+  commands.push('color labels white;');
+  commands.push('frame 1;');
+  commands.push('animation mode palindrome;');
+  commands.push('animation fps 2;');
+  commands.push('animation on;');
+
+  return commands.join('\n');
+};
+
 const normalizeMechanismStage = (stage: ReactionMechanismStage, index: number): StageDisplay | null => {
   const smilesList = Array.isArray(stage.smiles)
     ? stage.smiles
-        .map(value => (typeof value === 'string' ? value.trim() : ''))
-        .filter(Boolean)
+      .map(value => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean)
     : [];
 
   if (smilesList.length === 0) {
@@ -162,6 +195,7 @@ interface ResolvedReactionPathProps {
 const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution, onScriptChange }) => {
   const [stageScripts, setStageScripts] = useState<Record<string, StageScriptPayload>>({});
   const [morphScript, setMorphScript] = useState<string | null>(null);
+  const [slideshowScript, setSlideshowScript] = useState<string | null>(null);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -226,12 +260,17 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
         const lastSdfs = payloadEntries[lastStage.id]?.sdfList ?? [];
         const morph = buildMorphScript(firstSdfs, lastSdfs);
 
+        // Build slideshow fallback from SMILES if morph not available
+        const allSmilesList = stageDisplays.map(stage => stage.smilesList);
+        const slideshow = buildSlideshowScript(allSmilesList);
+
         if (cancelled) {
           return;
         }
 
         setStageScripts(payloadEntries);
         setMorphScript(morph);
+        setSlideshowScript(slideshow);
         setScriptsLoading(false);
       } catch (error) {
         if (cancelled) {
@@ -240,6 +279,7 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
         console.error('Failed to prepare JSmol structures:', error);
         setStageScripts({});
         setMorphScript(null);
+        setSlideshowScript(null);
         setScriptError('Unable to prepare the 3D pathway for this reaction.');
         setScriptsLoading(false);
       }
@@ -280,6 +320,8 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
     if (isAnimating) {
       setIsAnimating(false);
       setScriptError(null);
+      // Stop animation
+      onScriptChange?.('animation off;');
       const stage = currentStage;
       const payload = stage ? stageScripts[stage.id] : null;
       if (payload?.script && onScriptChange) {
@@ -288,14 +330,17 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
       return;
     }
 
-    if (!morphScript) {
-      setScriptError('Need valid 3D data for reactants and products to animate the morph.');
+    // Prefer morph animation if available, otherwise use slideshow
+    const animationScript = morphScript ?? slideshowScript;
+
+    if (!animationScript) {
+      setScriptError('Need valid structure data to animate. Try refreshing the reaction search.');
       return;
     }
 
     setScriptError(null);
     setIsAnimating(true);
-    onScriptChange?.(morphScript);
+    onScriptChange?.(animationScript);
   };
 
   if (stageDisplays.length === 0) {
@@ -396,9 +441,8 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
           </button>
           <button
             onClick={handleAnimateToggle}
-            className={`flex-1 px-3 py-2 rounded-lg text-sm flex items-center justify-center gap-2 ${
-              isAnimating ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'
-            }`}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm flex items-center justify-center gap-2 ${isAnimating ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'
+              }`}
             disabled={scriptsLoading}
           >
             <PlayCircle className="h-4 w-4" />
