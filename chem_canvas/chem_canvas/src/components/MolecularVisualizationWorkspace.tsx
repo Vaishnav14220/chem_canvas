@@ -174,125 +174,97 @@ END "CIF" {1 1 1};
 
 
 const mineralStructures: MineralStructure[] = [
-  // Solid State Basic Systems (VChem3D style)
+  // Solid State Basic Systems - Load from COD database
   {
-    id: 'bcc',
+    id: 'bcc-iron',
     name: 'BCC (Iron)',
     formula: 'Fe',
     system: 'Body-Centered Cubic',
-    description: 'Body-centered cubic lattice with atoms at corners and center.',
+    description: 'Body-centered cubic lattice with atom at center.',
     script: `
-      load data "CIF"
-data_bcc_iron
-_symmetry_space_group_name_H-M 'I m -3 m'
-_cell_length_a 2.867
-_cell_length_b 2.867
-_cell_length_c 2.867
-_cell_angle_alpha 90
-_cell_angle_beta 90
-_cell_angle_gamma 90
-loop_
-_atom_site_label
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Fe1 Fe 0.0 0.0 0.0
-END "CIF" {1 1 1};
+      load =cod/9008536 {1 1 1};
       unitcell on;
-      axes 2;
+      axes 3;
       boundbox on;
-      select all;
       spacefill 30%;
-      wireframe 0.15;
+      wireframe 0.2;
       color atoms cpk;
-      connect 0.1 3.5;
-      color bonds [0,200,200];
-      set axes [255,0,0] [0,255,0] [0,0,255];
       spin y 3;
     `,
   },
   {
-    id: 'fcc',
+    id: 'fcc-copper',
     name: 'FCC (Copper)',
     formula: 'Cu',
     system: 'Face-Centered Cubic',
-    description: 'Face-centered cubic lattice with atoms at corners and face centers.',
+    description: 'Face-centered cubic lattice.',
     script: `
-      load data "CIF"
-data_fcc_copper
-_symmetry_space_group_name_H-M 'F m -3 m'
-_cell_length_a 3.615
-_cell_length_b 3.615
-_cell_length_c 3.615
-_cell_angle_alpha 90
-_cell_angle_beta 90
-_cell_angle_gamma 90
-loop_
-_atom_site_label
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Cu1 Cu 0.0 0.0 0.0
-END "CIF" {1 1 1};
+      load =cod/9008468 {1 1 1};
       unitcell on;
-      axes 2;
+      axes 3;
       boundbox on;
-      select all;
       spacefill 30%;
-      wireframe 0.15;
+      wireframe 0.2;
       color atoms [200,120,50];
-      connect 0.1 3.0;
-      color bonds [0,200,200];
       spin y 3;
     `,
   },
   {
-    id: 'hcp',
-    name: 'HCP (Magnesium)',
-    formula: 'Mg',
-    system: 'Hexagonal Close-Packed',
-    description: 'Hexagonal close-packed lattice with ABAB stacking.',
+    id: 'nacl',
+    name: 'NaCl (Rock Salt)',
+    formula: 'NaCl',
+    system: 'Cubic',
+    description: 'Classic ionic FCC structure.',
     script: `
-      load data "CIF"
-data_hcp_magnesium
-_symmetry_space_group_name_H-M 'P 63/m m c'
-_cell_length_a 3.209
-_cell_length_b 3.209
-_cell_length_c 5.211
-_cell_angle_alpha 90
-_cell_angle_beta 90
-_cell_angle_gamma 120
-loop_
-_atom_site_label
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Mg1 Mg 0.333333 0.666667 0.25
-Mg2 Mg 0.666667 0.333333 0.75
-END "CIF" {1 1 1};
+      load =cod/1000041 {1 1 1};
       unitcell on;
-      axes 2;
+      axes 3;
       boundbox on;
-      select all;
-      spacefill 30%;
+      spacefill 25%;
       wireframe 0.15;
-      color atoms [180,180,180];
-      connect 0.1 3.5;
-      color bonds [0,200,200];
+      select sodium;
+      color [150,100,255];
+      select chlorine;
+      color [100,255,100];
       spin y 3;
     `,
   },
-  // Ionic/Mineral Structures
+  {
+    id: 'diamond',
+    name: 'Diamond',
+    formula: 'C',
+    system: 'Cubic',
+    description: 'Diamond cubic crystal structure.',
+    script: `
+      load =cod/9008565 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 25%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
+  },
   {
     id: 'quartz',
     name: 'Quartz',
     formula: 'SiO₂',
     system: 'Trigonal',
     description: 'Helical SiO₄ network with screw-axis symmetry.',
-    script: createCifScript(QUARTZ_CIF, 'set perspectiveModel 1; select Si; spacefill 120%; color yellow; select O; color [150,200,255];'),
+    script: `
+      load =cod/1011172 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 25%;
+      wireframe 0.15;
+      select silicon;
+      color yellow;
+      select oxygen;
+      color [150,200,255];
+      spin y 3;
+    `,
   },
   {
     id: 'calcite',
@@ -300,7 +272,16 @@ END "CIF" {1 1 1};
     formula: 'CaCO₃',
     system: 'Trigonal',
     description: 'Stacked carbonate layers with Ca-centered octahedra.',
-    script: createCifScript(CALCITE_CIF, 'polyhedra calcium (6) oxygen translucent 0.5; color polyhedra [255,180,120];'),
+    script: `
+      load =cod/1010962 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 25%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
   },
   {
     id: 'fluorite',
@@ -308,7 +289,16 @@ END "CIF" {1 1 1};
     formula: 'CaF₂',
     system: 'Isometric',
     description: 'Fluoride ions in a cubic network around Ca²⁺.',
-    script: createCifScript(FLUORITE_CIF, 'polyhedra calcium (8) fluorine translucent 0.45; color polyhedra [120,200,255];'),
+    script: `
+      load =cod/1000043 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 25%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
   },
   {
     id: 'perovskite',
@@ -316,17 +306,19 @@ END "CIF" {1 1 1};
     formula: 'CaTiO₃',
     system: 'Cubic',
     description: 'Corner-sharing TiO₆ octahedra with Ca in the cage.',
-    script: createCifScript(PEROVSKITE_CIF, 'polyhedra titanium (6) oxygen translucent 0.55; color polyhedra [180,255,180];'),
-  },
-  {
-    id: 'nacl',
-    name: 'NaCl (Rock Salt)',
-    formula: 'NaCl',
-    system: 'Cubic',
-    description: 'FCC lattice with Na and Cl in alternating positions.',
-    script: createCifScript(NACL_CIF_INLINE, 'select sodium; color [150,100,255]; select chlorine; color [100,255,100];'),
+    script: `
+      load =cod/1521529 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 25%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
   },
 ];
+
 
 
 const visualizationDemos: VisualizationDemo[] = [
