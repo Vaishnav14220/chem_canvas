@@ -69,9 +69,6 @@ const buildViewerScript = (sdfs: string[], fallbackSmiles: string[]): string | n
   }
 
   commands.push('select *;');
-  commands.push('label %a;');
-  commands.push('set fontsize 14;');
-  commands.push('color labels white;');
   commands.push('wireframe 0.18;');
   commands.push('spacefill 18%;');
   commands.push('color cpk;');
@@ -92,9 +89,6 @@ load append data "model"
 ${endSdfs.map(sanitizeSdf).join('\n')}
 END "model";
 select *;
-label %a;
-set fontsize 14;
-color labels white;
 frame 1;
 morph {1} {2} 30;
 animation mode palindrome;
@@ -124,9 +118,6 @@ const buildSlideshowScript = (stageSmilesList: string[][]): string | null => {
   commands.push('wireframe 0.18;');
   commands.push('spacefill 18%;');
   commands.push('color cpk;');
-  commands.push('label %a;');
-  commands.push('set fontsize 14;');
-  commands.push('color labels white;');
   commands.push('frame 1;');
   commands.push('animation mode palindrome;');
   commands.push('animation fps 2;');
