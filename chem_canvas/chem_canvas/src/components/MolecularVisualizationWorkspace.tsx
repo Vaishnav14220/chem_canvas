@@ -786,7 +786,7 @@ Output: raw JSmol commands only.`;
         {/* Unit Cell Controls */}
         <div className="grid grid-cols-3 gap-1">
           <button
-            onClick={() => setScript(prev => `${prev}\nunitcell on; set unitCellColor [200,200,200];`)}
+            onClick={() => setScript(prev => `${prev}\nset showUnitcell TRUE; unitcell on;`)}
             className="rounded-lg bg-amber-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-amber-600"
           >
             Show Unit Cell
@@ -798,21 +798,21 @@ Output: raw JSmol commands only.`;
             Hide Unit Cell
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}\naxes on; set axesMode 2;`)}
+            onClick={() => setScript(prev => `${prev}\nset axesScale 2; axes on;`)}
             className="rounded-lg bg-blue-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-blue-600"
           >
             Show Axes
           </button>
         </div>
 
-        {/* Supercell Expansion */}
+        {/* Supercell Expansion - use JSmol load with unitcell */}
         <div className="space-y-1">
           <p className="text-[10px] text-slate-400">Supercell Expansion</p>
           <div className="grid grid-cols-4 gap-1">
             {[1, 2, 3, 4].map((n) => (
               <button
                 key={n}
-                onClick={() => setScript(prev => `${prev}\nload "" {${n} ${n} ${n}}; unitcell on;`)}
+                onClick={() => setScript(prev => `${prev}\nset symmetry TRUE; unitcell {${n} ${n} ${n}};`)}
                 className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
               >
                 {n}×{n}×{n}
@@ -821,38 +821,47 @@ Output: raw JSmol commands only.`;
           </div>
         </div>
 
-        {/* Crystal Planes (hkl) */}
+        {/* Crystal Planes (hkl) - use draw command */}
         <div className="space-y-1">
           <p className="text-[10px] text-slate-400">Crystal Planes (hkl)</p>
           <div className="grid grid-cols-4 gap-1">
             {['100', '110', '111', '200'].map((hkl) => (
               <button
                 key={hkl}
-                onClick={() => setScript(prev => `${prev}\nisosurface plane hkl {${hkl.split('').join(' ')}} translucent 0.5 yellow;`)}
+                onClick={() => {
+                  const [h, k, l] = hkl.split('');
+                  setScript(prev => `${prev}\ndraw plane${hkl} PLANE (hkl) {${h} ${k} ${l}} COLOR translucent 0.5 yellow;`);
+                }}
                 className="rounded-lg bg-violet-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-violet-600"
               >
                 ({hkl})
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setScript(prev => `${prev}\ndraw * off;`)}
+            className="w-full rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-slate-700 mt-1"
+          >
+            Clear Planes
+          </button>
         </div>
 
         {/* Coordination & Polyhedra */}
         <div className="grid grid-cols-2 gap-1">
           <button
-            onClick={() => setScript(prev => `${prev}\npolyhedra on; color polyhedra translucent 0.4;`)}
+            onClick={() => setScript(prev => `${prev}\nset showConnected true; select within(3.0, _O); connect 0.1 3.0; color cpk;`)}
             className="rounded-lg bg-rose-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-rose-600"
           >
-            Show Polyhedra
+            Show Bonds
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}\npolyhedra off;`)}
+            onClick={() => setScript(prev => `${prev}\nconnect delete;`)}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
-            Hide Polyhedra
+            Hide Bonds
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}\nselect all; label "%a %SYMOP"; set fontsize 10;`)}
+            onClick={() => setScript(prev => `${prev}\nselect all; label %e; set fontsize 12; color labels white;`)}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Show Labels
@@ -870,19 +879,19 @@ Output: raw JSmol commands only.`;
           <p className="text-[10px] text-slate-400">Quick Views</p>
           <div className="grid grid-cols-3 gap-1">
             <button
-              onClick={() => setScript(prev => `${prev}\nspacefill 100%; wireframe off; color cpk;`)}
+              onClick={() => setScript(prev => `${prev}\nselect all; spacefill 100%; wireframe off; color cpk;`)}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
               Spacefill
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}\nspacefill 20%; wireframe 0.15; color cpk;`)}
+              onClick={() => setScript(prev => `${prev}\nselect all; spacefill 23%; wireframe 0.15; color cpk;`)}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
               Ball & Stick
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}\ndots on; dots 0.15;`)}
+              onClick={() => setScript(prev => `${prev}\nselect all; spacefill 80%; wireframe off; color cpk;`)}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
               Van der Waals
@@ -890,6 +899,7 @@ Output: raw JSmol commands only.`;
           </div>
         </div>
       </div>
+
     </section>
   );
 
