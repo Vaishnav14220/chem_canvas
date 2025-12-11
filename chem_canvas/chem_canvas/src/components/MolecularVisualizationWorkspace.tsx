@@ -781,124 +781,135 @@ Output: raw JSmol commands only.`;
 
       {/* VChem3D-style Solid State Controls */}
       <div className="space-y-3 pt-3 border-t border-slate-800">
-        <p className="text-[11px] uppercase tracking-wider text-slate-500">Crystal Visualization (VChem3D Style)</p>
+        <p className="text-[11px] uppercase tracking-wider text-slate-500">Crystal Visualization</p>
 
-        {/* Unit Cell Controls */}
+        {/* Unit Cell & Axes Controls */}
         <div className="grid grid-cols-3 gap-1">
           <button
-            onClick={() => setScript(prev => `${prev}\nset showUnitcell TRUE; unitcell on;`)}
+            onClick={() => setScript(prev => `${prev}; unitcell 1;`)}
             className="rounded-lg bg-amber-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-amber-600"
           >
-            Show Unit Cell
+            Unit Cell On
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}\nunitcell off;`)}
+            onClick={() => setScript(prev => `${prev}; unitcell off;`)}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
-            Hide Unit Cell
+            Unit Cell Off
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}\nset axesScale 2; axes on;`)}
+            onClick={() => setScript(prev => `${prev}; axes 2;`)}
             className="rounded-lg bg-blue-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-blue-600"
           >
             Show Axes
           </button>
         </div>
 
-        {/* Supercell Expansion - use JSmol load with unitcell */}
-        <div className="space-y-1">
-          <p className="text-[10px] text-slate-400">Supercell Expansion</p>
-          <div className="grid grid-cols-4 gap-1">
-            {[1, 2, 3, 4].map((n) => (
-              <button
-                key={n}
-                onClick={() => setScript(prev => `${prev}\nset symmetry TRUE; unitcell {${n} ${n} ${n}};`)}
-                className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
-              >
-                {n}×{n}×{n}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Crystal Planes (hkl) - use draw command */}
-        <div className="space-y-1">
-          <p className="text-[10px] text-slate-400">Crystal Planes (hkl)</p>
-          <div className="grid grid-cols-4 gap-1">
-            {['100', '110', '111', '200'].map((hkl) => (
-              <button
-                key={hkl}
-                onClick={() => {
-                  const [h, k, l] = hkl.split('');
-                  setScript(prev => `${prev}\ndraw plane${hkl} PLANE (hkl) {${h} ${k} ${l}} COLOR translucent 0.5 yellow;`);
-                }}
-                className="rounded-lg bg-violet-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-violet-600"
-              >
-                ({hkl})
-              </button>
-            ))}
-          </div>
+        {/* Boundbox and Extras */}
+        <div className="grid grid-cols-3 gap-1">
           <button
-            onClick={() => setScript(prev => `${prev}\ndraw * off;`)}
-            className="w-full rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-slate-700 mt-1"
-          >
-            Clear Planes
-          </button>
-        </div>
-
-        {/* Coordination & Polyhedra */}
-        <div className="grid grid-cols-2 gap-1">
-          <button
-            onClick={() => setScript(prev => `${prev}\nset showConnected true; select within(3.0, _O); connect 0.1 3.0; color cpk;`)}
-            className="rounded-lg bg-rose-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-rose-600"
-          >
-            Show Bonds
-          </button>
-          <button
-            onClick={() => setScript(prev => `${prev}\nconnect delete;`)}
+            onClick={() => setScript(prev => `${prev}; boundbox on;`)}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
-            Hide Bonds
+            Boundbox On
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}\nselect all; label %e; set fontsize 12; color labels white;`)}
+            onClick={() => setScript(prev => `${prev}; boundbox off;`)}
+            className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+          >
+            Boundbox Off
+          </button>
+          <button
+            onClick={() => setScript(prev => `${prev}; axes off;`)}
+            className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+          >
+            Axes Off
+          </button>
+        </div>
+
+        {/* Display Mode */}
+        <div className="space-y-1">
+          <p className="text-[10px] text-slate-400">Display Mode</p>
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              onClick={() => setScript(prev => `${prev}; spacefill 100%; wireframe off;`)}
+              className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
+            >
+              Spacefill
+            </button>
+            <button
+              onClick={() => setScript(prev => `${prev}; spacefill 25%; wireframe 0.15;`)}
+              className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
+            >
+              Ball & Stick
+            </button>
+            <button
+              onClick={() => setScript(prev => `${prev}; spacefill off; wireframe 0.2;`)}
+              className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
+            >
+              Wireframe
+            </button>
+          </div>
+        </div>
+
+        {/* Atom Labels */}
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            onClick={() => setScript(prev => `${prev}; select all; label %e; color labels white; set labeloffset 0 5;`)}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Show Labels
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}\nlabel off;`)}
+            onClick={() => setScript(prev => `${prev}; labels off;`)}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Hide Labels
           </button>
         </div>
 
-        {/* Quick Views */}
+        {/* Color Options */}
         <div className="space-y-1">
-          <p className="text-[10px] text-slate-400">Quick Views</p>
+          <p className="text-[10px] text-slate-400">Color Scheme</p>
           <div className="grid grid-cols-3 gap-1">
             <button
-              onClick={() => setScript(prev => `${prev}\nselect all; spacefill 100%; wireframe off; color cpk;`)}
+              onClick={() => setScript(prev => `${prev}; color atoms cpk;`)}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
-              Spacefill
+              CPK
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}\nselect all; spacefill 23%; wireframe 0.15; color cpk;`)}
+              onClick={() => setScript(prev => `${prev}; color atoms property atomno;`)}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
-              Ball & Stick
+              By Atom #
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}\nselect all; spacefill 80%; wireframe off; color cpk;`)}
+              onClick={() => setScript(prev => `${prev}; color atoms symmetry;`)}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
-              Van der Waals
+              Symmetry
             </button>
           </div>
         </div>
+
+        {/* Animation Controls */}
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            onClick={() => setScript(prev => `${prev}; spin on;`)}
+            className="rounded-lg bg-violet-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-violet-600"
+          >
+            Spin On
+          </button>
+          <button
+            onClick={() => setScript(prev => `${prev}; spin off;`)}
+            className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+          >
+            Spin Off
+          </button>
+        </div>
       </div>
+
 
     </section>
   );
