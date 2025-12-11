@@ -553,20 +553,72 @@ const MolecularVisualizationWorkspace: React.FC = () => {
 
       // Enhanced AI prompt for proteins and crystals
       if (isProteinQuery || selectedCategory === 'protein') {
-        const pdbPrompt = `You are a biochemistry expert. The user wants to view: "${rawQuery}"
+        // First try direct lookup for common proteins (no API needed)
+        const commonProteins: Record<string, string> = {
+          'hemoglobin': '1A3N',
+          'myoglobin': '1MBO',
+          'insulin': '1MSO',
+          'lysozyme': '1HEL',
+          'crambin': '1CRN',
+          'albumin': '1E78',
+          'collagen': '1CAG',
+          'keratin': '3TNU',
+          'actin': '1ATN',
+          'tubulin': '1TUB',
+          'dna': '1BNA',
+          'rna': '1EHZ',
+          'antibody': '1IGT',
+          'green fluorescent protein': '1GFL',
+          'gfp': '1GFL',
+          'ubiquitin': '1UBQ',
+          'cytochrome': '1HRC',
+          'rhodopsin': '1F88',
+          'kinase': '1ATP',
+          'atp synthase': '1E79',
+          'polymerase': '1BPY',
+          'ribosome': '4V6X',
+          'histone': '1AOI',
+        };
+
+        // Check for direct match
+        const directMatch = Object.entries(commonProteins).find(([name]) =>
+          query.includes(name.toLowerCase())
+        );
+
+        if (directMatch) {
+          const [proteinName, pdbId] = directMatch;
+          setScript(`load =${pdbId}; cartoon only; color structure; set cartoonFancy true; spin y 3;`);
+          setLoadedPdbId(pdbId);
+          setSearchFeedback(`Loaded ${proteinName} (PDB: ${pdbId})`);
+          return;
+        }
+
+        // If no direct match, try Gemini-based resolution
+        try {
+          if (!isGeminiInitialized()) {
+            initializeGemini();
+          }
+
+          const pdbPrompt = `You are a biochemistry expert. The user wants to view: "${rawQuery}"
 If this is a protein/enzyme/biomolecule, return ONLY the 4-letter PDB ID (e.g., "1CRN" for crambin, "1A3N" for hemoglobin).
 If you're unsure, return the most famous/common PDB structure for that molecule.
 Return ONLY the PDB ID, nothing else. No explanation.`;
 
-        const pdbId = await generateTextContent(pdbPrompt);
-        const cleanPdbId = pdbId?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const pdbId = await generateTextContent(pdbPrompt);
+          const cleanPdbId = pdbId?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-        if (cleanPdbId && cleanPdbId.length === 4) {
-          setScript(`load =${cleanPdbId}; cartoon only; color structure; set cartoonFancy true; spin y 3;`);
-          setSearchFeedback(`Loaded ${rawQuery} (PDB: ${cleanPdbId})`);
-          return;
+          if (cleanPdbId && cleanPdbId.length === 4) {
+            setScript(`load =${cleanPdbId}; cartoon only; color structure; set cartoonFancy true; spin y 3;`);
+            setLoadedPdbId(cleanPdbId);
+            setSearchFeedback(`Loaded ${rawQuery} (PDB: ${cleanPdbId})`);
+            return;
+          }
+        } catch (aiError) {
+          console.warn('Gemini protein resolution failed:', aiError);
+          // Continue to molecule fallback
         }
       }
+
 
       // Fallback to molecule resolution
       const resolved = await resolveMoleculeDescription(rawQuery);
