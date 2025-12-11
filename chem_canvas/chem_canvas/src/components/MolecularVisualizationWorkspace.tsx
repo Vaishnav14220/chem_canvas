@@ -689,42 +689,66 @@ Output: raw JSmol commands only.`;
     }
   };
 
-  const renderPresetCard = () => (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="text-sm font-semibold text-white">Preset scenes</h4>
-          <p className="text-xs text-slate-400">Curated JSmol scripts.</p>
+  const renderPresetCard = () => {
+    // Filter demos based on selected category
+    const categoryTagMap: Record<string, string[]> = {
+      molecule: ['organic', 'fundamentals', 'sterics', 'vdW'],
+      protein: ['proteins', 'cartoon', 'surface', 'solvent', 'mesh'],
+      crystal: ['crystal', 'symmetry'],
+      reaction: [],
+    };
+
+    const relevantTags = categoryTagMap[selectedCategory] || [];
+    const filteredDemos = relevantTags.length > 0
+      ? visualizationDemos.filter(demo => demo.tags.some(tag => relevantTags.includes(tag)))
+      : visualizationDemos;
+
+    if (filteredDemos.length === 0) {
+      return null; // Don't show preset card if no relevant demos
+    }
+
+    return (
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-sm font-semibold text-white">
+              {selectedCategory === 'protein' ? 'Protein Presets' :
+                selectedCategory === 'crystal' ? 'Crystal Presets' :
+                  selectedCategory === 'molecule' ? 'Molecule Presets' : 'Preset scenes'}
+            </h4>
+            <p className="text-xs text-slate-400">Curated JSmol scripts.</p>
+          </div>
+          <Sparkles className="w-5 h-5 text-purple-300" />
         </div>
-        <Sparkles className="w-5 h-5 text-purple-300" />
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        {visualizationDemos.map((demo) => (
-          <button
-            key={demo.id}
-            onClick={() => handleRunDemo(demo)}
-            className={`group rounded-2xl border px-4 py-4 text-left transition ${activeDemo === demo.id
-              ? 'border-indigo-400/80 bg-indigo-900/40 text-white'
-              : 'border-slate-800 bg-slate-900/50 hover:border-indigo-500/60 hover:bg-slate-900/80 text-slate-200'
-              }`}
-          >
-            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide">
-              <span>{demo.title}</span>
-              <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-indigo-300" />
-            </div>
-            <p className="mt-2 text-sm text-slate-300">{demo.description}</p>
-            <div className="mt-3 flex flex-wrap gap-1">
-              {demo.tags.map((tag) => (
-                <span key={tag} className="text-[10px] rounded-full border border-slate-700/70 bg-slate-950/70 px-2 py-0.5 uppercase tracking-wide text-slate-400">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
+        <div className="grid gap-3 md:grid-cols-2">
+          {filteredDemos.map((demo) => (
+            <button
+              key={demo.id}
+              onClick={() => handleRunDemo(demo)}
+              className={`group rounded-2xl border px-4 py-4 text-left transition ${activeDemo === demo.id
+                ? 'border-indigo-400/80 bg-indigo-900/40 text-white'
+                : 'border-slate-800 bg-slate-900/50 hover:border-indigo-500/60 hover:bg-slate-900/80 text-slate-200'
+                }`}
+            >
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide">
+                <span>{demo.title}</span>
+                <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-indigo-300" />
+              </div>
+              <p className="mt-2 text-sm text-slate-300">{demo.description}</p>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {demo.tags.map((tag) => (
+                  <span key={tag} className="text-[10px] rounded-full border border-slate-700/70 bg-slate-950/70 px-2 py-0.5 uppercase tracking-wide text-slate-400">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
 
   const renderCrystalCard = () => (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
