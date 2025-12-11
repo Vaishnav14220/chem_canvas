@@ -552,32 +552,44 @@ export const generateReactionAnimationFrames = async (
     return null;
   }
 
-  const prompt = `You are an expert computational chemist. Generate a multi-frame XYZ animation for the following reaction mechanism.
+  const prompt = `Generate multi-frame XYZ coordinates for this reaction animation.
 
 Reaction: ${reactionDescription}
 
-Create 8 frames showing the complete reaction coordinate:
-- Frames 1-2: Reactants separated, approaching each other
-- Frames 3-4: Reactants close, beginning bond formation/breaking
-- Frame 5: Transition state (key intermediates, new bonds partially formed)
-- Frames 6-7: Products forming, old bonds broken
-- Frame 8: Products separated, reaction complete
+Create exactly 6 frames showing the mechanism:
+Frame 1: Reactants far apart
+Frame 2: Reactants approaching
+Frame 3: Transition state forming
+Frame 4: Transition state
+Frame 5: Products forming  
+Frame 6: Products separated
 
-Output format: Multi-frame XYZ format where each frame has:
-1. First line: number of atoms
-2. Second line: comment (Frame N - description)
-3. Following lines: atom_symbol x y z (coordinates in Angstroms)
+CRITICAL FORMAT - Output EXACTLY like this example:
 
-Important rules:
-- Use reasonable bond lengths (C-C ~1.54Å, C=C ~1.34Å, C-O ~1.43Å, C-H ~1.09Å)
-- Show atoms moving smoothly between frames (small coordinate changes ~0.2-0.5Å per frame)
-- Include curly arrows conceptually by showing electron-rich atoms approaching electrophilic centers
-- For SN2: nucleophile approaches from one side, leaving group departs from opposite
-- For addition reactions: show reagent approaching double bond
-- Keep a consistent origin and orientation across all frames
+5
+Frame 1 - Reactants separated
+C     0.000   0.000   0.000
+H     1.000   0.000   0.000
+H    -1.000   0.000   0.000
+O     4.000   0.000   0.000
+H     4.500   0.800   0.000
+5
+Frame 2 - Approaching
+C     0.000   0.000   0.000
+H     1.000   0.000   0.000
+H    -1.000   0.000   0.000
+O     3.200   0.000   0.000
+H     3.700   0.800   0.000
 
-Output ONLY the XYZ data, no explanations:
+RULES:
+- First line of each frame: atom count (integer only)
+- Second line: Frame N - description
+- Atom lines: symbol, then x y z in Angstroms with spaces
+- Atoms move 0.3-0.8 Angstroms between frames
+- No quotes, no code fences, just raw XYZ data
+- Use element symbols: C, H, O, N, Br, Cl, etc.
 
+Output ONLY the XYZ data:
 `;
 
   try {
@@ -609,26 +621,29 @@ Output ONLY the XYZ data, no explanations:
 
 /**
  * Build JSmol script for multi-frame animation
+ * Uses the proper data block format that JSmol can parse
  */
 export const buildAnimationScript = (xyzData: string): string => {
-  // Escape quotes and newlines for inline loading
-  const escaped = xyzData.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  // Clean up the XYZ data - remove any markdown code fences
+  let cleanedXyz = xyzData
+    .replace(/```(?:xyz|text)?\n?/g, '')
+    .replace(/```/g, '')
+    .trim();
 
-  return `load inline "${escaped}";
+  // Normalize line endings
+  cleanedXyz = cleanedXyz.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Use JSmol's proper data block format
+  return `load data "model"
+${cleanedXyz}
+end "model";
 select *;
 wireframe 0.15;
 spacefill 23%;
 color cpk;
-label %a;
 set fontsize 12;
-color labels white;
-set labeloffset 4 4;
 frame 1;
 animation mode palindrome;
-animation fps 4;
-set echo bottom left;
-font echo 14 sansserif bold;
-color echo white;
-echo Frame 1;
+animation fps 3;
 animation on;`;
 };
