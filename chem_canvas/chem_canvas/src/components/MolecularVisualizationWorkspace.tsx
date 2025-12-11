@@ -754,8 +754,121 @@ Output: raw JSmol commands only.`;
           </button>
         ))}
       </div>
+
+      {/* VChem3D-style Solid State Controls */}
+      <div className="space-y-3 pt-3 border-t border-slate-800">
+        <p className="text-[11px] uppercase tracking-wider text-slate-500">Crystal Visualization (VChem3D Style)</p>
+
+        {/* Unit Cell Controls */}
+        <div className="grid grid-cols-3 gap-1">
+          <button
+            onClick={() => setScript(prev => `${prev}\nunitcell on; set unitCellColor [200,200,200];`)}
+            className="rounded-lg bg-amber-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-amber-600"
+          >
+            Show Unit Cell
+          </button>
+          <button
+            onClick={() => setScript(prev => `${prev}\nunitcell off;`)}
+            className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+          >
+            Hide Unit Cell
+          </button>
+          <button
+            onClick={() => setScript(prev => `${prev}\naxes on; set axesMode 2;`)}
+            className="rounded-lg bg-blue-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-blue-600"
+          >
+            Show Axes
+          </button>
+        </div>
+
+        {/* Supercell Expansion */}
+        <div className="space-y-1">
+          <p className="text-[10px] text-slate-400">Supercell Expansion</p>
+          <div className="grid grid-cols-4 gap-1">
+            {[1, 2, 3, 4].map((n) => (
+              <button
+                key={n}
+                onClick={() => setScript(prev => `${prev}\nload "" {${n} ${n} ${n}}; unitcell on;`)}
+                className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
+              >
+                {n}×{n}×{n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Crystal Planes (hkl) */}
+        <div className="space-y-1">
+          <p className="text-[10px] text-slate-400">Crystal Planes (hkl)</p>
+          <div className="grid grid-cols-4 gap-1">
+            {['100', '110', '111', '200'].map((hkl) => (
+              <button
+                key={hkl}
+                onClick={() => setScript(prev => `${prev}\nisosurface plane hkl {${hkl.split('').join(' ')}} translucent 0.5 yellow;`)}
+                className="rounded-lg bg-violet-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-violet-600"
+              >
+                ({hkl})
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Coordination & Polyhedra */}
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            onClick={() => setScript(prev => `${prev}\npolyhedra on; color polyhedra translucent 0.4;`)}
+            className="rounded-lg bg-rose-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-rose-600"
+          >
+            Show Polyhedra
+          </button>
+          <button
+            onClick={() => setScript(prev => `${prev}\npolyhedra off;`)}
+            className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+          >
+            Hide Polyhedra
+          </button>
+          <button
+            onClick={() => setScript(prev => `${prev}\nselect all; label "%a %SYMOP"; set fontsize 10;`)}
+            className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+          >
+            Show Labels
+          </button>
+          <button
+            onClick={() => setScript(prev => `${prev}\nlabel off;`)}
+            className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+          >
+            Hide Labels
+          </button>
+        </div>
+
+        {/* Quick Views */}
+        <div className="space-y-1">
+          <p className="text-[10px] text-slate-400">Quick Views</p>
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              onClick={() => setScript(prev => `${prev}\nspacefill 100%; wireframe off; color cpk;`)}
+              className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+            >
+              Spacefill
+            </button>
+            <button
+              onClick={() => setScript(prev => `${prev}\nspacefill 20%; wireframe 0.15; color cpk;`)}
+              className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+            >
+              Ball & Stick
+            </button>
+            <button
+              onClick={() => setScript(prev => `${prev}\ndots on; dots 0.15;`)}
+              className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+            >
+              Van der Waals
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
   );
+
 
   const renderReactionAnimatorCard = () => (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
