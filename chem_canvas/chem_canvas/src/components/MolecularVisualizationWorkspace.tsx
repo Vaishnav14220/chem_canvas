@@ -718,6 +718,96 @@ Return ONLY the PDB ID, nothing else. No explanation.`;
         }
       }
 
+      // Handle crystal/mineral queries with Gemini COD lookup
+      const crystalKeywords = ['crystal', 'mineral', 'bcc', 'fcc', 'hcp', 'unit cell', 'lattice', 'quartz', 'calcite', 'diamond', 'graphite', 'halite', 'pyrite', 'fluorite', 'magnetite', 'galena', 'sphalerite', 'corundum', 'rutile', 'perovskite', 'spinel', 'garnet', 'olivine', 'feldspar', 'mica', 'zeolite'];
+      const isCrystalQuery = crystalKeywords.some(kw => query.includes(kw)) || selectedCategory === 'crystal';
+
+      if (isCrystalQuery) {
+        // Common minerals with their COD IDs
+        const commonMinerals: Record<string, { cod: string; name: string; structure: string }> = {
+          'nacl': { cod: '1000041', name: 'Halite (NaCl)', structure: 'FCC' },
+          'halite': { cod: '1000041', name: 'Halite (NaCl)', structure: 'FCC' },
+          'rock salt': { cod: '1000041', name: 'Halite (NaCl)', structure: 'FCC' },
+          'diamond': { cod: '9008565', name: 'Diamond', structure: 'Diamond cubic' },
+          'graphite': { cod: '9000046', name: 'Graphite', structure: 'Hexagonal' },
+          'quartz': { cod: '9012602', name: 'Quartz (SiO2)', structure: 'Trigonal' },
+          'calcite': { cod: '9000095', name: 'Calcite (CaCO3)', structure: 'Trigonal' },
+          'fluorite': { cod: '1000043', name: 'Fluorite (CaF2)', structure: 'FCC' },
+          'pyrite': { cod: '1011023', name: 'Pyrite (FeS2)', structure: 'Cubic' },
+          'magnetite': { cod: '9000926', name: 'Magnetite (Fe3O4)', structure: 'Spinel' },
+          'corundum': { cod: '9000497', name: 'Corundum (Al2O3)', structure: 'Trigonal' },
+          'rutile': { cod: '9004141', name: 'Rutile (TiO2)', structure: 'Tetragonal' },
+          'perovskite': { cod: '1521529', name: 'Perovskite (CaTiO3)', structure: 'Cubic' },
+          'iron': { cod: '9008536', name: 'Iron (BCC)', structure: 'BCC' },
+          'bcc iron': { cod: '9008536', name: 'Iron (BCC)', structure: 'BCC' },
+          'copper': { cod: '9008468', name: 'Copper (FCC)', structure: 'FCC' },
+          'fcc copper': { cod: '9008468', name: 'Copper (FCC)', structure: 'FCC' },
+          'gold': { cod: '9008463', name: 'Gold (FCC)', structure: 'FCC' },
+          'silver': { cod: '9008459', name: 'Silver (FCC)', structure: 'FCC' },
+          'aluminum': { cod: '9008460', name: 'Aluminum (FCC)', structure: 'FCC' },
+          'magnesium': { cod: '9008506', name: 'Magnesium (HCP)', structure: 'HCP' },
+          'zinc': { cod: '9008522', name: 'Zinc (HCP)', structure: 'HCP' },
+          'titanium': { cod: '9008517', name: 'Titanium (HCP)', structure: 'HCP' },
+          'ice': { cod: '1011023', name: 'Ice (H2O)', structure: 'Hexagonal' },
+        };
+
+        // Check for direct match
+        const directMatch = Object.entries(commonMinerals).find(([name]) =>
+          query.includes(name.toLowerCase())
+        );
+
+        if (directMatch) {
+          const [, mineral] = directMatch;
+          setSearchFeedback(`Loading ${mineral.name} (${mineral.structure}) from COD...`);
+          setScript(`
+            load =cod/${mineral.cod} {1 1 1};
+            unitcell on;
+            axes 3;
+            boundbox on;
+            spacefill 25%;
+            wireframe 0.15;
+            color atoms cpk;
+            spin y 3;
+          `);
+          setSearchFeedback(`Loaded ${mineral.name} - ${mineral.structure} structure (COD: ${mineral.cod})`);
+          return;
+        }
+
+        // If no direct match, use Gemini to find COD ID
+        try {
+          if (!isGeminiInitialized()) {
+            initializeGemini();
+          }
+
+          const codPrompt = `You are a crystallography expert. The user wants to view the crystal structure of: "${rawQuery}"
+Find the Crystallography Open Database (COD) ID for this mineral/crystal.
+Return ONLY the numeric COD ID (e.g., "9008536" for iron, "1000041" for NaCl).
+If you're unsure, return the COD ID for the most common form of this material.
+Return ONLY the COD number, nothing else. No explanation, no text, just the numeric ID.`;
+
+          const codId = await generateTextContent(codPrompt);
+          const cleanCodId = codId?.trim().replace(/[^0-9]/g, '');
+
+          if (cleanCodId && cleanCodId.length >= 6 && cleanCodId.length <= 8) {
+            setSearchFeedback(`Loading ${rawQuery} structure from COD...`);
+            setScript(`
+              load =cod/${cleanCodId} {1 1 1};
+              unitcell on;
+              axes 3;
+              boundbox on;
+              spacefill 25%;
+              wireframe 0.15;
+              color atoms cpk;
+              spin y 3;
+            `);
+            setSearchFeedback(`Loaded ${rawQuery} crystal structure (COD: ${cleanCodId})`);
+            return;
+          }
+        } catch (aiError) {
+          console.warn('Gemini crystal/COD resolution failed:', aiError);
+          // Fall through to molecule fallback
+        }
+      }
 
       // Fallback to molecule resolution
       const resolved = await resolveMoleculeDescription(rawQuery);
