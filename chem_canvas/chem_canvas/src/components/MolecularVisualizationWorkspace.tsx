@@ -1024,10 +1024,87 @@ Output: raw JSmol commands only.`;
             Spin Off
           </button>
         </div>
+
+        {/* Bonds Controls */}
+        <div className="space-y-1">
+          <p className="text-[10px] text-slate-400">Bonds</p>
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              onClick={() => setScript(prev => `${prev}; connect;`)}
+              className="rounded-lg bg-emerald-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-emerald-600"
+            >
+              Display
+            </button>
+            <button
+              onClick={() => setScript(prev => `${prev}; connect delete;`)}
+              className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+            >
+              Hide
+            </button>
+          </div>
+        </div>
+
+        {/* View Options (VChem3D style) */}
+        <div className="space-y-1">
+          <p className="text-[10px] text-slate-400">View Options</p>
+          <div className="flex flex-wrap gap-2">
+            <label className="flex items-center gap-1.5 text-[10px] text-slate-300">
+              <input
+                type="checkbox"
+                className="rounded border-slate-600"
+                onChange={(e) => setScript(prev => `${prev}; set antialiasDisplay ${e.target.checked};`)}
+              />
+              Shade
+            </label>
+            <label className="flex items-center gap-1.5 text-[10px] text-slate-300">
+              <input
+                type="checkbox"
+                className="rounded border-slate-600"
+                onChange={(e) => setScript(prev => `${prev}; set stereo ${e.target.checked ? 'on' : 'off'};`)}
+              />
+              Stereo
+            </label>
+            <label className="flex items-center gap-1.5 text-[10px] text-slate-300">
+              <input
+                type="checkbox"
+                defaultChecked
+                className="rounded border-slate-600"
+                onChange={(e) => setScript(prev => `${prev}; set perspectiveDepth ${e.target.checked};`)}
+              />
+              Perspective depth
+            </label>
+          </div>
+        </div>
+
+        {/* Background Color */}
+        <div className="space-y-1">
+          <p className="text-[10px] text-slate-400">Background</p>
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              onClick={() => setScript(prev => `${prev}; background white;`)}
+              className="rounded-lg bg-white px-2 py-1.5 text-[10px] font-medium text-slate-900 hover:bg-gray-100 border border-slate-300"
+            >
+              White
+            </button>
+            <button
+              onClick={() => setScript(prev => `${prev}; background [200,200,200];`)}
+              className="rounded-lg bg-gray-300 px-2 py-1.5 text-[10px] font-medium text-slate-900 hover:bg-gray-400"
+            >
+              Gray
+            </button>
+            <button
+              onClick={() => setScript(prev => `${prev}; background [15,23,42];`)}
+              className="rounded-lg bg-slate-900 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-slate-800 border border-slate-600"
+            >
+              Dark
+            </button>
+          </div>
+        </div>
       </div>
 
 
     </section>
+
   );
 
 
