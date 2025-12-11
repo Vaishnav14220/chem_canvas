@@ -174,29 +174,18 @@ END "CIF" {1 1 1};
 
 
 const mineralStructures: MineralStructure[] = [
-  // Simple molecules loaded from NIH resolver (most reliable)
+  // Crystal structures from COD (Crystallography Open Database)
   {
     id: 'nacl',
     name: 'NaCl (Rock Salt)',
     formula: 'NaCl',
-    system: 'Cubic',
-    description: 'Classic ionic crystal - Na+ and Cl- ions.',
+    system: 'FCC',
+    description: 'Classic ionic crystal - Na+ and Cl- in FCC lattice.',
     script: `
-      load :NaCl;
-      spacefill 30%;
-      wireframe off;
-      color atoms cpk;
-      spin y 3;
-    `,
-  },
-  {
-    id: 'diamond',
-    name: 'Diamond',
-    formula: 'C',
-    system: 'Cubic',
-    description: 'Diamond cubic carbon structure with sp3 bonding.',
-    script: `
-      load :diamond;
+      load =cod/1000041 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
@@ -204,13 +193,50 @@ const mineralStructures: MineralStructure[] = [
     `,
   },
   {
-    id: 'graphite',
-    name: 'Graphite',
-    formula: 'C',
-    system: 'Hexagonal',
-    description: 'Layered carbon structure with sp2 bonding.',
+    id: 'iron-bcc',
+    name: 'Iron (BCC)',
+    formula: 'Fe',
+    system: 'BCC',
+    description: 'Body-centered cubic iron structure.',
     script: `
-      load :graphite;
+      load =cod/9008536 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 30%;
+      wireframe 0.15;
+      color atoms cpk;
+      spin y 3;
+    `,
+  },
+  {
+    id: 'copper-fcc',
+    name: 'Copper (FCC)',
+    formula: 'Cu',
+    system: 'FCC',
+    description: 'Face-centered cubic copper structure.',
+    script: `
+      load =cod/9008468 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 30%;
+      wireframe 0.15;
+      color atoms [200,120,50];
+      spin y 3;
+    `,
+  },
+  {
+    id: 'diamond',
+    name: 'Diamond',
+    formula: 'C',
+    system: 'Diamond cubic',
+    description: 'Diamond cubic carbon structure with sp3 bonding.',
+    script: `
+      load =cod/9008565 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
@@ -224,7 +250,10 @@ const mineralStructures: MineralStructure[] = [
     system: 'Trigonal',
     description: 'Silicon dioxide crystal structure.',
     script: `
-      load :SiO2;
+      load =cod/9012602 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
       spacefill 25%;
       wireframe 0.15;
       select silicon;
@@ -235,13 +264,16 @@ const mineralStructures: MineralStructure[] = [
     `,
   },
   {
-    id: 'water-ice',
-    name: 'Water / Ice',
-    formula: 'H₂O',
-    system: 'Hexagonal',
-    description: 'Water molecule / Ice crystal.',
+    id: 'calcite',
+    name: 'Calcite',
+    formula: 'CaCO₃',
+    system: 'Trigonal',
+    description: 'Calcium carbonate mineral structure.',
     script: `
-      load :water;
+      load =cod/9000095 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
@@ -249,44 +281,36 @@ const mineralStructures: MineralStructure[] = [
     `,
   },
   {
-    id: 'caffeine',
-    name: 'Caffeine',
-    formula: 'C₈H₁₀N₄O₂',
-    system: 'Orthorhombic',
-    description: 'Caffeine molecule crystal.',
+    id: 'fluorite',
+    name: 'Fluorite',
+    formula: 'CaF₂',
+    system: 'Cubic',
+    description: 'Calcium fluoride crystal structure.',
     script: `
-      load $caffeine;
-      spacefill 23%;
+      load =cod/1000043 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
       spin y 3;
     `,
   },
   {
-    id: 'aspirin',
-    name: 'Aspirin',
-    formula: 'C₉H₈O₄',
-    system: 'Monoclinic',
-    description: 'Acetylsalicylic acid crystal.',
+    id: 'magnesium-hcp',
+    name: 'Magnesium (HCP)',
+    formula: 'Mg',
+    system: 'HCP',
+    description: 'Hexagonal close-packed magnesium.',
     script: `
-      load :aspirin;
-      spacefill 23%;
+      load =cod/9008506 {1 1 1};
+      unitcell on;
+      axes 3;
+      boundbox on;
+      spacefill 30%;
       wireframe 0.15;
-      color atoms cpk;
-      spin y 3;
-    `,
-  },
-  {
-    id: 'sucrose',
-    name: 'Sucrose (Sugar)',
-    formula: 'C₁₂H₂₂O₁₁',
-    system: 'Monoclinic',
-    description: 'Table sugar crystal structure.',
-    script: `
-      load :sucrose;
-      spacefill 23%;
-      wireframe 0.15;
-      color atoms cpk;
+      color atoms [180,180,180];
       spin y 3;
     `,
   },
