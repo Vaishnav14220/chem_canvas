@@ -1179,123 +1179,128 @@ Output: raw JSmol commands only.`;
               </button>
             </div>
 
-            {/* RCSB PDB-style Selection Tools */}
-            <div className="space-y-2 pt-2 border-t border-slate-800">
-              <p className="text-[11px] uppercase tracking-wider text-slate-500">Selection</p>
-              <div className="grid grid-cols-3 gap-1">
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect all; color cpk;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect protein; cartoon; color structure;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Protein
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect helix; color [255,100,100]; select sheet; color [100,100,255];`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Sec. Struct
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect ligand; spacefill 100%; wireframe off; color cpk;`)}
-                  className="rounded-lg bg-purple-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-purple-600"
-                >
-                  Ligands
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect water; spacefill 50%; color red;`)}
-                  className="rounded-lg bg-cyan-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-cyan-600"
-                >
-                  Waters
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect within(5.0, ligand); wireframe 0.2; color cpk;`)}
-                  className="rounded-lg bg-emerald-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-emerald-600"
-                >
-                  Active Site
-                </button>
-              </div>
-            </div>
+            {/* RCSB PDB-style Selection Tools - PROTEIN ONLY */}
+            {selectedCategory === 'protein' && (
+              <>
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500">Selection (Proteins)</p>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect all; color cpk;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      All
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect protein; cartoon; color structure;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Protein
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect helix; color [255,100,100]; select sheet; color [100,100,255];`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Sec. Struct
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect ligand; spacefill 100%; wireframe off; color cpk;`)}
+                      className="rounded-lg bg-purple-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-purple-600"
+                    >
+                      Ligands
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect water; spacefill 50%; color red;`)}
+                      className="rounded-lg bg-cyan-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-cyan-600"
+                    >
+                      Waters
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect within(5.0, ligand); wireframe 0.2; color cpk;`)}
+                      className="rounded-lg bg-emerald-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-emerald-600"
+                    >
+                      Active Site
+                    </button>
+                  </div>
+                </div>
 
-            {/* Visibility Controls */}
-            <div className="space-y-2 pt-2 border-t border-slate-800">
-              <p className="text-[11px] uppercase tracking-wider text-slate-500">Visibility</p>
-              <div className="grid grid-cols-2 gap-1">
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect sidechain; wireframe 0.15; spacefill 15%;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Show Sidechains
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect sidechain; wireframe off; spacefill off;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Hide Sidechains
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nset showHydrogens TRUE;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Show H atoms
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nset showHydrogens FALSE;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Hide H atoms
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect water; spacefill 50%;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Show Waters
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nselect water; hide selected;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Hide Waters
-                </button>
-              </div>
-            </div>
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500">Visibility</p>
+                  <div className="grid grid-cols-2 gap-1">
 
-            {/* Analysis Tools */}
-            <div className="space-y-2 pt-2 border-t border-slate-800">
-              <p className="text-[11px] uppercase tracking-wider text-slate-500">Analysis</p>
-              <div className="grid grid-cols-2 gap-1">
-                <button
-                  onClick={() => setScript(prev => `${prev}\nzoom *; center;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Zoom All
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nzoom ligand; center ligand;`)}
-                  className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Zoom Ligand
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nset picking distance;`)}
-                  className="rounded-lg bg-orange-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-orange-600"
-                >
-                  Measure Distance
-                </button>
-                <button
-                  onClick={() => setScript(prev => `${prev}\nset picking angle;`)}
-                  className="rounded-lg bg-orange-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-orange-600"
-                >
-                  Measure Angle
-                </button>
-              </div>
-            </div>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect sidechain; wireframe 0.15; spacefill 15%;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Show Sidechains
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect sidechain; wireframe off; spacefill off;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Hide Sidechains
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nset showHydrogens TRUE;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Show H atoms
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nset showHydrogens FALSE;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Hide H atoms
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect water; spacefill 50%;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Show Waters
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nselect water; hide selected;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Hide Waters
+                    </button>
+                  </div>
+                </div>
+
+                {/* Analysis Tools */}
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500">Analysis</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nzoom *; center;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Zoom All
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nzoom ligand; center ligand;`)}
+                      className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Zoom Ligand
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nset picking distance;`)}
+                      className="rounded-lg bg-orange-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-orange-600"
+                    >
+                      Measure Distance
+                    </button>
+                    <button
+                      onClick={() => setScript(prev => `${prev}\nset picking angle;`)}
+                      className="rounded-lg bg-orange-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-orange-600"
+                    >
+                      Measure Angle
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </section>
+
 
 
           <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
