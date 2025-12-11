@@ -43,18 +43,21 @@ const loadJSmol = (): Promise<any> => {
 
 interface JSmolViewerProps {
   script: string;
+  command?: string; // For executing additional commands without reloading
   height?: number;
   backgroundColor?: string;
 }
 
 const JSmolViewer: React.FC<JSmolViewerProps> = ({
   script,
+  command,
   height = 520,
   backgroundColor = '#0f172a',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const appletRef = useRef<any>(null);
   const startupScriptRef = useRef(script && script.trim() ? script : DEFAULT_SCRIPT);
+  const lastCommandRef = useRef<string>('');
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +70,7 @@ const JSmolViewer: React.FC<JSmolViewerProps> = ({
     }
     window.Jmol.script(appletRef.current, cmd);
   };
+
 
   useEffect(() => {
     let isMounted = true;
@@ -124,11 +128,20 @@ const JSmolViewer: React.FC<JSmolViewerProps> = ({
     }
   }, [script, status]);
 
+  // Execute commands separately without re-running the full script
+  useEffect(() => {
+    if (status === 'ready' && command && command !== lastCommandRef.current) {
+      lastCommandRef.current = command;
+      runScript(command);
+    }
+  }, [command, status]);
+
   useEffect(() => {
     if (status !== 'ready') {
       startupScriptRef.current = script && script.trim() ? script : DEFAULT_SCRIPT;
     }
   }, [script, status]);
+
 
   return (
     <div className="relative rounded-xl border border-slate-700 overflow-hidden" style={{ height }}>

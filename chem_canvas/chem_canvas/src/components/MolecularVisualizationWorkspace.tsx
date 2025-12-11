@@ -439,6 +439,7 @@ const CATEGORY_HINTS: Record<WorkspaceCategory, string[]> = {
 const MolecularVisualizationWorkspace: React.FC = () => {
   const [activeDemo, setActiveDemo] = useState<string>(visualizationDemos[0].id);
   const [script, setScript] = useState<string>(visualizationDemos[0].script);
+  const [jsmolCommand, setJsmolCommand] = useState<string>(''); // For one-off commands
   const [structureUrl, setStructureUrl] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
@@ -500,6 +501,13 @@ const MolecularVisualizationWorkspace: React.FC = () => {
   const exportImage = () => {
     setScript(prev => `${prev}\nwrite image PNG "structure.png";`);
   };
+
+  // Execute a one-off JSmol command (for controls)
+  const runJsmolCommand = (cmd: string) => {
+    // Add timestamp to make command unique for change detection
+    setJsmolCommand(`${cmd}; // ${Date.now()}`);
+  };
+
 
   const handleRunDemo = (demo: VisualizationDemo) => {
     setActiveDemo(demo.id);
@@ -902,41 +910,42 @@ Output: raw JSmol commands only.`;
         {/* Unit Cell & Axes Controls */}
         <div className="grid grid-cols-3 gap-1">
           <button
-            onClick={() => setScript(prev => `${prev}; unitcell 1;`)}
+            onClick={() => runJsmolCommand('unitcell 1')}
             className="rounded-lg bg-amber-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-amber-600"
           >
             Unit Cell On
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}; unitcell off;`)}
+            onClick={() => runJsmolCommand('unitcell off')}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Unit Cell Off
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}; axes 2;`)}
+            onClick={() => runJsmolCommand('axes 2')}
             className="rounded-lg bg-blue-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-blue-600"
           >
             Show Axes
           </button>
         </div>
 
+
         {/* Boundbox and Extras */}
         <div className="grid grid-cols-3 gap-1">
           <button
-            onClick={() => setScript(prev => `${prev}; boundbox on;`)}
+            onClick={() => runJsmolCommand('boundbox on')}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Boundbox On
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}; boundbox off;`)}
+            onClick={() => runJsmolCommand('boundbox off')}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Boundbox Off
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}; axes off;`)}
+            onClick={() => runJsmolCommand('axes off')}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Axes Off
@@ -948,19 +957,19 @@ Output: raw JSmol commands only.`;
           <p className="text-[10px] text-slate-400">Display Mode</p>
           <div className="grid grid-cols-3 gap-1">
             <button
-              onClick={() => setScript(prev => `${prev}; spacefill 100%; wireframe off;`)}
+              onClick={() => runJsmolCommand('spacefill 100%; wireframe off')}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
             >
               Spacefill
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}; spacefill 25%; wireframe 0.15;`)}
+              onClick={() => runJsmolCommand('spacefill 25%; wireframe 0.15')}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
             >
               Ball & Stick
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}; spacefill off; wireframe 0.2;`)}
+              onClick={() => runJsmolCommand('spacefill off; wireframe 0.2')}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-emerald-700 hover:text-white"
             >
               Wireframe
@@ -971,13 +980,13 @@ Output: raw JSmol commands only.`;
         {/* Atom Labels */}
         <div className="grid grid-cols-2 gap-1">
           <button
-            onClick={() => setScript(prev => `${prev}; select all; label %e; color labels white; set labeloffset 0 5;`)}
+            onClick={() => runJsmolCommand('select all; label %e; color labels white; set labeloffset 0 5')}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Show Labels
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}; labels off;`)}
+            onClick={() => runJsmolCommand('labels off')}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Hide Labels
@@ -989,19 +998,19 @@ Output: raw JSmol commands only.`;
           <p className="text-[10px] text-slate-400">Color Scheme</p>
           <div className="grid grid-cols-3 gap-1">
             <button
-              onClick={() => setScript(prev => `${prev}; color atoms cpk;`)}
+              onClick={() => runJsmolCommand('color atoms cpk')}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
               CPK
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}; color atoms property atomno;`)}
+              onClick={() => runJsmolCommand('color atoms property atomno')}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
               By Atom #
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}; color atoms symmetry;`)}
+              onClick={() => runJsmolCommand('color atoms symmetry')}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
               Symmetry
@@ -1012,13 +1021,13 @@ Output: raw JSmol commands only.`;
         {/* Animation Controls */}
         <div className="grid grid-cols-2 gap-1">
           <button
-            onClick={() => setScript(prev => `${prev}; spin on;`)}
+            onClick={() => runJsmolCommand('spin on')}
             className="rounded-lg bg-violet-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-violet-600"
           >
             Spin On
           </button>
           <button
-            onClick={() => setScript(prev => `${prev}; spin off;`)}
+            onClick={() => runJsmolCommand('spin off')}
             className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
           >
             Spin Off
@@ -1030,13 +1039,13 @@ Output: raw JSmol commands only.`;
           <p className="text-[10px] text-slate-400">Bonds</p>
           <div className="grid grid-cols-2 gap-1">
             <button
-              onClick={() => setScript(prev => `${prev}; connect;`)}
+              onClick={() => runJsmolCommand('connect')}
               className="rounded-lg bg-emerald-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-emerald-600"
             >
               Display
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}; connect delete;`)}
+              onClick={() => runJsmolCommand('connect delete')}
               className="rounded-lg bg-slate-800 px-2 py-1.5 text-[10px] font-medium text-slate-300 hover:bg-slate-700"
             >
               Hide
@@ -1052,7 +1061,7 @@ Output: raw JSmol commands only.`;
               <input
                 type="checkbox"
                 className="rounded border-slate-600"
-                onChange={(e) => setScript(prev => `${prev}; set antialiasDisplay ${e.target.checked};`)}
+                onChange={(e) => runJsmolCommand(`set antialiasDisplay ${e.target.checked}`)}
               />
               Shade
             </label>
@@ -1060,7 +1069,7 @@ Output: raw JSmol commands only.`;
               <input
                 type="checkbox"
                 className="rounded border-slate-600"
-                onChange={(e) => setScript(prev => `${prev}; set stereo ${e.target.checked ? 'on' : 'off'};`)}
+                onChange={(e) => runJsmolCommand(`set stereo ${e.target.checked ? 'on' : 'off'}`)}
               />
               Stereo
             </label>
@@ -1069,7 +1078,7 @@ Output: raw JSmol commands only.`;
                 type="checkbox"
                 defaultChecked
                 className="rounded border-slate-600"
-                onChange={(e) => setScript(prev => `${prev}; set perspectiveDepth ${e.target.checked};`)}
+                onChange={(e) => runJsmolCommand(`set perspectiveDepth ${e.target.checked}`)}
               />
               Perspective depth
             </label>
@@ -1081,19 +1090,19 @@ Output: raw JSmol commands only.`;
           <p className="text-[10px] text-slate-400">Background</p>
           <div className="grid grid-cols-3 gap-1">
             <button
-              onClick={() => setScript(prev => `${prev}; background white;`)}
+              onClick={() => runJsmolCommand('background white')}
               className="rounded-lg bg-white px-2 py-1.5 text-[10px] font-medium text-slate-900 hover:bg-gray-100 border border-slate-300"
             >
               White
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}; background [200,200,200];`)}
+              onClick={() => runJsmolCommand('background [200,200,200]')}
               className="rounded-lg bg-gray-300 px-2 py-1.5 text-[10px] font-medium text-slate-900 hover:bg-gray-400"
             >
               Gray
             </button>
             <button
-              onClick={() => setScript(prev => `${prev}; background [15,23,42];`)}
+              onClick={() => runJsmolCommand('background [15,23,42]')}
               className="rounded-lg bg-slate-900 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-slate-800 border border-slate-600"
             >
               Dark
@@ -1109,6 +1118,7 @@ Output: raw JSmol commands only.`;
 
 
   const renderReactionAnimatorCard = () => (
+
     <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
       <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-purple-300" />
@@ -1303,7 +1313,7 @@ Output: raw JSmol commands only.`;
                 Reset
               </button>
             </div>
-            <JSmolViewer script={script} />
+            <JSmolViewer script={script} command={jsmolCommand} />
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
               <span className="flex items-center gap-2">
                 <Compass className="h-4 w-4 text-emerald-300" />
