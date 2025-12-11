@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Loader2, Search, Sparkles, FlaskConical, Beaker, Play, Pause, SkipBack, SkipForward, RotateCcw, Repeat, Square, Eye, EyeOff, Film } from 'lucide-react';
 import ReactionMechanismScene from './ReactionMechanismScene';
 import { resolveReactionQuery, generateReactionAnimationFrames, buildAnimationScript, type ReactionComponentDetails, type ReactionResolutionResult } from '../services/reactionResolver';
+import { findMechanismTemplate } from '../data/mechanismTemplates';
+
 
 const STAGE_INFO: Array<{
   key: ReactionComponentDetails['role'];
@@ -169,7 +171,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
     if (mechanismAnimating) {
       // Stop animation
       setMechanismAnimating(false);
-      onScriptChange('animation off;');
+      onScriptChange('anim off;');
       return;
     }
 
@@ -177,24 +179,39 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
     setError(null);
 
     try {
-      const xyzData = await generateReactionAnimationFrames(lastPrompt);
+      // FIRST: Check for pre-computed template animations (like ChemTube3D)
+      const template = findMechanismTemplate(lastPrompt);
 
-      if (!xyzData) {
-        setError('Could not generate animation frames. Try a simpler reaction.');
+      if (template) {
+        console.log('Using pre-computed template:', template.description);
+        const script = buildAnimationScript(template.animation);
+        setMechanismAnimating(true);
         setMechanismLoading(false);
+        onScriptChange(script);
         return;
       }
 
-      const script = buildAnimationScript(xyzData);
-      setMechanismAnimating(true);
-      onScriptChange(script);
+      // FALLBACK: Try AI-generated animation frames
+      const xyzData = await generateReactionAnimationFrames(lastPrompt);
+
+      if (xyzData) {
+        const script = buildAnimationScript(xyzData);
+        setMechanismAnimating(true);
+        onScriptChange(script);
+      } else {
+        // Final fallback: use JSmol's frame animation on current model
+        setMechanismAnimating(true);
+        onScriptChange('anim mode palindrome; delay 0.5; frame play;');
+        setError('Using basic animation. For best results, try SN2, Diels-Alder, or E2 reactions.');
+      }
     } catch (err) {
       console.error('Mechanism animation failed:', err);
-      setError('Failed to generate mechanism animation. Please try again.');
+      setError('Failed to generate mechanism animation. Try SN2 or Diels-Alder for pre-computed animations.');
     } finally {
       setMechanismLoading(false);
     }
   }, [onScriptChange, lastPrompt, mechanismAnimating]);
+
 
   const handleSearch = async (prompt?: string) => {
     const value = (prompt ?? query).trim();
@@ -419,10 +436,10 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                   onClick={() => void playMechanismAnimation()}
                   disabled={mechanismLoading || !lastPrompt}
                   className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${mechanismAnimating
-                      ? 'bg-rose-600 text-white hover:bg-rose-500'
-                      : mechanismLoading
-                        ? 'bg-slate-700 text-slate-400 cursor-wait'
-                        : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500'
+                    ? 'bg-rose-600 text-white hover:bg-rose-500'
+                    : mechanismLoading
+                      ? 'bg-slate-700 text-slate-400 cursor-wait'
+                      : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500'
                     }`}
                 >
                   {mechanismLoading ? (
