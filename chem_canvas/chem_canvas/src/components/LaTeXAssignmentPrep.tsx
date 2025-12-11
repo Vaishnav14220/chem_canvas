@@ -270,38 +270,52 @@ Special Instructions:
     };
 
     return (
-        <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-slate-900 overflow-hidden">
+        <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#0b1220] text-slate-100 overflow-hidden">
             {/* Left Sidebar - Input & Controls */}
             {sidebarOpen && (
-                <div className="w-96 flex-shrink-0 bg-slate-950 border-r border-slate-700 flex flex-col overflow-hidden z-20 shadow-2xl h-screen">
-                    {/* Main Content Area */}
+                <div className="w-[26rem] flex-shrink-0 bg-[#0e172b] border-r border-white/5 flex flex-col overflow-hidden z-20 shadow-[0_20px_80px_rgba(0,0,0,0.35)] h-screen">
                     <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
-                        {/* Header */}
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                                <Sparkles className="w-5 h-5 text-white" />
+                        {/* Hero */}
+                        <div className="relative rounded-2xl overflow-hidden bg-[#121c32] border border-white/10 px-4 py-5">
+                            <div className="absolute inset-0 opacity-25 blur-3xl bg-[#1e2a45]" />
+                            <div className="relative flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-xl bg-[#1f3a5f] flex items-center justify-center text-white shadow-lg shadow-black/30">
+                                    <Sparkles className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Gemini LaTeX Studio</p>
+                                    <h2 className="text-xl font-semibold text-white">Assignment Generator</h2>
+                                </div>
                             </div>
-                            <div>
-                                <h2 className="text-lg font-bold text-white">LaTeX Assignment</h2>
-                                <p className="text-xs text-slate-400">Powered by Gemini 3 Pro</p>
+                            <div className="relative mt-4 flex flex-wrap gap-2 text-[11px]">
+                                <span className="px-3 py-1 rounded-full bg-white/10 text-slate-100 border border-white/10">PDF · Image · Text</span>
+                                <span className="px-3 py-1 rounded-full bg-white/5 text-slate-200 border border-white/5">Live LaTeX streaming</span>
+                                <span className="px-3 py-1 rounded-full bg-white/10 text-slate-100 border border-white/10">Gemini 3 Pro</span>
                             </div>
                         </div>
 
-                        <p className="text-slate-400 text-sm leading-relaxed">
-                            Upload assignment materials or describe a topic. Gemini will generate professional LaTeX code ready to compile.
-                        </p>
-
-                        {/* File Upload */}
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Assignment Material</label>
+                        {/* Upload */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Upload material</div>
+                                {fileContent && <span className="text-[11px] text-emerald-300">Ready</span>}
+                            </div>
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="border-2 border-dashed border-slate-600 rounded-lg p-4 text-center cursor-pointer hover:border-slate-500 hover:bg-slate-900 transition-all"
+                                className="group border border-white/10 rounded-2xl p-4 cursor-pointer bg-white/5 hover:bg-white/10 transition-all shadow-inner shadow-black/30"
                             >
-                                <FileUp className="w-5 h-5 text-slate-400 mx-auto mb-2" />
-                                <p className="text-xs text-slate-400">Click to upload PDF, Image, or Text</p>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-[#1a2438] flex items-center justify-center border border-white/10">
+                                        <FileUp className="w-5 h-5 text-slate-200" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-white">Drop PDF, Image, or Text</p>
+                                        <p className="text-xs text-slate-400">Structured content yields better LaTeX</p>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition" />
+                                </div>
                                 {fileContent && (
-                                    <p className="text-xs text-emerald-400 mt-2">✓ {fileContent}</p>
+                                    <div className="mt-3 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">{fileContent}</div>
                                 )}
                             </div>
                             <input
@@ -313,31 +327,33 @@ Special Instructions:
                             />
                         </div>
 
-                        {/* Topic Input */}
+                        {/* Topic */}
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Or Describe Topic</label>
-                            <textarea
-                                value={topic}
-                                onChange={(e) => setTopic(e.target.value)}
-                                placeholder="Describe the assignment topic..."
-                                className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none"
-                                rows={4}
-                            />
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Describe topic</div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 focus-within:border-[#3b5b8a]/60 transition-all">
+                                <textarea
+                                    value={topic}
+                                    onChange={(e) => setTopic(e.target.value)}
+                                    placeholder="e.g., Board exam quadratic equations, AP & GP practice"
+                                    className="w-full bg-transparent rounded-2xl p-3 text-sm text-white placeholder-slate-500 focus:outline-none"
+                                    rows={4}
+                                />
+                            </div>
                         </div>
 
-                        {/* Error Display */}
+                        {/* Error */}
                         {error && (
-                            <div className="flex gap-2 items-start p-3 bg-red-950 border border-red-700 rounded-lg">
-                                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                                <p className="text-xs text-red-300">{error}</p>
+                            <div className="flex gap-2 items-start p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+                                <AlertCircle className="w-4 h-4 text-red-300 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-red-100">{error}</p>
                             </div>
                         )}
 
-                        {/* Generate Button */}
+                        {/* Primary action */}
                         <button
                             onClick={handleGenerate}
                             disabled={isGenerating || (!fileContent && !topic)}
-                            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-slate-600 disabled:to-slate-600 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all"
+                            className="w-full bg-[#1f3a5f] hover:bg-[#27466f] disabled:bg-slate-700 disabled:opacity-60 text-white font-semibold py-3 px-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-black/30"
                         >
                             {isGenerating ? (
                                 <>
@@ -352,69 +368,70 @@ Special Instructions:
                             )}
                         </button>
 
-                        {/* Output Controls */}
+                        {/* Secondary actions */}
                         {latexOutput && (
-                            <div className="space-y-2 border-t border-slate-700 pt-4">
-                                <button
-                                    onClick={handleCompile}
-                                    disabled={!latexOutput || isCompiling}
-                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isCompiling ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                            Compiling...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Play className="w-4 h-4" />
-                                            Compile PDF
-                                        </>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={handleCopy}
-                                    className="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-all"
-                                >
-                                    {copied ? (
-                                        <>
-                                            <CheckCircle2 className="w-4 h-4" />
-                                            Copied!
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Copy className="w-4 h-4" />
-                                            Copy LaTeX
-                                        </>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={handleDownload}
-                                    className="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-all"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    Download .tex
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setLatexOutput('');
-                                        setTopic('');
-                                        setFileContent('');
-                                        setFileData(null);
-                                    }}
-                                    className="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-all"
-                                >
-                                    <RefreshCw className="w-4 h-4" />
-                                    Generate New
-                                </button>
+                            <div className="space-y-2 border-t border-white/5 pt-4">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={handleCompile}
+                                        disabled={!latexOutput || isCompiling}
+                                        className="bg-[#2b4a74] hover:bg-[#335684] text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                        {isCompiling ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Compiling...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Play className="w-4 h-4" />
+                                                Compile PDF
+                                            </>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={handleCopy}
+                                        className="bg-white/10 hover:bg-white/15 text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all"
+                                    >
+                                        {copied ? (
+                                            <>
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                Copied!
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Copy className="w-4 h-4" />
+                                                Copy LaTeX
+                                            </>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={handleDownload}
+                                        className="bg-white/10 hover:bg-white/15 text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                        Download .tex
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setLatexOutput('');
+                                            setTopic('');
+                                            setFileContent('');
+                                            setFileData(null);
+                                        }}
+                                        className="bg-white/5 hover:bg-white/10 text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all"
+                                    >
+                                        <RefreshCw className="w-4 h-4" />
+                                        Reset & New
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Collapse Button */}
                     <button
                         onClick={() => setSidebarOpen(false)}
-                        className="border-t border-slate-700 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-all flex items-center justify-center"
+                        className="border-t border-white/5 px-4 py-3 text-slate-400 hover:text-white hover:bg-white/5 transition-all flex items-center justify-center"
                     >
                         <ChevronRight className="w-5 h-5" />
                     </button>
@@ -422,28 +439,32 @@ Special Instructions:
             )}
 
             {/* Right Panel - LaTeX Output Preview */}
-            <div className="flex-1 bg-slate-800 w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+            <div className="flex-1 w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+                <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_20%_20%,rgba(59,91,138,0.15),transparent_30%),radial-gradient(circle_at_70%_20%,rgba(30,42,69,0.18),transparent_32%)]" />
+
                 {/* Header Bar */}
-                <div className="bg-slate-700 border-b border-slate-600 px-6 py-4 flex items-center justify-between">
+                <div className="relative bg-[#0b1226]/80 backdrop-blur border-b border-white/5 px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         {!sidebarOpen && (
                             <button
                                 onClick={() => setSidebarOpen(true)}
-                                className="text-slate-400 hover:text-slate-200 transition-colors"
+                                className="text-slate-300 hover:text-white transition-colors"
                             >
                                 <ChevronRight className="w-5 h-5 rotate-180" />
                             </button>
                         )}
-                        <h3 className="text-lg font-semibold text-slate-200">LaTeX Output</h3>
+                        <div>
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Canvas</p>
+                            <h3 className="text-lg font-semibold text-white">LaTeX Output</h3>
+                        </div>
                     </div>
 
-                    {/* Tabs */}
-                    <div className="flex bg-slate-900 rounded-lg p-1">
+                    <div className="flex items-center gap-2 bg-white/5 rounded-full p-1 border border-white/5">
                         <button
                             onClick={() => setActiveTab('code')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'code'
-                                ? 'bg-slate-700 text-white shadow-sm'
-                                : 'text-slate-400 hover:text-slate-300'
+                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${activeTab === 'code'
+                                ? 'bg-white text-slate-900 shadow'
+                                : 'text-slate-200 hover:text-white'
                                 }`}
                         >
                             <span className="flex items-center gap-2">
@@ -453,9 +474,9 @@ Special Instructions:
                         </button>
                         <button
                             onClick={() => setActiveTab('pdf')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'pdf'
-                                ? 'bg-slate-700 text-white shadow-sm'
-                                : 'text-slate-400 hover:text-slate-300'
+                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${activeTab === 'pdf'
+                                ? 'bg-white text-slate-900 shadow'
+                                : 'text-slate-200 hover:text-white'
                                 }`}
                         >
                             <span className="flex items-center gap-2">
@@ -465,17 +486,17 @@ Special Instructions:
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3 text-xs">
                         {isGenerating && (
-                            <div className="flex items-center gap-2 text-indigo-600">
+                            <div className="flex items-center gap-1 text-slate-100 bg-white/10 px-3 py-1.5 rounded-full border border-white/15">
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                <span className="text-sm">Generating...</span>
+                                <span>Generating</span>
                             </div>
                         )}
                         {isCompiling && (
-                            <div className="flex items-center gap-2 text-emerald-500">
+                            <div className="flex items-center gap-1 text-slate-100 bg-white/10 px-3 py-1.5 rounded-full border border-white/15">
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                <span className="text-sm">Compiling...</span>
+                                <span>Compiling</span>
                             </div>
                         )}
                     </div>
@@ -484,15 +505,15 @@ Special Instructions:
                 {/* Output Container */}
                 <div
                     ref={latexOutputRef}
-                    className="flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col bg-slate-800"
+                    className="relative flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col"
                 >
                     {activeTab === 'code' ? (
                         !latexOutput ? (
-                            <div className="flex items-center justify-center h-full text-slate-400">
-                                <div className="text-center">
-                                    <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                    <p>Generate LaTeX code to see output here</p>
-                                    <p className="text-xs mt-2">Your LaTeX will stream in real-time with live syntax</p>
+                            <div className="flex items-center justify-center h-full text-slate-300">
+                                <div className="text-center space-y-2 bg-white/5 border border-white/10 rounded-2xl px-10 py-12 backdrop-blur">
+                                    <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-60" />
+                                    <p className="text-sm">Generate LaTeX to view the live stream</p>
+                                    <p className="text-xs text-slate-400">Clean layout, syntax highlighting, and cursor pulse while streaming</p>
                                 </div>
                             </div>
                         ) : (
@@ -524,11 +545,11 @@ Special Instructions:
                             />
                         )
                     ) : (
-                        <div className="flex-1 w-full h-full bg-slate-500 overflow-auto flex justify-center p-4">
+                        <div className="flex-1 w-full h-full bg-[#0c1428] overflow-auto flex justify-center p-6">
                             {pdfUrl ? (
                                 <Document
                                     file={pdfUrl}
-                                    className="max-w-full shadow-lg"
+                                    className="max-w-full shadow-2xl shadow-black/40 border border-white/5 rounded-xl overflow-hidden"
                                     loading={
                                         <div className="flex items-center justify-center h-64">
                                             <Loader2 className="w-8 h-8 animate-spin text-white" />
@@ -544,13 +565,13 @@ Special Instructions:
                                         pageNumber={1}
                                         renderTextLayer={false}
                                         renderAnnotationLayer={false}
-                                        width={600}
+                                        width={640}
                                         className="mb-4"
                                     />
                                 </Document>
                             ) : (
                                 <div className="flex items-center justify-center h-full text-slate-200">
-                                    <div className="text-center">
+                                    <div className="text-center bg-white/5 border border-white/10 rounded-2xl px-10 py-12 backdrop-blur">
                                         {isCompiling ? (
                                             <>
                                                 <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin opacity-50" />

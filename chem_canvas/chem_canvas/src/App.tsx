@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
-import { FileText, Settings, Search, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { FileText, Settings, Search, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine, Image as ImageIcon } from 'lucide-react';
 import Canvas, {
   type CanvasCommand,
   type CanvasMoleculeInsertionHandler,
@@ -13,15 +13,19 @@ import LobeChat from './components/LobeChat';
 import CommandPalette from './components/CommandPalette';
 
 import MoldrawEmbed from './components/MoldrawEmbed';
-import Login from './components/Login';
+import StudyToolsOriginal from './pages/StudyToolsOriginal';
+import VisionAnalyzePage from './pages/VisionAnalyzePage';
+import VisionChatPage from './pages/VisionChatPage';
+import VisionVideoPage from './pages/VisionVideoPage';
 import ProfileUpdate from './components/ProfileUpdate';
+import Login from './components/Login';
 import Calculator from './components/Calculator';
 import MolecularViewer from './components/MolecularViewer';
 import PeriodicTable from './components/PeriodicTable';
 import { storeAPIKey } from './services/canvasAnalyzer';
 import { UserProfile, setupAuthStateListener } from './firebase/auth';
 import { checkApiKeysInitialized, displayAllApiKeys, getSharedGeminiApiKey } from './firebase/apiKeys';
-import { initializeApiKeyRotation, clearUserProvidedApiKey } from './services/apiKeyRotation';
+import { initializeApiKeyRotation, initializeApiKeyRotation as initializeApiKeyRotationService, clearUserProvidedApiKey } from './services/apiKeyRotation';
 import { initializeFirebaseOnStartup } from './utils/initializeFirebase';
 import { loadSession, saveSession, getSessionStatus, extendSession } from './utils/sessionStorage';
 import { extractTextFromDocument, isPdfFile, isSupportedTextDocument } from './utils/documentTextExtractor';
@@ -143,6 +147,9 @@ const generateSourceId = () =>
 
 const App: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+
+
   const dockCharacters: Character[] = [
     { emoji: "✨", name: "Sparkle", online: false, backgroundColor: "bg-amber-200", gradientColors: "#fde68a, #fffbeb" },
     { emoji: "🧙‍♂️", name: "Wizard", online: true, backgroundColor: "bg-emerald-200 dark:bg-emerald-300", gradientColors: "#a7f3d0, #ecfdf5" },
@@ -287,6 +294,98 @@ const App: React.FC = () => {
     setCanvasSurfaceActive,
     setExcalidrawOnlyMode
   } = geminiLiveState;
+
+  // Webcam sharing state and refs
+  const [isWebcamSharing, setIsWebcamSharing] = useState(false);
+  const webcamStreamRef = useRef<MediaStream | null>(null);
+  const webcamIntervalRef = useRef<NodeJS.Timeout | number | null>(null);
+
+  const stopWebcamShare = useCallback(() => {
+    if (webcamIntervalRef.current) {
+      clearInterval(webcamIntervalRef.current as number);
+      webcamIntervalRef.current = null;
+    }
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('[Webcam] Track stopped:', track.kind);
+      });
+      webcamStreamRef.current = null;
+    }
+    setIsWebcamSharing(false);
+    console.log('[Webcam] Share stopped');
+  }, []);
+
+  const startWebcamShare = useCallback(async () => {
+    try {
+      console.log('[Webcam] Requesting access...');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 10, max: 15 } // Lower framerate for API efficiency
+        }
+      });
+      console.log('[Webcam] Access granted:', stream.id);
+
+      webcamStreamRef.current = stream;
+      setIsWebcamSharing(true);
+
+      // Create a canvas to capture frames
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const video = document.createElement('video');
+      video.autoplay = true;
+      video.srcObject = stream;
+
+      // Wait for video to load metadata to get dimensions
+      await new Promise<void>((resolve) => {
+        video.onloadedmetadata = () => resolve();
+      });
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      console.log('[Webcam] Dimensions observed:', canvas.width, 'x', canvas.height);
+
+      // Start capturing frames
+      webcamIntervalRef.current = setInterval(() => {
+        if (!ctx || geminiLiveState.connectionState !== ConnectionState.CONNECTED) return;
+
+        // Draw video frame to canvas
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Convert to base64 (JPEG, quality 0.6)
+        const base64Data = canvas.toDataURL('image/jpeg', 0.6);
+
+        // Remove data:image/jpeg;base64, prefix
+        const base64Content = base64Data.split(',')[1];
+
+        // Send to Gemini Live
+        // Note: Using the exposed sendRealtimeInput from useGeminiLive
+        if (geminiLiveState.sendRealtimeInput) {
+          geminiLiveState.sendRealtimeInput({
+            media: {
+              mimeType: "image/jpeg",
+              data: base64Content
+            }
+          }).catch(err => console.error("Error sending frame:", err));
+        }
+
+      }, 1000); // 1 FPS to balance latency and bandwidth
+
+    } catch (err) {
+      console.error('[Webcam] Failed to start:', err);
+      stopWebcamShare(); // Ensure cleanup
+    }
+  }, [geminiLiveState, stopWebcamShare]);
+
+  // Clean up webcam on unmount
+  useEffect(() => {
+    return () => {
+      stopWebcamShare();
+    };
+  }, [stopWebcamShare]);
+
 
   const handleCanvasImageExpand = useCallback(
     (image: LearningCanvasImage) => {
@@ -1636,6 +1735,12 @@ Here is the learner's question: ${message}`;
     setCommandPaletteOpen(false);
 
     switch (command) {
+      case 'vision-analyze':
+        navigate('/vision-analyze');
+        break;
+      case 'vision-chat':
+        navigate('/vision-chat');
+        break;
       case 'draw':
         dispatchCanvasCommand({ type: 'set-tool', tool: 'draw' });
         break;
@@ -1743,6 +1848,18 @@ Here is the learner's question: ${message}`;
     return <Login onLogin={handleLogin} />;
   }
 
+  if (location.pathname === '/vision-analyze') {
+    return <VisionAnalyzePage />;
+  }
+
+  if (location.pathname === '/vision-chat') {
+    return <VisionChatPage />;
+  }
+
+  if (location.pathname === '/vision-video') {
+    return <VisionVideoPage />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground dark">
       {/* Header */}
@@ -1765,6 +1882,27 @@ Here is the learner's question: ${message}`;
                     <span className="text-xs text-muted-foreground/80 font-medium">Chemistry Workspace</span>
                   </div>
                 </div>
+                <button
+                  onClick={() => navigate('/vision-analyze')}
+                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  <ImageIcon className="h-4 w-4 text-purple-400" />
+                  <span className="hidden sm:inline">Vision Analyze</span>
+                </button>
+                <button
+                  onClick={() => navigate('/vision-chat')}
+                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  <MessageSquare className="h-4 w-4 text-pink-400" />
+                  <span className="hidden sm:inline">Vision Chat</span>
+                </button>
+                <button
+                  onClick={() => navigate('/vision-video')}
+                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  <Video className="h-4 w-4 text-blue-400" />
+                  <span className="hidden sm:inline">Vision Video</span>
+                </button>
               </div>
 
               <div className="flex-1 min-w-[220px] max-w-xl">
@@ -2717,6 +2855,12 @@ Here is the learner's question: ${message}`;
         onStopScreenShare={() => geminiLiveState.stopScreenShare()}
         onShareCanvas={() => geminiLiveState.captureAndSendSnapshot()}
         showShareCanvas={!showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace}
+
+        // Webcam Sharing
+        isWebcamSharing={isWebcamSharing}
+        onStartWebcamShare={startWebcamShare}
+        onStopWebcamShare={stopWebcamShare}
+
         analyser={geminiLiveState.analyser}
       />
       {/* Gemini Live Overlay disabled (learning canvas removed) */}
@@ -2756,6 +2900,27 @@ Here is the learner's question: ${message}`;
           />
         )
       }
+
+      {/* Webcam Preview - Small floating video when sharing */}
+      {isWebcamSharing && (
+        <div className="fixed bottom-24 left-6 z-50 w-48 h-36 bg-black rounded-lg overflow-hidden border-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+          <video
+            ref={(el) => {
+              if (el && webcamStreamRef.current) {
+                el.srcObject = webcamStreamRef.current;
+              }
+            }}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover transform scale-x-[-1]" // Mirror effect
+          />
+          <div className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+          <div className="absolute bottom-1 left-2 text-[10px] font-mono text-white/80 bg-black/40 px-1 rounded">
+            LIVE INPUT
+          </div>
+        </div>
+      )}
 
       {/* Toast Container */}
       <ToastContainer

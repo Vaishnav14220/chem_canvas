@@ -1,0 +1,2 @@
+vision-agents[getstream,openai]
+python-dotenv

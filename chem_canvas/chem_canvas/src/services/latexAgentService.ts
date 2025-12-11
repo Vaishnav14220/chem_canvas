@@ -556,21 +556,37 @@ class SwiftLaTeXEngine {
   private realEngine: any = null;
 
   async loadEngine(): Promise<void> {
-    if (typeof window.PdfTeXEngine === 'undefined') {
-      console.error('PdfTeXEngine not loaded. Waiting for script...');
+    if (typeof window.XeTeXEngine === 'undefined') {
+      console.error('XeTeXEngine not loaded. Waiting for script...');
       // Simple wait loop
       for (let i = 0; i < 10; i++) {
-        if (typeof window.PdfTeXEngine !== 'undefined') break;
+        if (typeof window.XeTeXEngine !== 'undefined') break;
         await new Promise(r => setTimeout(r, 500));
       }
-      if (typeof window.PdfTeXEngine === 'undefined') {
-        throw new Error('PdfTeXEngine library not found. Please ensure /swiftlatex/PdfTeXEngine.js is loaded.');
+      if (typeof window.XeTeXEngine === 'undefined') {
+        throw new Error('XeTeXEngine library not found. Please ensure /swiftlatex/XeTeXEngine.js is loaded.');
       }
     }
 
     try {
-      this.realEngine = new window.PdfTeXEngine();
+      this.realEngine = new window.XeTeXEngine();
+      const texliveEndpoint = `${window.location.origin}/swiftlatex/texlive/`;
+      this.realEngine.setTexliveEndpoint(texliveEndpoint);
       await this.realEngine.loadEngine();
+      // Try to generate the format file, but don't fail if remote fetch is blocked
+      try {
+        const fmtBuffer = await Promise.race([
+          this.realEngine.compileFormat(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Format compilation timeout')), 3000))
+        ]);
+        if (fmtBuffer) {
+          // Write the format file with the correct name
+          this.writeMemFSFile('swiftlatexxetex.fmt', new Uint8Array(fmtBuffer));
+        }
+      } catch (fmtError) {
+        console.warn('Format compilation skipped (may be normal in dev):', fmtError);
+        // Continue without format file - engine will attempt to compile anyway
+      }
       this.engineStatus = EngineStatus.Ready;
       console.log('✅ Local SwiftLaTeX Engine loaded successfully');
     } catch (e) {
@@ -610,6 +626,20 @@ class SwiftLaTeXEngine {
     // Initialize if needed
     if (!this.isReady()) {
       await this.loadEngine();
+    }
+
+    // Flush cache to clear any previous files
+    this.flushCache();
+
+    // Validate main file content
+    const mainFileData = files.find(f => f.name === mainFile || f.path === `/${mainFile}`);
+    if (mainFileData && !mainFileData.content.trim().startsWith('\\documentclass')) {
+      return {
+        success: false,
+        log: `Invalid LaTeX content: Main file must start with \\documentclass. Found: ${mainFileData.content.substring(0, 50)}...`,
+        errors: ['Main file does not contain valid LaTeX document structure'],
+        warnings: []
+      };
     }
 
     // Write all files to engine

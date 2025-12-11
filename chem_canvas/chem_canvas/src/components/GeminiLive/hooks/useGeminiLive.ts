@@ -2151,6 +2151,12 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     session.sendRealtimeInput({ text: `Please simplify this step for me: "${stepText}"` });
   }, []);
 
+  const sendRealtimeInput = useCallback(async (input: any) => {
+    if (!sessionPromiseRef.current) return;
+    const session = await sessionPromiseRef.current;
+    await session.sendRealtimeInput(input);
+  }, []);
+
   return {
     connect,
     disconnect,
@@ -2192,6 +2198,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     startScreenShare,
     stopScreenShare,
     isScreenSharing,
-    simplifyStep
+    simplifyStep,
+    sendRealtimeInput
   };
 };

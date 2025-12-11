@@ -11,17 +11,19 @@ import {
   AnimatePresence,
 } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { 
-  PhoneOff, 
-  Loader2, 
-  Activity, 
+import {
+  PhoneOff,
+  Loader2,
+  Activity,
   Monitor,
   MonitorOff,
   Sparkles,
   Image as ImageIcon,
   Send,
   X,
-  PenTool
+  PenTool,
+  Video,
+  VideoOff
 } from "lucide-react";
 import { getQuickAnswer } from "@/services/quickAnswerService";
 
@@ -192,13 +194,13 @@ interface UnifiedDockProps {
   characters?: Character[];
   onCharacterSelect?: (character: Character, index: number) => void;
   onMessageSend?: (message: string, character: Character) => void;
-  
+
   // Write answer directly to canvas
   onWriteToCanvas?: (text: string) => void;
-  
+
   // Callback when Gemini Live mic connects - use to open canvas
   onLiveConnect?: () => void;
-  
+
   // Gemini Live props
   isConnected?: boolean;
   isConnecting?: boolean;
@@ -211,10 +213,15 @@ interface UnifiedDockProps {
   onStopScreenShare?: () => void;
   onShareCanvas?: () => void;
   showShareCanvas?: boolean;
-  
+
+  // Webcam props
+  isWebcamSharing?: boolean;
+  onStartWebcamShare?: () => void;
+  onStopWebcamShare?: () => void;
+
   // Audio visualizer
   analyser?: AnalyserNode | null;
-  
+
   className?: string;
 }
 
@@ -244,6 +251,9 @@ export function UnifiedDock({
   onStopScreenShare,
   onShareCanvas,
   showShareCanvas = true,
+  isWebcamSharing = false,
+  onStartWebcamShare,
+  onStopWebcamShare,
   analyser,
   className,
 }: UnifiedDockProps) {
@@ -252,7 +262,7 @@ export function UnifiedDock({
   const [isExpanded, setIsExpanded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
-  
+
   // Loading state for getting answer
   const [isLoadingAnswer, setIsLoadingAnswer] = useState(false);
 
@@ -321,25 +331,25 @@ export function UnifiedDock({
   // Handle sending message and writing answer directly to canvas
   const handleSendMessage = useCallback(async () => {
     if (!messageInput.trim() || selectedCharacter === null) return;
-    
+
     const question = messageInput.trim();
     const character = characters[selectedCharacter];
-    
+
     // Notify parent if callback exists
     onMessageSend?.(question, character);
-    
+
     // Clear input and close popup
     setMessageInput("");
     setSelectedCharacter(null);
     setIsExpanded(false);
-    
+
     // Show loading state
     setIsLoadingAnswer(true);
-    
+
     try {
       // Get answer from Gemini 2.5 Flash
       const answer = await getQuickAnswer(question);
-      
+
       // Write answer directly to canvas (smart placement)
       if (onWriteToCanvas) {
         onWriteToCanvas(answer);
@@ -383,7 +393,7 @@ export function UnifiedDock({
                   <PenTool className="w-3 h-3" />
                   <span className="text-[10px]">Handwritten</span>
                 </div>
-                <button 
+                <button
                   onClick={() => { setSelectedCharacter(null); setIsExpanded(false); }}
                   className="ml-auto p-1 rounded-full hover:bg-muted transition-colors"
                 >
@@ -448,8 +458,8 @@ export function UnifiedDock({
           title={isScreenSharing ? 'Stop Screen Share' : 'Start Screen Share'}
           active={isScreenSharing}
           className={cn(
-            isScreenSharing 
-              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
+            isScreenSharing
+              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
               : "bg-slate-800/80 text-slate-400 hover:bg-slate-700/80"
           )}
         >
@@ -481,6 +491,22 @@ export function UnifiedDock({
             <PhoneOff className="w-5 h-5" />
           </DockIcon>
         )}
+
+        <DockSeparator />
+
+        {/* Webcam Share Button */}
+        <DockIcon
+          onClick={isWebcamSharing ? onStopWebcamShare : onStartWebcamShare}
+          title={isWebcamSharing ? 'Stop Camera' : 'Start Camera'}
+          active={isWebcamSharing}
+          className={cn(
+            isWebcamSharing
+              ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30"
+              : "bg-slate-800/80 text-slate-400 hover:bg-slate-700/80"
+          )}
+        >
+          {isWebcamSharing ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+        </DockIcon>
 
         <DockSeparator />
 

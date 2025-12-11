@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Test Compile Format</title>
+    <script src="/swiftlatex/PdfTeXEngine.js"></script>
+</head>
+
+<body>
+    <h1>Testing Compile Format</h1>
+    <div id="status">Starting...</div>
+    <div id="log"></div>
+    <script>
+        function log(msg) {
+            console.log(msg);
+            document.getElementById('log').innerText += msg + '\n';
+        }
+
+        async function run() {
+            try {
+                log("Initializing Engine...");
+                if (typeof window.PdfTeXEngine === 'undefined') {
+                    throw new Error("PdfTeXEngine not loaded");
+                }
+                const engine = new window.PdfTeXEngine();
+                await engine.loadEngine();
+                log("Engine loaded. Starting compileFormat...");
+
+                await engine.compileFormat();
+                log("Format compiled successfully!");
+                document.getElementById('status').innerText = "SUCCESS";
+            } catch (e) {
+                log("Error: " + e.toString());
+                document.getElementById('status').innerText = "FAILED";
+                console.error(e);
+            }
+        }
+
+        // Wait for script to load
+        window.onload = run;
+    </script>
+</body>
+
+</html>

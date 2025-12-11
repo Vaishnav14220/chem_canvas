@@ -312,6 +312,73 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
   throw lastError ?? new Error('All retry attempts failed');
 };
 
+/**
+ * Generates content from a video and a prompt using Gemini.
+ * Note: Browser-based video upload is limited by size (base64 inline).
+ * For large videos, a backend with File API is recommended.
+ */
+export const generateVideoContent = async (
+  prompt: string,
+  videoBase64: string,
+  mimeType: string = 'video/mp4',
+  options?: { model?: string, timeout?: number }
+): Promise<string> => {
+  return generateVisionContent(prompt, videoBase64, mimeType, options);
+};
+
+/**
+ * Generates content from an image and a prompt using Gemini.
+ */
+export const generateVisionContent = async (
+  prompt: string,
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+  options?: { model?: string, timeout?: number }
+): Promise<string> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  const modelName = options?.model ?? 'gemini-1.5-flash'; // Flash is good for vision
+  const timeoutMs = options?.timeout ?? 60000;
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      console.log(`👁️ Sending Vision request to ${modelName}`);
+
+      const response = await genAI!.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inlineData: { mimeType, data: imageBase64 } },
+              { text: prompt }
+            ]
+          }
+        ]
+      });
+
+      return response.text() ?? '';
+    });
+  } catch (error: any) {
+    try {
+      handleGeminiError(error);
+    } catch (e) {
+      if (e instanceof SafetyError) throw e;
+    }
+    console.error('❌ Vision request failed:', error);
+    throw error;
+  }
+};
+
 // Convenience wrapper used by UI helpers like the document editor.
 // Guarantees a trimmed string and isolates UI imports from the heavier service API.
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

@@ -1,3 +1,3 @@
-// Re-export the NotebookLM-style component as the default AIWord
+// Re-export the Immersive Learning component as the default AIWord
 import AIWordNotebookStyle from './AIWordNotebookStyle';
 export default AIWordNotebookStyle;
