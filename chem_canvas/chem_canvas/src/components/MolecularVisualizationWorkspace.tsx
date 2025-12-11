@@ -174,58 +174,18 @@ END "CIF" {1 1 1};
 
 
 const mineralStructures: MineralStructure[] = [
-  // Solid State Basic Systems - Load from COD database
-  {
-    id: 'bcc-iron',
-    name: 'BCC (Iron)',
-    formula: 'Fe',
-    system: 'Body-Centered Cubic',
-    description: 'Body-centered cubic lattice with atom at center.',
-    script: `
-      load =cod/9008536 {1 1 1};
-      unitcell on;
-      axes 3;
-      boundbox on;
-      spacefill 30%;
-      wireframe 0.2;
-      color atoms cpk;
-      spin y 3;
-    `,
-  },
-  {
-    id: 'fcc-copper',
-    name: 'FCC (Copper)',
-    formula: 'Cu',
-    system: 'Face-Centered Cubic',
-    description: 'Face-centered cubic lattice.',
-    script: `
-      load =cod/9008468 {1 1 1};
-      unitcell on;
-      axes 3;
-      boundbox on;
-      spacefill 30%;
-      wireframe 0.2;
-      color atoms [200,120,50];
-      spin y 3;
-    `,
-  },
+  // Simple molecules that load reliably
   {
     id: 'nacl',
     name: 'NaCl (Rock Salt)',
     formula: 'NaCl',
     system: 'Cubic',
-    description: 'Classic ionic FCC structure.',
+    description: 'Classic ionic crystal structure.',
     script: `
-      load =cod/1000041 {1 1 1};
-      unitcell on;
-      axes 3;
-      boundbox on;
+      load $sodium chloride;
       spacefill 25%;
       wireframe 0.15;
-      select sodium;
-      color [150,100,255];
-      select chlorine;
-      color [100,255,100];
+      color atoms cpk;
       spin y 3;
     `,
   },
@@ -234,12 +194,9 @@ const mineralStructures: MineralStructure[] = [
     name: 'Diamond',
     formula: 'C',
     system: 'Cubic',
-    description: 'Diamond cubic crystal structure.',
+    description: 'Diamond cubic carbon structure.',
     script: `
-      load =cod/9008565 {1 1 1};
-      unitcell on;
-      axes 3;
-      boundbox on;
+      load $diamond;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
@@ -251,18 +208,12 @@ const mineralStructures: MineralStructure[] = [
     name: 'Quartz',
     formula: 'SiO₂',
     system: 'Trigonal',
-    description: 'Helical SiO₄ network with screw-axis symmetry.',
+    description: 'Silicon dioxide crystal.',
     script: `
-      load =cod/1011172 {1 1 1};
-      unitcell on;
-      axes 3;
-      boundbox on;
+      load $quartz;
       spacefill 25%;
       wireframe 0.15;
-      select silicon;
-      color yellow;
-      select oxygen;
-      color [150,200,255];
+      color atoms cpk;
       spin y 3;
     `,
   },
@@ -271,12 +222,9 @@ const mineralStructures: MineralStructure[] = [
     name: 'Calcite',
     formula: 'CaCO₃',
     system: 'Trigonal',
-    description: 'Stacked carbonate layers with Ca-centered octahedra.',
+    description: 'Calcium carbonate mineral.',
     script: `
-      load =cod/1010962 {1 1 1};
-      unitcell on;
-      axes 3;
-      boundbox on;
+      load $calcium carbonate;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
@@ -284,16 +232,13 @@ const mineralStructures: MineralStructure[] = [
     `,
   },
   {
-    id: 'fluorite',
-    name: 'Fluorite',
-    formula: 'CaF₂',
-    system: 'Isometric',
-    description: 'Fluoride ions in a cubic network around Ca²⁺.',
+    id: 'ice',
+    name: 'Ice',
+    formula: 'H₂O',
+    system: 'Hexagonal',
+    description: 'Water ice crystal structure.',
     script: `
-      load =cod/1000043 {1 1 1};
-      unitcell on;
-      axes 3;
-      boundbox on;
+      load $ice;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
@@ -301,16 +246,13 @@ const mineralStructures: MineralStructure[] = [
     `,
   },
   {
-    id: 'perovskite',
-    name: 'Perovskite',
-    formula: 'CaTiO₃',
-    system: 'Cubic',
-    description: 'Corner-sharing TiO₆ octahedra with Ca in the cage.',
+    id: 'graphite',
+    name: 'Graphite',
+    formula: 'C',
+    system: 'Hexagonal',
+    description: 'Layered carbon structure.',
     script: `
-      load =cod/1521529 {1 1 1};
-      unitcell on;
-      axes 3;
-      boundbox on;
+      load $graphite;
       spacefill 25%;
       wireframe 0.15;
       color atoms cpk;
@@ -318,6 +260,7 @@ const mineralStructures: MineralStructure[] = [
     `,
   },
 ];
+
 
 
 
