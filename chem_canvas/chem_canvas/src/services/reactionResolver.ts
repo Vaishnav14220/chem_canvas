@@ -143,8 +143,8 @@ const normalizeMechanismStages = (value: any): ReactionMechanismStage[] => {
       const description = typeof entry?.description === 'string' ? entry.description.trim() : undefined;
       const smiles = Array.isArray(entry?.smiles)
         ? entry.smiles
-            .map((token: any) => (typeof token === 'string' ? token.trim() : ''))
-            .filter(Boolean)
+          .map((token: any) => (typeof token === 'string' ? token.trim() : ''))
+          .filter(Boolean)
         : [];
 
       if (!label && smiles.length === 0) {
@@ -166,9 +166,9 @@ const buildGeminiReactionPrompt = (
 ): string => {
   const enforceLines = options.enforceFull
     ? [
-        '- If any side of the reaction is missing, infer the most representative textbook example and include typical reactants, reagents, catalysts, and products.',
-        '- Never leave reactants or products empty; provide best-effort SMILES even when you must make a reasonable assumption.'
-      ]
+      '- If any side of the reaction is missing, infer the most representative textbook example and include typical reactants, reagents, catalysts, and products.',
+      '- Never leave reactants or products empty; provide best-effort SMILES even when you must make a reasonable assumption.'
+    ]
     : [];
 
   if (options.mode === 'description') {
@@ -403,8 +403,8 @@ const interpretStructuredReactionPayload = async (
 
   const conditions = Array.isArray(payload.condition)
     ? payload.condition
-        .map(value => (typeof value === 'string' ? value.trim() : ''))
-        .filter(value => value.length > 0)
+      .map(value => (typeof value === 'string' ? value.trim() : ''))
+      .filter(value => value.length > 0)
     : [];
 
   const reactionName = typeof payload['reaction name '] === 'string'
@@ -538,4 +538,97 @@ export const resolveReactionByName = async (reactionName: string): Promise<React
   }
 
   throw new Error('Unable to derive a representative reaction from that name. Try specifying typical reactants or products.');
+};
+
+/**
+ * Generate multi-frame XYZ coordinates for reaction animation (ChemTube3D style)
+ * Each frame shows atoms at different positions along the reaction coordinate
+ */
+export const generateReactionAnimationFrames = async (
+  reactionDescription: string
+): Promise<string | null> => {
+  if (!isGeminiInitialized()) {
+    console.warn('Gemini not initialized, cannot generate animation frames');
+    return null;
+  }
+
+  const prompt = `You are an expert computational chemist. Generate a multi-frame XYZ animation for the following reaction mechanism.
+
+Reaction: ${reactionDescription}
+
+Create 8 frames showing the complete reaction coordinate:
+- Frames 1-2: Reactants separated, approaching each other
+- Frames 3-4: Reactants close, beginning bond formation/breaking
+- Frame 5: Transition state (key intermediates, new bonds partially formed)
+- Frames 6-7: Products forming, old bonds broken
+- Frame 8: Products separated, reaction complete
+
+Output format: Multi-frame XYZ format where each frame has:
+1. First line: number of atoms
+2. Second line: comment (Frame N - description)
+3. Following lines: atom_symbol x y z (coordinates in Angstroms)
+
+Important rules:
+- Use reasonable bond lengths (C-C ~1.54Å, C=C ~1.34Å, C-O ~1.43Å, C-H ~1.09Å)
+- Show atoms moving smoothly between frames (small coordinate changes ~0.2-0.5Å per frame)
+- Include curly arrows conceptually by showing electron-rich atoms approaching electrophilic centers
+- For SN2: nucleophile approaches from one side, leaving group departs from opposite
+- For addition reactions: show reagent approaching double bond
+- Keep a consistent origin and orientation across all frames
+
+Output ONLY the XYZ data, no explanations:
+
+`;
+
+  try {
+    const response = await generateTextContent(prompt);
+
+    // Validate it looks like XYZ format
+    const lines = response.trim().split('\n');
+    if (lines.length < 3) {
+      return null;
+    }
+
+    // Check first line is a number (atom count)
+    const firstLine = lines[0].trim();
+    if (!/^\d+$/.test(firstLine)) {
+      // Try to extract XYZ from markdown code block
+      const match = response.match(/```(?:xyz)?\n?([\s\S]*?)```/);
+      if (match) {
+        return match[1].trim();
+      }
+      return null;
+    }
+
+    return response.trim();
+  } catch (error) {
+    console.error('Failed to generate reaction animation frames:', error);
+    return null;
+  }
+};
+
+/**
+ * Build JSmol script for multi-frame animation
+ */
+export const buildAnimationScript = (xyzData: string): string => {
+  // Escape quotes and newlines for inline loading
+  const escaped = xyzData.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+
+  return `load inline "${escaped}";
+select *;
+wireframe 0.15;
+spacefill 23%;
+color cpk;
+label %a;
+set fontsize 12;
+color labels white;
+set labeloffset 4 4;
+frame 1;
+animation mode palindrome;
+animation fps 4;
+set echo bottom left;
+font echo 14 sansserif bold;
+color echo white;
+echo Frame 1;
+animation on;`;
 };

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Loader2, Search, Sparkles, FlaskConical, Beaker, Play, Pause, SkipBack, SkipForward, RotateCcw, Repeat, Square, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Search, Sparkles, FlaskConical, Beaker, Play, Pause, SkipBack, SkipForward, RotateCcw, Repeat, Square, Eye, EyeOff, Film } from 'lucide-react';
 import ReactionMechanismScene from './ReactionMechanismScene';
-import { resolveReactionQuery, type ReactionComponentDetails, type ReactionResolutionResult } from '../services/reactionResolver';
+import { resolveReactionQuery, generateReactionAnimationFrames, buildAnimationScript, type ReactionComponentDetails, type ReactionResolutionResult } from '../services/reactionResolver';
 
 const STAGE_INFO: Array<{
   key: ReactionComponentDetails['role'];
@@ -65,6 +65,10 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
   const [currentStageIndex, setCurrentStageIndex] = useState(0);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('ballstick');
   const [showHydrogens, setShowHydrogens] = useState(true);
+
+  // ChemTube3D mechanism animation state
+  const [mechanismAnimating, setMechanismAnimating] = useState(false);
+  const [mechanismLoading, setMechanismLoading] = useState(false);
 
   const isLoading = status === 'loading';
 
@@ -154,6 +158,43 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
     setShowHydrogens(newValue);
     onScriptChange(`select all; set showHydrogens ${newValue ? 'TRUE' : 'FALSE'};`);
   }, [onScriptChange, showHydrogens]);
+
+  // ChemTube3D-style mechanism animation (multi-frame XYZ)
+  const playMechanismAnimation = useCallback(async () => {
+    if (!onScriptChange || !lastPrompt) {
+      setError('Search for a reaction first to generate the mechanism animation.');
+      return;
+    }
+
+    if (mechanismAnimating) {
+      // Stop animation
+      setMechanismAnimating(false);
+      onScriptChange('animation off;');
+      return;
+    }
+
+    setMechanismLoading(true);
+    setError(null);
+
+    try {
+      const xyzData = await generateReactionAnimationFrames(lastPrompt);
+
+      if (!xyzData) {
+        setError('Could not generate animation frames. Try a simpler reaction.');
+        setMechanismLoading(false);
+        return;
+      }
+
+      const script = buildAnimationScript(xyzData);
+      setMechanismAnimating(true);
+      onScriptChange(script);
+    } catch (err) {
+      console.error('Mechanism animation failed:', err);
+      setError('Failed to generate mechanism animation. Please try again.');
+    } finally {
+      setMechanismLoading(false);
+    }
+  }, [onScriptChange, lastPrompt, mechanismAnimating]);
 
   const handleSearch = async (prompt?: string) => {
     const value = (prompt ?? query).trim();
@@ -307,8 +348,8 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                 <button
                   onClick={isPlaying ? stopAnimation : playAnimation}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium ${isPlaying
-                      ? 'bg-amber-600 text-white hover:bg-amber-500'
-                      : 'bg-green-600 text-white hover:bg-green-500'
+                    ? 'bg-amber-600 text-white hover:bg-amber-500'
+                    : 'bg-green-600 text-white hover:bg-green-500'
                     }`}
                 >
                   {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
@@ -337,8 +378,8 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                       key={mode}
                       onClick={() => setAnimationMode(mode)}
                       className={`px-2 py-1 rounded text-[10px] ${animationMode === mode
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-slate-800 text-slate-400 hover:text-white'
                         }`}
                     >
                       {mode === 'once' ? 'Once' : mode === 'loop' ? 'Loop' : '↔️'}
@@ -355,8 +396,8 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                     key={mode.id}
                     onClick={() => applyDisplayMode(mode.id)}
                     className={`px-2 py-1 rounded text-[10px] ${displayMode === mode.id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-800 text-slate-400 hover:text-white'
                       }`}
                   >
                     {mode.label}
@@ -370,6 +411,40 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                   {showHydrogens ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
                   H
                 </button>
+              </div>
+
+              {/* ChemTube3D Mechanism Animation */}
+              <div className="pt-2 border-t border-slate-800">
+                <button
+                  onClick={() => void playMechanismAnimation()}
+                  disabled={mechanismLoading || !lastPrompt}
+                  className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${mechanismAnimating
+                      ? 'bg-rose-600 text-white hover:bg-rose-500'
+                      : mechanismLoading
+                        ? 'bg-slate-700 text-slate-400 cursor-wait'
+                        : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500'
+                    }`}
+                >
+                  {mechanismLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating Animation...
+                    </>
+                  ) : mechanismAnimating ? (
+                    <>
+                      <Square className="h-4 w-4" />
+                      Stop Mechanism
+                    </>
+                  ) : (
+                    <>
+                      <Film className="h-4 w-4" />
+                      Play Full Mechanism (ChemTube3D Style)
+                    </>
+                  )}
+                </button>
+                <p className="text-[10px] text-slate-500 mt-1 text-center">
+                  AI generates multi-frame 3D animation showing reactants approaching → transition state → products
+                </p>
               </div>
             </div>
           )}
