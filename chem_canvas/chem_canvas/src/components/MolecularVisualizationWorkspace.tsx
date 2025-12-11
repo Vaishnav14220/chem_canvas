@@ -314,10 +314,10 @@ const CATEGORY_TABS: Array<{ id: WorkspaceCategory; label: string }> = [
 ];
 
 const CATEGORY_HINTS: Record<WorkspaceCategory, string[]> = {
-  molecule: ['Water', 'Benzene', 'Caffeine', 'Aspirin'],
-  protein: ['Sample Protein', 'Crambin', 'Insulin', 'Lysozyme'],
-  crystal: ['Quartz', 'Calcite', 'NaCl', 'Perovskite'],
-  reaction: ['Diels-Alder', 'Suzuki coupling', 'SN1', 'E2 elimination'],
+  molecule: [':aspirin', '$caffeine', 'Benzene', 'Glucose'],
+  protein: ['=1CRN', '=1A3N', 'Hemoglobin', 'Insulin', 'DNA'],
+  crystal: ['Quartz', 'Calcite', 'NaCl', 'Diamond'],
+  reaction: ['Diels-Alder', 'Suzuki coupling', 'SN2', 'E2 elimination'],
 };
 
 const MolecularVisualizationWorkspace: React.FC = () => {
@@ -391,34 +391,34 @@ const MolecularVisualizationWorkspace: React.FC = () => {
     keywords?: string[];
     action: () => void | Promise<void>;
   }> = [
-    {
-      id: 'sample-protein',
-      label: 'Sample Protein (1CRN)',
-      keywords: ['protein', '1crn', 'crambin'],
-      action: () => loadSampleStructure(),
-    },
-    ...QUICK_MOLECULES.map((molecule) => ({
-      id: `molecule-${molecule.name}`,
-      label: molecule.name,
-      keywords: [molecule.detail || '', 'molecule'],
-      action: () => loadQuickMolecule(molecule.smiles),
-    })),
-    ...visualizationDemos.map((demo) => ({
-      id: `demo-${demo.id}`,
-      label: demo.title,
-      keywords: demo.tags,
-      action: () => handleRunDemo(demo),
-    })),
-    ...mineralStructures.map((mineral) => ({
-      id: `mineral-${mineral.id}`,
-      label: mineral.name,
-      keywords: [mineral.system, mineral.formula, 'crystal'],
-      action: () => {
-        setSelectedMineral(mineral.id);
-        handleLoadMineral(mineral);
+      {
+        id: 'sample-protein',
+        label: 'Sample Protein (1CRN)',
+        keywords: ['protein', '1crn', 'crambin'],
+        action: () => loadSampleStructure(),
       },
-    })),
-  ];
+      ...QUICK_MOLECULES.map((molecule) => ({
+        id: `molecule-${molecule.name}`,
+        label: molecule.name,
+        keywords: [molecule.detail || '', 'molecule'],
+        action: () => loadQuickMolecule(molecule.smiles),
+      })),
+      ...visualizationDemos.map((demo) => ({
+        id: `demo-${demo.id}`,
+        label: demo.title,
+        keywords: demo.tags,
+        action: () => handleRunDemo(demo),
+      })),
+      ...mineralStructures.map((mineral) => ({
+        id: `mineral-${mineral.id}`,
+        label: mineral.name,
+        keywords: [mineral.system, mineral.formula, 'crystal'],
+        action: () => {
+          setSelectedMineral(mineral.id);
+          handleLoadMineral(mineral);
+        },
+      })),
+    ];
 
   const handleSearch = async (queryOverride?: string) => {
     const rawQuery = (queryOverride ?? searchQuery).trim();
@@ -432,6 +432,36 @@ const MolecularVisualizationWorkspace: React.FC = () => {
     setSearchFeedback(null);
 
     try {
+      // 1. Check for JSmol special prefixes for direct database loading
+      // =PDB_ID - Load from RCSB PDB
+      if (rawQuery.startsWith('=')) {
+        const pdbId = rawQuery.substring(1).trim();
+        setScript(`load =${pdbId}; cartoon only; color structure; spin y 3;`);
+        setSearchFeedback(`Loaded protein ${pdbId.toUpperCase()} from RCSB PDB`);
+        return;
+      }
+
+      // :compound - Load from PubChem
+      if (rawQuery.startsWith(':')) {
+        const compound = rawQuery.substring(1).trim();
+        setScript(`load :${compound}; wireframe 0.15; spacefill 20%; color cpk; spin y 5;`);
+        setSearchFeedback(`Loaded ${compound} from PubChem`);
+        return;
+      }
+
+      // $compound - Load from NCI (National Cancer Institute)
+      if (rawQuery.startsWith('$')) {
+        const compound = rawQuery.substring(1).trim();
+        setScript(`load $${compound}; wireframe 0.15; spacefill 20%; color cpk; spin y 5;`);
+        setSearchFeedback(`Loaded ${compound} from NCI`);
+        return;
+      }
+
+      // 2. Check for protein-related keywords
+      const proteinKeywords = ['protein', 'enzyme', 'hemoglobin', 'insulin', 'lysozyme', 'dna', 'rna', 'antibody', 'receptor', 'kinase'];
+      const isProteinQuery = proteinKeywords.some(kw => query.includes(kw)) || selectedCategory === 'protein';
+
+      // 3. Check local preset matches
       const match = searchItems.find((item) => {
         if (item.label.toLowerCase().includes(query)) return true;
         return item.keywords?.some((keyword) => keyword.toLowerCase().includes(query));
@@ -443,6 +473,7 @@ const MolecularVisualizationWorkspace: React.FC = () => {
         return;
       }
 
+      // 4. Handle URLs
       if (rawQuery.startsWith('http')) {
         setStructureUrl(rawQuery);
         loadFromUrl(rawQuery);
@@ -450,6 +481,7 @@ const MolecularVisualizationWorkspace: React.FC = () => {
         return;
       }
 
+      // 5. Handle reactions
       if (selectedCategory === 'reaction') {
         setReactionSearchQuery(rawQuery);
         setReactionSearchSeed((seed) => seed + 1);
@@ -458,12 +490,14 @@ const MolecularVisualizationWorkspace: React.FC = () => {
         return;
       }
 
+      // 6. Try PubChem first for molecules
       const canonical = await fetchCanonicalSmiles(rawQuery);
       if (canonical) {
         loadSmilesIntoViewer(canonical, rawQuery);
         return;
       }
 
+      // 7. Use AI to resolve the query (proteins, crystals, complex molecules)
       try {
         if (!isGeminiInitialized()) {
           initializeGemini();
@@ -474,6 +508,24 @@ const MolecularVisualizationWorkspace: React.FC = () => {
         return;
       }
 
+      // Enhanced AI prompt for proteins and crystals
+      if (isProteinQuery || selectedCategory === 'protein') {
+        const pdbPrompt = `You are a biochemistry expert. The user wants to view: "${rawQuery}"
+If this is a protein/enzyme/biomolecule, return ONLY the 4-letter PDB ID (e.g., "1CRN" for crambin, "1A3N" for hemoglobin).
+If you're unsure, return the most famous/common PDB structure for that molecule.
+Return ONLY the PDB ID, nothing else. No explanation.`;
+
+        const pdbId = await generateTextContent(pdbPrompt);
+        const cleanPdbId = pdbId?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+        if (cleanPdbId && cleanPdbId.length === 4) {
+          setScript(`load =${cleanPdbId}; cartoon only; color structure; set cartoonFancy true; spin y 3;`);
+          setSearchFeedback(`Loaded ${rawQuery} (PDB: ${cleanPdbId})`);
+          return;
+        }
+      }
+
+      // Fallback to molecule resolution
       const resolved = await resolveMoleculeDescription(rawQuery);
       const smilesToLoad = resolved.canonicalSmiles ?? resolved.smiles;
 
@@ -556,11 +608,10 @@ Output: raw JSmol commands only.`;
           <button
             key={demo.id}
             onClick={() => handleRunDemo(demo)}
-            className={`group rounded-2xl border px-4 py-4 text-left transition ${
-              activeDemo === demo.id
-                ? 'border-indigo-400/80 bg-indigo-900/40 text-white'
-                : 'border-slate-800 bg-slate-900/50 hover:border-indigo-500/60 hover:bg-slate-900/80 text-slate-200'
-            }`}
+            className={`group rounded-2xl border px-4 py-4 text-left transition ${activeDemo === demo.id
+              ? 'border-indigo-400/80 bg-indigo-900/40 text-white'
+              : 'border-slate-800 bg-slate-900/50 hover:border-indigo-500/60 hover:bg-slate-900/80 text-slate-200'
+              }`}
           >
             <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide">
               <span>{demo.title}</span>
