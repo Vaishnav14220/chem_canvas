@@ -342,6 +342,49 @@ const MolecularVisualizationWorkspace: React.FC = () => {
   const [aiFeedback, setAiFeedback] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
+  // Protein Analysis Panel State
+  const [representation, setRepresentation] = useState<'cartoon' | 'surface' | 'ballstick' | 'spacefill' | 'wireframe'>('cartoon');
+  const [colorScheme, setColorScheme] = useState<'structure' | 'chain' | 'cpk' | 'bfactor' | 'residue'>('structure');
+  const [spinEnabled, setSpinEnabled] = useState(true);
+  const [loadedPdbId, setLoadedPdbId] = useState<string | null>(null);
+
+  // Apply representation change
+  const applyRepresentation = (rep: typeof representation) => {
+    setRepresentation(rep);
+    const repScripts: Record<typeof representation, string> = {
+      cartoon: 'cartoon only; set cartoonFancy true;',
+      surface: 'isosurface sasurface translucent 0.4;',
+      ballstick: 'wireframe 0.15; spacefill 20%;',
+      spacefill: 'spacefill only;',
+      wireframe: 'wireframe 0.1; spacefill off;',
+    };
+    setScript(prev => `${prev}\n${repScripts[rep]}`);
+  };
+
+  // Apply color scheme change
+  const applyColorScheme = (scheme: typeof colorScheme) => {
+    setColorScheme(scheme);
+    const colorScripts: Record<typeof colorScheme, string> = {
+      structure: 'color structure;',
+      chain: 'color chain;',
+      cpk: 'color cpk;',
+      bfactor: 'color temperature;',
+      residue: 'color amino;',
+    };
+    setScript(prev => `${prev}\n${colorScripts[scheme]}`);
+  };
+
+  // Toggle spin
+  const toggleSpin = () => {
+    setSpinEnabled(!spinEnabled);
+    setScript(prev => `${prev}\n${spinEnabled ? 'spin off;' : 'spin y 5;'}`);
+  };
+
+  // Export image
+  const exportImage = () => {
+    setScript(prev => `${prev}\nwrite image PNG "structure.png";`);
+  };
+
   const handleRunDemo = (demo: VisualizationDemo) => {
     setActiveDemo(demo.id);
     setScript(demo.script);
@@ -881,6 +924,97 @@ Output: raw JSmol commands only.`;
 
         {/* Sidebar: presets + quiz + AI */}
         <div className="space-y-4">
+          {/* Protein Analysis Panel */}
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers3 className="h-5 w-5 text-blue-400" />
+                <div>
+                  <h4 className="text-sm font-semibold text-white">Structure Controls</h4>
+                  <p className="text-[11px] text-slate-400">Representation & coloring</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Representation */}
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wider text-slate-500">Representation</p>
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { id: 'cartoon', label: 'Cartoon' },
+                  { id: 'surface', label: 'Surface' },
+                  { id: 'ballstick', label: 'Ball & Stick' },
+                  { id: 'spacefill', label: 'Spacefill' },
+                  { id: 'wireframe', label: 'Wire' },
+                ].map((rep) => (
+                  <button
+                    key={rep.id}
+                    onClick={() => applyRepresentation(rep.id as typeof representation)}
+                    className={`rounded-lg px-2 py-1.5 text-[11px] font-medium transition ${representation === rep.id
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                  >
+                    {rep.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Color Scheme */}
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-wider text-slate-500">Color Scheme</p>
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { id: 'structure', label: 'Structure' },
+                  { id: 'chain', label: 'Chain' },
+                  { id: 'cpk', label: 'CPK' },
+                  { id: 'bfactor', label: 'B-factor' },
+                  { id: 'residue', label: 'Residue' },
+                ].map((color) => (
+                  <button
+                    key={color.id}
+                    onClick={() => applyColorScheme(color.id as typeof colorScheme)}
+                    className={`rounded-lg px-2 py-1.5 text-[11px] font-medium transition ${colorScheme === color.id
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                  >
+                    {color.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={toggleSpin}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${spinEnabled
+                    ? 'bg-amber-600/80 text-white'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+              >
+                <RefreshCcw className="h-3 w-3" />
+                {spinEnabled ? 'Spin On' : 'Spin Off'}
+              </button>
+              <button
+                onClick={handleResetView}
+                className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-[11px] font-medium text-slate-300 hover:bg-slate-700"
+              >
+                <Compass className="h-3 w-3" />
+                Reset
+              </button>
+              <button
+                onClick={exportImage}
+                className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-[11px] font-medium text-slate-300 hover:bg-slate-700"
+              >
+                <Download className="h-3 w-3" />
+                Export
+              </button>
+            </div>
+          </section>
+
           <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
             {renderCategoryTools()}
           </section>
