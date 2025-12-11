@@ -298,6 +298,14 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
       setStepIndex(index);
       setIsAnimating(false);
       setScriptError(null);
+
+      // Use ChemTube3D-style frame commands
+      if (onScriptChange) {
+        // Stop any current animation and go to specific frame
+        onScriptChange(`anim off; frame ${index + 1};`);
+      }
+
+      // Also try to load the stage-specific script if available
       const stage = stageDisplays[index];
       const payload = stage ? stageScripts[stage.id] : null;
       if (payload?.script && onScriptChange) {
@@ -307,31 +315,48 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
     [stageDisplays, stageScripts, onScriptChange],
   );
 
+  // ChemTube3D-style animation controls
+  const handleStart = useCallback(() => {
+    setStepIndex(0);
+    setIsAnimating(false);
+    if (onScriptChange) {
+      onScriptChange('anim rewind; anim off;');
+    }
+  }, [onScriptChange]);
+
+  const handleFinish = useCallback(() => {
+    setStepIndex(stageDisplays.length - 1);
+    setIsAnimating(false);
+    if (onScriptChange) {
+      onScriptChange(`frame last; anim off;`);
+    }
+  }, [onScriptChange, stageDisplays.length]);
+
   const handleAnimateToggle = () => {
     if (isAnimating) {
+      // Stop animation - ChemTube3D uses "anim off"
       setIsAnimating(false);
       setScriptError(null);
-      // Stop animation
-      onScriptChange?.('animation off;');
-      const stage = currentStage;
-      const payload = stage ? stageScripts[stage.id] : null;
-      if (payload?.script && onScriptChange) {
-        onScriptChange(payload.script);
-      }
+      onScriptChange?.('anim off;');
       return;
     }
 
-    // Prefer morph animation if available, otherwise use slideshow
+    // Start animation - use ChemTube3D-style commands
+    // First try morph animation, then slideshow, then simple frame animation
     const animationScript = morphScript ?? slideshowScript;
 
-    if (!animationScript) {
+    if (animationScript) {
+      setScriptError(null);
+      setIsAnimating(true);
+      onScriptChange?.(animationScript);
+    } else if (onScriptChange) {
+      // Fallback: use JSmol's built-in frame animation on the current model
+      setScriptError(null);
+      setIsAnimating(true);
+      onScriptChange('anim mode palindrome; delay 0.5; frame play;');
+    } else {
       setScriptError('Need valid structure data to animate. Try refreshing the reaction search.');
-      return;
     }
-
-    setScriptError(null);
-    setIsAnimating(true);
-    onScriptChange?.(animationScript);
   };
 
   if (stageDisplays.length === 0) {
@@ -424,7 +449,7 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
         />
         <div className="flex gap-2">
           <button
-            onClick={() => handleStageSwitch(0)}
+            onClick={handleStart}
             className="flex-1 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm text-white flex items-center justify-center gap-2"
           >
             <SkipBack className="h-4 w-4" />
@@ -440,7 +465,7 @@ const ResolvedReactionPath: React.FC<ResolvedReactionPathProps> = ({ resolution,
             {isAnimating ? 'Stop' : 'Animate'}
           </button>
           <button
-            onClick={() => handleStageSwitch(stageDisplays.length - 1)}
+            onClick={handleFinish}
             className="flex-1 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm text-white flex items-center justify-center gap-2"
           >
             <SkipForward className="h-4 w-4" />
