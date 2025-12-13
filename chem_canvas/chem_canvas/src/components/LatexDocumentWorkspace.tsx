@@ -140,6 +140,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   
   // Layout state
   const [activeTab, setActiveTab] = useState<'chat' | 'editor' | 'preview' | 'split'>('chat');
@@ -479,7 +480,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
   // Render loading state
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-900">
+      <div className="h-screen flex items-center justify-center bg-[#1a1a1a]">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-purple-500 animate-spin mx-auto mb-4" />
           <p className="text-gray-400">Initializing LaTeX Agent...</p>
@@ -491,8 +492,8 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
   // Render error state
   if (error) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-900">
-        <Card className="max-w-md bg-gray-800 border-gray-700">
+      <div className="h-screen flex items-center justify-center bg-[#1a1a1a]">
+        <Card className="max-w-md bg-[#2d2d2d] border-white/10">
           <CardHeader>
             <CardTitle className="text-red-400 flex items-center gap-2">
               <AlertCircle className="w-5 h-5" />
@@ -512,29 +513,28 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
   }
 
   return (
-    <div className="h-screen flex flex-col text-white" style={{ backgroundColor: '#171717' }}>
+    <div className="h-full flex flex-col bg-[#1a1a1a] text-white">
       {/* Header */}
-      <header className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-gray-700" style={{ backgroundColor: '#171717' }}>
-        <div className="flex items-center gap-4">
+      <header className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-white/10" style={{ backgroundColor: '#171717' }}>
+        <div className="flex items-center space-x-4">
           {onBack && (
-            <Button variant="ghost" size="icon" onClick={onBack}>
+          <button
+            onClick={onBack}
+            className="p-2 rounded-lg transition-colors hover:bg-[#2d2d2d] text-gray-400"
+          >
               <ArrowLeft className="w-5 h-5" />
-            </Button>
+            </button>
           )}
-          <div className="flex items-center gap-2">
-            <div className="p-2  bg-gradient-to-r from-purple-500 to-blue-500">
-              <FileText className="w-5 h-5 text-white" />
-            </div>
+          <div className="flex items-center space-x-3">
             <div>
-              <h1 className="text-lg font-semibold">LaTeX Document Agent</h1>
-              <p className="text-xs text-gray-400">AI-powered document creation</p>
+              <h1 className="text-xl font-bold">LaTeX Document Agent</h1>
             </div>
           </div>
         </div>
         
         <div className="flex items-center gap-2">
           {/* View tabs */}
-          <div className="flex bg-gray-700  p-1">
+          <div className="flex bg-[#2d2d2d] p-1">
             <button
               onClick={() => setActiveTab('chat')}
               className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors ${
@@ -573,7 +573,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
             </button>
           </div>
           
-          <div className="h-6 w-px bg-gray-700" />
+          <div className="h-6 w-px bg-white/10" />
           
           {/* Compile button */}
           <Button
@@ -597,7 +597,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
             </Button>
           )}
           
-          <div className="h-6 w-px bg-gray-700" />
+          <div className="h-6 w-px bg-white/10" />
           
           <Button variant="ghost" size="icon" onClick={() => setShowHelpDialog(true)}>
             <HelpCircle className="w-5 h-5" />
@@ -615,13 +615,13 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         {showSidebar && (
-          <aside className="w-64 flex-shrink-0 border-r border-gray-700 flex flex-col" style={{ backgroundColor: '#212121' }}>
+          <aside className="w-64 flex-shrink-0 border-r border-white/10 flex flex-col bg-[#1a1a1a]">
             {/* Sidebar tabs */}
-            <div className="flex border-b border-gray-700">
+            <div className="flex border-b border-white/10">
               <button
                 onClick={() => setSidebarTab('files')}
                 className={`flex-1 px-3 py-2 text-sm flex items-center justify-center gap-1.5 ${
-                  sidebarTab === 'files' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                  sidebarTab === 'files' ? 'bg-[#2d2d2d] text-white' : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
                 }`}
               >
                 <FolderOpen className="w-4 h-4" />
@@ -630,7 +630,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
               <button
                 onClick={() => setSidebarTab('todos')}
                 className={`flex-1 px-3 py-2 text-sm flex items-center justify-center gap-1.5 ${
-                  sidebarTab === 'todos' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                  sidebarTab === 'todos' ? 'bg-[#2d2d2d] text-white' : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
                 }`}
               >
                 <ListTodo className="w-4 h-4" />
@@ -639,7 +639,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
               <button
                 onClick={() => setSidebarTab('tools')}
                 className={`flex-1 px-3 py-2 text-sm flex items-center justify-center gap-1.5 ${
-                  sidebarTab === 'tools' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                  sidebarTab === 'tools' ? 'bg-[#2d2d2d] text-white' : 'text-gray-400 hover:text-white hover:bg-[#2d2d2d]'
                 }`}
               >
                 <Wrench className="w-4 h-4" />
@@ -669,7 +669,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                       className={`group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer ${
                         selectedFile === file.path
                           ? 'bg-purple-500/20 text-purple-300'
-                          : 'hover:bg-gray-700 text-gray-300'
+                          : 'hover:bg-[#2d2d2d] text-gray-300'
                       }`}
                       onClick={() => handleSelectFile(file.path)}
                     >
@@ -707,12 +707,12 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                       {todos.map((todo) => (
                         <div
                           key={todo.id}
-                          className={`p-2  border ${
+                          className={`p-2 border ${
                             todo.status === 'completed'
                               ? 'bg-green-500/10 border-green-500/30'
                               : todo.status === 'in-progress'
                               ? 'bg-yellow-500/10 border-yellow-500/30'
-                              : 'bg-gray-700/50 border-gray-600'
+                              : 'bg-[#2d2d2d] border-white/10'
                           }`}
                         >
                           <div className="flex items-start gap-2">
@@ -721,7 +721,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                             ) : todo.status === 'in-progress' ? (
                               <Clock className="w-4 h-4 text-yellow-400 mt-0.5" />
                             ) : (
-                              <div className="w-4 h-4  border border-gray-500 mt-0.5" />
+                              <div className="w-4 h-4 border border-white/20 mt-0.5" />
                             )}
                             <div>
                               <p className="text-sm font-medium">{todo.title}</p>
@@ -745,7 +745,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                   </div>
                   <div className="space-y-2 mb-4">
                     {tools.map((tool) => (
-                      <div key={tool.name} className="p-2 bg-gray-700/50 ">
+                      <div key={tool.name} className="p-2 bg-[#2d2d2d] border border-white/5">
                         <div className="text-sm font-medium text-purple-300">{tool.name}</div>
                         <div className="text-xs text-gray-500">{tool.description}</div>
                       </div>
@@ -757,7 +757,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                   </div>
                   <div className="space-y-2">
                     {subagents.map((agent) => (
-                      <div key={agent.name} className="p-2 bg-gray-700/50 ">
+                      <div key={agent.name} className="p-2 bg-[#2d2d2d] border border-white/5">
                         <div className="text-sm font-medium text-blue-300">{agent.name}</div>
                         <div className="text-xs text-gray-500">{agent.description}</div>
                       </div>
@@ -772,14 +772,14 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
         {/* Toggle sidebar button */}
         <button
           onClick={() => setShowSidebar(!showSidebar)}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-gray-800 border border-gray-700 rounded-r-lg p-1 hover:bg-gray-700"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-[#2d2d2d] border border-white/10 rounded-r-lg p-1 hover:bg-[#3d3d3d]"
           style={{ left: showSidebar ? '256px' : '0' }}
         >
           {showSidebar ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
         </button>
 
         {/* Main content area */}
-        <main className="flex-1 flex overflow-hidden">
+        <main className="flex-1 flex overflow-hidden bg-[#202020]">
           {/* Chat view */}
           {(activeTab === 'chat') && (
             <div className="flex-1 flex flex-col">
@@ -788,9 +788,6 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                 {messages.length === 0 && (
                   <div className="max-w-3xl mx-auto">
                     <div className="text-center mb-8">
-                      <div className="inline-flex p-4  bg-purple-500/20 mb-4">
-                        <Sparkles className="w-8 h-8 text-purple-400" />
-                      </div>
                       <h2 className="text-2xl font-bold mb-2">LaTeX Document Agent</h2>
                       <p className="text-gray-400">
                         I can help you create complete LaTeX documents with planning, file management, and AI-powered content generation.
@@ -802,7 +799,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                         <button
                           key={qs.id}
                           onClick={() => handleQuickStart(qs.prompt)}
-                          className="p-4 text-left  bg-gray-800 border border-gray-700 hover:border-purple-500/50 hover:bg-gray-750 transition-all group"
+                          className="p-4 text-left bg-[#2d2d2d] border border-white/10 hover:border-purple-500/50 hover:bg-[#3d3d3d] transition-all group"
                         >
                           <div className="flex items-center gap-2 mb-2">
                             <BookOpen className="w-4 h-4 text-purple-400" />
@@ -828,7 +825,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                         className={`max-w-[85%]  p-4 ${
                           message.role === 'user'
                             ? 'bg-purple-500/20 text-white'
-                            : 'bg-gray-800 text-gray-100'
+                            : 'bg-[#2d2d2d] text-gray-100'
                         }`}
                       >
                         {message.role === 'assistant' ? (
@@ -843,7 +840,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                         
                         {/* Show tools used */}
                         {message.toolsUsed && message.toolsUsed.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-gray-700 flex flex-wrap gap-1">
+                          <div className="mt-2 pt-2 border-t border-white/10 flex flex-wrap gap-1">
                             {message.toolsUsed.map((tool, i) => (
                               <Badge key={i} variant="secondary" className="text-xs">
                                 <Wrench className="w-3 h-3 mr-1" />
@@ -855,7 +852,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                         
                         {/* Show files modified */}
                         {message.filesModified && message.filesModified.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-gray-700 flex flex-wrap gap-1">
+                          <div className="mt-2 pt-2 border-t border-white/10 flex flex-wrap gap-1">
                             {message.filesModified.map((file, i) => (
                               <Badge key={i} variant="outline" className="text-xs">
                                 <FileText className="w-3 h-3 mr-1" />
@@ -871,7 +868,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                   {/* Streaming content */}
                   {isStreaming && streamingContent && (
                     <div className="flex justify-start">
-                      <div className="max-w-[85%]  p-4 bg-gray-800 text-gray-100">
+                      <div className="max-w-[85%] p-4 bg-[#2d2d2d] text-gray-100">
                         <div className="prose prose-invert prose-sm max-w-none">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {streamingContent}
@@ -887,7 +884,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
               </ScrollArea>
               
               {/* Chat input */}
-              <div className="p-4 border-t border-gray-700" style={{ backgroundColor: '#212121' }}>
+              <div className="p-4 border-t border-white/10 bg-[#202020]">
                 <div className="max-w-3xl mx-auto flex gap-2">
                   <Textarea
                     value={inputMessage}
@@ -899,7 +896,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                       }
                     }}
                     placeholder="Describe the document you want to create..."
-                    className="flex-1 min-h-[48px] max-h-32 bg-gray-700 border-gray-600 resize-none"
+                    className="flex-1 min-h-[48px] max-h-32 bg-[#2d2d2d] border-white/10 resize-none"
                   />
                   <Button
                     onClick={handleSendMessage}
@@ -921,7 +918,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
           {(activeTab === 'editor' || activeTab === 'split') && (
             <div className={`flex-1 flex flex-col ${activeTab === 'split' ? 'w-1/2' : 'w-full'}`}>
               {/* Editor toolbar */}
-              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700" style={{ backgroundColor: '#212121' }}>
+              <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#202020]">
                 <div className="flex items-center gap-2">
                   <FileCode className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-300">
@@ -948,7 +945,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                     setEditorContent(e.target.value);
                     setUnsavedChanges(true);
                   }}
-                  className="flex-1 w-full p-4 text-gray-100 font-mono text-sm resize-none focus:outline-none" style={{ backgroundColor: '#212121' }}
+                  className="flex-1 w-full p-4 text-gray-100 font-mono text-sm resize-none focus:outline-none bg-[#202020]"
                   spellCheck={false}
                 />
               ) : (
@@ -964,9 +961,9 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
           
           {/* Preview view */}
           {(activeTab === 'preview' || activeTab === 'split') && (
-            <div className={`flex-1 flex flex-col ${activeTab === 'split' ? 'w-1/2 border-l border-gray-700' : 'w-full'}`}>
+            <div className={`flex-1 flex flex-col ${activeTab === 'split' ? 'w-1/2 border-l border-white/10' : 'w-full'}`}>
               {/* Preview toolbar */}
-              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700" style={{ backgroundColor: '#212121' }}>
+              <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#202020]">
                 <div className="flex items-center gap-2">
                   <Eye className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-300">PDF Preview</span>
@@ -1028,7 +1025,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
               
               {/* PDF viewer using react-pdf (like latexit) */}
               {pdfFile ? (
-                <ScrollArea className="flex-1 bg-gray-600">
+                <ScrollArea className="flex-1 bg-[#1a1a1a]">
                   <div className="flex justify-center p-4">
                     <Document
                       file={pdfFile}
@@ -1093,7 +1090,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                         <p className="text-sm mt-2">Compiling with LaTeX server...</p>
                       </div>
                     )}
-                    <div className="mt-6 p-4 bg-gray-800/50  max-w-md mx-auto">
+                    <div className="mt-6 p-4 bg-[#2d2d2d]/50 max-w-md mx-auto">
                       <p className="text-sm text-gray-400 mb-3">
                         <strong>Note:</strong> If compilation fails, you can:
                       </p>
@@ -1163,7 +1160,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
 
       {/* New file dialog */}
       <Dialog open={showNewFileDialog} onOpenChange={setShowNewFileDialog}>
-        <DialogContent className="bg-gray-800 border-gray-700">
+        <DialogContent className="bg-[#2d2d2d] border-white/10">
           <DialogHeader>
             <DialogTitle>Create New File</DialogTitle>
             <DialogDescription>Enter a name for the new LaTeX file</DialogDescription>
@@ -1172,7 +1169,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
             value={newFileName}
             onChange={(e) => setNewFileName(e.target.value)}
             placeholder="filename.tex"
-            className="bg-gray-700 border-gray-600"
+            className="bg-[#2d2d2d] border-white/10"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewFileDialog(false)}>

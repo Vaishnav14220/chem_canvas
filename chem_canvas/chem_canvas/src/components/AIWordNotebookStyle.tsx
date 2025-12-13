@@ -2374,7 +2374,7 @@ ${docTextBlock}${userDirective}`,
       )}
 
       {/* ============ MAIN CONTENT ============ */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
 
         {/* ============ LEFT PANEL - SOURCES ============ */}
         {leftPanelOpen && (
@@ -2529,7 +2529,8 @@ ${docTextBlock}${userDirective}`,
         {!leftPanelOpen && (
           <button
             onClick={() => setLeftPanelOpen(true)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-r-lg transition-colors"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-r-lg transition-colors border-r border-white/10"
+            title="Show sources panel"
           >
             <ChevronRight className="h-4 w-4 text-gray-400" />
           </button>
@@ -3343,7 +3344,8 @@ ${docTextBlock}${userDirective}`,
           !rightPanelOpen && (
             <button
               onClick={() => setRightPanelOpen(true)}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-l-lg transition-colors"
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] rounded-l-lg transition-colors border-l border-white/10"
+              title="Show studio panel"
             >
               <ChevronLeft className="h-4 w-4 text-gray-400" />
             </button>
