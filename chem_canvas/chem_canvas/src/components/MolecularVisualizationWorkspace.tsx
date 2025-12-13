@@ -15,7 +15,7 @@ import {
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import JSmolViewer from './JSmolViewer';
+import JSmolViewer, { type JSmolViewerInterface } from './JSmolViewer';
 import SymmetryQuiz from './SymmetryQuiz';
 import ReactionMechanismAnimator from './ReactionMechanismAnimator';
 import ResolvedReactionPath from './ResolvedReactionPath';
@@ -435,6 +435,16 @@ const CATEGORY_HINTS: Record<WorkspaceCategory, string[]> = {
   reaction: ['Diels-Alder', 'Suzuki coupling', 'SN2', 'E2 elimination'],
 };
 
+interface SymmetryInfo {
+  name: string;
+  elements: Array<{
+    label: string;
+    command: string; // The command to draw this specific element
+    type: 'plane' | 'axis' | 'center';
+    count?: number;
+  }>;
+}
+
 const MolecularVisualizationWorkspace: React.FC = () => {
   const [activeDemo, setActiveDemo] = useState<string>(visualizationDemos[0].id);
   const [script, setScript] = useState<string>(visualizationDemos[0].script);
@@ -457,6 +467,11 @@ const MolecularVisualizationWorkspace: React.FC = () => {
   const [aiCommand, setAiCommand] = useState('');
   const [aiFeedback, setAiFeedback] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+
+  // Symmetry state
+  const [jsmolViewer, setJsmolViewer] = useState<JSmolViewerInterface | null>(null);
+  const [symmetryInfo, setSymmetryInfo] = useState<SymmetryInfo | null>(null);
+  const [activeSymmetryElements, setActiveSymmetryElements] = useState<Record<string, boolean>>({});
 
   // Protein Analysis Panel State
   const [representation, setRepresentation] = useState<'cartoon' | 'surface' | 'ballstick' | 'spacefill' | 'wireframe'>('cartoon');
@@ -507,6 +522,233 @@ const MolecularVisualizationWorkspace: React.FC = () => {
     setJsmolCommand(`${cmd}; // ${Date.now()}`);
   };
 
+
+  // Symmetry Handlers
+  const handleCalculateSymmetry = () => {
+    if (!jsmolViewer) {
+      console.warn('JSmol viewer not ready');
+      return;
+    }
+
+    // 1. Run calculation command
+    // Note: 'calculate pointgroup' is a script command that runs asynchronously in JSmol's queue.
+    jsmolViewer.runScript('calculate pointgroup');
+
+    // 2. Poll for the result.
+    // JSmol's pointgroup() function returns the *current* point group info.
+    // Immediately after 'calculate pointgroup', it might not be updated yet.
+    // We poll a few times.
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    const checkSymmetry = () => {
+      // evaluate('pointgroup()') usually returns an object (associative array in JSmol)
+      // but sometimes might return a string JSON or null if calculation failed.
+      const rawInfo = jsmolViewer.evaluate('pointgroup()');
+      console.log('Symmetry Poll:', attempts, rawInfo);
+
+      let info: any = rawInfo;
+
+      // Handle string result (JSmol sometimes returns JSON string)
+      if (typeof rawInfo === 'string' && rawInfo.trim().startsWith('{')) {
+        try {
+          info = JSON.parse(rawInfo);
+        } catch (e) {
+          console.error("Failed to parse pointgroup JSON", e);
+        }
+      }
+
+      // Check if we have valid data
+      // We expect 'name' and 'nCi', 'nCs', 'nCn'
+      if (info && typeof info === 'object' && info.name && info.name !== 'C1' && info.name !== '?') {
+        // Valid symmetry found (assuming C1 is "no symmetry" but we still handle it)
+        // Actually C1 is valid, but if we just get C1 immediately it might be default.
+        // Let's assume if we get a name, it's good.
+        processSymmetryInfo(info);
+      } else if (info && typeof info === 'object' && info.name === 'C1') {
+        // C1 is trivial. Maybe wait a bit more to see if it changes? 
+        // Most molecules are C1 honestly. 
+        // But if we are polling, we might accept C1 after a few tries.
+        if (attempts > 5) {
+          processSymmetryInfo(info);
+        } else {
+          attempts++;
+          setTimeout(checkSymmetry, 200);
+        }
+      } else {
+        if (attempts < maxAttempts) {
+          attempts++;
+          setTimeout(checkSymmetry, 200);
+        } else {
+          console.warn("Symmetry calculation timed out or returned invalid data");
+          // Fallback: Just try to show what we have
+          if (info && info.name) processSymmetryInfo(info);
+        }
+      }
+    };
+
+    const processSymmetryInfo = (info: any) => {
+      // Parse elements - VChem3D style: EACH element is a separate toggle
+      const elements: SymmetryInfo['elements'] = [];
+
+      const pgName = info.name || '';
+
+      // --- Principal Rotation Axis (Cn) ---
+      // Find highest order Cn axis as principal
+      let principalOrder = 1;
+      for (let n = 8; n >= 2; n--) {
+        if (info[`nC${n}`] > 0) {
+          principalOrder = n;
+          break;
+        }
+      }
+
+      // Add principal Cn axis (only ONE principal)
+      if (principalOrder > 1) {
+        elements.push({
+          label: `C${principalOrder}`,
+          command: `draw pointgroup C${principalOrder} 1`, // Principal axis index 1
+          type: 'axis',
+          count: 1
+        });
+      }
+
+      // --- C'2 (Horizontal C2 axes perpendicular to principal) ---
+      // In Dn groups, there are n C2 axes perpendicular to principal. JSmol uses C2 indices.
+      // We add them individually.
+      const numC2 = info.nC2 || 0;
+      // If principal is C2, then all C2 are equivalent. Otherwise, C2s are C'2.
+      if (numC2 > 0 && principalOrder !== 2) {
+        for (let i = 1; i <= numC2; i++) {
+          elements.push({
+            label: `C'₂`,  // Unicode subscript 2, prime indicates secondary
+            command: `draw pointgroup C2 ${i}`,
+            type: 'axis',
+            count: 1
+          });
+        }
+      } else if (numC2 > 0 && principalOrder === 2) {
+        // All are equivalent C2
+        for (let i = 1; i <= numC2; i++) {
+          elements.push({
+            label: `C₂`,
+            command: `draw pointgroup C2 ${i}`,
+            type: 'axis',
+            count: 1
+          });
+        }
+      }
+
+      // --- Horizontal Mirror Plane (σh) ---
+      if (pgName.endsWith('h')) {
+        elements.push({
+          label: 'σh',
+          command: 'draw pointgroup sigmah',
+          type: 'plane',
+          count: 1
+        });
+      }
+
+      // --- Improper Rotation Axes (Sn) ---
+      [3, 4, 6, 8].forEach(n => {
+        const count = info[`nS${n}`];
+        if (count && count > 0) {
+          // Typically only 1 principal Sn axis colinear with Cn
+          elements.push({
+            label: `S${n}`,
+            command: `draw pointgroup S${n} 1`,
+            type: 'axis',
+            count: 1
+          });
+        }
+      });
+
+      // --- Vertical Mirror Planes (σv) ---
+      const totalPlanes = info.nCs || 0;
+      const hasHorizontal = pgName.endsWith('h');
+      let vCount = 0;
+      if (pgName.includes('v') || (pgName.includes('h') && pgName.startsWith('D'))) {
+        // Dnh has n σv planes; Cnv has n σv planes
+        vCount = hasHorizontal ? totalPlanes - 1 : totalPlanes;
+        for (let i = 1; i <= vCount; i++) {
+          elements.push({
+            label: 'σv',
+            command: `draw pointgroup sigmav ${i}`,
+            type: 'plane',
+            count: 1
+          });
+        }
+      }
+
+      // --- Dihedral Mirror Planes (σd) ---
+      if (pgName.includes('d')) {
+        const dCount = totalPlanes; // Dnd groups
+        for (let i = 1; i <= dCount; i++) {
+          elements.push({
+            label: 'σd',
+            command: `draw pointgroup sigmad ${i}`,
+            type: 'plane',
+            count: 1
+          });
+        }
+      }
+
+      // --- Generic remaining planes if not categorized ---
+      const accountedPlanes = (hasHorizontal ? 1 : 0) + vCount + (pgName.includes('d') ? totalPlanes : 0);
+      const remainingPlanes = totalPlanes - accountedPlanes;
+      if (remainingPlanes > 0) {
+        for (let i = 1; i <= remainingPlanes; i++) {
+          elements.push({
+            label: 'σ',
+            command: `draw pointgroup plane ${i}`,
+            type: 'plane',
+            count: 1
+          });
+        }
+      }
+
+      // --- Inversion Center (i) ---
+      if (info.nCi > 0) {
+        elements.push({
+          label: 'i',
+          command: 'draw pointgroup inv',
+          type: 'center',
+          count: 1
+        });
+      }
+
+      setSymmetryInfo({
+        name: info.name,
+        elements
+      });
+
+      const cleanName = info.name;
+      jsmolViewer.runScript(`set echo top left; echo "Point Group: ${cleanName}";`);
+    };
+
+    setTimeout(checkSymmetry, 100);
+  };
+
+  const handleToggleSymmetry = (element: SymmetryInfo['elements'][0], isChecked: boolean) => {
+    const key = element.command;
+    const newState = { ...activeSymmetryElements, [key]: isChecked };
+    setActiveSymmetryElements(newState);
+
+    if (isChecked) {
+      jsmolViewer?.runScript(element.command);
+    } else {
+      // "draw pointgroup [type]" doesn't have a clean "off" for just that type easily 
+      // without clearing and redrawing others.
+      // Easiest is to clear all and redraw active ones.
+      // Or use specific IDs if JSmol assigns them (draw pg01...).
+      // Robust approach: Clear all, then redraw active.
+      let script = 'draw pointgroup off; ';
+      Object.entries(newState).forEach(([cmd, active]) => {
+        if (active) script += cmd + '; ';
+      });
+      jsmolViewer?.runScript(script);
+    }
+  };
 
   const handleRunDemo = (demo: VisualizationDemo) => {
     setActiveDemo(demo.id);
@@ -675,7 +917,7 @@ const MolecularVisualizationWorkspace: React.FC = () => {
       }
 
       // Enhanced AI prompt for proteins and crystals
-      if (isProteinQuery || selectedCategory === 'protein') {
+      if (isProteinQuery) {
         // First try direct lookup for common proteins (no API needed)
         const commonProteins: Record<string, string> = {
           'hemoglobin': '1A3N',
@@ -1222,10 +1464,134 @@ Output: raw JSmol commands only.`;
     </section>
   );
 
+  const renderElectronicStructurePanel = () => (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <Waves className="h-5 w-5 text-cyan-400" />
+        <div>
+          <h4 className="text-sm font-semibold text-white">Electronic Structure</h4>
+          <p className="text-[11px] text-slate-400">MOs & Electrostatic Potential</p>
+        </div>
+      </div>
+
+      {/* Electron Density Surface */}
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Molecular Surfaces</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            onClick={() => jsmolViewer?.runScript('isosurface delete; isosurface vdw color yellow translucent 0.7')}
+            className="text-[10px] bg-yellow-700/60 hover:bg-yellow-600 text-white px-2 py-1.5 rounded border border-yellow-600/50"
+          >
+            Van der Waals
+          </button>
+          <button
+            onClick={() => jsmolViewer?.runScript('isosurface delete; isosurface sasurface color lightblue translucent 0.6')}
+            className="text-[10px] bg-sky-700/60 hover:bg-sky-600 text-white px-2 py-1.5 rounded border border-sky-600/50"
+          >
+            Solvent Accessible
+          </button>
+          <button
+            onClick={() => jsmolViewer?.runScript('isosurface delete; isosurface molecular colorscheme rwb translucent 0.5')}
+            className="text-[10px] bg-gradient-to-r from-red-600 via-slate-300 to-blue-600 text-slate-900 font-medium px-2 py-1.5 rounded border border-slate-500"
+          >
+            Electrostatic (MEP)
+          </button>
+          <button
+            onClick={() => jsmolViewer?.runScript('isosurface delete')}
+            className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700"
+          >
+            Clear Surface
+          </button>
+        </div>
+        <p className="text-[9px] text-amber-400/80">💡 For HOMO/LUMO orbitals, load .cub files with pre-computed MO data</p>
+      </div>
+
+      {/* HOMO/LUMO Navigation */}
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Molecular Orbitals</p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => jsmolViewer?.runScript('mo on; mo previous')}
+            className="px-2 py-1 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700"
+          >
+            ◀
+          </button>
+          <button
+            onClick={() => jsmolViewer?.runScript('mo on; mo homo')}
+            className="flex-1 px-2 py-1.5 text-xs font-semibold bg-orange-700/80 hover:bg-orange-600 text-white rounded border border-orange-600"
+          >
+            HOMO
+          </button>
+          <button
+            onClick={() => jsmolViewer?.runScript('mo on; mo lumo')}
+            className="flex-1 px-2 py-1.5 text-xs font-semibold bg-blue-700/80 hover:bg-blue-600 text-white rounded border border-blue-600"
+          >
+            LUMO
+          </button>
+          <button
+            onClick={() => jsmolViewer?.runScript('mo on; mo next')}
+            className="px-2 py-1 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700"
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+
+      {/* MO Representation */}
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">MO Style</p>
+        <div className="grid grid-cols-4 gap-1">
+          <button onClick={() => jsmolViewer?.runScript('mo fill; color mo translucent 0.8')} className="px-1 py-1 text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">Filled</button>
+          <button onClick={() => jsmolViewer?.runScript('mo mesh; color mo translucent 0.8')} className="px-1 py-1 text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">Mesh</button>
+          <button onClick={() => jsmolViewer?.runScript('mo cutoff 0.05')} className="px-1 py-1 text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">Normal</button>
+          <button onClick={() => jsmolViewer?.runScript('mo fill; color mo translucent 0.8; mo cutoff 0.02')} className="px-1 py-1 text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">Small</button>
+        </div>
+      </div>
+
+      {/* Electrostatic Potential */}
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Electrostatic Potential</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => jsmolViewer?.runScript('isosurface delete; isosurface molecular colorscheme rwb')}
+            className="flex-1 text-[10px] bg-gradient-to-r from-red-600 via-white to-blue-600 text-slate-900 font-semibold px-2 py-1.5 rounded border border-slate-600"
+          >
+            MEP On
+          </button>
+          <button
+            onClick={() => jsmolViewer?.runScript('isosurface delete')}
+            className="flex-1 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700"
+          >
+            MEP Off
+          </button>
+        </div>
+      </div>
+
+      {/* Charges & Dipoles */}
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">Charges & Dipoles</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button onClick={() => jsmolViewer?.runScript('calculate partialcharge; label %[partialcharge]')} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700">Show Charges</button>
+          <button onClick={() => jsmolViewer?.runScript('label off')} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700">Hide Charges</button>
+          <button onClick={() => jsmolViewer?.runScript('dipole on')} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700">Show Dipole</button>
+          <button onClick={() => jsmolViewer?.runScript('dipole bonds')} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700">Bond Dipoles</button>
+          <button onClick={() => jsmolViewer?.runScript('dipole off')} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700" style={{ gridColumn: 'span 2' }}>Hide Dipoles</button>
+        </div>
+      </div>
+
+      {/* Atom Labels */}
+      <div className="flex gap-2 pt-2 border-t border-slate-800/50">
+        <button onClick={() => jsmolViewer?.runScript('label %e; font label 12 sans bold')} className="flex-1 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700">Show Symbols</button>
+        <button onClick={() => jsmolViewer?.runScript('label off')} className="flex-1 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 rounded border border-slate-700">Hide Labels</button>
+        <button onClick={() => jsmolViewer?.runScript('mo off; isosurface delete; dipole off; label off')} className="flex-1 text-[10px] bg-red-800/70 hover:bg-red-700 text-white px-2 py-1.5 rounded border border-red-700">Reset All</button>
+      </div>
+    </section>
+  );
+
   const renderCategoryTools = () => {
     switch (selectedCategory) {
       case 'molecule':
-        return renderPresetCard();
+        return renderElectronicStructurePanel();
       case 'protein':
         return (
           <>
@@ -1258,135 +1624,80 @@ Output: raw JSmol commands only.`;
   return (
     <div className="space-y-5 text-slate-100">
       <Card className="border border-slate-800/70 bg-gradient-to-br from-slate-950/90 via-slate-950/80 to-slate-900/80 shadow-2xl ring-1 ring-slate-900/50">
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <Layers3 className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <CardTitle className="text-white leading-tight">3D Explorer</CardTitle>
-                <CardDescription>Load molecules, proteins, crystals, or reactions with one tap.</CardDescription>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] text-slate-300">JSmol Live</span>
-              <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] text-slate-300">AI Assist</span>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="rounded-full bg-indigo-600/80 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm shadow-indigo-500/30 hover:bg-indigo-600"
-                onClick={loadSampleStructure}
-              >
-                <Download className="h-3.5 w-3.5" />
-                Load sample
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="p-4 space-y-4">
+          {/* Category Tabs - Enhanced with gradients and animations */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               {CATEGORY_TABS.map((tab) => (
-                <Button
+                <button
                   key={tab.id}
-                  variant={selectedCategory === tab.id ? "default" : "outline"}
-                  size="sm"
-                  className={`rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm ${selectedCategory === tab.id ? '' : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:text-white'}`}
                   onClick={() => setSelectedCategory(tab.id)}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold transition-all duration-300 ${
+                    selectedCategory === tab.id
+                      ? 'bg-cyan-600 text-white shadow-md shadow-cyan-500/30 scale-105'
+                      : 'bg-slate-900/70 border border-slate-800/70 text-slate-300 hover:border-cyan-500/50 hover:text-white hover:scale-105'
+                  }`}
                 >
                   {tab.label}
-                </Button>
+                </button>
               ))}
             </div>
             {searchFeedback && (
-              <span className="text-[11px] text-slate-400 bg-slate-900/70 border border-slate-800/70 px-2 py-1 rounded-full">
-                {searchFeedback}
-              </span>
+              <div className="rounded-full border border-emerald-500/30 bg-gradient-to-r from-emerald-900/40 via-emerald-800/30 to-emerald-900/40 px-3 py-1.5 backdrop-blur-sm">
+                <span className="text-[11px] font-medium text-emerald-300 flex items-center gap-1.5">
+                  <Zap className="h-3 w-3" />
+                  {searchFeedback}
+                </span>
+              </div>
             )}
           </div>
 
+          {/* Search Input - Enhanced with better styling */}
           <div className="flex flex-wrap items-center gap-2">
-            <Input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void handleSearch();
-                }
-              }}
-              placeholder="Search molecules, proteins, crystals, or paste a URL..."
-              className="flex-1 min-w-[260px] bg-slate-900/80 text-white placeholder:text-slate-500"
-            />
-            <Button
+            <div className="relative flex-1 min-w-[260px] group">
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-indigo-500/20 opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-300" />
+              <Input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void handleSearch();
+                  }
+                }}
+                placeholder="Search molecules, proteins, crystals, or paste a URL..."
+                className="relative z-10 bg-gradient-to-br from-slate-900/90 via-slate-900/80 to-slate-950/90 border-slate-700/70 text-white placeholder:text-slate-500 focus:border-indigo-500/70 focus:ring-2 focus:ring-indigo-500/30 transition-all duration-300"
+              />
+            </div>
+            <button
               onClick={() => void handleSearch()}
               disabled={isSearchLoading}
-              className="inline-flex items-center gap-2"
+              className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-cyan-500/30 transition-all duration-300 hover:bg-cyan-500 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              {isSearchLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading
-                </>
-              ) : (
-                'Load'
-              )}
-            </Button>
+              <span className="flex items-center gap-2">
+                {isSearchLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    Load
+                  </>
+                )}
+              </span>
+            </button>
           </div>
 
-          <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
-            {CATEGORY_HINTS[selectedCategory].map((hint) => (
-              <Button
-                key={hint}
-                variant="outline"
-                size="sm"
-                className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-slate-300 hover:border-indigo-400 hover:text-white"
-                onClick={() => {
-                  setSearchQuery(hint);
-                  void handleSearch(hint);
-                }}
-              >
-                {hint}
-              </Button>
-            ))}
-          </div>
-
-          {/* Compact preset dock */}
-          <div className="mx-auto flex w-full max-w-2xl items-center justify-center gap-2 rounded-2xl border border-slate-800/70 bg-slate-950/90 px-2 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
-            {[
-              { id: 'dock-ball', label: 'Ball & Stick', icon: Layers3 },
-              { id: 'dock-density', label: 'Density', icon: Gem },
-              { id: 'dock-surface', label: 'Surface', icon: Waves },
-              { id: 'dock-reset', label: 'Reset', icon: RefreshCcw },
-            ].map((item) => (
-              <Button
-                key={item.id}
-                variant="ghost"
-                className="group relative flex h-10 flex-1 items-center justify-center overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/80 text-[12px] font-semibold text-slate-200 transition hover:-translate-y-[1px] hover:border-slate-600 hover:bg-slate-800/80 hover:text-white"
-                title={item.label}
-                onClick={() => {
-                  if (item.id === 'dock-ball') handleRunDemo(visualizationDemos[0]);
-                  if (item.id === 'dock-density') setScript(visualizationDemos.find(d => d.id === 'electron_density')?.script || visualizationDemos[0].script);
-                  if (item.id === 'dock-surface') setScript(visualizationDemos.find(d => d.id === 'solvent_surface')?.script || visualizationDemos[0].script);
-                  if (item.id === 'dock-reset') handleResetView();
-                }}
-              >
-                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br from-blue-500/10 via-cyan-400/10 to-blue-600/10 blur-[12px] transition-opacity" />
-                <div className="relative flex items-center gap-2">
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </div>
-              </Button>
-            ))}
-          </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
-        {/* Main canvas */}
+        {/* Main canvas area with controls below */}
         <div className="space-y-4">
+          {/* Canvas Section */}
           <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
@@ -1402,7 +1713,11 @@ Output: raw JSmol commands only.`;
                 Reset
               </button>
             </div>
-            <JSmolViewer script={script} command={jsmolCommand} />
+            <JSmolViewer
+              script={script}
+              command={jsmolCommand}
+              onReady={setJsmolViewer}
+            />
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
               <span className="flex items-center gap-2">
                 <Compass className="h-4 w-4 text-emerald-300" />
@@ -1422,12 +1737,122 @@ Output: raw JSmol commands only.`;
               </div>
             )}
           </section>
+
+          {/* Controls below canvas - Symmetry only */}
+          {(selectedCategory === 'molecule' || selectedCategory === 'crystal') && (
+            <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Gem className="h-5 w-5 text-pink-400" />
+                  <div>
+                    <h4 className="text-sm font-semibold text-white">Symmetry Elements</h4>
+                    <p className="text-[11px] text-slate-400">Click to visualize on 3D model</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    jsmolViewer?.runScript('draw pointgroup off;');
+                    setActiveSymmetryElements({});
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-white underline"
+                >
+                  Clear All
+                </button>
+              </div>
+
+              {/* VChem3D-Style Symmetry UI */}
+              {!symmetryInfo ? (
+                <button
+                  onClick={() => {
+                    jsmolViewer?.runScript('calculate pointgroup;');
+                    setTimeout(() => {
+                      const pgInfo = jsmolViewer?.evaluate('pointgroup()');
+                      if (pgInfo) {
+                        setSymmetryInfo({ name: pgInfo.name, elements: [] });
+                      }
+                    }, 300);
+                  }}
+                  className="w-full rounded-lg bg-pink-700/80 px-3 py-2.5 text-xs font-medium text-white hover:bg-pink-600 transition flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Analyze Symmetry
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  {/* Point Group - Large Display like VChem3D */}
+                  <div className="text-center py-3 bg-slate-900/60 rounded-xl border border-slate-700">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Point Group</p>
+                    <p className="text-3xl font-bold text-pink-400">{symmetryInfo.name}</p>
+                  </div>
+
+                  {/* Simple Show/Hide Buttons - VChem3D Style */}
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => jsmolViewer?.runScript('calculate pointgroup; draw pointgroup all')}
+                      className="w-full text-xs bg-slate-200 hover:bg-white text-slate-800 font-medium px-3 py-2 rounded border border-slate-400 transition"
+                    >
+                      Show Symmetry Elements
+                    </button>
+                    <button
+                      onClick={() => jsmolViewer?.runScript('draw pointgroup off')}
+                      className="w-full text-xs bg-slate-200 hover:bg-white text-slate-800 font-medium px-3 py-2 rounded border border-slate-400 transition"
+                    >
+                      Hide Symmetry Elements
+                    </button>
+                  </div>
+
+                  {/* Reset */}
+                  <button
+                    onClick={() => { setSymmetryInfo(null); jsmolViewer?.runScript('draw pointgroup off'); }}
+                    className="w-full text-[10px] text-slate-400 hover:text-white underline"
+                  >
+                    Reset Analysis
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Symmetry Quiz - Moved to left side */}
+          {(selectedCategory === 'molecule' || selectedCategory === 'crystal') && (
+            <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3 space-y-2.5">
+            <div className="flex items-center gap-3">
+              <Beaker className="w-5 h-5 text-cyan-300" />
+              <div>
+                <h4 className="text-sm font-semibold text-white">Symmetry quiz</h4>
+                <p className="text-xs text-slate-400">Launch when you want to test recognition.</p>
+              </div>
+            </div>
+            {!quizOpen ? (
+              <button
+                onClick={() => setQuizOpen(true)}
+                className="w-full rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600"
+              >
+                Start Quiz
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setQuizOpen(false)}
+                    className="text-xs text-slate-400 hover:text-white"
+                  >
+                    Close quiz
+                  </button>
+                </div>
+                <SymmetryQuiz onScriptChange={setScript} />
+              </div>
+            )}
+            </section>
+          )}
         </div>
 
-        {/* Sidebar: presets + quiz + AI */}
+        {/* Sidebar: Controls organized by priority - Grid layout for better space utilization */}
         <div className="space-y-4">
-          {/* Protein Analysis Panel */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+          {/* Top Row: Structure Controls and Category Tools side by side */}
+          <div className="grid grid-cols-1 gap-4">
+            {/* Structure Controls - Most commonly used, always visible */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Layers3 className="h-5 w-5 text-blue-400" />
@@ -1637,93 +2062,108 @@ Output: raw JSmol commands only.`;
               </>
             )}
           </section>
+          </div>
 
-
-
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
+          {/* Category Tools/Presets - Quick actions */}
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3 space-y-3">
             {renderCategoryTools()}
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-4">
-            <div className="flex items-center gap-3">
-              <Beaker className="w-5 h-5 text-cyan-300" />
-              <div>
-                <h4 className="text-sm font-semibold text-white">Symmetry quiz</h4>
-                <p className="text-xs text-slate-400">Launch when you want to test recognition.</p>
-              </div>
-            </div>
-            {!quizOpen ? (
-              <button
-                onClick={() => setQuizOpen(true)}
-                className="w-full rounded-xl border border-indigo-500/70 bg-indigo-600/80 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600"
-              >
-                Start Quiz
-              </button>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => setQuizOpen(false)}
-                    className="text-xs text-slate-400 hover:text-white"
-                  >
-                    Close quiz
-                  </button>
-                </div>
-                <SymmetryQuiz onScriptChange={setScript} />
-              </div>
-            )}
-          </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Gem className="h-5 w-5 text-cyan-300" />
+          {/* AI JSmol Copilot - Enhanced with Magic UI styling */}
+          <section className="group relative overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-slate-950/90 via-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-cyan-500/10 backdrop-blur-sm">
+            {/* Subtle background glow */}
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            
+            <div className="relative space-y-3">
+              {/* Header */}
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-lg bg-cyan-500/20 blur-xl" />
+                  <div className="relative rounded-lg bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2">
+                    <Gem className="h-5 w-5 text-cyan-300" />
+                  </div>
+                </div>
                 <div>
                   <h4 className="text-sm font-semibold text-white">AI JSmol Copilot</h4>
                   <p className="text-[11px] text-slate-400">Type an instruction to manipulate the 3D scene.</p>
                 </div>
               </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={aiCommand}
-                  onChange={(e) => setAiCommand(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void runAiJsmolCommand();
-                    }
-                  }}
-                  placeholder="e.g., color carbons red and spin y 5"
-                  className="flex-1 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/70"
-                />
-                <button
-                  onClick={() => void runAiJsmolCommand()}
-                  disabled={aiLoading}
-                  className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/70 bg-indigo-600/90 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-60"
-                >
-                  {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  Send
-                </button>
-              </div>
-              {aiFeedback && <p className="text-[11px] text-slate-400">{aiFeedback}</p>}
-              <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
-                {[
-                  'color by element and show axes',
-                  'ball and stick with light spin',
-                  'show symmetry axes and unit cell',
-                  'surface translucent and hide labels',
-                ].map((preset) => (
+
+              {/* Input Section */}
+              <div className="flex flex-col gap-2.5">
+                <div className="flex gap-2">
+                  <div className="relative flex-1 group/input">
+                    {/* Input glow effect */}
+                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20 opacity-0 group-hover/input:opacity-100 blur-xl transition-opacity duration-300" />
+                    <input
+                      type="text"
+                      value={aiCommand}
+                      onChange={(e) => setAiCommand(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void runAiJsmolCommand();
+                        }
+                      }}
+                      placeholder="e.g., color carbons red and spin y 5"
+                      className="relative z-10 w-full rounded-xl border border-slate-700/70 bg-gradient-to-br from-slate-900/90 via-slate-900/80 to-slate-950/90 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 transition-all duration-300 focus:border-cyan-500/70 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:bg-slate-900/95"
+                    />
+                  </div>
                   <button
-                    key={preset}
-                    onClick={() => void runAiJsmolCommand(preset)}
-                    className="rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1 hover:border-indigo-400 hover:text-white"
+                    onClick={() => void runAiJsmolCommand()}
+                    disabled={aiLoading}
+                    className="group/btn relative overflow-hidden rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-cyan-500/30 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/40 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
-                    {preset}
+                    <span className="relative z-10 flex items-center gap-2">
+                      {aiLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Sending
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" />
+                          Send
+                        </>
+                      )}
+                    </span>
                   </button>
-                ))}
+                </div>
+
+                {/* Feedback */}
+                {aiFeedback && (
+                  <div className="rounded-lg border border-emerald-500/30 bg-gradient-to-r from-emerald-900/40 via-emerald-800/30 to-emerald-900/40 px-3 py-2 backdrop-blur-sm">
+                    <p className="text-[11px] font-medium text-emerald-300 flex items-center gap-1.5">
+                      <Zap className="h-3 w-3" />
+                      {aiFeedback}
+                    </p>
+                  </div>
+                )}
+
+                {/* Preset Buttons */}
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500">Quick Commands:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      'color by element and show axes',
+                      'ball and stick with light spin',
+                      'show symmetry axes and unit cell',
+                      'surface translucent and hide labels',
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => void runAiJsmolCommand(preset)}
+                        className="group/preset relative overflow-hidden rounded-full border border-slate-700/70 bg-gradient-to-br from-slate-900/80 via-slate-900/70 to-slate-950/80 px-3 py-1.5 text-[11px] font-medium text-slate-300 transition-all duration-300 hover:border-cyan-500/70 hover:text-white hover:scale-105 hover:shadow-md hover:shadow-cyan-500/20"
+                      >
+                        <span className="relative z-10 flex items-center gap-1.5">
+                          <Sparkles className="h-3 w-3 opacity-60 group-hover/preset:opacity-100 transition-opacity" />
+                          {preset}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </section>

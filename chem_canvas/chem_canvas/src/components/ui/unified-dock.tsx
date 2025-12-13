@@ -36,7 +36,7 @@ const DEFAULT_MAGNIFICATION = 64;
 const DEFAULT_DISTANCE = 140;
 
 const dockVariants = cva(
-  "mx-auto flex h-[68px] w-max items-center justify-center gap-2 rounded-2xl border p-2 backdrop-blur-xl bg-background/80 border-border/50 shadow-2xl"
+  "mx-auto flex h-[68px] w-max items-center justify-center gap-2 rounded-2xl border p-2 backdrop-blur-xl shadow-2xl bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95 border-cyan-500/30 shadow-cyan-500/10"
 );
 
 interface DockProps extends VariantProps<typeof dockVariants> {
@@ -145,13 +145,15 @@ const DockIcon = ({
       ref={ref}
       style={{ width: scaleSize, height: scaleSize }}
       className={cn(
-        "relative flex aspect-square cursor-pointer items-center justify-center rounded-full transition-colors",
-        active && "ring-2 ring-cyan-500/50",
+        "relative flex aspect-square cursor-pointer items-center justify-center rounded-full transition-all duration-200",
+        "hover:bg-slate-700/40 hover:ring-2 hover:ring-cyan-500/30",
+        active && "bg-gradient-to-br from-cyan-500/20 to-blue-500/10 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20",
         className
       )}
       onClick={onClick}
       title={title}
       whileTap={{ scale: 0.95 }}
+      whileHover={{ scale: 1.05 }}
       {...props}
     >
       {children}
@@ -174,7 +176,7 @@ DockIcon.displayName = "DockIcon";
 // =============================================================================
 
 const DockSeparator = () => (
-  <div className="mx-1 h-10 w-px bg-border/50" />
+  <div className="mx-1 h-10 w-px bg-gradient-to-b from-transparent via-cyan-500/30 to-transparent" />
 );
 
 // =============================================================================

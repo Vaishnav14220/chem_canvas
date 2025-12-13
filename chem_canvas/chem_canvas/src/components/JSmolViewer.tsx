@@ -41,11 +41,17 @@ const loadJSmol = (): Promise<any> => {
   return window.__jsmolLoaderPromise;
 };
 
+export interface JSmolViewerInterface {
+  evaluate: (expression: string) => any;
+  runScript: (cmd: string) => void;
+}
+
 interface JSmolViewerProps {
   script: string;
   command?: string; // For executing additional commands without reloading
   height?: number;
   backgroundColor?: string;
+  onReady?: (viewer: JSmolViewerInterface) => void;
 }
 
 const JSmolViewer: React.FC<JSmolViewerProps> = ({
@@ -53,6 +59,7 @@ const JSmolViewer: React.FC<JSmolViewerProps> = ({
   command,
   height = 520,
   backgroundColor = '#0f172a',
+  onReady,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const appletRef = useRef<any>(null);
@@ -63,12 +70,31 @@ const JSmolViewer: React.FC<JSmolViewerProps> = ({
 
   const runScript = (cmd: string) => {
     if (!cmd || !cmd.trim()) {
+      console.warn('[JSmol] runScript called with empty command');
       return;
     }
-    if (typeof window === 'undefined' || !window.Jmol || !appletRef.current) {
+    if (typeof window === 'undefined' || !window.Jmol) {
+      console.warn('[JSmol] Jmol not loaded');
       return;
     }
+    if (!appletRef.current) {
+      console.warn('[JSmol] appletRef.current is null');
+      return;
+    }
+    console.log('[JSmol] Running script:', cmd);
     window.Jmol.script(appletRef.current, cmd);
+  };
+
+  const evaluate = (expression: string): any => {
+    if (typeof window === 'undefined' || !window.Jmol || !appletRef.current) {
+      return null;
+    }
+    try {
+      return window.Jmol.evaluateVar(appletRef.current, expression);
+    } catch (err) {
+      console.error('JSmol evaluate error:', err);
+      return null;
+    }
   };
 
 
@@ -98,11 +124,28 @@ const JSmolViewer: React.FC<JSmolViewerProps> = ({
           disableInitialConsole: true,
           disableJ2SLoadMonitor: true,
           addSelectionOptions: true,
+          readyFunction: (applet: any) => {
+            if (isMounted && onReady) {
+              // We need to wait a tick for appletRef to be populated if we used the returned applet, 
+              // but here JSmol passes the applet object. 
+              // However, `appletRef.current` is set below via `Jmol.getApplet`.
+              // The safest way is to wrap the interface methods to use the current ref.
+              onReady({
+                evaluate,
+                runScript
+              });
+            }
+          }
         };
 
         appletRef.current = Jmol.getApplet(appletId, info);
         containerRef.current.innerHTML = Jmol.getAppletHtml(appletRef.current);
         setStatus('ready');
+
+        // Fallback: call onReady immediately if readyFunction isn't reliable or for initial setup
+        if (onReady) {
+          onReady({ evaluate, runScript });
+        }
       })
       .catch((err: Error) => {
         if (!isMounted) {

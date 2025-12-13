@@ -1,5 +1,6 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { Dock, DockIcon } from './ui/dock';
+import { AnimatePresence, motion } from 'framer-motion';
 import { 
   PenTool, 
   Eraser, 
@@ -10,7 +11,11 @@ import {
   Type,
   Square,
   Circle,
-  Minus
+  Minus,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -71,6 +76,8 @@ export default function DrawingToolsDock({
   position = 'bottom',
   enableKeyboardShortcuts = true
 }: DrawingToolsDockProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   // Keyboard shortcut handler
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't trigger shortcuts if typing in an input
@@ -103,93 +110,172 @@ export default function DrawingToolsDock({
   };
 
   const isVertical = position === 'left' || position === 'right';
+  
+  // Determine chevron icon based on position
+  const ChevronIcon = isVertical 
+    ? (position === 'left' ? ChevronRight : ChevronLeft)
+    : (position === 'bottom' ? ChevronUp : ChevronDown);
 
   return (
     <div className={cn(
-      'fixed z-50',
+      'fixed z-50 flex items-center gap-2',
       positionClasses[position],
       className
     )}>
-      <Dock 
-        iconSize={36} 
-        iconMagnification={52} 
-        iconDistance={100}
+      {/* Collapse/Expand Button */}
+      <motion.button
+        onClick={() => setIsCollapsed(!isCollapsed)}
         className={cn(
-          "bg-slate-900/90 border-slate-700/50 shadow-2xl shadow-black/50",
-          isVertical && "flex-col h-auto w-[58px]"
+          "flex items-center justify-center rounded-full border backdrop-blur-md transition-all duration-300",
+          "bg-gradient-to-b from-[#1C2025] via-[#22262B] to-[#1C2025]",
+          "border-cyan-500/30 shadow-lg shadow-cyan-500/10",
+          "hover:border-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/20",
+          "text-cyan-400 hover:text-cyan-300",
+          isVertical ? "h-10 w-10" : "h-10 w-10"
         )}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        aria-label={isCollapsed ? "Expand tools" : "Collapse tools"}
       >
-        {/* Main Drawing Tools */}
-        {tools.map((tool) => (
-          <DockIcon
-            key={tool.id}
-            onClick={() => onToolChange(tool.id)}
-            className={cn(
-              "transition-all duration-200",
-              currentTool === tool.id 
-                ? "bg-cyan-500/30 text-cyan-400 ring-2 ring-cyan-500/50" 
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
-            )}
+        <motion.div
+          animate={{ rotate: isCollapsed ? 180 : 0 }}
+          transition={{ duration: 0.3, ease: "easeInOut" }}
+        >
+          <ChevronIcon className="w-5 h-5" />
+        </motion.div>
+      </motion.button>
+
+      {/* Dock with Tools */}
+      <AnimatePresence mode="wait">
+        {!isCollapsed && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, x: isVertical ? (position === 'left' ? -20 : 20) : 0, y: !isVertical ? (position === 'bottom' ? 20 : -20) : 0 }}
+            animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, x: isVertical ? (position === 'left' ? -20 : 20) : 0, y: !isVertical ? (position === 'bottom' ? 20 : -20) : 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
           >
-            <tool.icon 
+            <Dock 
+              iconSize={36} 
+              iconMagnification={52} 
+              iconDistance={100}
               className={cn(
-                "w-5 h-5 transition-transform duration-200",
-                currentTool === tool.id && "scale-110"
-              )} 
-            />
-            <span className="sr-only">{tool.label}</span>
-          </DockIcon>
-        ))}
+                "bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95",
+                "border border-cyan-500/20 shadow-2xl shadow-black/50",
+                "backdrop-blur-xl",
+                isVertical && "flex-col h-auto w-[58px]"
+              )}
+            >
+              {/* Main Drawing Tools */}
+              {tools.map((tool) => (
+                <DockIcon
+                  key={tool.id}
+                  onClick={() => onToolChange(tool.id)}
+                  className={cn(
+                    "transition-all duration-200 relative group",
+                    currentTool === tool.id 
+                      ? "bg-gradient-to-br from-cyan-500/40 to-blue-500/30 text-cyan-300 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20" 
+                      : "text-slate-400 hover:text-cyan-300 hover:bg-slate-700/60"
+                  )}
+                >
+                  <tool.icon 
+                    className={cn(
+                      "w-5 h-5 transition-transform duration-200 relative z-10",
+                      currentTool === tool.id && "scale-110"
+                    )} 
+                  />
+                  <span className="sr-only">{tool.label}</span>
+                  {/* Tooltip */}
+                  <div className={cn(
+                    "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
+                    "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
+                    "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
+                    isVertical 
+                      ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
+                      : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
+                  )}>
+                    {tool.label}
+                    {tool.shortcut && (
+                      <span className="ml-1.5 text-slate-400">({tool.shortcut})</span>
+                    )}
+                  </div>
+                </DockIcon>
+              ))}
 
-        {/* Divider */}
-        <div className={cn(
-          "bg-slate-600/50",
-          isVertical ? "h-px w-8 my-1" : "w-px h-8 mx-1"
-        )} />
+              {/* Divider */}
+              <div className={cn(
+                "bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent",
+                isVertical ? "h-px w-8 my-1" : "w-px h-8 mx-1"
+              )} />
 
-        {/* Shape Tools */}
-        {shapeTools.map((tool) => (
-          <DockIcon
-            key={tool.id}
-            onClick={() => onToolChange(tool.id)}
-            className={cn(
-              "transition-all duration-200",
-              currentTool === tool.id 
-                ? "bg-purple-500/30 text-purple-400 ring-2 ring-purple-500/50" 
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
-            )}
-          >
-            <tool.icon 
-              className={cn(
-                "w-5 h-5 transition-transform duration-200",
-                currentTool === tool.id && "scale-110"
-              )} 
-            />
-            <span className="sr-only">{tool.label}</span>
-          </DockIcon>
-        ))}
-      </Dock>
-
-      {/* Tooltip showing current tool */}
-      <div className={cn(
-        "absolute text-xs text-slate-400 bg-slate-800/90 px-2 py-1 rounded-md border border-slate-700/50 whitespace-nowrap",
-        position === 'bottom' && "bottom-full mb-2 left-1/2 -translate-x-1/2",
-        position === 'left' && "left-full ml-2 top-1/2 -translate-y-1/2",
-        position === 'right' && "right-full mr-2 top-1/2 -translate-y-1/2"
-      )}>
-        <span className="font-medium text-slate-300">
-          {tools.find(t => t.id === currentTool)?.label || 
-           shapeTools.find(t => t.id === currentTool)?.label || 
-           'Select Tool'}
-        </span>
-        {(tools.find(t => t.id === currentTool)?.shortcut || 
-          shapeTools.find(t => t.id === currentTool)?.shortcut) && (
-          <span className="ml-2 text-slate-500">
-            ({tools.find(t => t.id === currentTool)?.shortcut || 
-              shapeTools.find(t => t.id === currentTool)?.shortcut})
-          </span>
+              {/* Shape Tools */}
+              {shapeTools.map((tool) => (
+                <DockIcon
+                  key={tool.id}
+                  onClick={() => onToolChange(tool.id)}
+                  className={cn(
+                    "transition-all duration-200 relative group",
+                    currentTool === tool.id 
+                      ? "bg-gradient-to-br from-purple-500/40 to-pink-500/30 text-purple-300 ring-2 ring-purple-500/60 shadow-lg shadow-purple-500/20" 
+                      : "text-slate-400 hover:text-purple-300 hover:bg-slate-700/60"
+                  )}
+                >
+                  <tool.icon 
+                    className={cn(
+                      "w-5 h-5 transition-transform duration-200 relative z-10",
+                      currentTool === tool.id && "scale-110"
+                    )} 
+                  />
+                  <span className="sr-only">{tool.label}</span>
+                  {/* Tooltip */}
+                  <div className={cn(
+                    "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
+                    "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
+                    "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
+                    isVertical 
+                      ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
+                      : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
+                  )}>
+                    {tool.label}
+                    {tool.shortcut && (
+                      <span className="ml-1.5 text-slate-400">({tool.shortcut})</span>
+                    )}
+                  </div>
+                </DockIcon>
+              ))}
+            </Dock>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
+
+      {/* Tooltip showing current tool - only show when expanded */}
+      {!isCollapsed && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className={cn(
+            "absolute text-xs bg-gradient-to-b from-slate-800/95 to-slate-900/95 text-slate-300 px-3 py-1.5 rounded-lg",
+            "border border-cyan-500/30 shadow-xl backdrop-blur-md whitespace-nowrap",
+            "font-medium",
+            position === 'bottom' && "bottom-full mb-2 left-1/2 -translate-x-1/2",
+            position === 'left' && "left-full ml-2 top-1/2 -translate-y-1/2",
+            position === 'right' && "right-full mr-2 top-1/2 -translate-y-1/2"
+          )}
+        >
+          <span className="text-cyan-300">
+            {tools.find(t => t.id === currentTool)?.label || 
+             shapeTools.find(t => t.id === currentTool)?.label || 
+             'Select Tool'}
+          </span>
+          {(tools.find(t => t.id === currentTool)?.shortcut || 
+            shapeTools.find(t => t.id === currentTool)?.shortcut) && (
+            <span className="ml-2 text-slate-400">
+              ({tools.find(t => t.id === currentTool)?.shortcut || 
+                shapeTools.find(t => t.id === currentTool)?.shortcut})
+            </span>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }

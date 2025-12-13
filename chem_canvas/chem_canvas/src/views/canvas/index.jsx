@@ -69,11 +69,14 @@ const Canvas = () => {
 
     const { confirm } = useConfirm()
 
-    const customization = useStore((state) => state.customization)
-    const canvas = useStore((state) => state.canvas)
-    const setDirty = useStore((state) => state.setDirty)
-    const removeDirty = useStore((state) => state.removeDirty)
-    const setChatflow = useStore((state) => state.setChatflow)
+  const customization = useStore((state) => state.customization)
+  const canvas = useStore((state) => state.canvas)
+  const setDirty = useStore((state) => state.setDirty)
+  const removeDirty = useStore((state) => state.removeDirty)
+  const setChatflow = useStore((state) => state.setChatflow)
+
+  const canvasBackgroundColor = '#1F1F1F'
+  const gridLineColor = 'rgba(255,255,255,0.06)'
 
     const [canvasDataStore, setCanvasDataStore] = useState(canvas)
     const [chatflow, setChatflowLocal] = useState(null)
@@ -595,6 +598,7 @@ const Canvas = () => {
                                 snapGrid={[25, 25]}
                                 snapToGrid={isSnappingEnabled}
                                 className='chatflow-canvas'
+                                style={{ backgroundColor: canvasBackgroundColor }}
                             >
                                 <Controls
                                     className={customization.isDarkMode ? 'dark-mode-controls' : ''}
@@ -626,7 +630,7 @@ const Canvas = () => {
                                         {isBackgroundEnabled ? <Layout fill='currentColor' /> : <Layout />}
                                     </button>
                                 </Controls>
-                                {isBackgroundEnabled && <Background color='#aaa' gap={16} />}
+                                {isBackgroundEnabled && <Background color={gridLineColor} gap={16} />}
                                 <AddNodes isAgentCanvas={isAgentCanvas} nodesData={getNodesApi.data} node={selectedNode} />
                                 {isSyncNodesButtonEnabled && (
                                     <Fab

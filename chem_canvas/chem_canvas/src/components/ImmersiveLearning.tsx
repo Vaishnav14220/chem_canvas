@@ -1959,7 +1959,7 @@ Respond in JSON format only:
     }, [streamedText]);
 
     const learningModes: LearningModeCard[] = [
-        { id: 'source', icon: <SourceIcon />, label: 'Source', activeColor: '#5f6368', activeBg: 'transparent' },
+        { id: 'source', icon: <SourceIcon />, label: 'Source', activeColor: '#e2e8f0', activeBg: 'transparent' },
         { id: 'immersive-text', icon: <ImmersiveTextIcon active={activeMode === 'immersive-text'} />, label: 'Immersive Text', activeColor: '#ea4335', activeBg: '#fce8e6' },
         { id: 'slides-narration', icon: <SlidesIcon active={activeMode === 'slides-narration'} />, label: 'Slides & Narration', activeColor: '#9334e9', activeBg: '#f3e8fd' },
         { id: 'audio-lesson', icon: <AudioIcon active={activeMode === 'audio-lesson'} />, label: 'Audio Lesson', activeColor: '#34a853', activeBg: '#e6f4ea' },
@@ -4080,7 +4080,7 @@ sys.stderr = StringIO()
             return (
                 <div className="flex flex-col items-center justify-center h-full space-y-4">
                     <Loader2 className="w-10 h-10 text-[#ff8b66] animate-spin" />
-                    <p className="text-[#444746] text-sm font-medium">{loadingMessage}</p>
+                    <p className="text-slate-300 text-sm font-medium">{loadingMessage}</p>
                 </div>
             );
         }
@@ -4095,8 +4095,8 @@ sys.stderr = StringIO()
                         <div className="w-16 h-16 bg-[#fff0e0] rounded-2xl flex items-center justify-center mx-auto mb-4">
                             <FileText className="w-8 h-8 text-[#ff8b66]" />
                         </div>
-                        <h2 className="text-2xl font-google-sans text-[#1f1f1f]">Start Learning</h2>
-                        <p className="text-[#444746]">Upload a document to generate your immersive lesson.</p>
+                        <h2 className="text-2xl font-google-sans text-slate-100">Start Learning</h2>
+                        <p className="text-slate-400">Upload a document to generate your immersive lesson.</p>
                     </div>
                     <button
                         onClick={() => setActiveMode('source')}
@@ -6460,9 +6460,9 @@ sys.stderr = StringIO()
                         </div>
 
                         {/* Main Content */}
-                        <div className="flex-1 flex gap-4" style={{ minHeight: '500px' }}>
+                        <div className="flex-1 min-h-0 flex gap-4">
                             {/* Webcam View */}
-                            <div className="flex-1 relative rounded-xl border border-[#e8eaed] overflow-hidden bg-black" style={{ minHeight: '450px' }}>
+                            <div className="flex-1 min-h-0 relative rounded-xl border border-[#e8eaed] overflow-hidden bg-black">
                                 {!isWebcamActive ? (
                                     <div className="flex items-center justify-center h-full bg-gradient-to-br from-[#e0f7fa] to-[#b2ebf2]">
                                         <div className="text-center max-w-md px-6">
@@ -6493,7 +6493,6 @@ sys.stderr = StringIO()
                                             autoPlay
                                             playsInline
                                             muted
-                                            style={{ minHeight: '400px' }}
                                         />
                                         {/* Canvas for capturing frames (hidden) */}
                                         <canvas ref={webcamCanvasRef} className="hidden" />
@@ -6692,7 +6691,7 @@ sys.stderr = StringIO()
                             </div>
 
                             {/* Control Panel */}
-                            <div className="w-[320px] flex flex-col gap-4">
+                            <div className="w-[320px] min-h-0 flex flex-col gap-4">
                                 {/* Analysis Mode Selector */}
                                 <div className="bg-[#f8f9fa] rounded-xl p-4 border border-[#e8eaed]">
                                     <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-3">Analysis Mode</h3>
@@ -7080,12 +7079,11 @@ sys.stderr = StringIO()
                         )}
 
                         {/* Main Content - Split View */}
-                        <div className="flex-1 flex gap-4" style={{ minHeight: '500px' }}>
+                        <div className="flex-1 min-h-0 flex gap-4">
                             {/* Left: 3D Viewer */}
                             <div
-                                className={`flex-[2] relative rounded-xl border-2 overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800 transition-colors ${viewer3dIsDraggingFile ? 'border-[#7c3aed] border-dashed' : 'border-[#e8eaed]'
+                                className={`flex-[2] min-h-0 relative rounded-xl border-2 overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800 transition-colors ${viewer3dIsDraggingFile ? 'border-[#7c3aed] border-dashed' : 'border-[#e8eaed]'
                                     }`}
-                                style={{ minHeight: '450px' }}
                                 onDragOver={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -7348,7 +7346,7 @@ sys.stderr = StringIO()
                             </div>
 
                             {/* Right: Hand Tracking Panel */}
-                            <div className="w-[350px] flex flex-col gap-4">
+                            <div className="w-[350px] min-h-0 flex flex-col gap-4">
                                 {/* Webcam View */}
                                 <div className="relative rounded-xl border border-[#e8eaed] overflow-hidden bg-black" style={{ height: '250px' }}>
                                     {!viewer3dWebcamActive ? (
@@ -7551,7 +7549,7 @@ sys.stderr = StringIO()
     };
 
     return (
-        <div ref={containerRef} className="fixed inset-0 z-50 bg-[#fbf7f2] flex flex-col" style={{ fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>
+        <div ref={containerRef} className="fixed inset-0 z-50 bg-[#0b0d12] text-slate-100 flex flex-col" style={{ fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>
             {/* Laser Cursor for Hand Tracking */}
             <LaserCursor
                 handPosition={handPosition}
@@ -7586,15 +7584,15 @@ sys.stderr = StringIO()
                 />
             )}
 
-            {/* Top Header Bar - Exact Google Style - Height 50px */}
-            <header className="bg-white h-[50px] px-5 flex items-center justify-between border-b border-[#e8eaed]">
+            {/* Top Header Bar */}
+            <header className="bg-[#0f1117] h-[50px] px-5 flex items-center justify-between border-b border-[#1f2430]">
                 {/* Left: Logo & Workspaces */}
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                        <span className="text-[22px] font-medium text-[#1f1f1f]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
+                        <span className="text-[22px] font-medium text-slate-100" style={{ fontFamily: '"Google Sans", sans-serif' }}>
                             Learn Your Way
                         </span>
-                        <span className="text-[10px] text-[#5f6368] border border-[#dadce0] rounded px-1.5 py-0.5 uppercase tracking-wide font-medium">
+                        <span className="text-[10px] text-slate-400 border border-slate-700 rounded px-1.5 py-0.5 uppercase tracking-wide font-medium">
                             Experiment
                         </span>
                     </div>
@@ -7604,7 +7602,7 @@ sys.stderr = StringIO()
                             onClick={() => {
                                 setActiveMode('source');
                             }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-slate-300 hover:bg-slate-800/60 rounded-lg transition-colors"
                         >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -7615,10 +7613,10 @@ sys.stderr = StringIO()
                 </div>
 
                 {/* Center: Interest pill */}
-                <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1.5 bg-[#f1ebe4] rounded-full">
-                    <span className="text-[14px] text-[#5f6368]">Interest</span>
+                <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1.5 bg-slate-800/70 rounded-full">
+                    <span className="text-[14px] text-slate-300">Interest</span>
                     <span className="text-[14px]">🧪</span>
-                    <span className="text-[14px] font-medium text-[#1f1f1f]">Chemistry</span>
+                    <span className="text-[14px] font-medium text-slate-100">Chemistry</span>
                 </div>
 
                 {/* Right: Icons */}
@@ -7628,45 +7626,45 @@ sys.stderr = StringIO()
                         <button
                             onClick={() => setShow3DMoleculeDemo(!show3DMoleculeDemo)}
                             className={`p-2 rounded-full transition-colors relative ${show3DMoleculeDemo
-                                ? 'bg-purple-100 hover:bg-purple-200'
-                                : 'hover:bg-[#f1f3f4]'
+                                ? 'bg-purple-900/40 hover:bg-purple-900/60'
+                                : 'hover:bg-slate-800/60'
                                 }`}
                             title="3D Molecule Gesture Demo"
                         >
-                            <Atom className={`w-5 h-5 ${show3DMoleculeDemo ? 'text-purple-500' : 'text-[#5f6368]'}`} />
+                            <Atom className={`w-5 h-5 ${show3DMoleculeDemo ? 'text-purple-300' : 'text-slate-300'}`} />
                         </button>
                     )}
                     {/* Hand Tracking Toggle Button */}
                     <button
                         onClick={toggleHandTracking}
                         className={`p-2 rounded-full transition-colors relative ${isHandTrackingActive
-                            ? 'bg-red-100 hover:bg-red-200'
-                            : 'hover:bg-[#f1f3f4]'
+                            ? 'bg-red-900/40 hover:bg-red-900/60'
+                            : 'hover:bg-slate-800/60'
                             }`}
                         title={isHandTrackingActive ? 'Disable Hand Tracking' : 'Enable Hand Tracking'}
                     >
-                        <Hand className={`w-5 h-5 ${isHandTrackingActive ? 'text-red-500' : 'text-[#5f6368]'}`} />
+                        <Hand className={`w-5 h-5 ${isHandTrackingActive ? 'text-red-400' : 'text-slate-300'}`} />
                         {isHandTrackingActive && (
                             <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
                         )}
                     </button>
-                    <button className="p-2 hover:bg-[#f1f3f4] rounded-full transition-colors">
-                        <Mail className="w-5 h-5 text-[#5f6368]" />
+                    <button className="p-2 hover:bg-slate-800/60 rounded-full transition-colors">
+                        <Mail className="w-5 h-5 text-slate-300" />
                     </button>
-                    <button className="p-2 hover:bg-[#f1f3f4] rounded-full transition-colors">
-                        <Info className="w-5 h-5 text-[#5f6368]" />
+                    <button className="p-2 hover:bg-slate-800/60 rounded-full transition-colors">
+                        <Info className="w-5 h-5 text-slate-300" />
                     </button>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-[#f1f3f4] rounded-full transition-colors ml-1"
+                        className="p-2 hover:bg-slate-800/60 rounded-full transition-colors ml-1"
                     >
-                        <X className="w-5 h-5 text-[#5f6368]" />
+                        <X className="w-5 h-5 text-slate-300" />
                     </button>
                 </div>
             </header>
 
-            {/* Navigation Tabs - Exact Google Style with oval border around active */}
-            <nav className="bg-white px-8 py-4 flex items-center justify-center gap-2 border-b border-[#e8eaed]">
+            {/* Navigation Tabs */}
+            <nav className="bg-[#0f1117] px-8 py-4 flex items-center justify-center gap-2 border-b border-[#1f2430]">
                 {learningModes.map((mode) => {
                     const isActive = activeMode === mode.id;
                     return (
@@ -7675,25 +7673,25 @@ sys.stderr = StringIO()
                             onClick={() => setActiveMode(mode.id)}
                             className={`
                                 flex flex-col items-center gap-1.5 px-5 py-2.5 rounded-[24px] transition-all duration-200
-                                ${isActive
-                                    ? 'border-2'
-                                    : 'border-2 border-transparent hover:bg-[#f8f9fa]'
-                                }
-                            `}
-                            style={{
-                                backgroundColor: isActive ? mode.activeBg : 'transparent',
-                                borderColor: isActive ? '#fea481' : 'transparent'
-                            }}
-                        >
+                                 ${isActive
+                                     ? 'border-2'
+                                     : 'border-2 border-transparent hover:bg-slate-800/60'
+                                 }
+                             `}
+                             style={{
+                                 backgroundColor: isActive ? mode.activeBg : 'transparent',
+                                 borderColor: isActive ? '#fea481' : 'transparent'
+                             }}
+                         >
                             <div className="w-6 h-6 flex items-center justify-center">
                                 {mode.icon}
                             </div>
-                            <span
-                                className={`text-[13px] font-medium whitespace-nowrap`}
-                                style={{ color: isActive ? mode.activeColor : '#5f6368' }}
-                            >
-                                {mode.label}
-                            </span>
+                             <span
+                                 className={`text-[13px] font-medium whitespace-nowrap`}
+                                style={{ color: isActive ? mode.activeColor : '#e2e8f0' }}
+                             >
+                                 {mode.label}
+                             </span>
                         </button>
                     );
                 })}
@@ -7703,7 +7701,7 @@ sys.stderr = StringIO()
             <div className="flex flex-1 overflow-hidden">
                 {/* Left Sidebar - Table of Contents - Exact Google Style with LEFT BORDER */}
                 {activeMode === 'immersive-text' && immersiveContent && (
-                    <div className="w-[220px] bg-[#fbf7f2] py-6 overflow-y-auto flex-shrink-0">
+                    <div className="w-[220px] bg-[#0f1117] border-r border-[#1f2430] py-6 overflow-y-auto flex-shrink-0">
                         <div className="space-y-0.5">
                             {immersiveContent.sections.map((section, idx) => {
                                 const isActive = activeSectionId === section.id;
@@ -7716,23 +7714,23 @@ sys.stderr = StringIO()
                                             }}
                                             className={`
                                                 w-full flex items-center gap-3 pl-6 pr-4 py-3 text-left transition-all duration-150
-                                                ${isActive
-                                                    ? 'bg-[#f4efe8]'
-                                                    : 'hover:bg-[#f5f0e8]'
-                                                }
-                                            `}
-                                        >
+                                                 ${isActive
+                                                     ? 'bg-[#1a1e27]'
+                                                     : 'hover:bg-[#151924]'
+                                                 }
+                                             `}
+                                         >
                                             {/* Checkbox indicator */}
                                             <div className={`
-                                                w-4 h-4 rounded-[4px] flex items-center justify-center flex-shrink-0 border transition-colors
-                                                ${isActive
-                                                    ? 'border-[#5f6368] bg-transparent'
-                                                    : 'border-[#9aa0a6] hover:border-[#5f6368]'
-                                                }
-                                            `}>
-                                                {/* Hidden checkmark for now, just the box style to match reference */}
-                                            </div>
-                                            <span className={`text-[14px] leading-snug ${isActive ? 'text-[#1f1f1f] font-medium' : 'text-[#5f6368]'}`}>
+                                                 w-4 h-4 rounded-[4px] flex items-center justify-center flex-shrink-0 border transition-colors
+                                                 ${isActive
+                                                     ? 'border-slate-400 bg-transparent'
+                                                     : 'border-slate-600 hover:border-slate-400'
+                                                 }
+                                             `}>
+                                                 {/* Hidden checkmark for now, just the box style to match reference */}
+                                             </div>
+                                            <span className={`text-[14px] leading-snug ${isActive ? 'text-slate-100 font-medium' : 'text-slate-400'}`}>
                                                 {section.title}
                                             </span>
                                         </button>
@@ -7740,18 +7738,18 @@ sys.stderr = StringIO()
                                         {/* "Take quiz" dropdown under active section */}
                                         {isActive && (
                                             <div className="ml-[52px] mt-1 mb-2">
-                                                <button
-                                                    onClick={scrollToQuiz}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 border border-[#1f1f1f] rounded-full text-[13px] font-medium text-[#1f1f1f] hover:bg-[#f5f0e8] transition-colors"
-                                                >
-                                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                                                        <rect x="3" y="4" width="10" height="8" rx="1" stroke="#1f1f1f" strokeWidth="1.5" />
-                                                        <path d="M5 7h6M5 9h4" stroke="#1f1f1f" strokeWidth="1.2" strokeLinecap="round" />
-                                                    </svg>
-                                                    Take quiz
-                                                    <ChevronDown className="w-3 h-3 ml-0.5" />
-                                                </button>
-                                            </div>
+                                                 <button
+                                                     onClick={scrollToQuiz}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-400 rounded-full text-[13px] font-medium text-slate-100 hover:bg-[#151924] transition-colors"
+                                                 >
+                                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                                        <rect x="3" y="4" width="10" height="8" rx="1" stroke="#e2e8f0" strokeWidth="1.5" />
+                                                        <path d="M5 7h6M5 9h4" stroke="#e2e8f0" strokeWidth="1.2" strokeLinecap="round" />
+                                                     </svg>
+                                                     Take quiz
+                                                     <ChevronDown className="w-3 h-3 ml-0.5" />
+                                                 </button>
+                                             </div>
                                         )}
                                     </div>
                                 );
@@ -7760,22 +7758,22 @@ sys.stderr = StringIO()
 
                         {/* Background Loading Status */}
                         {(Object.values(loadingImages).some(v => v) || quiz.length === 0 || !mindMap) && (
-                            <div className="px-6 py-4 border-t border-[#e8eaed]/50 mt-auto">
+                            <div className="px-6 py-4 border-t border-[#1f2430] mt-auto">
                                 <div className="space-y-2">
                                     {Object.values(loadingImages).some(v => v) && (
-                                        <div className="flex items-center gap-2 text-[12px] text-[#5f6368]">
+                                        <div className="flex items-center gap-2 text-[12px] text-slate-400">
                                             <Loader2 className="w-3 h-3 animate-spin text-[#ff8b66]" />
                                             <span>Generating images...</span>
                                         </div>
                                     )}
                                     {quiz.length === 0 && (
-                                        <div className="flex items-center gap-2 text-[12px] text-[#5f6368]">
+                                        <div className="flex items-center gap-2 text-[12px] text-slate-400">
                                             <Loader2 className="w-3 h-3 animate-spin text-[#4285f4]" />
                                             <span>Creating quiz...</span>
                                         </div>
                                     )}
                                     {!mindMap && (
-                                        <div className="flex items-center gap-2 text-[12px] text-[#5f6368]">
+                                        <div className="flex items-center gap-2 text-[12px] text-slate-400">
                                             <Loader2 className="w-3 h-3 animate-spin text-[#34a853]" />
                                             <span>Building mind map...</span>
                                         </div>
@@ -7787,8 +7785,22 @@ sys.stderr = StringIO()
                 )}
 
                 {/* Main Content Card */}
-                <div className={`flex-1 ${activeMode === 'source' ? 'bg-[#131314] overflow-hidden p-0' : activeMode === 'mindmap' ? 'bg-[#fbf7f2] overflow-hidden p-0' : 'bg-[#fbf7f2] overflow-y-auto p-4'}`}>
-                    <div className={`${activeMode === 'source' ? 'h-full' : activeMode === 'mindmap' ? 'h-full rounded-none shadow-none bg-white' : 'min-h-full rounded-[24px] shadow-sm bg-white'} overflow-hidden`}>
+                <div className={`flex-1 ${activeMode === 'source'
+                    ? 'bg-[#131314] overflow-hidden p-0'
+                    : activeMode === 'mindmap'
+                        ? 'bg-[#0b0d12] overflow-hidden p-0'
+                        : activeMode === 'viewer3d' || activeMode === 'robotics'
+                            ? 'bg-[#0b0d12] overflow-hidden p-4'
+                            : 'bg-[#0b0d12] overflow-y-auto p-4'
+                    }`}>
+                    <div className={`${activeMode === 'source'
+                        ? 'h-full'
+                        : activeMode === 'mindmap'
+                            ? 'h-full rounded-none shadow-none bg-[#0f1117]'
+                            : activeMode === 'viewer3d' || activeMode === 'robotics'
+                                ? 'h-full rounded-[24px] shadow-sm bg-[#0f1117]'
+                                : 'min-h-full rounded-[24px] shadow-sm bg-[#0f1117]'
+                        } overflow-hidden`}>
                         {renderContent()}
                     </div>
                 </div>
@@ -7796,16 +7808,16 @@ sys.stderr = StringIO()
                 {/* Right Sidebar - PDF Viewer OR Grounding Source OR Quiz Panel */}
                 {activeMode === 'immersive-text' && (activeSource ? (
                     /* Grounding Source Sidebar - Like Tutor Style */
-                    <div className="w-[420px] bg-white border-l border-[#e8eaed] overflow-hidden flex-shrink-0 flex flex-col" ref={quizRef}>
+                    <div className="w-[420px] bg-[#0f1117] border-l border-[#1f2430] overflow-hidden flex-shrink-0 flex flex-col" ref={quizRef}>
                         {/* Header */}
-                        <div className="p-4 border-b border-[#e8eaed] flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+                        <div className="p-4 border-b border-[#1f2430] flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-800">
                             <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                                     <Globe className="w-4 h-4 text-white" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <span className="text-[14px] font-medium text-[#1f1f1f] block truncate">{activeSource.title || 'Source'}</span>
-                                    <span className="text-[11px] text-[#5f6368] truncate block">{new URL(activeSource.url).hostname}</span>
+                                    <span className="text-[14px] font-medium text-slate-100 block truncate">{activeSource.title || 'Source'}</span>
+                                    <span className="text-[11px] text-slate-400 truncate block">{new URL(activeSource.url).hostname}</span>
                                 </div>
                             </div>
                             <button
@@ -7813,33 +7825,33 @@ sys.stderr = StringIO()
                                     setActiveSource(null);
                                     setShowPdfSidebar(false);
                                 }}
-                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/50 transition-colors"
+                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800/60 transition-colors"
                             >
-                                <X className="w-5 h-5 text-[#5f6368]" />
+                                <X className="w-5 h-5 text-slate-300" />
                             </button>
                         </div>
 
                         {/* Snippet Preview */}
                         {activeSource.snippet && (
-                            <div className="p-4 border-b border-[#e8eaed] bg-gray-50">
+                            <div className="p-4 border-b border-[#1f2430] bg-slate-900/60">
                                 <div className="flex items-center justify-between mb-2">
-                                    <span className="text-[12px] font-medium text-[#5f6368] uppercase tracking-wide">Relevant excerpt</span>
+                                    <span className="text-[12px] font-medium text-slate-400 uppercase tracking-wide">Relevant excerpt</span>
                                     <button
                                         onClick={() => navigator.clipboard.writeText(activeSource.snippet || '')}
-                                        className="p-1.5 hover:bg-gray-200 rounded-md transition-colors"
+                                        className="p-1.5 hover:bg-slate-800 rounded-md transition-colors"
                                         title="Copy snippet"
                                     >
-                                        <Copy className="w-3.5 h-3.5 text-[#5f6368]" />
+                                        <Copy className="w-3.5 h-3.5 text-slate-300" />
                                     </button>
                                 </div>
-                                <p className="text-[13px] text-[#1f1f1f] leading-relaxed bg-white p-3 rounded-lg border border-[#e8eaed] italic">
+                                <p className="text-[13px] text-slate-100 leading-relaxed bg-[#0b0d12] p-3 rounded-lg border border-[#1f2430] italic">
                                     "{activeSource.snippet}"
                                 </p>
                             </div>
                         )}
 
                         {/* Source Preview iframe */}
-                        <div className="flex-1 overflow-hidden bg-gray-100">
+                        <div className="flex-1 overflow-hidden bg-[#0b0d12]">
                             <iframe
                                 src={activeSource.url}
                                 className="w-full h-full border-0"
@@ -7849,14 +7861,14 @@ sys.stderr = StringIO()
                         </div>
 
                         {/* Footer with external link */}
-                        <div className="p-3 border-t border-[#e8eaed] bg-white">
+                        <div className="p-3 border-t border-[#1f2430] bg-[#0f1117]">
                             <div className="flex items-center justify-between">
                                 <button
                                     onClick={() => {
                                         setActiveSource(null);
                                         setShowPdfSidebar(false);
                                     }}
-                                    className="px-4 py-2 text-[13px] font-medium text-[#5f6368] hover:bg-gray-100 rounded-lg transition-colors"
+                                    className="px-4 py-2 text-[13px] font-medium text-slate-300 hover:bg-slate-800/60 rounded-lg transition-colors"
                                 >
                                     Close
                                 </button>
@@ -7864,7 +7876,7 @@ sys.stderr = StringIO()
                                     href={activeSource.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="px-4 py-2 text-[13px] font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1.5"
+                                    className="px-4 py-2 text-[13px] font-medium text-blue-400 hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5"
                                 >
                                     Open in new tab
                                     <ExternalLink className="w-3.5 h-3.5" />
@@ -7874,16 +7886,16 @@ sys.stderr = StringIO()
                     </div>
                 ) : showPdfSidebar && pdfUrl ? (
                     /* PDF Citation Sidebar */
-                    <div className="w-[420px] bg-white border-l border-[#e8eaed] overflow-hidden flex-shrink-0 flex flex-col" ref={quizRef}>
+                    <div className="w-[420px] bg-[#0f1117] border-l border-[#1f2430] overflow-hidden flex-shrink-0 flex flex-col" ref={quizRef}>
                         {/* Header */}
-                        <div className="p-4 border-b border-[#e8eaed] flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+                        <div className="p-4 border-b border-[#1f2430] flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-800">
                             <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                                     <FileText className="w-4 h-4 text-white" />
                                 </div>
                                 <div>
-                                    <span className="text-[14px] font-medium text-[#1f1f1f] block">Source Document</span>
-                                    <span className="text-[11px] text-[#5f6368]">
+                                    <span className="text-[14px] font-medium text-slate-100 block">Source Document</span>
+                                    <span className="text-[11px] text-slate-400">
                                         {uploadedFileName} {activeCitation && `• Section ${activeCitation.pageNumber}`}
                                     </span>
                                 </div>
@@ -7893,14 +7905,14 @@ sys.stderr = StringIO()
                                     setShowPdfSidebar(false);
                                     setActiveCitation(null);
                                 }}
-                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/50 transition-colors"
+                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800/60 transition-colors"
                             >
-                                <X className="w-5 h-5 text-[#5f6368]" />
+                                <X className="w-5 h-5 text-slate-300" />
                             </button>
                         </div>
 
                         {/* PDF Viewer */}
-                        <div className="flex-1 overflow-hidden bg-gray-100">
+                        <div className="flex-1 overflow-hidden bg-[#0b0d12]">
                             <iframe
                                 src={`${pdfUrl}#page=${activeCitation?.pageNumber || 1}`}
                                 className="w-full h-full border-0"
@@ -7909,11 +7921,11 @@ sys.stderr = StringIO()
                         </div>
 
                         {/* Footer with navigation */}
-                        <div className="p-3 border-t border-[#e8eaed] bg-white">
+                        <div className="p-3 border-t border-[#1f2430] bg-[#0f1117]">
                             <div className="flex items-center justify-between">
                                 <button
                                     onClick={() => setShowPdfSidebar(false)}
-                                    className="px-4 py-2 text-[13px] font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    className="px-4 py-2 text-[13px] font-medium text-blue-400 hover:bg-blue-900/30 rounded-lg transition-colors"
                                 >
                                     Back to Quiz
                                 </button>
@@ -7921,7 +7933,7 @@ sys.stderr = StringIO()
                                     href={pdfUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="px-4 py-2 text-[13px] font-medium text-[#5f6368] hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5"
+                                    className="px-4 py-2 text-[13px] font-medium text-slate-300 hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1.5"
                                 >
                                     Open in new tab
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -7945,7 +7957,7 @@ sys.stderr = StringIO()
                 }}
                 expandedWidth={500}
                 placeholder={(name) => `Send a message to ${name}...`}
-                theme="light"
+                theme="dark"
                 isLiveActive={geminiLiveState.connectionState === ConnectionState.CONNECTED}
                 isListening={geminiLiveState.isListening}
                 isSpeaking={geminiLiveState.isSpeaking}

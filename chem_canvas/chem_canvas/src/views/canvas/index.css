@@ -86,3 +86,16 @@
     color: #ffffff;
     fill: #ffffff;
 }
+
+/* Canvas background */
+.reactflow-parent-wrapper,
+.reactflow-parent-wrapper .reactflow-wrapper,
+.reactflow-parent-wrapper .react-flow,
+.reactflow-parent-wrapper .react-flow__renderer,
+.reactflow-parent-wrapper .react-flow__pane,
+.reactflow-parent-wrapper .react-flow__viewport,
+.reactflow-parent-wrapper .react-flow__background {
+    background: #1F1F1F !important;
+    background-color: #1F1F1F !important;
+    background-image: none !important;
+}

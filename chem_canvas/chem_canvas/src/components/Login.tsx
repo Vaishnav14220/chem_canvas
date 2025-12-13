@@ -253,23 +253,30 @@ export default function Login({ onLogin }: LoginProps) {
   }
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900 flex flex-col relative overflow-hidden">
+      {/* Animated Background Gradient */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(120,119,198,0.1),transparent_50%)] animate-pulse" />
+      
       {/* Header Banner */}
-      <div className="w-full bg-gradient-to-r from-purple-600 to-blue-600 rounded-b-2xl p-8 text-center">
-        <h1 className="text-4xl font-bold text-white mb-2">Studium</h1>
-        <p className="text-white text-lg">Empowering Research Through AI</p>
+      <div className="relative w-full bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 rounded-b-3xl p-8 text-center shadow-2xl">
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-600/50 via-blue-600/50 to-cyan-600/50 animate-shimmer opacity-50" />
+        <h1 className="relative text-5xl font-bold text-white mb-2 drop-shadow-lg">Studium</h1>
+        <p className="relative text-white/90 text-lg font-medium">Empowering Research Through AI</p>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex items-center justify-center p-8 relative z-10">
         <div className="max-w-2xl w-full">
           {/* Title */}
-          <h2 className="text-3xl font-bold text-white text-center mb-8">
-            {isLogin ? 'Sign In' : 'Create Account'}
-          </h2>
+          <div className="text-center mb-8">
+            <h2 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-purple-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
+              {isLogin ? 'Sign In' : 'Create Account'}
+            </h2>
+            <p className="text-gray-400 text-sm">Welcome back! Please enter your details</p>
+          </div>
 
           {/* Form */}
-          <div className="bg-gray-900/95 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-gray-700">
+          <div className="relative bg-gradient-to-br from-gray-900/95 via-gray-900/90 to-gray-800/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-gray-700/50 overflow-hidden">
             <form className="space-y-6" onSubmit={handleSubmit}>
               {/* Username Field */}
               <div>
@@ -284,7 +291,7 @@ export default function Login({ onLogin }: LoginProps) {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="block w-full pl-10 pr-12 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="block w-full pl-10 pr-12 py-4 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
                     placeholder={isLogin ? "Enter your username" : "Choose a username"}
                   />
                   {!isLogin && (
@@ -311,7 +318,7 @@ export default function Login({ onLogin }: LoginProps) {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="block w-full pl-10 pr-12 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="block w-full pl-10 pr-12 py-4 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
                     placeholder="Enter your password"
                   />
                   <button
@@ -342,7 +349,7 @@ export default function Login({ onLogin }: LoginProps) {
                       required={!isLogin}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="block w-full pl-10 pr-12 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className="block w-full pl-10 pr-12 py-4 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
                       placeholder="Confirm your password"
                     />
                     <button
@@ -370,7 +377,7 @@ export default function Login({ onLogin }: LoginProps) {
                       <select
                         value={gender}
                         onChange={(e) => setGender(e.target.value)}
-                        className="block w-full py-4 pl-3 pr-10 border border-gray-600 rounded-lg bg-gray-800/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none"
+                        className="block w-full py-4 pl-3 pr-10 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200 appearance-none"
                       >
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
@@ -395,7 +402,7 @@ export default function Login({ onLogin }: LoginProps) {
                         <select
                           value={course}
                           onChange={(e) => setCourse(e.target.value)}
-                          className="block w-full py-4 pl-10 pr-10 border border-gray-600 rounded-lg bg-gray-800/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none"
+                          className="block w-full py-4 pl-10 pr-10 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200 appearance-none"
                         >
                           <option value="B.Sc">B.Sc</option>
                           <option value="M.Sc">M.Sc</option>
@@ -419,7 +426,7 @@ export default function Login({ onLogin }: LoginProps) {
                         <select
                           value={semester}
                           onChange={(e) => setSemester(e.target.value)}
-                          className="block w-full py-4 pl-10 pr-10 border border-gray-600 rounded-lg bg-gray-800/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none"
+                          className="block w-full py-4 pl-10 pr-10 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200 appearance-none"
                         >
                           <option value="Semester 1">Semester 1</option>
                           <option value="Semester 2">Semester 2</option>
@@ -498,8 +505,12 @@ export default function Login({ onLogin }: LoginProps) {
 
               {/* Error Message */}
               {error && (
-                <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                  <p className="text-red-200 text-sm">{error}</p>
+                <div className="relative bg-gradient-to-br from-red-500/20 to-red-600/10 border border-red-500/50 rounded-xl p-4 backdrop-blur-sm overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-red-500/10 to-transparent animate-shimmer opacity-50" />
+                  <p className="relative text-red-200 text-sm font-medium flex items-center gap-2">
+                    <span className="text-red-400">⚠</span>
+                    {error}
+                  </p>
                 </div>
               )}
 
@@ -507,15 +518,21 @@ export default function Login({ onLogin }: LoginProps) {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-lg font-bold rounded-lg text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 disabled:transform-none"
+                className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-lg font-bold rounded-xl text-white overflow-hidden transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                style={{
+                  background: 'linear-gradient(135deg, #9333ea 0%, #6366f1 50%, #3b82f6 100%)',
+                  boxShadow: '0 4px 14px rgba(147, 51, 234, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                }}
               >
+                {/* Shimmer effect */}
+                <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 {isLoading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  <div className="relative z-10 flex items-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
                     {isLogin ? 'Signing in...' : 'Creating account...'}
                   </div>
                 ) : (
-                  isLogin ? 'Sign In' : 'Register'
+                  <span className="relative z-10 drop-shadow-sm">{isLogin ? 'Sign In' : 'Register'}</span>
                 )}
               </button>
 
@@ -534,9 +551,16 @@ export default function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={isLoading}
-                className="w-full flex items-center justify-center px-4 py-3 border border-gray-600 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group relative w-full flex items-center justify-center px-4 py-3.5 border rounded-xl text-white font-semibold overflow-hidden transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                }}
               >
-                <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
+                {/* Shimmer effect */}
+                <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <svg className="relative z-10 w-5 h-5 mr-3" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -554,33 +578,35 @@ export default function Login({ onLogin }: LoginProps) {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                   />
                 </svg>
-                Continue with Google
+                <span className="relative z-10">Continue with Google</span>
               </button>
             </form>
 
             {/* Firebase Status */}
-            <div className="mt-6 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-200 mb-2">System Status:</h3>
-              <div className="text-xs text-gray-300 space-y-1">
-                <p>
+            <div className="relative mt-6 p-4 bg-gradient-to-br from-gray-800/60 to-gray-800/40 backdrop-blur-sm border border-gray-700/50 rounded-xl overflow-hidden">
+              <h3 className="relative text-sm font-semibold text-gray-200 mb-2">System Status:</h3>
+              <div className="relative text-xs text-gray-300 space-y-1">
+                <p className="flex items-center gap-2">
                   Firebase:
-                  <span className={`ml-2 px-2 py-1 rounded text-xs ${firebaseStatus === 'connected' ? 'bg-green-500/20 text-green-400' :
-                      firebaseStatus === 'error' ? 'bg-red-500/20 text-red-400' :
-                        'bg-yellow-500/20 text-yellow-400'
+                  <span className={`px-2.5 py-1 rounded-lg text-xs font-medium ${firebaseStatus === 'connected' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                      firebaseStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                        'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                     }`}>
-                    {firebaseStatus === 'connected' ? 'Connected' :
-                      firebaseStatus === 'error' ? 'Offline Mode' :
-                        'Checking...'}
+                    {firebaseStatus === 'connected' ? '✓ Connected' :
+                      firebaseStatus === 'error' ? '⚠ Offline Mode' :
+                        '⟳ Checking...'}
                   </span>
                 </p>
                 {firebaseStatus === 'error' && (
-                  <p className="text-yellow-400 mt-2">
-                    Firebase is not available. Registration will create local accounts for testing.
+                  <p className="text-yellow-400 mt-2 flex items-center gap-1">
+                    <span>⚠</span>
+                    <span>Firebase is not available. Registration will create local accounts for testing.</span>
                   </p>
                 )}
                 {!isLogin && firebaseStatus === 'connected' && (
-                  <p className="text-blue-400 mt-2">
-                    ✅ Firebase connected! You can register with any username and password.
+                  <p className="text-blue-400 mt-2 flex items-center gap-1">
+                    <span>✅</span>
+                    <span>Firebase connected! You can register with any username and password.</span>
                   </p>
                 )}
               </div>
@@ -588,11 +614,11 @@ export default function Login({ onLogin }: LoginProps) {
 
             {/* Demo Credentials - Only show on login */}
             {isLogin && (
-              <div className="mt-4 p-4 bg-blue-500/20 border border-blue-500/50 rounded-lg">
-                <h3 className="text-sm font-medium text-blue-200 mb-2">Demo Credentials:</h3>
-                <div className="text-xs text-blue-300 space-y-1">
-                  <p><strong>Admin:</strong> admin / password</p>
-                  <p><strong>Demo:</strong> demo / demo</p>
+              <div className="relative mt-4 p-4 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 backdrop-blur-sm border border-blue-500/50 rounded-xl overflow-hidden">
+                <h3 className="relative text-sm font-semibold text-blue-200 mb-2">Demo Credentials:</h3>
+                <div className="relative text-xs text-blue-300 space-y-1.5">
+                  <p className="flex items-center gap-2"><span className="font-semibold">Admin:</span> <code className="px-2 py-0.5 bg-blue-500/20 rounded text-blue-200">admin</code> / <code className="px-2 py-0.5 bg-blue-500/20 rounded text-blue-200">password</code></p>
+                  <p className="flex items-center gap-2"><span className="font-semibold">Demo:</span> <code className="px-2 py-0.5 bg-blue-500/20 rounded text-blue-200">demo</code> / <code className="px-2 py-0.5 bg-blue-500/20 rounded text-blue-200">demo</code></p>
                 </div>
               </div>
             )}
@@ -603,7 +629,7 @@ export default function Login({ onLogin }: LoginProps) {
                 {isLogin ? "Don't have an account? " : "Already have an account? "}
                 <button
                   onClick={toggleMode}
-                  className="font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                  className="font-semibold text-blue-400 hover:text-blue-300 transition-colors underline-offset-2 hover:underline"
                 >
                   {isLogin ? 'Sign up' : 'Sign in'}
                 </button>
@@ -613,7 +639,7 @@ export default function Login({ onLogin }: LoginProps) {
             {/* Admin Login Link */}
             {isLogin && (
               <div className="mt-4 text-center">
-                <a href="#" className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium">
+                <a href="#" className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-semibold underline-offset-2 hover:underline">
                   Admin Login
                 </a>
               </div>

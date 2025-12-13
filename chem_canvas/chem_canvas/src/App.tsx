@@ -837,7 +837,12 @@ const App: React.FC = () => {
   }, []);
 
   const pillButtonClasses =
-    'inline-flex items-center gap-1.75 rounded-full border border-slate-700/70 bg-gradient-to-b from-slate-950/90 via-slate-900 to-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-100 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur transition-all duration-200 hover:-translate-y-[1px] hover:border-cyan-400/70 hover:shadow-[0_1px_0_rgba(255,255,255,0.14)_inset,0_14px_38px_rgba(34,211,238,0.25)] active:translate-y-0';
+    'inline-flex items-center gap-1.75 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur transition-all duration-300 relative overflow-hidden group button-shimmer' +
+    ' border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-purple-500/10' +
+    ' text-cyan-100 shadow-[0_2px_8px_rgba(6,182,212,0.15),inset_0_1px_0_rgba(255,255,255,0.1)]' +
+    ' hover:-translate-y-[1px] hover:border-cyan-400/50 hover:bg-gradient-to-br hover:from-cyan-500/15 hover:via-blue-500/15 hover:to-purple-500/15' +
+    ' hover:shadow-[0_4px_12px_rgba(6,182,212,0.25),inset_0_1px_0_rgba(255,255,255,0.15)]' +
+    ' active:translate-y-0 active:shadow-[0_2px_6px_rgba(6,182,212,0.2)]';
   const dispatchCanvasCommand = useCallback((command: CanvasCommand) => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent<CanvasCommand>('canvas-command', { detail: command }));
@@ -1864,7 +1869,7 @@ Here is the learner's question: ${message}`;
     <div className="min-h-screen bg-background text-foreground dark">
       {/* Header */}
       {true && (
-        <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 shadow-sm">
+        <header className="sticky top-0 z-50 w-full border-b border-border/40 shadow-sm" style={{ backgroundColor: '#22262B', backdropFilter: 'blur-xl' }}>
           <input
             ref={fileUploadInputRef}
             type="file"
@@ -1873,51 +1878,60 @@ Here is the learner's question: ${message}`;
             className="hidden"
             onChange={handleHeaderFileChange}
           />
-          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-1 min-w-[220px] items-center gap-3">
+          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6" style={{ backgroundColor: '#22262B' }}>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="flex flex-col">
                     <span className="text-lg font-semibold tracking-tight text-white">Studium</span>
                     <span className="text-xs text-muted-foreground/80 font-medium">Chemistry Workspace</span>
+                    {isAuthenticated && (
+                      <span className="text-sm font-medium text-slate-300 mt-0.5">
+                        Welcome back, <span className="text-white font-semibold">{user?.username || user?.displayName || 'Explorer'}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={() => navigate('/vision-analyze')}
-                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
-                >
-                  <ImageIcon className="h-4 w-4 text-purple-400" />
-                  <span className="hidden sm:inline">Vision Analyze</span>
-                </button>
-                <button
-                  onClick={() => navigate('/vision-chat')}
-                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
-                >
-                  <MessageSquare className="h-4 w-4 text-pink-400" />
-                  <span className="hidden sm:inline">Vision Chat</span>
-                </button>
-                <button
-                  onClick={() => navigate('/vision-video')}
-                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
-                >
-                  <Video className="h-4 w-4 text-blue-400" />
-                  <span className="hidden sm:inline">Vision Video</span>
-                </button>
               </div>
 
-              <div className="flex-1 min-w-[220px] max-w-xl">
+              <div className="flex-1 flex justify-center min-w-0 max-w-2xl mx-auto">
                 <button
                   onClick={() => setCommandPaletteOpen(true)}
-                  className="group inline-flex h-11 w-full items-center justify-between rounded-2xl border border-slate-700/70 bg-gradient-to-b from-slate-950/90 via-slate-900 to-slate-950 px-4 text-sm font-semibold text-slate-100 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,0_14px_36px_rgba(0,0,0,0.35)] backdrop-blur transition-all duration-200 hover:-translate-y-[1px] hover:border-cyan-400/70 hover:shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_16px_44px_rgba(34,211,238,0.25)]"
+                  className="group relative inline-flex h-12 w-full max-w-xl items-center justify-between rounded-2xl border overflow-hidden px-4 text-sm font-semibold text-slate-100 backdrop-blur-xl transition-all duration-300 hover:-translate-y-[1px] active:translate-y-0"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(2, 6, 23, 0.95) 100%)',
+                    borderColor: 'rgba(6, 182, 212, 0.3)',
+                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                  }}
                 >
-                  <span className="flex items-center gap-2 text-left">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-slate-800/70 text-cyan-300 shadow-inner shadow-black/50 ring-1 ring-slate-700/70 group-hover:ring-cyan-400/60">
-                      <Search className="h-4 w-4" />
+                  {/* Shimmer effect */}
+                  <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  
+                  <span className="relative z-10 flex items-center gap-2.5 text-left">
+                    <div 
+                      className="flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(34, 211, 238, 0.3) 100%)',
+                        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(6, 182, 212, 0.3)',
+                        border: '1px solid rgba(6, 182, 212, 0.4)'
+                      }}
+                    >
+                      <Search className="h-4 w-4 text-cyan-300 drop-shadow-sm" />
                     </div>
-                    <span className="text-slate-50 font-semibold">Quick Search</span>
-                    <span className="hidden sm:inline text-xs text-slate-400">docs, tools, AI</span>
+                    <div className="flex flex-col items-start">
+                      <span className="text-slate-50 font-semibold leading-tight">Quick Search</span>
+                      <span className="hidden sm:inline text-[10px] text-slate-400 font-normal leading-tight">docs, tools, AI</span>
+                    </div>
                   </span>
-                  <kbd className="pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded-lg border border-border/50 bg-muted/50 px-3 font-mono text-[11px] uppercase tracking-wide opacity-80">
+                  <kbd 
+                    className="relative z-10 pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded-lg px-3 font-mono text-[11px] uppercase tracking-wide transition-all duration-300 group-hover:scale-105"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                      color: 'rgba(255, 255, 255, 0.9)'
+                    }}
+                  >
                     ⌘K
                   </kbd>
                 </button>
@@ -1928,9 +1942,25 @@ Here is the learner's question: ${message}`;
                   const sessionStatus = getSessionStatus();
                   if (sessionStatus.isValid && sessionStatus.remainingHours) {
                     return (
-                      <div className="hidden sm:flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-500">
-                        <Clock className="h-3.5 w-3.5" />
-                        <span>{sessionStatus.remainingHours}h active</span>
+                      <div 
+                        className="hidden sm:flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-amber-400 relative overflow-hidden group cursor-default"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.2) 100%)',
+                          border: '1px solid rgba(251, 191, 36, 0.3)',
+                          boxShadow: '0 2px 8px rgba(251, 191, 36, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                        }}
+                      >
+                        {/* Continuous shimmer effect */}
+                        <div 
+                          className="absolute inset-0 animate-shimmer"
+                          style={{
+                            background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.15) 50%, transparent 100%)',
+                            width: '50%',
+                            height: '100%'
+                          }}
+                        />
+                        <Clock className="h-3.5 w-3.5 relative z-10 drop-shadow-sm" />
+                        <span className="relative z-10 drop-shadow-sm">{sessionStatus.remainingHours}h active</span>
                         {sessionStatus.remainingHours < 24 && (
                           <button
                             onClick={() => {
@@ -1939,7 +1969,7 @@ Here is the learner's question: ${message}`;
                                 window.location.reload();
                               }
                             }}
-                            className="text-amber-300 underline-offset-2 hover:underline"
+                            className="relative z-10 text-amber-300 underline-offset-2 hover:text-amber-200 hover:underline transition-colors font-medium"
                           >
                             Extend
                           </button>
@@ -1949,6 +1979,12 @@ Here is the learner's question: ${message}`;
                   }
                   return null;
                 })()}
+
+                {isAuthenticated && (
+                  <div className="hidden lg:flex">
+                    <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
+                  </div>
+                )}
 
                 <div className="flex items-center gap-1.5 rounded-2xl border border-border/40 bg-background/60 p-1 shadow-inner">
                   <button
@@ -1980,19 +2016,21 @@ Here is the learner's question: ${message}`;
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
-                  className={`${pillButtonClasses} ${documentViewerOpen ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' : ''}`}
+                  className={`${pillButtonClasses} ${documentViewerOpen 
+                    ? 'border-blue-400/60 bg-gradient-to-br from-blue-500/20 via-blue-500/15 to-cyan-500/15 text-blue-100 shadow-[0_4px_12px_rgba(59,130,246,0.3)]' 
+                    : ''}`}
                 >
-                  <FileText className="h-4 w-4" />
-                  {documentViewerOpen ? 'Hide Sources' : 'Sources'}
+                  <FileText className="h-4 w-4 relative z-10" />
+                  <span className="relative z-10">{documentViewerOpen ? 'Hide Sources' : 'Sources'}</span>
                 </button>
 
                 <button
                   onClick={handleHeaderUploadClick}
-                  className={`${pillButtonClasses} border-dashed border-blue-500/50 bg-blue-500/5 text-blue-100 hover:text-white`}
+                  className={`${pillButtonClasses} border-dashed border-emerald-400/50 bg-gradient-to-br from-emerald-500/10 via-teal-500/10 to-cyan-500/10 text-emerald-100 hover:border-emerald-400/70 hover:from-emerald-500/15 hover:via-teal-500/15 hover:to-cyan-500/15 hover:text-emerald-50`}
                   title="Upload a PDF, image, or text doc directly to the canvas"
                 >
-                  <Upload className="h-4 w-4" />
-                  Upload to Canvas
+                  <Upload className="h-4 w-4 relative z-10" />
+                  <span className="relative z-10">Upload to Canvas</span>
                 </button>
 
                 <button
@@ -2010,8 +2048,8 @@ Here is the learner's question: ${message}`;
                   }}
                   className={pillButtonClasses}
                 >
-                  <Target className="h-4 w-4" />
-                  SRL Coach
+                  <Target className="h-4 w-4 relative z-10" />
+                  <span className="relative z-10">SRL Coach</span>
                 </button>
 
                 <button
@@ -2021,8 +2059,8 @@ Here is the learner's question: ${message}`;
                   }}
                   className={pillButtonClasses}
                 >
-                  <Layers3 className="h-4 w-4" />
-                  3D Explorer
+                  <Layers3 className="h-4 w-4 relative z-10" />
+                  <span className="relative z-10">3D Explorer</span>
                 </button>
 
                 <button
@@ -2054,10 +2092,16 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('ai_word');
                     startFeature('ai_word');
                   }}
-                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-blue-500/25 transition-transform hover:scale-[1.02]"
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-3 py-1 text-xs font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                  style={{
+                    background: 'linear-gradient(135deg, #2563eb 0%, #4f46e5 50%, #6366f1 100%)',
+                    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                  }}
                 >
-                  <PenLine className="h-4 w-4" />
-                  Doc Studio
+                  {/* Shimmer effect */}
+                  <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <PenLine className="h-4 w-4 relative z-10 drop-shadow-sm" />
+                  <span className="relative z-10 drop-shadow-sm">Doc Studio</span>
                 </button>
 
                 <button
@@ -2076,32 +2120,58 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('immersive_learning');
                     startFeature('immersive_learning');
                   }}
-                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-pink-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-transform hover:scale-[1.02]"
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-3 py-1 text-xs font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                  style={{
+                    background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 50%, #ec4899 100%)',
+                    boxShadow: '0 4px 14px rgba(147, 51, 234, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                  }}
                 >
-                  <BookOpen className="h-4 w-4" />
-                  Immersive Learning
+                  {/* Shimmer effect */}
+                  <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <BookOpen className="h-4 w-4 relative z-10 drop-shadow-sm" />
+                  <span className="relative z-10 drop-shadow-sm">Immersive Learning</span>
                 </button>
 
-                <div className="inline-flex items-center rounded-full border border-border/40 bg-background/80 p-0.5 text-xs font-semibold shadow-sm">
+                <div className="inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900/50 backdrop-blur-sm p-0.5 text-xs font-semibold shadow-lg">
                   <button
                     onClick={() => {
                       setIsMolecularMode(false);
                     }}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${!isMolecularMode ? 'bg-orange-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                    className={`group relative flex items-center gap-1.5 rounded-full px-3 py-1 transition-all duration-300 overflow-hidden ${
+                      !isMolecularMode 
+                        ? 'text-white' 
+                        : 'text-slate-400 hover:text-slate-200'
                       }`}
+                    style={!isMolecularMode ? {
+                      background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                      boxShadow: '0 2px 8px rgba(249, 115, 22, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                    } : {}}
                   >
-                    <Edit3 className="h-4 w-4" />
-                    Canvas Studio
+                    {!isMolecularMode && (
+                      <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    )}
+                    <Edit3 className={`h-4 w-4 relative z-10 ${!isMolecularMode ? 'drop-shadow-sm' : ''}`} />
+                    <span className={`relative z-10 ${!isMolecularMode ? 'drop-shadow-sm' : ''}`}>Canvas Studio</span>
                   </button>
                   <button
                     onClick={() => {
                       setIsMolecularMode(true);
                     }}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${isMolecularMode ? 'bg-blue-500 text-white shadow' : 'text-muted-foreground hover:text-foreground'
+                    className={`group relative flex items-center gap-1.5 rounded-full px-3 py-1 transition-all duration-300 overflow-hidden ${
+                      isMolecularMode 
+                        ? 'text-white' 
+                        : 'text-slate-400 hover:text-slate-200'
                       }`}
+                    style={isMolecularMode ? {
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                    } : {}}
                   >
-                    <Beaker className="h-4 w-4" />
-                    Molecule Sketcher
+                    {isMolecularMode && (
+                      <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    )}
+                    <Beaker className={`h-4 w-4 relative z-10 ${isMolecularMode ? 'drop-shadow-sm' : ''}`} />
+                    <span className={`relative z-10 ${isMolecularMode ? 'drop-shadow-sm' : ''}`}>Molecule Sketcher</span>
                   </button>
 
                 </div>
@@ -2123,14 +2193,6 @@ Here is the learner's question: ${message}`;
                 </div>
               )}
 
-              <div className="flex w-full flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Welcome back, <span className="text-foreground">{user?.username || user?.displayName || 'Explorer'}</span>
-                </span>
-                <div className="ml-auto flex w-full justify-start sm:w-auto sm:justify-end">
-                  <FlippingInfo userName={user?.username || user?.displayName || 'User'} />
-                </div>
-              </div>
             </div>
           </div>
         </header>
@@ -2445,7 +2507,7 @@ Here is the learner's question: ${message}`;
                     <MoldrawEmbed />
                   ) : (
                     <>
-                      <div className={`flex items-center gap-2 border-b border-slate-800/60 bg-slate-900/60 px-4 text-sm transition-all duration-200 ${isWorkspaceTabsCollapsed ? 'py-1' : 'py-2'}`}>
+                      <div className={`flex items-center gap-2 border-b border-slate-800/60 px-4 text-sm transition-all duration-200 ${isWorkspaceTabsCollapsed ? 'py-1' : 'py-2'}`} style={{ backgroundColor: '#1C2025' }}>
                         {/* Collapse Toggle Button */}
                         <button
                           onClick={() => setIsWorkspaceTabsCollapsed(!isWorkspaceTabsCollapsed)}
