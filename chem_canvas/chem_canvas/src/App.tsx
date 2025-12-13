@@ -1869,7 +1869,7 @@ Here is the learner's question: ${message}`;
     <div className="min-h-screen bg-background text-foreground dark">
       {/* Header */}
       {true && (
-        <header className="sticky top-0 z-50 w-full border-b border-border/40 shadow-sm" style={{ backgroundColor: '#22262B', backdropFilter: 'blur-xl' }}>
+        <header className="sticky top-0 z-50 w-full border-b border-border/40 shadow-sm" style={{ backgroundColor: '#171717', backdropFilter: 'blur-xl' }}>
           <input
             ref={fileUploadInputRef}
             type="file"
@@ -1878,7 +1878,7 @@ Here is the learner's question: ${message}`;
             className="hidden"
             onChange={handleHeaderFileChange}
           />
-          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6" style={{ backgroundColor: '#22262B' }}>
+          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6" style={{ backgroundColor: '#171717' }}>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
@@ -2507,7 +2507,7 @@ Here is the learner's question: ${message}`;
                     <MoldrawEmbed />
                   ) : (
                     <>
-                      <div className={`flex items-center gap-2 border-b border-slate-800/60 px-4 text-sm transition-all duration-200 ${isWorkspaceTabsCollapsed ? 'py-1' : 'py-2'}`} style={{ backgroundColor: '#1C2025' }}>
+                      <div className={`flex items-center gap-2 border-b border-slate-800/60 px-4 text-sm transition-all duration-200 ${isWorkspaceTabsCollapsed ? 'py-1' : 'py-2'}`} style={{ backgroundColor: '#212121' }}>
                         {/* Collapse Toggle Button */}
                         <button
                           onClick={() => setIsWorkspaceTabsCollapsed(!isWorkspaceTabsCollapsed)}

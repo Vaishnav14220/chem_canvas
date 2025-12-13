@@ -17,7 +17,7 @@ export default function Login({ onLogin }: LoginProps) {
   const [firebaseStatus, setFirebaseStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
   const [googleUserProfile, setGoogleUserProfile] = useState<UserProfile | null>(null);
-  const [username, setUsername] = useState('vai123');
+  const [username, setUsername] = useState('');
 
   // Test Firebase connection
   useEffect(() => {
@@ -227,7 +227,7 @@ export default function Login({ onLogin }: LoginProps) {
   };
 
   const resetForm = () => {
-    setUsername(isLogin ? '' : 'testuser');
+    setUsername('');
     setPassword('');
     setConfirmPassword('');
     setGender('Prefer not to say');
