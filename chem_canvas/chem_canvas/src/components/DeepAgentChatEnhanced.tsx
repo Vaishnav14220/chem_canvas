@@ -154,9 +154,9 @@ const getStatusIcon = (status: TodoItem['status'], className?: string) => {
 const TypingIndicator: React.FC<{ text?: string }> = ({ text }) => (
   <div className="flex items-center gap-2">
     <div className="flex gap-1">
-      <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-      <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-      <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+      <span className="w-2 h-2 bg-purple-400  animate-bounce" style={{ animationDelay: '0ms' }} />
+      <span className="w-2 h-2 bg-purple-400  animate-bounce" style={{ animationDelay: '150ms' }} />
+      <span className="w-2 h-2 bg-purple-400  animate-bounce" style={{ animationDelay: '300ms' }} />
     </div>
     {text && <span className="text-sm text-gray-400 animate-pulse">{text}</span>}
   </div>
@@ -171,13 +171,13 @@ const BlinkingCursor: React.FC = () => (
 const LiveCodeBlock: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => {
   return (
     <div className="relative">
-      <pre className="bg-gray-900 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300 border border-gray-700">
+      <pre className="bg-gray-900  p-4 overflow-x-auto text-sm font-mono text-gray-300 border border-gray-700">
         <code>{content}</code>
         {isStreaming && <BlinkingCursor />}
       </pre>
       {isStreaming && (
         <div className="absolute top-2 right-2 flex items-center gap-2">
-          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+          <div className="w-2 h-2 bg-green-400  animate-pulse" />
           <span className="text-xs text-green-400">Writing...</span>
         </div>
       )}
@@ -289,16 +289,16 @@ const GraphView: React.FC<{ nodes: GraphNode[]; links: GraphLink[] }> = ({ nodes
   }, [positionedNodes]);
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/80 p-3 shadow-lg">
+    <div className=" border border-gray-700 p-3 shadow-lg" style={{ backgroundColor: '#2d2d2d' }}>
       <div className="flex items-center justify-between mb-3 text-xs text-gray-400">
         <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-cyan-400" /> Final
-          <div className="h-2 w-2 rounded-full bg-purple-400" /> Artifact
+          <div className="h-2 w-2  bg-cyan-400" /> Final
+          <div className="h-2 w-2  bg-purple-400" /> Artifact
         </div>
         <div>Radial layout — each artifact links to the final doc</div>
       </div>
       <div className="overflow-auto">
-        <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="bg-gray-950/60 rounded-lg border border-gray-800">
+        <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className=" border border-gray-700" style={{ backgroundColor: '#1a1a1a' }}>
           {/* Edges */}
           {links.map((l, idx) => {
             const s = nodeMap.get(l.source);
@@ -952,18 +952,18 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
   // ==========================================
 
   const ViewToggle = (
-    <div className="flex justify-between items-center py-2 gap-3 flex-wrap">
-      <div className="flex h-8 items-center gap-0 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 p-1 text-xs shadow-sm">
+    <div className="flex justify-between items-center py-2 gap-3 flex-wrap" style={{ backgroundColor: '#212121' }}>
+      <div className="flex h-8 items-center gap-0 overflow-hidden  border border-gray-600 bg-gray-800 p-1 text-xs shadow-sm">
         <button
           onClick={() => setViewMode('chat')}
-          className={`flex h-full items-center justify-center px-4 rounded transition-colors ${viewMode === 'chat' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-white'
+          className={`flex h-full items-center justify-center px-4 transition-colors ${viewMode === 'chat' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-white'
             }`}
         >
           Chat
         </button>
         <button
           onClick={() => setViewMode('workflow')}
-          className={`flex h-full items-center justify-center px-4 rounded transition-colors ${viewMode === 'workflow' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-white'
+          className={`flex h-full items-center justify-center px-4 transition-colors ${viewMode === 'workflow' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-white'
             }`}
         >
           Workflow
@@ -981,7 +981,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
       {/* Header removed by user request */}
 
       {/* Tab Navigation */}
-      <div className="flex border-b border-gray-700 bg-gray-800/50 flex-wrap">
+      <div className="flex border-b border-gray-700 flex-wrap" style={{ backgroundColor: '#212121' }}>
         <button
           onClick={() => setActiveTab('chat')}
           className={`flex-1 py-2 px-4 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'chat'
@@ -1025,7 +1025,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
           <FolderOpen className="w-4 h-4" />
           Artifacts
           {artifactsList.length > 0 && (
-            <span className="px-1.5 py-0.5 text-xs bg-purple-500/30 text-purple-300 rounded-full">
+            <span className="px-1.5 py-0.5 text-xs bg-purple-500/30 text-purple-300 ">
               {artifactsList.length}
             </span>
           )}
@@ -1050,12 +1050,12 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
               value={tavilyKey}
               onChange={(e) => setTavilyKey(e.target.value)}
               placeholder="Enter Tavily API key..."
-              className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700  text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
             <button
               onClick={handleSaveTavilyKey}
               disabled={!tavilyKey.trim()}
-              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors"
+              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-sm font-medium transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-purple-400/30 hover:border-purple-300/50 active:scale-[0.98]"
             >
               Save
             </button>
@@ -1067,10 +1067,10 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden" style={{ backgroundColor: '#212121' }}>
         {/* Sidebar */}
         {showSidebar && (
-          <div className="w-64 border-r border-gray-700 bg-gray-850 flex flex-col overflow-hidden">
+          <div className="w-64 border-r border-gray-700 flex flex-col overflow-hidden" style={{ backgroundColor: '#212121' }}>
             {/* Subagents Section */}
             <div className="p-3 border-b border-gray-700">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
@@ -1080,7 +1080,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                 {availableSubagents.map((subagent: { name: string; description: string }) => (
                   <div
                     key={subagent.name}
-                    className={`flex items-center gap-2 p-2 rounded-lg text-xs ${activeSubagent === subagent.name
+                    className={`flex items-center gap-2 p-2  text-xs ${activeSubagent === subagent.name
                       ? 'bg-purple-500/20 border border-purple-500/50'
                       : 'bg-gray-800/50 hover:bg-gray-700/50'
                       }`}
@@ -1104,7 +1104,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                 {availableTools.map((tool: { name: string; description: string }) => (
                   <div
                     key={tool.name}
-                    className="flex items-center gap-2 p-2 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg text-xs"
+                    className="flex items-center gap-2 p-2 bg-gray-800/50 hover:bg-gray-700/50  text-xs"
                   >
                     <Wrench className="w-4 h-4 text-gray-500" />
                     <div className="min-w-0">
@@ -1125,12 +1125,12 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
 
             {/* Workflow View */}
             {viewMode === 'workflow' && (
-              <div className="flex-1 overflow-y-auto bg-gray-850 p-6">
+              <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#212121' }}>
                 <div className="max-w-4xl mx-auto">
                   {/* Workflow Header */}
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-500/20 rounded-lg">
+                      <div className="p-2 bg-purple-500/20 ">
                         <GitBranch className="w-6 h-6 text-purple-400" />
                       </div>
                       <div>
@@ -1140,7 +1140,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     </div>
                     <div className="flex items-center gap-2">
                       {isLoading && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 rounded-full">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 ">
                           <Activity className="w-4 h-4 text-blue-400 animate-pulse" />
                           <span className="text-sm text-blue-400">Processing</span>
                         </div>
@@ -1150,7 +1150,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
 
                   {/* Live Pipeline Status */}
                   {(activeTasks.length > 0 || isLoading) && (
-                    <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
+                    <div className="mb-6 p-4 bg-gray-800  border border-gray-700">
                       <h4 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
                         <Target className="w-4 h-4 text-purple-400" />
                         Active Pipeline
@@ -1160,7 +1160,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                           <div key={task.id} className="relative pl-6">
                             <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-500 to-purple-500/20" />
                             <div className="flex items-start gap-3 mb-2">
-                              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${task.status === 'completed' ? 'bg-green-500/20' :
+                              <div className={`flex-shrink-0 w-8 h-8  flex items-center justify-center ${task.status === 'completed' ? 'bg-green-500/20' :
                                 task.status === 'error' ? 'bg-red-500/20' : 'bg-purple-500/20'
                                 }`}>
                                 {task.status === 'completed' ? (
@@ -1181,7 +1181,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                                   </span>
                                 </div>
                                 {/* Progress Bar */}
-                                <div className="mt-2 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                <div className="mt-2 h-1.5 bg-gray-700  overflow-hidden">
                                   <div
                                     className={`h-full transition-all duration-500 ${task.status === 'completed' ? 'bg-green-500' :
                                       task.status === 'error' ? 'bg-red-500' : 'bg-purple-500'
@@ -1194,7 +1194,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                                   {task.steps.map((step, idx) => (
                                     <div key={step.id || idx}>
                                       <div
-                                        className={`flex items-center gap-2 p-2 rounded-lg ${step.status === 'completed' ? 'bg-gray-800/50' :
+                                        className={`flex items-center gap-2 p-2  ${step.status === 'completed' ? 'bg-gray-800/50' :
                                           step.status === 'error' ? 'bg-red-500/10' : 'bg-gray-800'
                                           }`}
                                       >
@@ -1232,19 +1232,19 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                           <div className="relative pl-6">
                             <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-blue-500 to-blue-500/20" />
                             <div className="flex items-start gap-3">
-                              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                              <div className="flex-shrink-0 w-8 h-8  bg-blue-500/20 flex items-center justify-center">
                                 <PenTool className="w-5 h-5 text-blue-400" />
                               </div>
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
                                   <span className="font-medium text-blue-300">Writing Response</span>
                                   <div className="flex gap-1">
-                                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                                    <span className="w-1.5 h-1.5 bg-blue-400  animate-bounce" style={{ animationDelay: '0ms' }} />
+                                    <span className="w-1.5 h-1.5 bg-blue-400  animate-bounce" style={{ animationDelay: '150ms' }} />
+                                    <span className="w-1.5 h-1.5 bg-blue-400  animate-bounce" style={{ animationDelay: '300ms' }} />
                                   </div>
                                 </div>
-                                <div className="mt-2 p-3 bg-gray-800 rounded-lg border border-blue-500/30">
+                                <div className="mt-2 p-3 bg-gray-800  border border-blue-500/30">
                                   <div className="text-xs text-gray-400 mb-2">{streamingContent.length} characters generated</div>
                                   <div className="text-sm text-gray-300 line-clamp-3">
                                     {streamingContent.slice(-200)}
@@ -1261,7 +1261,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
 
                   {/* Tool Calls Timeline */}
                   {toolCalls.length > 0 && (
-                    <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
+                    <div className="mb-6 p-4 bg-gray-800  border border-gray-700">
                       <h4 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
                         <Wrench className="w-4 h-4 text-yellow-400" />
                         Tool Executions ({toolCalls.length})
@@ -1270,7 +1270,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                         {toolCalls.map((tc, idx) => (
                           <div
                             key={`${tc.id}-${idx}`}
-                            className={`flex items-center gap-3 p-3 rounded-lg border ${tc.status === 'completed' ? 'bg-green-500/10 border-green-500/30' :
+                            className={`flex items-center gap-3 p-3  border ${tc.status === 'completed' ? 'bg-green-500/10 border-green-500/30' :
                               tc.status === 'error' ? 'bg-red-500/10 border-red-500/30' :
                                 'bg-gray-700 border-gray-600'
                               }`}
@@ -1300,14 +1300,14 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
 
                   {/* SubAgents Section */}
                   {subAgents.length > 0 && (
-                    <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
+                    <div className="mb-6 p-4 bg-gray-800  border border-gray-700">
                       <h4 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
                         <Users className="w-4 h-4 text-purple-400" />
                         Specialized Subagents ({subAgents.length})
                       </h4>
                       <div className="grid grid-cols-2 gap-3">
                         {subAgents.map(sa => (
-                          <div key={sa.id} className={`p-3 rounded-lg border ${sa.status === 'completed' ? 'bg-green-500/10 border-green-500/30' :
+                          <div key={sa.id} className={`p-3  border ${sa.status === 'completed' ? 'bg-green-500/10 border-green-500/30' :
                             sa.status === 'error' ? 'bg-red-500/10 border-red-500/30' :
                               'bg-purple-500/10 border-purple-500/30'
                             }`}>
@@ -1331,7 +1331,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     {/* Empty State */}
                     {activeTasks.length === 0 && toolCalls.length === 0 && subAgents.length === 0 && !isLoading && (
                     <div className="text-center py-12">
-                      <div className="inline-flex p-4 bg-gray-800 rounded-full mb-4">
+                      <div className="inline-flex p-4 bg-gray-800  mb-4">
                         <GitBranch className="w-8 h-8 text-gray-600" />
                       </div>
                       <h4 className="text-lg font-medium text-gray-400 mb-2">No Active Workflow</h4>
@@ -1349,6 +1349,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                 <div
                   ref={scrollRef}
                   className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+                  style={{ backgroundColor: '#262626' }}
                 >
                   <div className="mx-auto w-full max-w-4xl px-6 pb-6 pt-4">
                     {/* Initialization State */}
@@ -1363,7 +1364,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
 
                     {/* Error State */}
                     {error && !isInitializing && (
-                      <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 text-red-400 mb-4">
+                      <div className="bg-red-500/10 border border-red-500/50  p-4 text-red-400 mb-4">
                         <div className="font-medium">Error</div>
                         <div className="text-sm mt-1">{error}</div>
                         <button
@@ -1378,7 +1379,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     {/* Welcome Message */}
                     {messages.length === 0 && !isInitializing && !error && (
                       <div className="text-center py-8">
-                        <div className="inline-flex p-4 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-full mb-4">
+                        <div className="inline-flex p-4 bg-gradient-to-r from-purple-500/20 to-blue-500/20  mb-4">
                           <Brain className="w-12 h-12 text-purple-400" />
                         </div>
                         <h3 className="text-xl font-semibold mb-2">Welcome to Deep Agent</h3>
@@ -1388,28 +1389,28 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                         <div className="grid grid-cols-2 gap-2 max-w-sm mx-auto">
                           <button
                             onClick={() => handleSendMessage("Help me understand organic reaction mechanisms")}
-                            className="p-3 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-left transition-colors"
+                            className="p-3 bg-gray-800 hover:bg-gray-700 text-sm text-left transition-all duration-200 shadow-sm hover:shadow-md border border-gray-700 hover:border-gray-600 active:scale-[0.98]"
                           >
                             <FlaskConical className="w-4 h-4 text-purple-400 mb-1" />
                             <div className="text-gray-200">Reaction Mechanisms</div>
                           </button>
                           <button
                             onClick={() => handleSendMessage("Generate practice problems for stoichiometry")}
-                            className="p-3 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-left transition-colors"
+                            className="p-3 bg-gray-800 hover:bg-gray-700 text-sm text-left transition-all duration-200 shadow-sm hover:shadow-md border border-gray-700 hover:border-gray-600 active:scale-[0.98]"
                           >
                             <Calculator className="w-4 h-4 text-blue-400 mb-1" />
                             <div className="text-gray-200">Practice Problems</div>
                           </button>
                           <button
                             onClick={() => handleSendMessage("Search for information about caffeine molecule")}
-                            className="p-3 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-left transition-colors"
+                            className="p-3 bg-gray-800 hover:bg-gray-700 text-sm text-left transition-all duration-200 shadow-sm hover:shadow-md border border-gray-700 hover:border-gray-600 active:scale-[0.98]"
                           >
                             <Search className="w-4 h-4 text-green-400 mb-1" />
                             <div className="text-gray-200">Molecule Search</div>
                           </button>
                           <button
                             onClick={() => handleSendMessage("Explain the concept of electronegativity")}
-                            className="p-3 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-left transition-colors"
+                            className="p-3 bg-gray-800 hover:bg-gray-700 text-sm text-left transition-all duration-200 shadow-sm hover:shadow-md border border-gray-700 hover:border-gray-600 active:scale-[0.98]"
                           >
                             <BookOpen className="w-4 h-4 text-yellow-400 mb-1" />
                             <div className="text-gray-200">Concept Explanation</div>
@@ -1427,7 +1428,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                       >
                         <div className={`min-w-0 max-w-full ${message.role === 'user' ? 'max-w-[70%]' : 'w-full'}`}>
                           <div
-                            className={`rounded-lg p-3 ${message.role === 'user'
+                            className={` p-3 ${message.role === 'user'
                               ? 'bg-purple-500 text-white ml-auto'
                               : 'bg-gray-800 text-gray-100'
                               }`}
@@ -1437,7 +1438,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                                 <Sparkles className="w-4 h-4 text-purple-400" />
                                 <span className="text-sm text-gray-400">Deep Agent</span>
                                 {message.subagentUsed && (
-                                  <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full">
+                                  <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 ">
                                     via {message.subagentUsed}
                                   </span>
                                 )}
@@ -1459,13 +1460,13 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     {/* Streaming Content with Live Animation */}
                     {isStreaming && (
                       <div className="flex justify-start mb-4">
-                        <div className="max-w-full w-full rounded-lg p-4 bg-gray-800 border border-purple-500/30">
+                        <div className="max-w-full w-full  p-4 bg-gray-800 border border-purple-500/30">
                           {/* Animated Header */}
                           <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-700">
                             <div className="flex items-center gap-3">
                               <div className="relative">
                                 <Brain className="w-6 h-6 text-purple-400" />
-                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse" />
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400  animate-pulse" />
                               </div>
                               <div>
                                 <span className="text-sm font-medium text-purple-300">Deep Agent</span>
@@ -1477,9 +1478,9 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="flex gap-1">
-                                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                                <span className="w-1.5 h-1.5 bg-purple-400  animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-1.5 h-1.5 bg-purple-400  animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-1.5 h-1.5 bg-purple-400  animate-bounce" style={{ animationDelay: '300ms' }} />
                               </div>
                             </div>
                           </div>
@@ -1497,7 +1498,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                                     }
                                     return (
                                       <div className="relative my-3">
-                                        <pre className="bg-gray-900 rounded-lg p-4 overflow-x-auto border border-gray-700">
+                                        <pre className="bg-gray-900  p-4 overflow-x-auto border border-gray-700">
                                           <code className="text-gray-300 text-sm" {...props}>{children}</code>
                                           <span className="inline-block w-2 h-4 bg-purple-400 ml-0.5" style={{ animation: 'blink 1s infinite' }} />
                                         </pre>
@@ -1556,7 +1557,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     {/* Active Tasks Progress */}
                     {activeTasks.length > 0 && (
                       <div className="mb-4">
-                        <Task defaultOpen={true} className="border rounded-lg bg-card text-card-foreground shadow-sm">
+                        <Task defaultOpen={true} className="border  bg-card text-card-foreground shadow-sm">
                           <TaskTrigger title="Deep Agent Working..." className="px-4 py-3 border-b" />
                           <TaskContent className="px-4 py-3">
                             {activeTasks.map((task, taskIdx) => (
@@ -1583,7 +1584,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     {/* Loading Indicator */}
                     {isLoading && !streamingContent && activeTasks.length === 0 && (
                       <div className="flex justify-start mb-4">
-                        <div className="bg-gray-800 rounded-lg p-3">
+                        <div className="bg-gray-800  p-3">
                           <div className="flex items-center gap-2">
                             <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
                             <span className="text-sm text-gray-400">Processing...</span>
@@ -1606,7 +1607,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <FileText className="w-6 h-6 text-green-400" />
-                          <CheckCircle2 className="absolute -bottom-1 -right-1 w-4 h-4 text-green-400 bg-gray-800 rounded-full" />
+                          <CheckCircle2 className="absolute -bottom-1 -right-1 w-4 h-4 text-green-400 bg-gray-800 " />
                         </div>
                         <div>
                           <span className="font-medium text-green-300">📄 Final Document Ready</span>
@@ -1622,7 +1623,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                             e.stopPropagation();
                             navigator.clipboard.writeText(finalDocument.content);
                           }}
-                          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                          className="p-2 hover:bg-gray-700  transition-colors"
                           title="Copy to clipboard"
                         >
                           <Copy className="w-4 h-4 text-gray-400 hover:text-white" />
@@ -1638,12 +1639,12 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                             a.click();
                             URL.revokeObjectURL(url);
                           }}
-                          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                          className="p-2 hover:bg-gray-700  transition-colors"
                           title="Download as Markdown"
                         >
                           <Download className="w-4 h-4 text-gray-400 hover:text-white" />
                         </button>
-                        <button className="p-2 hover:bg-gray-700 rounded-lg transition-colors">
+                        <button className="p-2 hover:bg-gray-700  transition-colors">
                           {showFinalDocument ? (
                             <ChevronDown className="w-4 h-4 text-gray-400" />
                           ) : (
@@ -1681,7 +1682,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                               code: ({ node, inline, children, ...props }: any) => (
                                 inline
                                   ? <code className="bg-gray-700 px-1.5 py-0.5 rounded text-purple-300 text-sm" {...props}>{children}</code>
-                                  : <pre className="bg-gray-900 rounded-lg p-4 overflow-x-auto border border-gray-700 my-3"><code className="text-sm text-gray-300" {...props}>{children}</code></pre>
+                                  : <pre className="bg-gray-900  p-4 overflow-x-auto border border-gray-700 my-3"><code className="text-sm text-gray-300" {...props}>{children}</code></pre>
                               ),
                               blockquote: ({ children }) => <blockquote className="border-l-4 border-purple-500 pl-4 italic text-gray-400 my-4">{children}</blockquote>,
                             }}
@@ -1696,8 +1697,8 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
 
                 {/* Input Area with Inline Tasks/Files */}
                 <div className="flex-shrink-0 bg-gray-900">
-                  <div className="mx-auto w-full max-w-4xl px-4 pb-6">
-                    <div className="flex flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
+                  <div className="mx-auto w-full max-w-4xl px-4 pt-4 pb-6" style={{ backgroundColor: '#171717' }}>
+                    <div className="flex flex-col overflow-hidden  border border-gray-700 bg-gray-800">
                       {/* Inline Tasks/Files Panel */}
                       {(hasTasks || hasFiles) && (
                         <TasksFilesPanel
@@ -1720,7 +1721,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                             {uploadedFiles.map((file, idx) => (
                               <div
                                 key={`${file.name}-${idx}`}
-                                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs ${file.error
+                                className={`flex items-center gap-2 px-2 py-1.5  text-xs ${file.error
                                   ? 'bg-red-900/30 border border-red-700/50'
                                   : file.isProcessing
                                     ? 'bg-blue-900/30 border border-blue-700/50'
@@ -1742,7 +1743,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => removeUploadedFile(file.name, file.size)}
-                                  className="p-0.5 hover:bg-gray-600 rounded text-gray-400 hover:text-white"
+                                  className="p-0.5 hover:bg-gray-600 text-gray-400 hover:text-white transition-colors"
                                 >
                                   <X className="w-3 h-3" />
                                 </button>
@@ -1768,10 +1769,10 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                           className="flex-1 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-7 text-white outline-none placeholder:text-gray-500"
                           rows={1}
                           disabled={isLoading || isInitializing}
-                          style={{ minHeight: '48px', maxHeight: '120px' }}
+                          style={{ minHeight: '48px', maxHeight: '120px', backgroundColor: '#212121' }}
                         />
-                        <div className="flex justify-between gap-2 p-3 border-t border-gray-700">
-                          <div className="flex items-center gap-3">
+                        <div className="flex justify-between gap-2 p-4 border-t border-gray-700" style={{ backgroundColor: '#212121' }}>
+                          <div className="flex items-center gap-4">
                             {/* File Upload Button */}
                             <input
                               ref={fileInputRef}
@@ -1785,7 +1786,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                               type="button"
                               onClick={() => fileInputRef.current?.click()}
                               disabled={isLoading || isProcessingUpload}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="flex items-center gap-1.5 px-2.5 py-1.5  text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Upload documents (PDF, TXT, images, etc.)"
                             >
                               {isProcessingUpload ? (
@@ -1816,12 +1817,23 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                             type={isLoading ? 'button' : 'submit'}
                             onClick={isLoading ? stopStream : undefined}
                             disabled={!isLoading && (!inputMessage.trim() && uploadedFiles.length === 0) || isInitializing || isProcessingUpload}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isLoading
-                              ? 'bg-red-500 hover:bg-red-600 text-white'
+                            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-200 ${isLoading
+                              ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg hover:shadow-xl border-2 border-red-400/30 hover:border-red-300/50 active:scale-[0.98]'
                               : (!inputMessage.trim() && uploadedFiles.length === 0) || isInitializing || isProcessingUpload
                                 ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                                : 'bg-purple-500 hover:bg-purple-600 text-white'
+                                : 'shadow-lg hover:shadow-xl border-2 border-gray-400/30 hover:border-gray-300/50 active:scale-[0.98]'
                               }`}
+                            style={!isLoading && ((inputMessage.trim() || uploadedFiles.length > 0) && !isInitializing && !isProcessingUpload) ? { color: '#171717', backgroundColor: '#e5e5e5' } : undefined}
+                            onMouseEnter={(e) => {
+                              if (!isLoading && ((inputMessage.trim() || uploadedFiles.length > 0) && !isInitializing && !isProcessingUpload)) {
+                                e.currentTarget.style.backgroundColor = '#d4d4d4';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isLoading && ((inputMessage.trim() || uploadedFiles.length > 0) && !isInitializing && !isProcessingUpload)) {
+                                e.currentTarget.style.backgroundColor = '#e5e5e5';
+                              }
+                            }}
                           >
                             {isLoading ? (
                               <>
@@ -1849,7 +1861,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
         {/* Artifacts Tab */}
         {
           activeTab === 'graph' && (
-            <div className="flex-1 overflow-y-auto bg-gray-900 p-4">
+            <div className="flex-1 overflow-y-auto p-4" style={{ backgroundColor: '#212121' }}>
               <div className="max-w-5xl mx-auto space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1860,7 +1872,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
                     <p className="text-sm text-gray-400">Artifacts connected to the final document (Obsidian-style)</p>
                   </div>
                   {finalDocument && (
-                    <div className="text-xs text-gray-400 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
+                    <div className="text-xs text-gray-400 bg-gray-800 px-3 py-1  border border-gray-700">
                       Final Doc: {finalDocument.title}
                     </div>
                   )}
@@ -1877,7 +1889,7 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
         {/* Artifacts Tab */}
         {
           activeTab === 'artifacts' && (
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden" style={{ backgroundColor: '#212121' }}>
               {/* Artifacts List */}
               <div className="w-1/3 border-r border-gray-700 overflow-y-auto">
                 <div className="p-3 border-b border-gray-700 bg-gray-800/50">

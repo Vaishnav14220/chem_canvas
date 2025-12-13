@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Beaker,
   Layers3,
@@ -8,6 +9,7 @@ import {
   Compass,
   RefreshCcw,
   ChevronRight,
+  ChevronDown,
   Download,
   Loader2,
   Waves,
@@ -415,6 +417,23 @@ const QUICK_MOLECULES = [
   { name: 'Methane', detail: 'CH₄', smiles: 'C' },
   { name: 'Benzene', detail: 'C₆H₆', smiles: 'c1ccccc1' },
   { name: 'Caffeine', detail: 'Stimulant', smiles: 'CN1C=NC2=C1C(=O)N(C(=O)N2C)C' },
+  { name: 'Aspirin', detail: 'Acetylsalicylic acid', smiles: 'CC(=O)OC1=CC=CC=C1C(=O)O' },
+  { name: 'Glucose', detail: 'C₆H₁₂O₆', smiles: 'C([C@@H]1[C@H]([C@@H]([C@H](C(O1)O)O)O)O)O' },
+];
+
+const QUICK_PROTEINS = [
+  { name: 'Insulin', detail: '1INS', query: '=1INS' },
+  { name: 'Hemoglobin', detail: '1HHO', query: '=1HHO' },
+  { name: 'Lysozyme', detail: '1LYZ', query: '=1LYZ' },
+  { name: 'Myoglobin', detail: '1MBN', query: '=1MBN' },
+  { name: 'Cytochrome C', detail: '1HRC', query: '=1HRC' },
+];
+
+const QUICK_CRYSTALS = [
+  { name: 'NaCl (Rock Salt)', detail: 'FCC', query: '=cod/1000041' },
+  { name: 'Diamond', detail: 'C', query: '=cod/9008564' },
+  { name: 'Quartz', detail: 'SiO₂', query: '=cod/1010958' },
+  { name: 'Calcite', detail: 'CaCO₃', query: '=cod/1000066' },
 ];
 
 const SAMPLE_STRUCTURE_URL = 'https://files.rcsb.org/download/1CRN.pdb';
@@ -453,6 +472,9 @@ const MolecularVisualizationWorkspace: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [examplesDropdownOpen, setExamplesDropdownOpen] = useState(false);
+  const examplesDropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const [selectedMineral, setSelectedMineral] = useState<string>(mineralStructures[0].id);
   const [selectedCategory, setSelectedCategory] = useState<WorkspaceCategory>('molecule');
   const [reactionSearchQuery, setReactionSearchQuery] = useState<string | null>(null);
@@ -463,6 +485,26 @@ const MolecularVisualizationWorkspace: React.FC = () => {
       setReactionResolution(null);
     }
   }, [selectedCategory]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (examplesDropdownRef.current && !examplesDropdownRef.current.contains(target)) {
+        // Also check if click is on the dropdown itself (since it's in a portal)
+        const dropdown = document.querySelector('[data-examples-dropdown]');
+        if (!dropdown || !dropdown.contains(target)) {
+          setExamplesDropdownOpen(false);
+        }
+      }
+    };
+    if (examplesDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [examplesDropdownOpen]);
   const [quizOpen, setQuizOpen] = useState(false);
   const [aiCommand, setAiCommand] = useState('');
   const [aiFeedback, setAiFeedback] = useState<string | null>(null);
@@ -1650,7 +1692,7 @@ Output: raw JSmol commands only.`;
           </div>
 
           {/* Search Input - Enhanced with better styling */}
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[260px] group">
               <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-indigo-500/20 opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-300" />
               <Input
@@ -1698,16 +1740,16 @@ Output: raw JSmol commands only.`;
         {/* Main canvas area with controls below */}
         <div>
           {/* Canvas Section */}
-          <section className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="p-4 relative">
+            <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">Live viewport</p>
                 <h3 className="text-lg font-semibold text-white">JSmol canvas</h3>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 relative z-[100]">
                 <button
                   onClick={toggleSpin}
-                  className={`relative flex items-center gap-1 px-2 py-1 text-[10px] font-medium transition-all duration-200 overflow-hidden group border ${spinEnabled
+                  className={`relative flex items-center gap-1 px-2 py-1 text-[10px] font-medium transition-all duration-200 overflow-hidden group ${spinEnabled
                     ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white shadow-md shadow-amber-500/25 '
                     : 'bg-slate-800/80 text-slate-300 hover:text-amber-200 hover:bg-slate-700/80 '
                     }`}
@@ -1718,6 +1760,114 @@ Output: raw JSmol commands only.`;
                   <RefreshCcw className="h-2.5 w-2.5 relative z-10" />
                   <span className="relative z-10">{spinEnabled ? 'Spin On' : 'Spin Off'}</span>
                 </button>
+                <div className="relative z-[100]" ref={examplesDropdownRef}>
+                  <button
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setDropdownPosition({
+                        top: rect.bottom + 4,
+                        left: rect.left
+                      });
+                      setExamplesDropdownOpen(!examplesDropdownOpen);
+                    }}
+                    className="relative px-2 py-1 text-[10px] font-medium transition-all duration-200 overflow-hidden group bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white flex items-center gap-1"
+                  >
+                    <Sparkles className="h-2.5 w-2.5" />
+                    <span>Examples</span>
+                    <ChevronDown className={`h-2.5 w-2.5 transition-transform ${examplesDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {examplesDropdownOpen && typeof document !== 'undefined' && createPortal(
+                    <div 
+                      data-examples-dropdown
+                      className="fixed w-64 bg-[#171717] shadow-2xl max-h-96 overflow-y-auto border border-slate-700/50 z-[99999]"
+                      style={{ 
+                        top: `${dropdownPosition.top}px`,
+                        left: `${dropdownPosition.left}px`,
+                        zIndex: 99999
+                      }}
+                    >
+                      <div className="p-2">
+                        {selectedCategory === 'molecule' && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-400 px-2 py-1.5 mb-1 font-semibold">Molecules</p>
+                            {QUICK_MOLECULES.map((mol) => (
+                              <button
+                                key={mol.name}
+                                onClick={() => {
+                                  setSearchQuery(mol.smiles);
+                                  setExamplesDropdownOpen(false);
+                                  loadSmilesIntoViewer(mol.smiles, mol.name);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-slate-700/80 hover:text-white transition-colors rounded-sm"
+                              >
+                                <div className="font-medium">{mol.name}</div>
+                                <div className="text-xs text-slate-400">{mol.detail}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {selectedCategory === 'protein' && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-400 px-2 py-1.5 mb-1 font-semibold">Proteins</p>
+                            {QUICK_PROTEINS.map((prot) => (
+                              <button
+                                key={prot.name}
+                                onClick={() => {
+                                  setSearchQuery(prot.query);
+                                  setExamplesDropdownOpen(false);
+                                  const pdbId = prot.query.substring(1); // Remove the '=' prefix
+                                  setScript(`load =${pdbId}; cartoon only; color structure; spin y 3;`);
+                                  setSearchFeedback(`Loaded ${prot.name} (${prot.detail}) from RCSB PDB`);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-slate-700/80 hover:text-white transition-colors rounded-sm"
+                              >
+                                <div className="font-medium">{prot.name}</div>
+                                <div className="text-xs text-slate-400">{prot.detail}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {selectedCategory === 'crystal' && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-400 px-2 py-1.5 mb-1 font-semibold">Crystals</p>
+                            {QUICK_CRYSTALS.map((crystal) => (
+                              <button
+                                key={crystal.name}
+                                onClick={() => {
+                                  setSearchQuery(crystal.query);
+                                  setExamplesDropdownOpen(false);
+                                  const codId = crystal.query.replace('=cod/', '').trim();
+                                  setScript(`
+                                    load =cod/${codId} {1 1 1};
+                                    unitcell on;
+                                    axes 3;
+                                    boundbox on;
+                                    spacefill 25%;
+                                    wireframe 0.15;
+                                    color atoms cpk;
+                                    spin y 3;
+                                  `);
+                                  setSearchFeedback(`Loaded ${crystal.name} (${crystal.detail}) from COD`);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-slate-700/80 hover:text-white transition-colors rounded-sm"
+                              >
+                                <div className="font-medium">{crystal.name}</div>
+                                <div className="text-xs text-slate-400">{crystal.detail}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {selectedCategory === 'reaction' && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-400 px-2 py-1.5 mb-1 font-semibold">Reactions</p>
+                            <p className="px-3 py-2 text-xs text-slate-400">Use the search bar to find reactions</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>,
+                    document.body
+                  )}
+                </div>
                 <button
                   onClick={handleResetView}
                   className="relative flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-slate-300 hover:text-cyan-200 hover:bg-slate-700/80 bg-slate-800/80 transition-all duration-200 overflow-hidden group"

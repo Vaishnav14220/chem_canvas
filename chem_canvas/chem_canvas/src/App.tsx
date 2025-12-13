@@ -2255,7 +2255,7 @@ Here is the learner's question: ${message}`;
 
         ) : showNmrFullscreen ? (
           <div className="flex h-[calc(100vh-5rem)] flex-col">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-slate-900 border-b border-slate-800 px-4 md:px-6 py-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-slate-800 px-4 md:px-6 py-3" style={{ backgroundColor: '#212121' }}>
               <div>
                 <h2 className="text-sm font-semibold text-white">NMRium Viewer (Fullscreen)</h2>
                 <p className="text-xs text-slate-400">Embedded from the NFDI4Chem public instance.</p>

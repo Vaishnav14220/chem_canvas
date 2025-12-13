@@ -512,9 +512,9 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 text-white">
+    <div className="h-screen flex flex-col text-white" style={{ backgroundColor: '#171717' }}>
       {/* Header */}
-      <header className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+      <header className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-gray-700" style={{ backgroundColor: '#171717' }}>
         <div className="flex items-center gap-4">
           {onBack && (
             <Button variant="ghost" size="icon" onClick={onBack}>
@@ -522,7 +522,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
             </Button>
           )}
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500">
+            <div className="p-2  bg-gradient-to-r from-purple-500 to-blue-500">
               <FileText className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -534,7 +534,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
         
         <div className="flex items-center gap-2">
           {/* View tabs */}
-          <div className="flex bg-gray-700 rounded-lg p-1">
+          <div className="flex bg-gray-700  p-1">
             <button
               onClick={() => setActiveTab('chat')}
               className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors ${
@@ -615,7 +615,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         {showSidebar && (
-          <aside className="w-64 flex-shrink-0 bg-gray-800 border-r border-gray-700 flex flex-col">
+          <aside className="w-64 flex-shrink-0 border-r border-gray-700 flex flex-col" style={{ backgroundColor: '#212121' }}>
             {/* Sidebar tabs */}
             <div className="flex border-b border-gray-700">
               <button
@@ -707,7 +707,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                       {todos.map((todo) => (
                         <div
                           key={todo.id}
-                          className={`p-2 rounded-lg border ${
+                          className={`p-2  border ${
                             todo.status === 'completed'
                               ? 'bg-green-500/10 border-green-500/30'
                               : todo.status === 'in-progress'
@@ -721,7 +721,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                             ) : todo.status === 'in-progress' ? (
                               <Clock className="w-4 h-4 text-yellow-400 mt-0.5" />
                             ) : (
-                              <div className="w-4 h-4 rounded-full border border-gray-500 mt-0.5" />
+                              <div className="w-4 h-4  border border-gray-500 mt-0.5" />
                             )}
                             <div>
                               <p className="text-sm font-medium">{todo.title}</p>
@@ -745,7 +745,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                   </div>
                   <div className="space-y-2 mb-4">
                     {tools.map((tool) => (
-                      <div key={tool.name} className="p-2 bg-gray-700/50 rounded-lg">
+                      <div key={tool.name} className="p-2 bg-gray-700/50 ">
                         <div className="text-sm font-medium text-purple-300">{tool.name}</div>
                         <div className="text-xs text-gray-500">{tool.description}</div>
                       </div>
@@ -757,7 +757,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                   </div>
                   <div className="space-y-2">
                     {subagents.map((agent) => (
-                      <div key={agent.name} className="p-2 bg-gray-700/50 rounded-lg">
+                      <div key={agent.name} className="p-2 bg-gray-700/50 ">
                         <div className="text-sm font-medium text-blue-300">{agent.name}</div>
                         <div className="text-xs text-gray-500">{agent.description}</div>
                       </div>
@@ -788,7 +788,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                 {messages.length === 0 && (
                   <div className="max-w-3xl mx-auto">
                     <div className="text-center mb-8">
-                      <div className="inline-flex p-4 rounded-full bg-purple-500/20 mb-4">
+                      <div className="inline-flex p-4  bg-purple-500/20 mb-4">
                         <Sparkles className="w-8 h-8 text-purple-400" />
                       </div>
                       <h2 className="text-2xl font-bold mb-2">LaTeX Document Agent</h2>
@@ -802,7 +802,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                         <button
                           key={qs.id}
                           onClick={() => handleQuickStart(qs.prompt)}
-                          className="p-4 text-left rounded-xl bg-gray-800 border border-gray-700 hover:border-purple-500/50 hover:bg-gray-750 transition-all group"
+                          className="p-4 text-left  bg-gray-800 border border-gray-700 hover:border-purple-500/50 hover:bg-gray-750 transition-all group"
                         >
                           <div className="flex items-center gap-2 mb-2">
                             <BookOpen className="w-4 h-4 text-purple-400" />
@@ -825,7 +825,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                       className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[85%] rounded-xl p-4 ${
+                        className={`max-w-[85%]  p-4 ${
                           message.role === 'user'
                             ? 'bg-purple-500/20 text-white'
                             : 'bg-gray-800 text-gray-100'
@@ -871,7 +871,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                   {/* Streaming content */}
                   {isStreaming && streamingContent && (
                     <div className="flex justify-start">
-                      <div className="max-w-[85%] rounded-xl p-4 bg-gray-800 text-gray-100">
+                      <div className="max-w-[85%]  p-4 bg-gray-800 text-gray-100">
                         <div className="prose prose-invert prose-sm max-w-none">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {streamingContent}
@@ -887,7 +887,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
               </ScrollArea>
               
               {/* Chat input */}
-              <div className="p-4 border-t border-gray-700 bg-gray-800">
+              <div className="p-4 border-t border-gray-700" style={{ backgroundColor: '#212121' }}>
                 <div className="max-w-3xl mx-auto flex gap-2">
                   <Textarea
                     value={inputMessage}
@@ -921,7 +921,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
           {(activeTab === 'editor' || activeTab === 'split') && (
             <div className={`flex-1 flex flex-col ${activeTab === 'split' ? 'w-1/2' : 'w-full'}`}>
               {/* Editor toolbar */}
-              <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700" style={{ backgroundColor: '#212121' }}>
                 <div className="flex items-center gap-2">
                   <FileCode className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-300">
@@ -948,7 +948,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                     setEditorContent(e.target.value);
                     setUnsavedChanges(true);
                   }}
-                  className="flex-1 w-full p-4 bg-gray-900 text-gray-100 font-mono text-sm resize-none focus:outline-none"
+                  className="flex-1 w-full p-4 text-gray-100 font-mono text-sm resize-none focus:outline-none" style={{ backgroundColor: '#212121' }}
                   spellCheck={false}
                 />
               ) : (
@@ -966,7 +966,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
           {(activeTab === 'preview' || activeTab === 'split') && (
             <div className={`flex-1 flex flex-col ${activeTab === 'split' ? 'w-1/2 border-l border-gray-700' : 'w-full'}`}>
               {/* Preview toolbar */}
-              <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700" style={{ backgroundColor: '#212121' }}>
                 <div className="flex items-center gap-2">
                   <Eye className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-300">PDF Preview</span>
@@ -1093,7 +1093,7 @@ const LatexDocumentWorkspace: React.FC<LatexDocumentWorkspaceProps> = ({ onBack 
                         <p className="text-sm mt-2">Compiling with LaTeX server...</p>
                       </div>
                     )}
-                    <div className="mt-6 p-4 bg-gray-800/50 rounded-lg max-w-md mx-auto">
+                    <div className="mt-6 p-4 bg-gray-800/50  max-w-md mx-auto">
                       <p className="text-sm text-gray-400 mb-3">
                         <strong>Note:</strong> If compilation fails, you can:
                       </p>

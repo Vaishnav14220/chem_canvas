@@ -1700,11 +1700,11 @@ ${docTextBlock}${userDirective}`,
 
   // Studio tools
   const studioTools: StudioTool[] = [
-    { id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" />, action: () => { } }) },
-    { id: 'qa', label: 'Question & Answers', icon: <HelpCircle className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'qa', label: 'Question & Answers', icon: <HelpCircle className="h-5 w-5" />, action: () => { } }) },
-    { id: 'notes', label: 'Study Notes', icon: <BookOpen className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'notes', label: 'Study Notes', icon: <BookOpen className="h-5 w-5" />, action: () => { } }) },
-    { id: 'summary', label: 'Summary Formulas', icon: <Brain className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'summary', label: 'Summary Formulas', icon: <Brain className="h-5 w-5" />, action: () => { } }) },
-    { id: 'keypoints', label: 'Key Points', icon: <Mic className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'keypoints', label: 'Key Points', icon: <Mic className="h-5 w-5" />, action: () => { } }) },
+    { id: 'reports', label: 'Reports', icon: <ClipboardList className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'reports', label: 'Reports', icon: <ClipboardList className="h-5 w-5" />, action: () => { } }) },
+    { id: 'qa', label: 'Question & Answers', icon: <MessageSquare className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'qa', label: 'Question & Answers', icon: <MessageSquare className="h-5 w-5" />, action: () => { } }) },
+    { id: 'notes', label: 'Study Notes', icon: <StickyNote className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'notes', label: 'Study Notes', icon: <StickyNote className="h-5 w-5" />, action: () => { } }) },
+    { id: 'summary', label: 'Summary Formulas', icon: <Code className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'summary', label: 'Summary Formulas', icon: <Code className="h-5 w-5" />, action: () => { } }) },
+    { id: 'keypoints', label: 'Key Points', icon: <Target className="h-5 w-5" />, action: () => handleStudioToolAction({ id: 'keypoints', label: 'Key Points', icon: <Target className="h-5 w-5" />, action: () => { } }) },
   ];
 
   // Get source icon
@@ -1727,9 +1727,6 @@ ${docTextBlock}${userDirective}`,
             onClick={onClose}
             className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
           >
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-              <FileText className="h-4 w-4 text-white" />
-            </div>
           </button>
           <input
             type="text"
@@ -1739,10 +1736,10 @@ ${docTextBlock}${userDirective}`,
         </div>
 
         {/* Center - View Toggle */}
-        <div className="flex items-center gap-1 bg-[#2d2d2d] rounded-full p-1">
+        <div className="flex items-center gap-1 bg-[#2d2d2d]  p-1">
           <button
             onClick={() => setActiveView('chat')}
-            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${activeView === 'chat'
+            className={`px-4 py-1.5  text-sm transition-colors ${activeView === 'chat'
               ? 'bg-purple-500 text-white'
               : 'text-gray-400 hover:text-white'
               }`}
@@ -1751,7 +1748,7 @@ ${docTextBlock}${userDirective}`,
           </button>
           <button
             onClick={() => setActiveView('editor')}
-            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${activeView === 'editor'
+            className={`px-4 py-1.5  text-sm transition-colors ${activeView === 'editor'
               ? 'bg-purple-500 text-white'
               : 'text-gray-400 hover:text-white'
               }`}
@@ -1761,7 +1758,7 @@ ${docTextBlock}${userDirective}`,
           {googleUser && (
             <button
               onClick={() => setShowGoogleDocsModal(true)}
-              className={`px-4 py-1.5 rounded-full text-sm transition-colors ${activeView === 'googledoc'
+              className={`px-4 py-1.5  text-sm transition-colors ${activeView === 'googledoc'
                 ? 'bg-purple-500 text-white'
                 : 'text-gray-400 hover:text-white'
                 }`}
@@ -1778,7 +1775,7 @@ ${docTextBlock}${userDirective}`,
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowGoogleDocsModal(true)}
-                className="px-3 py-1.5 rounded-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm flex items-center gap-2 transition-colors"
+                className="px-3 py-1.5  bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm flex items-center gap-2 transition-colors"
               >
                 <FolderOpen className="h-4 w-4" />
                 My Docs
@@ -1786,21 +1783,21 @@ ${docTextBlock}${userDirective}`,
               <button
                 onClick={handleCreateGoogleDoc}
                 disabled={isGoogleLoading}
-                className="px-3 py-1.5 rounded-full bg-green-500/20 hover:bg-green-500/30 text-green-400 text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5  bg-green-500/20 hover:bg-green-500/30 text-green-400 text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
               >
                 <FilePlus className="h-4 w-4" />
                 New Doc
               </button>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#2d2d2d]">
+              <div className="flex items-center gap-2 px-3 py-1.5  bg-[#2d2d2d]">
                 {googleUser.picture ? (
-                  <img src={googleUser.picture} alt="" className="w-5 h-5 rounded-full" />
+                  <img src={googleUser.picture} alt="" className="w-5 h-5 " />
                 ) : (
                   <User className="h-4 w-4 text-gray-400" />
                 )}
                 <span className="text-sm text-gray-300 max-w-[100px] truncate">{googleUser.name}</span>
                 <button
                   onClick={handleGoogleSignOut}
-                  className="p-1 hover:bg-[#3d3d3d] rounded transition-colors"
+                  className="p-1 hover:bg-[#3d3d3d] transition-colors"
                   title="Sign out"
                 >
                   <LogOut className="h-3 w-3 text-gray-400" />
@@ -1811,7 +1808,7 @@ ${docTextBlock}${userDirective}`,
             <button
               onClick={handleGoogleSignIn}
               disabled={isGoogleLoading}
-              className="px-3 py-1.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+              className="px-3 py-1.5  bg-blue-500 hover:bg-blue-600 text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
             >
               {isGoogleLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1824,7 +1821,7 @@ ${docTextBlock}${userDirective}`,
 
           <button
             onClick={() => setShowUrlInput(!showUrlInput)}
-            className="px-3 py-1.5 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
+            className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md border border-gray-700 hover:border-gray-600 active:scale-[0.98]"
           >
             <Globe className="h-4 w-4" />
             Load URL
@@ -1833,17 +1830,17 @@ ${docTextBlock}${userDirective}`,
             href={DOCUMENT_EDITOR_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
+            className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md border border-gray-700 hover:border-gray-600 active:scale-[0.98]"
           >
             <ExternalLink className="h-4 w-4" />
             Open External
           </a>
-          <button className="p-2 rounded-full hover:bg-[#2d2d2d] transition-colors">
+          <button className="p-2  hover:bg-[#2d2d2d] transition-colors">
             <Settings className="h-5 w-5 text-gray-400" />
           </button>
           <button
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-[#2d2d2d] transition-colors"
+            className="p-2  hover:bg-[#2d2d2d] transition-colors"
           >
             <X className="h-5 w-5 text-gray-400" />
           </button>
@@ -1859,20 +1856,20 @@ ${docTextBlock}${userDirective}`,
             value={documentUrl}
             onChange={(e) => setDocumentUrl(e.target.value)}
             placeholder="Enter document URL (e.g., https://example.com/document.docx)"
-            className="flex-1 px-4 py-2 rounded-lg bg-[#2d2d2d] border border-white/10 text-white placeholder:text-gray-500 focus:border-purple-500/50 focus:outline-none text-sm"
+            className="flex-1 px-4 py-2  bg-[#2d2d2d] border border-white/10 text-white placeholder:text-gray-500 focus:border-purple-500/50 focus:outline-none text-sm"
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleLoadDocument();
             }}
           />
           <button
             onClick={handleLoadDocument}
-            className="px-5 py-2 rounded-lg bg-purple-500 text-white font-medium text-sm hover:bg-purple-600 transition-colors"
+            className="px-5 py-2 bg-purple-500 text-white font-medium text-sm hover:bg-purple-600 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-purple-400/30 hover:border-purple-300/50 active:scale-[0.98]"
           >
             Load
           </button>
           <button
             onClick={() => setShowUrlInput(false)}
-            className="px-4 py-2 rounded-lg border border-white/10 text-gray-400 hover:text-white text-sm transition-colors"
+            className="px-4 py-2  border border-white/10 text-gray-400 hover:text-white text-sm transition-colors"
           >
             Cancel
           </button>
@@ -1886,7 +1883,7 @@ ${docTextBlock}${userDirective}`,
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <div className="w-8 h-8  bg-blue-500/20 flex items-center justify-center">
                   <FileText className="h-4 w-4 text-blue-400" />
                 </div>
                 <h2 className="text-lg font-medium">Google Docs</h2>
@@ -1895,14 +1892,14 @@ ${docTextBlock}${userDirective}`,
                 <button
                   onClick={loadGoogleDocs}
                   disabled={isGoogleLoading}
-                  className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                  className="p-2 hover:bg-[#2d2d2d]  transition-colors"
                   title="Refresh"
                 >
                   <RefreshCw className={`h-4 w-4 text-gray-400 ${isGoogleLoading ? 'animate-spin' : ''}`} />
                 </button>
                 <button
                   onClick={() => setShowGoogleDocsModal(false)}
-                  className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                  className="p-2 hover:bg-[#2d2d2d]  transition-colors"
                 >
                   <X className="h-4 w-4 text-gray-400" />
                 </button>
@@ -1921,7 +1918,7 @@ ${docTextBlock}${userDirective}`,
                   <p className="text-gray-400 mb-2">No documents found</p>
                   <button
                     onClick={handleCreateGoogleDoc}
-                    className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm hover:bg-purple-600 transition-colors"
+                    className="px-4 py-2 bg-purple-500 text-white text-sm hover:bg-purple-600 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-purple-400/30 hover:border-purple-300/50 active:scale-[0.98]"
                   >
                     Create New Document
                   </button>
@@ -1932,7 +1929,7 @@ ${docTextBlock}${userDirective}`,
                     <button
                       key={doc.id}
                       onClick={() => handleOpenGoogleDoc(doc)}
-                      className="w-full p-4 rounded-xl bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-blue-500/30 text-left transition-all group"
+                      className="w-full p-4  bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-blue-500/30 text-left transition-all group"
                     >
                       <div className="flex items-center gap-3">
                         <FileText className="h-5 w-5 text-blue-400" />
@@ -1956,7 +1953,7 @@ ${docTextBlock}${userDirective}`,
               <button
                 onClick={handleCreateGoogleDoc}
                 disabled={isGoogleLoading}
-                className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm hover:bg-purple-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-purple-500 text-white text-sm hover:bg-purple-600 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-purple-400/30 hover:border-purple-300/50 active:scale-[0.98] disabled:opacity-50 flex items-center gap-2"
               >
                 <Plus className="h-4 w-4" />
                 New Document
@@ -1973,14 +1970,14 @@ ${docTextBlock}${userDirective}`,
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <div className="w-8 h-8  bg-purple-500/20 flex items-center justify-center">
                   <Upload className="h-4 w-4 text-purple-400" />
                 </div>
                 <h2 className="text-lg font-medium">Import Sources</h2>
               </div>
               <button
                 onClick={() => setShowImportModal(false)}
-                className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                className="p-2 hover:bg-[#2d2d2d]  transition-colors"
               >
                 <X className="h-4 w-4 text-gray-400" />
               </button>
@@ -2047,7 +2044,7 @@ ${docTextBlock}${userDirective}`,
                       <button
                         onClick={handleGoogleSignIn}
                         disabled={isGoogleLoading}
-                        className="px-6 py-2.5 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600 transition-colors flex items-center gap-2 mx-auto"
+                        className="px-6 py-2.5 bg-blue-500 text-white text-sm hover:bg-blue-600 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-blue-400/30 hover:border-blue-300/50 active:scale-[0.98] flex items-center gap-2 mx-auto"
                       >
                         <svg className="h-4 w-4" viewBox="0 0 24 24">
                           <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -2076,7 +2073,7 @@ ${docTextBlock}${userDirective}`,
                           <button
                             onClick={loadGoogleDocs}
                             disabled={isGoogleLoading}
-                            className="mt-3 px-4 py-2 rounded-lg bg-[#2d2d2d] text-sm hover:bg-[#3d3d3d] transition-colors"
+                            className="mt-3 px-4 py-2  bg-[#2d2d2d] text-sm hover:bg-[#3d3d3d] transition-colors"
                           >
                             {isGoogleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
                           </button>
@@ -2087,7 +2084,7 @@ ${docTextBlock}${userDirective}`,
                             <button
                               key={doc.id}
                               onClick={() => handleOpenGoogleDoc(doc)}
-                              className="w-full p-3 rounded-xl bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-blue-500/30 text-left transition-all group"
+                              className="w-full p-3  bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-blue-500/30 text-left transition-all group"
                             >
                               <div className="flex items-center gap-3">
                                 <FileText className="h-5 w-5 text-blue-400" />
@@ -2118,7 +2115,7 @@ ${docTextBlock}${userDirective}`,
                       <button
                         onClick={handleGoogleSignIn}
                         disabled={isGoogleLoading}
-                        className="px-6 py-2.5 rounded-lg bg-green-500 text-white text-sm hover:bg-green-600 transition-colors"
+                        className="px-6 py-2.5 bg-green-500 text-white text-sm hover:bg-green-600 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-green-400/30 hover:border-green-300/50 active:scale-[0.98]"
                       >
                         Sign in with Google
                       </button>
@@ -2140,7 +2137,7 @@ ${docTextBlock}${userDirective}`,
 
                       {/* Search Bar */}
                       <div className="flex gap-2 mb-3 items-center">
-                        <div className="flex-1 flex items-center gap-2 bg-[#1b1c20] border border-white/10 rounded-full px-3 py-1.5 shadow-inner shadow-black/30">
+                        <div className="flex-1 flex items-center gap-2 bg-[#1b1c20] border border-white/10  px-3 py-1.5 shadow-inner shadow-black/30">
                           <Search className="h-4 w-4 text-gray-500" />
                           <input
                             type="text"
@@ -2153,17 +2150,17 @@ ${docTextBlock}${userDirective}`,
                         </div>
                         <button
                           onClick={handleDriveSearch}
-                          className="px-4 py-2 rounded-lg bg-[#24262d] hover:bg-[#2d3038] text-sm text-gray-200 transition-colors border border-white/10"
+                          className="px-4 py-2  bg-[#24262d] hover:bg-[#2d3038] text-sm text-gray-200 transition-colors border border-white/10"
                         >
                           Search
                         </button>
                       </div>
 
                       {/* Breadcrumb Navigation */}
-                      <div className="flex items-center gap-1 mb-3 px-2 py-1.5 bg-[#2d2d2d] rounded-lg overflow-x-auto">
+                      <div className="flex items-center gap-1 mb-3 px-2 py-1.5 bg-[#2d2d2d]  overflow-x-auto">
                         <button
                           onClick={() => navigateToBreadcrumb(0)}
-                          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[#3d3d3d] text-sm text-gray-300 flex-shrink-0"
+                          className="flex items-center gap-1 px-2 py-1 hover:bg-[#3d3d3d] text-sm text-gray-300 flex-shrink-0 transition-colors"
                         >
                           <Home className="h-4 w-4" />
                         </button>
@@ -2172,7 +2169,7 @@ ${docTextBlock}${userDirective}`,
                             <ChevronRight className="h-4 w-4 text-gray-600 flex-shrink-0" />
                             <button
                               onClick={() => navigateToBreadcrumb(index)}
-                              className={`px-2 py-1 rounded text-sm flex-shrink-0 ${index === driveFolderStack.length - 1
+                              className={`px-2 py-1 text-sm flex-shrink-0 transition-colors ${index === driveFolderStack.length - 1
                                 ? 'text-white font-medium'
                                 : 'text-gray-400 hover:bg-[#3d3d3d] hover:text-white'
                                 }`}
@@ -2184,7 +2181,7 @@ ${docTextBlock}${userDirective}`,
                       </div>
 
                       {/* File Grid (Drive-like cards) */}
-                      <div className="flex-1 overflow-y-auto border border-white/10 rounded-lg bg-[#101115]">
+                      <div className="flex-1 overflow-y-auto border border-white/10  bg-[#101115]">
                         {driveLoading ? (
                           <div className="flex items-center justify-center py-12">
                             <Loader2 className="h-8 w-8 animate-spin text-green-400" />
@@ -2200,7 +2197,7 @@ ${docTextBlock}${userDirective}`,
                             {driveFolderStack.length > 1 && (
                               <button
                                 onClick={navigateBack}
-                                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-[#16181d] hover:bg-[#1e2027] text-sm text-gray-300 transition-colors border border-white/5"
+                                className="w-full flex items-center gap-3 px-3 py-2  bg-[#16181d] hover:bg-[#1e2027] text-sm text-gray-300 transition-colors border border-white/5"
                               >
                                 <ArrowLeft className="h-4 w-4 text-gray-400" />
                                 Up one level
@@ -2227,11 +2224,11 @@ ${docTextBlock}${userDirective}`,
                                         toggleDriveFileSelection(file);
                                       }
                                     }}
-                                    className={`relative flex flex-col gap-2 px-4 py-3 rounded-xl text-left border transition-all duration-150 shadow-[0_10px_26px_rgba(0,0,0,0.32)] bg-[#14161c] hover:bg-[#191b22] ${isSelected ? 'border-emerald-400/60 ring-1 ring-emerald-400/30' : 'border-white/6'
+                                    className={`relative flex flex-col gap-2 px-4 py-3  text-left border transition-all duration-150 shadow-[0_10px_26px_rgba(0,0,0,0.32)] bg-[#14161c] hover:bg-[#191b22] ${isSelected ? 'border-emerald-400/60 ring-1 ring-emerald-400/30' : 'border-white/6'
                                       }`}
                                   >
                                     <div className="flex items-center gap-3 w-full">
-                                      <div className={`flex-shrink-0 rounded-lg bg-white/5 p-2 ${accent}`}>
+                                      <div className={`flex-shrink-0  bg-white/5 p-2 ${accent}`}>
                                         {getFileIcon(file.mimeType)}
                                       </div>
                                       <div className="min-w-0 flex-1">
@@ -2244,7 +2241,7 @@ ${docTextBlock}${userDirective}`,
                                       {isFolder ? (
                                         <ChevronRight className="h-4 w-4 text-gray-500 flex-shrink-0" />
                                       ) : (
-                                        <div className={`h-2.5 w-2.5 rounded-full ${isSelected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                                        <div className={`h-2.5 w-2.5  ${isSelected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
                                       )}
                                     </div>
                                     {!isFolder && (
@@ -2262,7 +2259,7 @@ ${docTextBlock}${userDirective}`,
 
                       {/* Selection Footer */}
                       {selectedDriveFiles.length > 0 && (
-                        <div className="flex items-center justify-between mt-3 p-3 bg-green-500/10 rounded-lg border border-green-500/30">
+                        <div className="flex items-center justify-between mt-3 p-3 bg-green-500/10  border border-green-500/30">
                           <div className="flex items-center gap-2">
                             <Check className="h-4 w-4 text-green-400" />
                             <span className="text-sm text-green-400">
@@ -2272,14 +2269,14 @@ ${docTextBlock}${userDirective}`,
                           <div className="flex gap-2">
                             <button
                               onClick={() => setSelectedDriveFiles([])}
-                              className="px-3 py-1.5 rounded-lg bg-[#2d2d2d] text-sm hover:bg-[#3d3d3d] transition-colors"
+                              className="px-3 py-1.5  bg-[#2d2d2d] text-sm hover:bg-[#3d3d3d] transition-colors"
                             >
                               Clear
                             </button>
                             <button
                               onClick={importSelectedDriveFiles}
                               disabled={driveLoading}
-                              className="px-4 py-1.5 rounded-lg bg-green-500 text-white text-sm hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+                              className="px-4 py-1.5  bg-green-500 text-white text-sm hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-2"
                             >
                               {driveLoading ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -2309,14 +2306,14 @@ ${docTextBlock}${userDirective}`,
                         value={importUrl}
                         onChange={(e) => setImportUrl(e.target.value)}
                         placeholder="https://example.com/article"
-                        className="flex-1 px-4 py-2.5 rounded-lg bg-[#2d2d2d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                        className="flex-1 px-4 py-2.5  bg-[#2d2d2d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
                       />
                       <button
                         onClick={() => {
                           handleUrlImport();
                         }}
                         disabled={!importUrl}
-                        className="px-4 py-2.5 rounded-lg bg-purple-500 text-white text-sm hover:bg-purple-600 transition-colors disabled:opacity-50"
+                        className="px-4 py-2.5  bg-purple-500 text-white text-sm hover:bg-purple-600 transition-colors disabled:opacity-50"
                       >
                         Import
                       </button>
@@ -2325,19 +2322,19 @@ ${docTextBlock}${userDirective}`,
                   <div className="pt-4 border-t border-white/10">
                     <p className="text-xs text-gray-500 mb-3">Supported URL types:</p>
                     <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-[#2d2d2d]">
+                      <div className="flex items-center gap-2 p-2  bg-[#2d2d2d]">
                         <Globe className="h-4 w-4 text-blue-400" />
                         Web pages
                       </div>
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-[#2d2d2d]">
+                      <div className="flex items-center gap-2 p-2  bg-[#2d2d2d]">
                         <FileText className="h-4 w-4 text-green-400" />
                         Google Docs links
                       </div>
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-[#2d2d2d]">
+                      <div className="flex items-center gap-2 p-2  bg-[#2d2d2d]">
                         <Presentation className="h-4 w-4 text-yellow-400" />
                         Google Slides
                       </div>
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-[#2d2d2d]">
+                      <div className="flex items-center gap-2 p-2  bg-[#2d2d2d]">
                         <BookOpen className="h-4 w-4 text-purple-400" />
                         Articles
                       </div>
@@ -2350,7 +2347,7 @@ ${docTextBlock}${userDirective}`,
               {importTab === 'upload' && (
                 <div className="space-y-4">
                   <div
-                    className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center hover:border-orange-500/50 transition-colors cursor-pointer"
+                    className="border-2 border-dashed border-white/20  p-8 text-center hover:border-orange-500/50 transition-colors cursor-pointer"
                     onClick={() => {
                       const input = document.createElement('input');
                       input.type = 'file';
@@ -2387,25 +2384,17 @@ ${docTextBlock}${userDirective}`,
               <h2 className="text-sm font-medium text-gray-400">Sources</h2>
               <button
                 onClick={() => setLeftPanelOpen(false)}
-                className="p-1 hover:bg-[#2d2d2d] rounded transition-colors"
+                className="p-1 hover:bg-[#2d2d2d] transition-colors"
               >
                 <PanelLeftClose className="h-4 w-4 text-gray-400" />
               </button>
             </div>
 
-            {/* Add Sources Buttons */}
-            <div className="px-4 pb-4 space-y-2">
+            {/* Add Sources Button */}
+            <div className="px-4 pb-4 space-y-3">
               <button
                 onClick={() => setShowImportModal(true)}
-                className="w-full py-2.5 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-sm font-medium flex items-center justify-center gap-2 transition-all shadow-lg"
-              >
-                <Upload className="h-4 w-4" />
-                Import Sources
-              </button>
-
-              <button
-                onClick={addSource}
-                className="w-full py-2.5 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center justify-center gap-2 transition-colors"
+                className="w-full py-2.5  bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors border border-slate-600"
               >
                 <Plus className="h-4 w-4" />
                 Add sources
@@ -2415,7 +2404,7 @@ ${docTextBlock}${userDirective}`,
               {googleUser ? (
                 <button
                   onClick={() => setShowGoogleDocsModal(true)}
-                  className="w-full py-2.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm flex items-center justify-center gap-2 transition-colors border border-blue-500/30"
+                  className="w-full py-2.5  bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm flex items-center justify-center gap-2 transition-colors border border-blue-500/30"
                 >
                   <FileText className="h-4 w-4" />
                   Import from Google Docs
@@ -2424,7 +2413,7 @@ ${docTextBlock}${userDirective}`,
                 <button
                   onClick={handleGoogleSignIn}
                   disabled={isGoogleLoading}
-                  className="w-full py-2.5 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center justify-center gap-2 transition-colors border border-white/5"
+                  className="w-full py-2.5  bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center justify-center gap-2 transition-colors border border-white/5"
                 >
                   {isGoogleLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -2451,7 +2440,7 @@ ${docTextBlock}${userDirective}`,
                   <button
                     onClick={loadGoogleDocs}
                     disabled={isGoogleLoading}
-                    className="p-1 hover:bg-[#2d2d2d] rounded transition-colors"
+                    className="p-1 hover:bg-[#2d2d2d] transition-colors"
                     title="Refresh"
                   >
                     <RefreshCw className={`h-3 w-3 text-gray-500 ${isGoogleLoading ? 'animate-spin' : ''}`} />
@@ -2462,7 +2451,7 @@ ${docTextBlock}${userDirective}`,
                     <button
                       key={doc.id}
                       onClick={() => handleOpenGoogleDoc(doc)}
-                      className="w-full p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] text-left text-xs transition-colors flex items-center gap-2 group"
+                      className="w-full p-2  bg-[#2d2d2d] hover:bg-[#3d3d3d] text-left text-xs transition-colors flex items-center gap-2 group"
                     >
                       <FileText className="h-3 w-3 text-blue-400 flex-shrink-0" />
                       <span className="truncate flex-1">{doc.name}</span>
@@ -2483,7 +2472,7 @@ ${docTextBlock}${userDirective}`,
 
             {/* Search Sources */}
             <div className="px-4 pb-4">
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-[#2d2d2d] border border-white/5">
+              <div className="flex items-center gap-2 p-2  bg-[#2d2d2d] border border-white/5">
                 <Search className="h-4 w-4 text-gray-500" />
                 <input
                   type="text"
@@ -2513,7 +2502,7 @@ ${docTextBlock}${userDirective}`,
               {sources.map((source) => (
                 <div
                   key={source.id}
-                  className="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-[#2d2d2d] transition-colors cursor-pointer group"
+                  className="flex items-center gap-2 py-2 px-2  hover:bg-[#2d2d2d] transition-colors cursor-pointer group"
                 >
                   <div
                     onClick={() => toggleSource(source.id)}
@@ -2555,12 +2544,11 @@ ${docTextBlock}${userDirective}`,
               <div className="p-4 border-b border-white/5 flex items-center justify-between bg-[#1a1a1a]">
                 <div className="flex items-center gap-4">
                   <h2 className="text-sm font-medium text-gray-400">Document Editor</h2>
-                  <span className="text-xs text-gray-500">External Editor by Ranuts</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setActiveView('chat')}
-                    className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-400 text-sm hover:bg-purple-500/30 transition-colors"
+                    className="px-3 py-1.5  bg-purple-500/20 text-purple-400 text-sm hover:bg-purple-500/30 transition-colors"
                   >
                     <Sparkles className="h-4 w-4 inline mr-1" />
                     AI Tools
@@ -2588,7 +2576,7 @@ ${docTextBlock}${userDirective}`,
               <div className="p-3 border-b border-white/5 flex items-center justify-between bg-[#1a1a1a]">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                    <div className="w-8 h-8  bg-blue-500/20 flex items-center justify-center">
                       <FileText className="h-4 w-4 text-blue-400" />
                     </div>
                     <div>
@@ -2599,10 +2587,10 @@ ${docTextBlock}${userDirective}`,
                 </div>
                 <div className="flex items-center gap-2">
                   {/* View Mode Toggle */}
-                  <div className="flex items-center bg-[#2d2d2d] rounded-lg p-0.5">
+                  <div className="flex items-center bg-[#2d2d2d]  p-0.5">
                     <button
                       onClick={() => setGoogleDocViewMode('embed')}
-                      className={`px-3 py-1 text-xs rounded-md transition-colors ${googleDocViewMode === 'embed'
+                      className={`px-3 py-1 text-xs  transition-colors ${googleDocViewMode === 'embed'
                         ? 'bg-blue-500 text-white'
                         : 'text-gray-400 hover:text-white'
                         }`}
@@ -2612,7 +2600,7 @@ ${docTextBlock}${userDirective}`,
                     </button>
                     <button
                       onClick={() => setGoogleDocViewMode('content')}
-                      className={`px-3 py-1 text-xs rounded-md transition-colors ${googleDocViewMode === 'content'
+                      className={`px-3 py-1 text-xs  transition-colors ${googleDocViewMode === 'content'
                         ? 'bg-blue-500 text-white'
                         : 'text-gray-400 hover:text-white'
                         }`}
@@ -2623,7 +2611,7 @@ ${docTextBlock}${userDirective}`,
                   </div>
                   <button
                     onClick={handleUseGoogleDocAsInput}
-                    className="px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30 transition-colors flex items-center gap-1"
+                    className="px-3 py-1.5  bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30 transition-colors flex items-center gap-1"
                   >
                     <Upload className="h-3 w-3" />
                     Use as Input
@@ -2632,7 +2620,7 @@ ${docTextBlock}${userDirective}`,
                     href={`https://docs.google.com/document/d/${selectedGoogleDoc.id}/edit`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 text-xs hover:bg-blue-500/30 transition-colors flex items-center gap-1"
+                    className="px-3 py-1.5  bg-blue-500/20 text-blue-400 text-xs hover:bg-blue-500/30 transition-colors flex items-center gap-1"
                   >
                     <ExternalLink className="h-3 w-3" />
                     Open in Docs
@@ -2642,7 +2630,7 @@ ${docTextBlock}${userDirective}`,
                       setActiveView('chat');
                       setSelectedGoogleDoc(null);
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-400 text-xs hover:bg-purple-500/30 transition-colors"
+                    className="px-3 py-1.5  bg-purple-500/20 text-purple-400 text-xs hover:bg-purple-500/30 transition-colors"
                   >
                     <Sparkles className="h-3 w-3 inline mr-1" />
                     AI Tools
@@ -2664,7 +2652,7 @@ ${docTextBlock}${userDirective}`,
                 ) : (
                   /* Text Content View */
                   <div className="absolute inset-0 overflow-auto p-6">
-                    <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-xl p-8 min-h-full">
+                    <div className="max-w-4xl mx-auto bg-white  shadow-xl p-8 min-h-full">
                       <div className="prose prose-sm max-w-none text-gray-800 whitespace-pre-wrap">
                         {googleDocContent || (
                           <p className="text-gray-400 italic">This document is empty or content couldn't be loaded</p>
@@ -2680,19 +2668,19 @@ ${docTextBlock}${userDirective}`,
 
           {/* ============ LATEX VIEW ============ */}
           {activeView === 'latex' && (
-            <div className="flex-1 flex flex-col bg-white overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: '#171717' }}>
               <LatexDocumentWorkspace onBack={() => setActiveView('chat')} />
             </div>
           )}
 
           {/* ============ DEEP AGENT VIEW ============ */}
-          <div className={`flex-1 flex flex-col bg-white overflow-hidden ${activeView === 'deep-agent' ? '' : 'hidden'}`}>
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeView === 'deep-agent' ? '' : 'hidden'}`} style={{ backgroundColor: '#171717' }}>
             <DeepAgentWorkspace onBack={() => setActiveView('chat')} />
           </div>
 
           {/* ============ RESEARCH PAPER VIEW ============ */}
           {activeView === 'research' && (
-            <div className="flex-1 flex flex-col bg-white overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: '#171717' }}>
               <ResearchPaperWorkspace onBack={() => setActiveView('chat')} />
             </div>
           )}
@@ -2710,7 +2698,7 @@ ${docTextBlock}${userDirective}`,
                 </div>
                 <button
                   onClick={clearChat}
-                  className="p-1 hover:bg-[#2d2d2d] rounded transition-colors"
+                  className="p-1 hover:bg-[#2d2d2d] transition-colors"
                   title="Clear chat"
                 >
                   <Trash2 className="h-4 w-4 text-gray-400" />
@@ -2719,9 +2707,6 @@ ${docTextBlock}${userDirective}`,
 
               {/* Document Title Area */}
               <div className="p-6 border-b border-white/5">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-gray-500">〰️</span>
-                </div>
                 <h1 className="text-2xl font-semibold mb-2">Doc Studio Assistant</h1>
                 <p className="text-sm text-gray-400">{sources.filter(s => s.selected).length} source{sources.filter(s => s.selected).length !== 1 ? 's' : ''} selected</p>
 
@@ -2729,28 +2714,28 @@ ${docTextBlock}${userDirective}`,
                 <div className="flex gap-2 mt-4">
                   <button
                     onClick={() => setActiveView('editor')}
-                    className="px-4 py-2 rounded-full bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors"
+                    className="px-4 py-2  bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors"
                   >
                     <Eye className="h-4 w-4" />
                     Open Editor
                   </button>
                   <button
                     onClick={() => setActiveView('deep-agent')}
-                    className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
+                    className="px-4 py-2  bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
                   >
                     <Brain className="h-4 w-4" />
                     Deep Agent
                   </button>
                   <button
                     onClick={() => setActiveView('research')}
-                    className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
+                    className="px-4 py-2  bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
                   >
                     <BookOpen className="h-4 w-4" />
                     Research Paper
                   </button>
                   <button
                     onClick={() => setActiveView('latex')}
-                    className="px-4 py-2 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
+                    className="px-4 py-2  bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center gap-2 transition-colors"
                   >
                     <FileCode className="h-4 w-4" />
                     LaTeX Agent
@@ -2760,7 +2745,7 @@ ${docTextBlock}${userDirective}`,
 
               {/* Input Text Area */}
               <div className="p-4 border-b border-white/5">
-                <div className="p-4 rounded-xl bg-[#2d2d2d] border border-white/5">
+                <div className="p-4  bg-[#2d2d2d] border border-white/5">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-gray-500">Input Text / Research Query</span>
                     <span className="text-xs text-gray-500">{inputText.length} chars</span>
@@ -2794,7 +2779,7 @@ ${docTextBlock}${userDirective}`,
                       <button
                         onClick={handleSubmit}
                         disabled={isProcessing || isDeepAgentActive}
-                        className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+                        className="px-4 py-2  bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
                       >
                         {isProcessing || isDeepAgentActive ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -2819,7 +2804,7 @@ ${docTextBlock}${userDirective}`,
                   </div>
                   <div className="flex items-center gap-2">
                     {/* Selection Mode Toggle */}
-                    <div className="flex items-center gap-1 bg-[#2d2d2d] rounded-lg p-1">
+                    <div className="flex items-center gap-1 bg-[#2d2d2d]  p-1">
                       <button
                         onClick={() => setAgentSelectionMode('auto')}
                         className={`px-2 py-1 rounded text-xs transition-colors ${agentSelectionMode === 'auto'
@@ -2841,7 +2826,7 @@ ${docTextBlock}${userDirective}`,
                     </div>
                     <button
                       onClick={() => setShowAgentConfig(!showAgentConfig)}
-                      className={`p-1.5 rounded-lg transition-colors ${showAgentConfig ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-[#2d2d2d] text-gray-400'
+                      className={`p-1.5  transition-colors ${showAgentConfig ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-[#2d2d2d] text-gray-400'
                         }`}
                       title={showAgentConfig ? 'Collapse agents' : 'Expand agents'}
                     >
@@ -2900,7 +2885,7 @@ ${docTextBlock}${userDirective}`,
                             }
                           }}
                           title={agent.description}
-                          className={`relative p-2 rounded-lg border transition-all cursor-pointer ${isRunning
+                          className={`relative p-2  border transition-all cursor-pointer ${isRunning
                             ? `${colors.bg} ${colors.border} ring-1 ring-offset-1 ring-offset-[#1a1a1a] ${colors.border.replace('border-', 'ring-')}`
                             : isEnabled
                               ? `${colors.bg} ${colors.border}`
@@ -2913,7 +2898,7 @@ ${docTextBlock}${userDirective}`,
                               <Loader2 className={`h-3 w-3 animate-spin ${colors.text}`} />
                             </div>
                           ) : isEnabled && (
-                            <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${colors.text.replace('text-', 'bg-')}`} />
+                            <div className={`absolute top-1 right-1 w-1.5 h-1.5  ${colors.text.replace('text-', 'bg-')}`} />
                           )}
 
                           {/* Compact Agent Info */}
@@ -3014,7 +2999,7 @@ ${docTextBlock}${userDirective}`,
                     }
                   }}
                   disabled={isProcessing || isDeepAgentActive || !inputText.trim()}
-                  className="w-full mt-3 p-2.5 rounded-lg bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-cyan-500/20 hover:from-purple-500/30 hover:via-blue-500/30 hover:to-cyan-500/30 border border-purple-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                  className="w-full mt-3 p-2.5  bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-cyan-500/20 hover:from-purple-500/30 hover:via-blue-500/30 hover:to-cyan-500/30 border border-purple-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -3042,7 +3027,7 @@ ${docTextBlock}${userDirective}`,
                         </span>
                       </div>
                       {deepAgentStatus !== 'idle' && (
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${deepAgentStatus === 'thinking' ? 'bg-yellow-500/20 text-yellow-400' :
+                        <span className={`px-2 py-0.5  text-xs ${deepAgentStatus === 'thinking' ? 'bg-yellow-500/20 text-yellow-400' :
                           deepAgentStatus === 'searching' ? 'bg-blue-500/20 text-blue-400' :
                             deepAgentStatus === 'writing' ? 'bg-purple-500/20 text-purple-400' :
                               'bg-green-500/20 text-green-400'
@@ -3101,7 +3086,7 @@ ${docTextBlock}${userDirective}`,
                             setSelectedGoogleDoc(doc);
                             setActiveView('googledoc');
                           }}
-                          className="w-full p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400 text-sm flex items-center gap-2 transition-colors"
+                          className="w-full p-2  bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400 text-sm flex items-center gap-2 transition-colors"
                         >
                           <FileText className="h-4 w-4" />
                           View Research Document
@@ -3117,18 +3102,13 @@ ${docTextBlock}${userDirective}`,
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {messages.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-center">
-                    <div className="w-16 h-16 rounded-full bg-purple-500/10 flex items-center justify-center mb-4">
-                      <Sparkles className="h-8 w-8 text-purple-400" />
-                    </div>
-                    <p className="text-gray-400 mb-2">AI responses will appear here</p>
-                    <p className="text-sm text-gray-500">Paste text and select an action to begin</p>
                   </div>
                 )}
 
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`${message.role === 'assistant' ? 'bg-[#2d2d2d] rounded-xl p-4' : ''}`}
+                    className={`${message.role === 'assistant' ? 'bg-[#2d2d2d]  p-4' : ''}`}
                   >
                     {message.role === 'user' ? (
                       <div className="flex items-start gap-3">
@@ -3155,14 +3135,14 @@ ${docTextBlock}${userDirective}`,
                         <div className="flex items-center gap-2 pt-3 border-t border-white/5">
                           <button
                             onClick={() => saveToNote(message.content)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-[#3d3d3d] text-sm text-gray-400 hover:text-white transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5  hover:bg-[#3d3d3d] text-sm text-gray-400 hover:text-white transition-colors"
                           >
                             <StickyNote className="h-4 w-4" />
                             Save to note
                           </button>
                           <button
                             onClick={() => copyToClipboard(message.content)}
-                            className="p-1.5 rounded-lg hover:bg-[#3d3d3d] text-gray-400 hover:text-white transition-colors"
+                            className="p-1.5  hover:bg-[#3d3d3d] text-gray-400 hover:text-white transition-colors"
                           >
                             <Copy className="h-4 w-4" />
                           </button>
@@ -3173,7 +3153,7 @@ ${docTextBlock}${userDirective}`,
                 ))}
 
                 {isProcessing && (
-                  <div className="bg-[#2d2d2d] rounded-xl p-4">
+                  <div className="bg-[#2d2d2d]  p-4">
                     <div className="flex items-center gap-3">
                       <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
                       <span className="text-sm text-gray-400">Processing...</span>
@@ -3186,7 +3166,7 @@ ${docTextBlock}${userDirective}`,
 
               {/* Chat Input */}
               <div className="p-4 border-t border-white/10">
-                <div className="flex items-center gap-3 p-3 rounded-full bg-[#2d2d2d] border border-white/5">
+                <div className="flex items-center gap-3 p-3  bg-[#2d2d2d] border border-white/5">
                   <input
                     type="text"
                     value={customPrompt}
@@ -3199,7 +3179,7 @@ ${docTextBlock}${userDirective}`,
                   <button
                     onClick={handleCustomPrompt}
                     disabled={isProcessing || !customPrompt.trim() || !inputText.trim()}
-                    className="p-2 rounded-full bg-purple-500 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="p-2  bg-purple-500 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <Send className="h-4 w-4 text-white" />
                   </button>
@@ -3218,7 +3198,7 @@ ${docTextBlock}${userDirective}`,
                 <h2 className="text-sm font-medium text-gray-400">Studio</h2>
                 <button
                   onClick={() => setRightPanelOpen(false)}
-                  className="p-1 hover:bg-[#2d2d2d] rounded transition-colors"
+                  className="p-1 hover:bg-[#2d2d2d] transition-colors"
                 >
                   <PanelRightClose className="h-4 w-4 text-gray-400" />
                 </button>
@@ -3226,12 +3206,13 @@ ${docTextBlock}${userDirective}`,
 
               {/* Studio Tools Grid */}
               <div className="p-4">
+                <h3 className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Quick Actions</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {studioTools.map((tool) => (
                     <button
                       key={tool.id}
                       onClick={tool.action}
-                      className="p-3 rounded-xl bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-purple-500/30 text-left transition-all group"
+                      className="p-3  bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-purple-500/30 text-left transition-all group"
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-purple-400 group-hover:text-purple-300">{tool.icon}</span>
@@ -3249,7 +3230,7 @@ ${docTextBlock}${userDirective}`,
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-gray-400">Artifacts</h3>
                     {artifacts.length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs">
+                      <span className="px-2 py-0.5  bg-purple-500/20 text-purple-400 text-xs">
                         {artifacts.length}
                       </span>
                     )}
@@ -3271,7 +3252,7 @@ ${docTextBlock}${userDirective}`,
                             setSelectedArtifact(artifact);
                             setShowArtifactModal(true);
                           }}
-                          className="p-3 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] cursor-pointer transition-colors group border-l-2 border-purple-500"
+                          className="p-3  bg-[#2d2d2d] hover:bg-[#3d3d3d] cursor-pointer transition-colors group border-l-2 border-purple-500"
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-2">
@@ -3313,7 +3294,7 @@ ${docTextBlock}${userDirective}`,
                       {notes.map((note) => (
                         <div
                           key={note.id}
-                          className="p-3 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] cursor-pointer transition-colors group"
+                          className="p-3  bg-[#2d2d2d] hover:bg-[#3d3d3d] cursor-pointer transition-colors group"
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-2">
@@ -3347,7 +3328,7 @@ ${docTextBlock}${userDirective}`,
                     };
                     setNotes(prev => [...prev, newNote]);
                   }}
-                  className="w-full py-2.5 rounded-full bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center justify-center gap-2 transition-colors"
+                  className="w-full py-2.5  bg-[#2d2d2d] hover:bg-[#3d3d3d] text-sm flex items-center justify-center gap-2 transition-colors"
                 >
                   <Plus className="h-4 w-4" />
                   Add note
@@ -3392,7 +3373,7 @@ ${docTextBlock}${userDirective}`,
                       navigator.clipboard.writeText(selectedArtifact.content);
                       showNotification('Copied to clipboard');
                     }}
-                    className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                    className="p-2 hover:bg-[#2d2d2d]  transition-colors"
                     title="Copy"
                   >
                     <Copy className="h-4 w-4 text-gray-400" />
@@ -3427,14 +3408,14 @@ ${docTextBlock}${userDirective}`,
                         showNotification('Sign in with Google to save');
                       }
                     }}
-                    className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                    className="p-2 hover:bg-[#2d2d2d]  transition-colors"
                     title="Save to Google Docs"
                   >
                     <Save className="h-4 w-4 text-blue-400" />
                   </button>
                   <button
                     onClick={() => setShowArtifactModal(false)}
-                    className="p-2 hover:bg-[#2d2d2d] rounded-lg transition-colors"
+                    className="p-2 hover:bg-[#2d2d2d]  transition-colors"
                   >
                     <X className="h-4 w-4 text-gray-400" />
                   </button>
@@ -3460,13 +3441,13 @@ ${docTextBlock}${userDirective}`,
                       setShowArtifactModal(false);
                       showNotification('Content loaded to input');
                     }}
-                    className="px-4 py-2 rounded-lg bg-purple-500/20 text-purple-400 text-sm hover:bg-purple-500/30 transition-colors"
+                    className="px-4 py-2  bg-purple-500/20 text-purple-400 text-sm hover:bg-purple-500/30 transition-colors"
                   >
                     Use as Input
                   </button>
                   <button
                     onClick={() => setShowArtifactModal(false)}
-                    className="px-4 py-2 rounded-lg bg-[#2d2d2d] text-sm hover:bg-[#3d3d3d] transition-colors"
+                    className="px-4 py-2  bg-[#2d2d2d] text-sm hover:bg-[#3d3d3d] transition-colors"
                   >
                     Close
                   </button>
@@ -3480,12 +3461,9 @@ ${docTextBlock}${userDirective}`,
       {/* Footer */}
       <footer className="h-8 flex items-center justify-between px-4 border-t border-white/5 bg-[#1a1a1a]">
         <div className="flex items-center gap-4 text-xs text-gray-500">
-          <span>Powered by Gemini AI</span>
-          <span>•</span>
           <span>© 2025 Doc Studio</span>
         </div>
         <div className="flex items-center gap-4 text-xs text-gray-500">
-          <span>{activeView === 'editor' ? '[EDITOR MODE]' : '[AI TOOLS]'}</span>
           <span className="text-purple-400">●</span>
           <span>Ready</span>
         </div>
@@ -3494,7 +3472,7 @@ ${docTextBlock}${userDirective}`,
       {/* ============ NOTIFICATION TOAST ============ */}
       {
         notification && (
-          <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2 px-6 py-3 rounded-full bg-purple-500 text-white font-medium text-sm shadow-lg shadow-purple-500/20 animate-pulse">
+          <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2 px-6 py-3  bg-purple-500 text-white font-medium text-sm shadow-lg shadow-purple-500/20 animate-pulse">
             {notification}
           </div>
         )

@@ -466,9 +466,8 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
   const renderUploadStep = () => (
     <div className="space-y-6">
       <Card className="bg-gray-800/50 border-gray-700">
-        <CardHeader>
+        <CardHeader style={{ backgroundColor: '#212121' }}>
           <CardTitle className="flex items-center gap-2">
-            <Upload className="w-5 h-5 text-purple-400" />
             Upload Source Materials
           </CardTitle>
           <CardDescription>
@@ -476,14 +475,20 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
             The AI agents will analyze these materials to generate comprehensive content.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent style={{ backgroundColor: '#212121' }}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Literature Upload */}
-            <div className="p-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-blue-500 transition-colors">
-              <label className="flex flex-col items-center cursor-pointer">
-                <BookOpen className="w-8 h-8 text-blue-400 mb-2" />
-                <span className="font-medium text-blue-400">Literature</span>
-                <span className="text-xs text-gray-500 text-center mt-1">
+            <div className="group relative p-6 border-2 border-dashed border-gray-600 hover:border-blue-500/50 transition-all duration-300 cursor-pointer overflow-hidden" style={{ backgroundColor: '#171717' }}>
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-blue-500/0 to-blue-500/0 group-hover:from-blue-500/10 group-hover:via-blue-500/5 group-hover:to-blue-500/10 transition-all duration-300" />
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="absolute inset-0 border-2 border-blue-500/30 animate-pulse" />
+              </div>
+              <label className="relative flex flex-col items-center cursor-pointer z-10">
+                <div className="p-3 mb-3 bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors duration-300">
+                  <BookOpen className="w-8 h-8 text-blue-400 group-hover:text-blue-300 transition-colors" />
+                </div>
+                <span className="font-semibold text-blue-400 group-hover:text-blue-300 mb-1 transition-colors">Literature</span>
+                <span className="text-xs text-gray-400 text-center leading-relaxed">
                   Research papers, articles, reviews
                 </span>
                 <input
@@ -497,11 +502,17 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
             </div>
 
             {/* Data Upload */}
-            <div className="p-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-green-500 transition-colors">
-              <label className="flex flex-col items-center cursor-pointer">
-                <BarChart3 className="w-8 h-8 text-green-400 mb-2" />
-                <span className="font-medium text-green-400">Data</span>
-                <span className="text-xs text-gray-500 text-center mt-1">
+            <div className="group relative p-6 border-2 border-dashed border-gray-600 hover:border-green-500/50 transition-all duration-300 cursor-pointer overflow-hidden" style={{ backgroundColor: '#171717' }}>
+              <div className="absolute inset-0 bg-gradient-to-br from-green-500/0 via-green-500/0 to-green-500/0 group-hover:from-green-500/10 group-hover:via-green-500/5 group-hover:to-green-500/10 transition-all duration-300" />
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="absolute inset-0 border-2 border-green-500/30 animate-pulse" />
+              </div>
+              <label className="relative flex flex-col items-center cursor-pointer z-10">
+                <div className="p-3 mb-3 bg-green-500/10 group-hover:bg-green-500/20 transition-colors duration-300">
+                  <BarChart3 className="w-8 h-8 text-green-400 group-hover:text-green-300 transition-colors" />
+                </div>
+                <span className="font-semibold text-green-400 group-hover:text-green-300 mb-1 transition-colors">Data</span>
+                <span className="text-xs text-gray-400 text-center leading-relaxed">
                   CSV, JSON, experimental results
                 </span>
                 <input
@@ -515,11 +526,17 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
             </div>
 
             {/* Report Upload */}
-            <div className="p-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-orange-500 transition-colors">
-              <label className="flex flex-col items-center cursor-pointer">
-                <FileText className="w-8 h-8 text-orange-400 mb-2" />
-                <span className="font-medium text-orange-400">Reports</span>
-                <span className="text-xs text-gray-500 text-center mt-1">
+            <div className="group relative p-6 border-2 border-dashed border-gray-600 hover:border-orange-500/50 transition-all duration-300 cursor-pointer overflow-hidden" style={{ backgroundColor: '#171717' }}>
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/0 via-orange-500/0 to-orange-500/0 group-hover:from-orange-500/10 group-hover:via-orange-500/5 group-hover:to-orange-500/10 transition-all duration-300" />
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="absolute inset-0 border-2 border-orange-500/30 animate-pulse" />
+              </div>
+              <label className="relative flex flex-col items-center cursor-pointer z-10">
+                <div className="p-3 mb-3 bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors duration-300">
+                  <FileText className="w-8 h-8 text-orange-400 group-hover:text-orange-300 transition-colors" />
+                </div>
+                <span className="font-semibold text-orange-400 group-hover:text-orange-300 mb-1 transition-colors">Reports</span>
+                <span className="text-xs text-gray-400 text-center leading-relaxed">
                   Lab reports, summaries, drafts
                 </span>
                 <input
@@ -534,13 +551,20 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
 
             {/* Add Text Content */}
             <div 
-              className="p-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-purple-500 transition-colors cursor-pointer"
+              className="group relative p-6 border-2 border-dashed border-gray-600 hover:border-purple-500/50 transition-all duration-300 cursor-pointer overflow-hidden"
+              style={{ backgroundColor: '#171717' }}
               onClick={() => setShowAddTextDialog(true)}
             >
-              <div className="flex flex-col items-center">
-                <Edit className="w-8 h-8 text-purple-400 mb-2" />
-                <span className="font-medium text-purple-400">Add Notes</span>
-                <span className="text-xs text-gray-500 text-center mt-1">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 via-purple-500/0 to-purple-500/0 group-hover:from-purple-500/10 group-hover:via-purple-500/5 group-hover:to-purple-500/10 transition-all duration-300" />
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="absolute inset-0 border-2 border-purple-500/30 animate-pulse" />
+              </div>
+              <div className="relative flex flex-col items-center z-10">
+                <div className="p-3 mb-3 bg-purple-500/10 group-hover:bg-purple-500/20 transition-colors duration-300">
+                  <Edit className="w-8 h-8 text-purple-400 group-hover:text-purple-300 transition-colors" />
+                </div>
+                <span className="font-semibold text-purple-400 group-hover:text-purple-300 mb-1 transition-colors">Add Notes</span>
+                <span className="text-xs text-gray-400 text-center leading-relaxed">
                   Paste text content directly
                 </span>
               </div>
@@ -560,7 +584,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
               {uploadedFiles.map(file => (
                 <div 
                   key={file.id}
-                  className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg"
+                  className="flex items-center justify-between p-3 bg-gray-700/50 "
                 >
                   <div className="flex items-center gap-3">
                     {FILE_TYPE_ICONS[file.type]}
@@ -590,7 +614,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
         <Button
           onClick={() => setCurrentStep('configure')}
           disabled={uploadedFiles.length === 0}
-          className="bg-purple-600 hover:bg-purple-700"
+          className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 border-2 border-blue-500/30 hover:border-blue-400/50 active:scale-[0.98]"
         >
           Continue to Configuration
           <ChevronRight className="w-4 h-4 ml-2" />
@@ -657,7 +681,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
               <select
                 value={config.paperType}
                 onChange={(e) => setConfig(prev => ({ ...prev, paperType: e.target.value as any }))}
-                className="w-full rounded-md bg-gray-700 border border-gray-600 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="research">Research Paper</option>
                 <option value="review">Literature Review</option>
@@ -672,7 +696,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
               <select
                 value={config.targetLength}
                 onChange={(e) => setConfig(prev => ({ ...prev, targetLength: e.target.value as any }))}
-                className="w-full rounded-md bg-gray-700 border border-gray-600 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="short">Short (~3,000 words)</option>
                 <option value="medium">Medium (~8,000 words)</option>
@@ -687,7 +711,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
               <select
                 value={config.citationStyle}
                 onChange={(e) => setConfig(prev => ({ ...prev, citationStyle: e.target.value as any }))}
-                className="w-full rounded-md bg-gray-700 border border-gray-600 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="apa">APA</option>
                 <option value="ieee">IEEE</option>
@@ -715,7 +739,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
             {SUB_AGENTS.map(agent => (
               <div 
                 key={agent.name}
-                className="p-3 bg-gray-700/50 rounded-lg"
+                className="p-3 bg-gray-700/50 "
               >
                 <div className="flex items-center gap-2 mb-1">
                   {AGENT_ICONS[agent.name]}
@@ -740,7 +764,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
         <Button
           onClick={handleGenerate}
           disabled={!config.title.trim() || isGenerating}
-          className="bg-purple-600 hover:bg-purple-700"
+          className="bg-purple-600 hover:bg-purple-700 shadow-lg hover:shadow-xl transition-all duration-200 border-2 border-purple-500/30 hover:border-purple-400/50 active:scale-[0.98]"
         >
           {isGenerating ? (
             <>
@@ -762,7 +786,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
   const renderGenerateStep = () => (
     <div className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col">
-        <TabsList className="grid grid-cols-6 bg-gray-800">
+        <TabsList className="grid grid-cols-6" style={{ backgroundColor: '#212121' }}>
           <TabsTrigger value="progress">
             <Brain className="w-4 h-4 mr-2" />
             Progress
@@ -801,7 +825,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
 
         {/* Progress Tab */}
         <TabsContent value="progress" className="flex-1 overflow-hidden">
-          <div className="h-full flex gap-4">
+          <div className="h-full flex gap-4" style={{ backgroundColor: '#212121' }}>
             {/* Agent Progress */}
             <div className="w-1/3">
               <Card className="h-full bg-gray-800/50 border-gray-700">
@@ -811,7 +835,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                 <CardContent>
                   <div className="space-y-3">
                     {agentProgress.map(agent => (
-                      <div key={agent.agentName} className="p-2 bg-gray-700/50 rounded-lg">
+                      <div key={agent.agentName} className="p-2 bg-gray-700/50 ">
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             {AGENT_ICONS[agent.agentName]}
@@ -1006,7 +1030,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                     {extractedImages.map((img, index) => (
                       <div 
                         key={index} 
-                        className="bg-gray-700/50 rounded-lg overflow-hidden border border-gray-600 hover:border-purple-500 transition-colors"
+                        className="bg-gray-700/50  overflow-hidden border border-gray-600 hover:border-purple-500 transition-colors"
                       >
                         <div className="aspect-square bg-gray-800 flex items-center justify-center p-2">
                           <img 
@@ -1063,12 +1087,12 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                   onChange={(e) => setCitationSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleCitationSearch()}
                   placeholder="Search for papers, authors, or topics..."
-                  className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600  text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
                 <Button 
                   onClick={handleCitationSearch}
                   disabled={isSearchingCitations || !citationSearchQuery.trim()}
-                  className="bg-purple-600 hover:bg-purple-700"
+                  className="bg-purple-600 hover:bg-purple-700 shadow-lg hover:shadow-xl transition-all duration-200 border-2 border-purple-500/30 hover:border-purple-400/50 active:scale-[0.98]"
                 >
                   {isSearchingCitations ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -1084,7 +1108,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
               {/* Results and Saved Citations */}
               <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Search Results */}
-                <div className="flex flex-col bg-gray-700/30 rounded-lg p-3">
+                <div className="flex flex-col bg-gray-700/30  p-3">
                   <h3 className="text-sm font-medium text-gray-300 mb-2">
                     Search Results {citationResults.length > 0 && `(${citationResults.length})`}
                   </h3>
@@ -1094,7 +1118,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                         {citationResults.map((paper: Publication, index: number) => (
                           <div 
                             key={index}
-                            className={`bg-gray-700/50 rounded-lg p-3 border transition-colors ${
+                            className={`bg-gray-700/50  p-3 border transition-colors ${
                               addedPapers.has(paper.title) 
                                 ? 'border-green-600 bg-green-900/20' 
                                 : 'border-gray-600 hover:border-purple-500'
@@ -1164,7 +1188,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                 </div>
 
                 {/* Added Citations */}
-                <div className="flex flex-col bg-gray-700/30 rounded-lg p-3">
+                <div className="flex flex-col bg-gray-700/30  p-3">
                   <h3 className="text-sm font-medium text-gray-300 mb-2">
                     Added Citations {addedPapers.size > 0 && `(${addedPapers.size})`}
                   </h3>
@@ -1174,7 +1198,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                         {citationResults.filter((paper: Publication) => addedPapers.has(paper.title)).map((paper: Publication, index: number) => (
                           <div 
                             key={index}
-                            className="bg-green-900/20 rounded-lg p-3 border border-green-700/50"
+                            className="bg-green-900/20  p-3 border border-green-700/50"
                           >
                             <h4 className="text-sm font-medium text-white line-clamp-2">{paper.title}</h4>
                             <p className="text-xs text-gray-400 mt-1">
@@ -1198,7 +1222,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
 
               {/* Related Papers Section */}
               {relatedPapers.length > 0 && (
-                <div className="bg-gray-700/30 rounded-lg p-3">
+                <div className="bg-gray-700/30  p-3">
                   <h3 className="text-sm font-medium text-gray-300 mb-2">
                     Related Papers ({relatedPapers.length})
                   </h3>
@@ -1207,7 +1231,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                       {relatedPapers.map((paper: Publication, index: number) => (
                         <div 
                           key={index}
-                          className={`rounded-lg px-3 py-2 border text-xs max-w-[300px] ${
+                          className={` px-3 py-2 border text-xs max-w-[300px] ${
                             addedPapers.has(paper.title)
                               ? 'bg-green-900/20 border-green-700/50'
                               : 'bg-gray-700/50 border-gray-600'
@@ -1282,7 +1306,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden">
               {pdfFile ? (
-                <ScrollArea className="h-full bg-gray-600 rounded">
+                <ScrollArea className="h-full bg-gray-600">
                   <div className="flex justify-center p-4">
                     <Document
                       file={pdfFile}
@@ -1320,7 +1344,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
 
       {/* Errors */}
       {errors.length > 0 && (
-        <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+        <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 ">
           <div className="flex items-center gap-2 text-red-400 mb-2">
             <AlertCircle className="w-4 h-4" />
             <span className="font-medium">Errors</span>
@@ -1339,7 +1363,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
         {currentStep === 'review' && (
           <Button
             onClick={() => window.open('https://www.overleaf.com/project', '_blank')}
-            className="bg-green-600 hover:bg-green-700"
+            className="bg-green-600 hover:bg-green-700 shadow-lg hover:shadow-xl transition-all duration-200 border-2 border-green-500/30 hover:border-green-400/50 active:scale-[0.98]"
           >
             <ExternalLink className="w-4 h-4 mr-2" />
             Open in Overleaf
@@ -1350,16 +1374,15 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
   );
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="h-screen flex flex-col" style={{ backgroundColor: '#171717' }}>
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 bg-gray-900/50 backdrop-blur">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50" style={{ backgroundColor: '#171717' }}>
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           <div className="flex items-center gap-2">
-            <GraduationCap className="w-6 h-6 text-purple-400" />
             <h1 className="text-xl font-bold">Research Paper Generator</h1>
           </div>
         </div>
@@ -1385,21 +1408,21 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
           <div className="flex items-center gap-2">
             <Badge 
               variant={currentStep === 'upload' ? 'default' : 'outline'}
-              className={currentStep === 'upload' ? 'bg-purple-600' : ''}
+              className={currentStep === 'upload' ? 'bg-blue-600 text-white border-blue-500' : 'text-gray-400 border-gray-600'}
             >
               1. Upload
             </Badge>
             <ChevronRight className="w-4 h-4 text-gray-500" />
             <Badge 
               variant={currentStep === 'configure' ? 'default' : 'outline'}
-              className={currentStep === 'configure' ? 'bg-purple-600' : ''}
+              className={currentStep === 'configure' ? 'bg-blue-600 text-white border-blue-500' : 'text-gray-400 border-gray-600'}
             >
               2. Configure
             </Badge>
             <ChevronRight className="w-4 h-4 text-gray-500" />
             <Badge 
               variant={currentStep === 'generate' || currentStep === 'review' ? 'default' : 'outline'}
-              className={currentStep === 'generate' || currentStep === 'review' ? 'bg-purple-600' : ''}
+              className={currentStep === 'generate' || currentStep === 'review' ? 'bg-blue-600 text-white border-blue-500' : 'text-gray-400 border-gray-600'}
             >
               3. Generate
             </Badge>
@@ -1439,7 +1462,7 @@ const ResearchPaperWorkspace: React.FC<ResearchPaperWorkspaceProps> = ({ onBack 
                 <select
                   value={textContentType}
                   onChange={(e) => setTextContentType(e.target.value as 'literature' | 'data' | 'report' | 'notes' | 'other')}
-                  className="w-full rounded-md bg-gray-700 border border-gray-600 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="literature">Literature</option>
                   <option value="data">Data</option>

@@ -21,7 +21,7 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
       <span
         ref={ref}
         className={cn(
-          'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide',
+          'inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide',
           badgeStyles[variant],
           className
         )}

@@ -63,8 +63,8 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
   return (
     <div className={`h-full flex flex-col ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Header */}
-      <header className={`flex-shrink-0 flex items-center justify-between px-4 py-3 border-b ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
+      <header className={`flex-shrink-0 flex items-center justify-between px-4 py-3 border-b ${isDarkMode ? 'border-gray-700' : 'bg-white border-gray-200'
+        }`} style={isDarkMode ? { backgroundColor: '#171717' } : undefined}>
         <div className="flex items-center space-x-4">
           {onBack && (
             <button
@@ -76,14 +76,8 @@ const DeepAgentWorkspace: React.FC<DeepAgentWorkspaceProps> = ({
             </button>
           )}
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl">
-              <Brain className="w-6 h-6 text-white" />
-            </div>
             <div>
               <h1 className="text-xl font-bold">Deep Agent</h1>
-              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Advanced Chemistry Assistant
-              </p>
             </div>
           </div>
         </div>
