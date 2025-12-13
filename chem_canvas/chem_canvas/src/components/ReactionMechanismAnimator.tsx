@@ -266,20 +266,17 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
 
   return (
     <div className={containerClassName}>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 mb-4">
         <div className="flex h-10 w-10 items-center justify-center bg-gradient-to-br from-pink-600 to-purple-600 text-white">
           <FlaskConical className="h-5 w-5" />
         </div>
         <div>
           <h3 className="text-sm font-semibold text-white">AI Reaction Animator</h3>
-          <p className="text-xs text-slate-400">
-            Uses Gemini-powered reaction search to populate the mechanism viewer with any named or described transformation.
-          </p>
         </div>
       </div>
 
       <div>
-        <div className="flex gap-2">
+        <div className="flex gap-3 mb-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <input
@@ -299,7 +296,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
           <button
             onClick={() => void handleSearch()}
             disabled={isLoading}
-            className="relative inline-flex items-center justify-center px-2 py-1 text-sm font-medium text-white transition-all duration-200 overflow-hidden group border bg-gradient-to-r from-purple-500 via-purple-600 to-purple-500 shadow-md shadow-purple-500/25  disabled:opacity-60"
+            className="relative inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white transition-all duration-200 overflow-hidden group bg-gradient-to-r from-purple-500 via-purple-600 to-purple-500 shadow-md shadow-purple-500/25 disabled:opacity-60"
           >
             {!isLoading && (
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
@@ -309,7 +306,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
             </span>
           </button>
         </div>
-        <div className="grid grid-cols-1 gap-0.5">
+        <div className="grid grid-cols-1 gap-1">
           {SAMPLE_PROMPTS.map(sample => (
             <button
               key={sample}
@@ -317,7 +314,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                 setQuery(sample);
                 void handleSearch(sample);
               }}
-              className="relative px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-purple-200 border-slate-700/50"
+              className="relative px-3 py-2 text-sm font-medium transition-all duration-200 overflow-hidden group bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-purple-200"
             >
               <span className="relative z-10 whitespace-nowrap">{sample}</span>
             </button>
@@ -550,11 +547,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
             ))}
           </div>
         </div>
-      ) : (
-        <div className="bg-[#171717] p-6 text-center text-sm text-slate-400">
-          Describe a named reaction, reagents + products, or paste reaction SMILES. Gemini will assemble the components and the mechanism view will animate them in 3D.
-        </div>
-      )}
+      ) : null}
     </div>
   );
 };

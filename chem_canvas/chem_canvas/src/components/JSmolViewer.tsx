@@ -58,7 +58,7 @@ const JSmolViewer: React.FC<JSmolViewerProps> = ({
   script,
   command,
   height = 520,
-  backgroundColor = '#0f172a',
+  backgroundColor = '#171717',
   onReady,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -188,14 +188,14 @@ const JSmolViewer: React.FC<JSmolViewerProps> = ({
 
   return (
     <div className="relative overflow-hidden" style={{ height }}>
-      <div ref={containerRef} className="w-full h-full bg-slate-900" />
+      <div ref={containerRef} className="w-full h-full" style={{ backgroundColor: '#171717' }} />
       {status === 'loading' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/70 text-slate-200 text-sm">
+        <div className="absolute inset-0 flex items-center justify-center text-slate-200 text-sm" style={{ backgroundColor: '#171717b3' }}>
           Loading JSmol workspace...
         </div>
       )}
       {status === 'error' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 text-red-200 text-sm px-6 text-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-red-200 text-sm px-6 text-center" style={{ backgroundColor: '#171717cc' }}>
           <p className="font-semibold mb-2">JSmol failed to load</p>
           <p className="text-xs opacity-80">{error}</p>
         </div>
