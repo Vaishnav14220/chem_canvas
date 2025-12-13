@@ -571,6 +571,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [imageActivityPrompt, setImageActivityPrompt] = useState('');
     const [generatedImageActivityUrl, setGeneratedImageActivityUrl] = useState<string | null>(null);
     const [isGeneratingImageActivity, setIsGeneratingImageActivity] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
 
     // LocalStorage key for persisting immersive learning content
     const STORAGE_KEY = 'immersive_learning_content';
@@ -4102,8 +4103,8 @@ sys.stderr = StringIO()
 
         // Only show "Start Learning" fallback when NOT streaming
         // During streaming, let case 'immersive-text' handle the streaming UI
-        // Robotics, 3D Viewer, and Code Lab work independently without needing uploaded content
-        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && !isStreaming) {
+        // Robotics, 3D Viewer, Code Lab, and Image Activity work independently without needing uploaded content
+        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && activeMode !== 'image-activity' && !isStreaming) {
             return (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 p-8">
                     <div className="text-center space-y-3 max-w-md">
@@ -6918,105 +6919,153 @@ sys.stderr = StringIO()
 
             case 'image-activity':
                 return (
-                    <div className="flex flex-col h-full bg-white p-8 overflow-y-auto">
-                        <div className="max-w-4xl mx-auto w-full space-y-8">
-                            {/* Header */}
-                            <div className="text-center space-y-4">
-                                <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto">
-                                    <ImageActivityIcon active={true} />
-                                </div>
-                                <h2 className="text-3xl font-google-sans text-[#1f1f1f]">AI Image Studio</h2>
-                                <p className="text-[#444746] text-lg max-w-2xl mx-auto">
-                                    Describe any concept, scene, or diagram, and AI will generate a high-quality educational illustration for you.
-                                </p>
-                            </div>
-
-                            {/* Input Section */}
-                            <div className="bg-[#f8f9fa] p-6 rounded-2xl border border-[#e8eaed] shadow-sm">
-                                <div className="flex flex-col gap-4">
-                                    <label htmlFor="image-prompt" className="text-sm font-medium text-[#1f1f1f] ml-1">
-                                        What would you like to visualize?
-                                    </label>
-                                    <div className="flex gap-3">
-                                        <input
+                    <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
+                        {/* Left Sidebar - Input */}
+                        {sidebarOpen && (
+                            <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
+                                {/* Main Content Area */}
+                                <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                    {/* Prompt Input */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Describe Your Image</label>
+                                        <textarea
                                             id="image-prompt"
-                                            type="text"
                                             value={imageActivityPrompt}
                                             onChange={(e) => setImageActivityPrompt(e.target.value)}
-                                            placeholder="e.g., A cross-section of a plant cell showing chloroplasts..."
-                                            className="flex-1 px-4 py-3 rounded-xl border border-[#dadce0] focus:border-[#ff8b66] focus:ring-2 focus:ring-[#ff8b66]/20 outline-none transition-all text-[#1f1f1f]"
-                                            onKeyDown={(e) => e.key === 'Enter' && handleGenerateImageActivity()}
+                                            placeholder="e.g., A cross-section of a plant cell showing chloroplasts, mitochondria, and nucleus with detailed labels..."
+                                            className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all min-h-[120px] resize-none"
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                                    handleGenerateImageActivity();
+                                                }
+                                            }}
                                         />
-                                        <button
-                                            onClick={handleGenerateImageActivity}
-                                            disabled={!imageActivityPrompt.trim() || isGeneratingImageActivity}
-                                            className="px-6 py-3 bg-[#ff8b66] hover:bg-[#ff7d4d] disabled:bg-[#ffdccf] disabled:cursor-not-allowed text-white rounded-xl font-medium transition-all shadow-sm flex items-center gap-2 min-w-[160px] justify-center"
-                                        >
-                                            {isGeneratingImageActivity ? (
-                                                <>
-                                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                                    <span>Creating...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Sparkles className="w-5 h-5" />
-                                                    <span>Generate</span>
-                                                </>
-                                            )}
-                                        </button>
+                                        <p className="text-xs text-slate-400">
+                                            Tip: Be specific about details, colors, and style for the best results. Press Ctrl+Enter to generate.
+                                        </p>
                                     </div>
-                                    <p className="text-xs text-[#5f6368] ml-1">
-                                        Tip: Be specific about details, colors, and style for the best results.
-                                    </p>
+
+                                    {/* Generate Button */}
+                                    <button
+                                        onClick={handleGenerateImageActivity}
+                                        disabled={!imageActivityPrompt.trim() || isGeneratingImageActivity}
+                                        className={`
+                                            w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all
+                                            ${!imageActivityPrompt.trim() || isGeneratingImageActivity
+                                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                                : 'bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95'}
+                                        `}
+                                    >
+                                        {isGeneratingImageActivity ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <span className="text-xs">Generating...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className="w-4 h-4" />
+                                                <span>Generate Image</span>
+                                            </>
+                                        )}
+                                    </button>
+
+                                    <div className="h-px bg-slate-700"></div>
+                                </div>
+
+                                {/* Collapse Button */}
+                                <div className="border-t border-slate-700 p-3">
+                                    <button
+                                        onClick={() => setSidebarOpen(false)}
+                                        className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <ChevronRight className="w-4 h-4" />
+                                        <span>Collapse Panel</span>
+                                    </button>
                                 </div>
                             </div>
+                        )}
 
-                            {/* Result Display */}
-                            {generatedImageActivityUrl && (
-                                <div className="animate-fade-in space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-lg font-medium text-[#1f1f1f]">Generated Result</h3>
-                                        <button
-                                            onClick={() => {
-                                                const link = document.createElement('a');
-                                                link.href = generatedImageActivityUrl;
-                                                link.download = `ai-generated-${Date.now()}.png`;
-                                                link.click();
-                                            }}
-                                            className="text-[#1a73e8] hover:bg-[#e8f0fe] px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                                        >
-                                            Download Image
-                                        </button>
-                                    </div>
-                                    <div className="aspect-video w-full bg-gray-100 rounded-2xl overflow-hidden border border-[#e8eaed] shadow-md group relative">
-                                        <img
-                                            src={generatedImageActivityUrl}
-                                            alt="AI Generated"
-                                            className="w-full h-full object-contain"
-                                        />
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors pointer-events-none" />
-                                    </div>
-                                </div>
+                        {/* Right Side - Image Display */}
+                        <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+                            {!sidebarOpen && (
+                                <button
+                                    onClick={() => setSidebarOpen(true)}
+                                    className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 transition-colors z-10 shadow-lg"
+                                    title="Open sidebar"
+                                >
+                                    <ChevronRight className="w-5 h-5 transform rotate-180" />
+                                </button>
                             )}
 
-                            {/* Empty State / Placeholder */}
-                            {!generatedImageActivityUrl && !isGeneratingImageActivity && (
-                                <div className="border-2 border-dashed border-[#e8eaed] rounded-2xl p-12 flex flex-col items-center justify-center text-center text-[#9aa0a6]">
-                                    <div className="w-16 h-16 bg-[#f1f3f4] rounded-full flex items-center justify-center mb-4">
-                                        <ImageIcon className="w-8 h-8 text-[#bdc1c6]" />
+                            {/* Image Display Area */}
+                            <div className="flex-1 w-full h-full min-h-0 overflow-auto flex items-center justify-center p-8">
+                                {generatedImageActivityUrl ? (
+                                    <div className="w-full max-w-4xl space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-lg font-medium text-slate-900">Generated Image</h3>
+                                            <button
+                                                onClick={() => {
+                                                    const link = document.createElement('a');
+                                                    link.href = generatedImageActivityUrl;
+                                                    link.download = `ai-generated-${Date.now()}.png`;
+                                                    link.click();
+                                                }}
+                                                className="flex items-center gap-2 px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm"
+                                            >
+                                                <Download className="w-4 h-4" />
+                                                Download Image
+                                            </button>
+                                        </div>
+                                        <div className="aspect-video w-full bg-white border border-slate-200 overflow-hidden shadow-lg group relative">
+                                            <img
+                                                src={generatedImageActivityUrl}
+                                                alt="AI Generated"
+                                                className="w-full h-full object-contain"
+                                            />
+                                        </div>
                                     </div>
-                                    <p>Your generated image will appear here</p>
-                                </div>
-                            )}
-
-                            {/* Loading State Placeholder */}
-                            {isGeneratingImageActivity && !generatedImageActivityUrl && (
-                                <div className="aspect-video w-full bg-[#f8f9fa] rounded-2xl border border-[#e8eaed] flex flex-col items-center justify-center animate-pulse">
-                                    <Loader2 className="w-12 h-12 text-[#ff8b66] animate-spin mb-4" />
-                                    <p className="text-[#5f6368] font-medium">AI is crafting your image...</p>
-                                    <p className="text-xs text-[#9aa0a6] mt-2">This usually takes 5-10 seconds</p>
-                                </div>
-                            )}
+                                ) : isGeneratingImageActivity ? (
+                                    <div className="flex flex-col items-center gap-6 text-center max-w-md">
+                                        <div className="relative w-16 h-16">
+                                            <div className="absolute inset-0 bg-slate-300 opacity-40 blur-xl"></div>
+                                            <Loader2 className="w-16 h-16 animate-spin text-[#2c4066] relative" />
+                                        </div>
+                                        <div>
+                                            <p className="text-lg font-bold text-slate-700 mb-2">Generating Image</p>
+                                            <p className="text-sm text-slate-500 mb-4">AI is crafting your image...</p>
+                                            <p className="text-xs text-slate-400">This usually takes 5-10 seconds</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center gap-6 text-center max-w-xl">
+                                        <div className="w-24 h-24 bg-[#e4e9f2] flex items-center justify-center">
+                                            <ImageIcon className="w-12 h-12 text-[#2c4066]" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-bold text-slate-700 mb-2">Ready to Generate</h3>
+                                            <p className="text-slate-500 mb-6">
+                                                Describe any concept, scene, or diagram, and AI will generate a high-quality educational illustration for you.
+                                            </p>
+                                            <div className="flex items-center justify-center gap-4 text-sm text-slate-500">
+                                                <div className="flex items-center gap-2">
+                                                    <ImageIcon className="w-4 h-4" />
+                                                    <span>Describe your image</span>
+                                                </div>
+                                                <div className="w-1 h-1 bg-slate-300"></div>
+                                                <div className="flex items-center gap-2">
+                                                    <Sparkles className="w-4 h-4" />
+                                                    <span>Generate</span>
+                                                </div>
+                                                <div className="w-1 h-1 bg-slate-300"></div>
+                                                <div className="flex items-center gap-2">
+                                                    <Download className="w-4 h-4" />
+                                                    <span>Download</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );
@@ -7816,7 +7865,7 @@ sys.stderr = StringIO()
                 {/* Main Content Card */}
                 <div className={`flex-1 ${activeMode === 'source'
                     ? 'bg-[#131314] overflow-hidden p-0'
-                    : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics'
+                    : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity'
                         ? 'bg-[#0b0d12] overflow-hidden p-0'
                         : activeMode === 'viewer3d'
                             ? 'bg-[#0b0d12] overflow-hidden p-4'
@@ -7824,7 +7873,7 @@ sys.stderr = StringIO()
                     }`}>
                     <div className={`${activeMode === 'source'
                         ? 'h-full'
-                        : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics'
+                        : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity'
                             ? 'h-full rounded-none shadow-none bg-[#0f1117]'
                             : activeMode === 'viewer3d'
                                 ? 'h-full rounded-[24px] shadow-sm bg-[#0f1117]'

@@ -3,6 +3,10 @@ import { User, Lock, Eye, EyeOff, Atom, GraduationCap, Calendar, BookOpen, Build
 import { registerUser, signInUser, signInWithGoogle, signInAsDemo, UserProfile } from '../firebase/auth';
 import { auth } from '../firebase/config';
 import ProfileCompletion from './ProfileCompletion';
+import { Card, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { cn } from '@/lib/utils';
 
 interface LoginProps {
   onLogin: (userProfile: UserProfile) => void;
@@ -253,73 +257,70 @@ export default function Login({ onLogin }: LoginProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900 flex flex-col relative overflow-hidden">
-      {/* Animated Background Gradient */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(120,119,198,0.1),transparent_50%)] animate-pulse" />
-      
-      {/* Header Banner */}
-      <div className="relative w-full bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 rounded-b-3xl p-8 text-center shadow-2xl">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-600/50 via-blue-600/50 to-cyan-600/50 animate-shimmer opacity-50" />
-        <h1 className="relative text-5xl font-bold text-white mb-2 drop-shadow-lg">Studium</h1>
-        <p className="relative text-white/90 text-lg font-medium">Empowering Research Through AI</p>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center p-8 relative z-10">
-        <div className="max-w-2xl w-full">
-          {/* Title */}
-          <div className="text-center mb-8">
-            <h2 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-purple-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
-              {isLogin ? 'Sign In' : 'Create Account'}
-            </h2>
-            <p className="text-gray-400 text-sm">Welcome back! Please enter your details</p>
-          </div>
-
-          {/* Form */}
-          <div className="relative bg-gradient-to-br from-gray-900/95 via-gray-900/90 to-gray-800/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-gray-700/50 overflow-hidden">
-            <form className="space-y-6" onSubmit={handleSubmit}>
+    <div className="flex min-h-svh flex-col items-center justify-center p-6 md:p-10" style={{ backgroundColor: '#262626' }}>
+      <div className="w-full max-w-sm md:max-w-4xl">
+        <Card className="overflow-hidden p-0 border-0">
+          <CardContent className="grid p-0 md:grid-cols-2">
+            <form className="p-6 md:p-8 space-y-6" onSubmit={handleSubmit} style={{ backgroundColor: '#171717' }}>
+              {/* Title */}
+              <div className="flex flex-col items-center gap-2 text-center">
+                <h1 className="text-2xl font-bold">{isLogin ? 'Welcome back' : 'Create Account'}</h1>
+                <p className="text-muted-foreground text-balance">
+                  {isLogin ? 'Login to your Studium account' : 'Sign up to get started with Studium'}
+                </p>
+              </div>
               {/* Username Field */}
-              <div>
+              <div className="space-y-2">
+                <label htmlFor="username" className="text-sm font-medium">
+                  Username
+                </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-gray-400" />
+                    <User className="h-4 w-4 text-muted-foreground" />
                   </div>
-                  <input
+                  <Input
                     id="username"
                     name="username"
                     type="text"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="block w-full pl-10 pr-12 py-4 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
+                    className="pl-10"
                     placeholder={isLogin ? "Enter your username" : "Choose a username"}
+                    style={{ backgroundColor: '#212121' }}
                   />
-                  {!isLogin && (
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                    >
-                      <RefreshCw className="h-5 w-5 text-gray-400 hover:text-gray-300" />
-                    </button>
-                  )}
                 </div>
               </div>
 
               {/* Password Field */}
-              <div>
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <label htmlFor="password" className="text-sm font-medium">
+                    Password
+                  </label>
+                  {isLogin && (
+                    <a
+                      href="#"
+                      className="ml-auto text-sm underline-offset-2 hover:underline text-muted-foreground"
+                    >
+                      Forgot your password?
+                    </a>
+                  )}
+                </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-gray-400" />
+                    <Lock className="h-4 w-4 text-muted-foreground" />
                   </div>
-                  <input
+                  <Input
                     id="password"
                     name="password"
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="block w-full pl-10 pr-12 py-4 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
+                    className="pl-10 pr-10"
                     placeholder="Enter your password"
+                    style={{ backgroundColor: '#212121' }}
                   />
                   <button
                     type="button"
@@ -327,9 +328,9 @@ export default function Login({ onLogin }: LoginProps) {
                     className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   >
                     {showPassword ? (
-                      <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-300" />
+                      <EyeOff className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                     ) : (
-                      <Eye className="h-5 w-5 text-gray-400 hover:text-gray-300" />
+                      <Eye className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                     )}
                   </button>
                 </div>
@@ -337,20 +338,24 @@ export default function Login({ onLogin }: LoginProps) {
 
               {/* Confirm Password Field - Only for Registration */}
               {!isLogin && (
-                <div>
+                <div className="space-y-2">
+                  <label htmlFor="confirmPassword" className="text-sm font-medium">
+                    Confirm Password
+                  </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Lock className="h-5 w-5 text-gray-400" />
+                      <Lock className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <input
+                    <Input
                       id="confirmPassword"
                       name="confirmPassword"
                       type={showConfirmPassword ? 'text' : 'password'}
                       required={!isLogin}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="block w-full pl-10 pr-12 py-4 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
+                      className="pl-10 pr-10"
                       placeholder="Confirm your password"
+                      style={{ backgroundColor: '#212121' }}
                     />
                     <button
                       type="button"
@@ -358,9 +363,9 @@ export default function Login({ onLogin }: LoginProps) {
                       className="absolute inset-y-0 right-0 pr-3 flex items-center"
                     >
                       {showConfirmPassword ? (
-                        <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-300" />
+                        <EyeOff className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                       ) : (
-                        <Eye className="h-5 w-5 text-gray-400 hover:text-gray-300" />
+                        <Eye className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                       )}
                     </button>
                   </div>
@@ -371,13 +376,16 @@ export default function Login({ onLogin }: LoginProps) {
               {!isLogin && (
                 <>
                   {/* Gender Dropdown */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-200 mb-2">Gender</label>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Gender</label>
                     <div className="relative">
                       <select
                         value={gender}
                         onChange={(e) => setGender(e.target.value)}
-                        className="block w-full py-4 pl-3 pr-10 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200 appearance-none"
+                        className={cn(
+                          "flex h-10 w-full rounded-lg border border-input px-3 pr-10 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                        )}
+                        style={{ backgroundColor: '#212121' }}
                       >
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
@@ -385,7 +393,7 @@ export default function Login({ onLogin }: LoginProps) {
                         <option value="Prefer not to say">Prefer not to say</option>
                       </select>
                       <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <ChevronDown className="h-5 w-5 text-gray-400" />
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
                       </div>
                     </div>
                   </div>
@@ -393,16 +401,19 @@ export default function Login({ onLogin }: LoginProps) {
                   {/* Course and Semester Row */}
                   <div className="grid grid-cols-2 gap-4">
                     {/* Course Dropdown */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-200 mb-2">Course</label>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Course</label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <GraduationCap className="h-5 w-5 text-gray-400" />
+                          <GraduationCap className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <select
                           value={course}
                           onChange={(e) => setCourse(e.target.value)}
-                          className="block w-full py-4 pl-10 pr-10 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200 appearance-none"
+                          className={cn(
+                            "flex h-10 w-full rounded-lg border border-input pl-10 pr-10 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                          )}
+                          style={{ backgroundColor: '#212121' }}
                         >
                           <option value="B.Sc">B.Sc</option>
                           <option value="M.Sc">M.Sc</option>
@@ -411,22 +422,25 @@ export default function Login({ onLogin }: LoginProps) {
                           <option value="PhD">PhD</option>
                         </select>
                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                          <ChevronDown className="h-5 w-5 text-gray-400" />
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
                         </div>
                       </div>
                     </div>
 
                     {/* Semester Dropdown */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-200 mb-2">Semester</label>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Semester</label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Calendar className="h-5 w-5 text-gray-400" />
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <select
                           value={semester}
                           onChange={(e) => setSemester(e.target.value)}
-                          className="block w-full py-4 pl-10 pr-10 border border-gray-600/50 rounded-xl bg-gray-800/30 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200 appearance-none"
+                          className={cn(
+                            "flex h-10 w-full rounded-lg border border-input pl-10 pr-10 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                          )}
+                          style={{ backgroundColor: '#212121' }}
                         >
                           <option value="Semester 1">Semester 1</option>
                           <option value="Semester 2">Semester 2</option>
@@ -438,48 +452,50 @@ export default function Login({ onLogin }: LoginProps) {
                           <option value="Semester 8">Semester 8</option>
                         </select>
                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                          <ChevronDown className="h-5 w-5 text-gray-400" />
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
                         </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Major Subject Field */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-200 mb-2">Major Subject</label>
+                  <div className="space-y-2">
+                    <label htmlFor="majorSubject" className="text-sm font-medium">Major Subject</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <BookOpen className="h-5 w-5 text-gray-400" />
+                        <BookOpen className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <input
+                      <Input
                         id="majorSubject"
                         name="majorSubject"
                         type="text"
                         required={!isLogin}
                         value={majorSubject}
                         onChange={(e) => setMajorSubject(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="pl-10"
                         placeholder="Enter your major subject"
+                        style={{ backgroundColor: '#212121' }}
                       />
                     </div>
                   </div>
 
                   {/* University Field */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-200 mb-2">University</label>
+                  <div className="space-y-2">
+                    <label htmlFor="university" className="text-sm font-medium">University</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Building className="h-5 w-5 text-gray-400" />
+                        <Building className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <input
+                      <Input
                         id="university"
                         name="university"
                         type="text"
                         required={!isLogin}
                         value={university}
                         onChange={(e) => setUniversity(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="pl-10"
                         placeholder="Enter your university name"
+                        style={{ backgroundColor: '#212121' }}
                       />
                     </div>
                   </div>
@@ -491,11 +507,11 @@ export default function Login({ onLogin }: LoginProps) {
                       id="terms"
                       checked={termsAccepted}
                       onChange={(e) => setTermsAccepted(e.target.checked)}
-                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-ring"
                     />
-                    <label htmlFor="terms" className="text-sm text-gray-300">
+                    <label htmlFor="terms" className="text-sm text-muted-foreground">
                       I agree to the processing of my personal data for research purposes and accept the{' '}
-                      <a href="#" className="text-blue-400 hover:text-blue-300 underline">
+                      <a href="#" className="text-primary hover:underline">
                         terms and conditions
                       </a>
                     </label>
@@ -505,62 +521,53 @@ export default function Login({ onLogin }: LoginProps) {
 
               {/* Error Message */}
               {error && (
-                <div className="relative bg-gradient-to-br from-red-500/20 to-red-600/10 border border-red-500/50 rounded-xl p-4 backdrop-blur-sm overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-red-500/10 to-transparent animate-shimmer opacity-50" />
-                  <p className="relative text-red-200 text-sm font-medium flex items-center gap-2">
-                    <span className="text-red-400">⚠</span>
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+                  <p className="text-sm text-destructive flex items-center gap-2">
+                    <span>⚠</span>
                     {error}
                   </p>
                 </div>
               )}
 
               {/* Submit Button */}
-              <button
+              <Button
                 type="submit"
                 disabled={isLoading}
-                className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-lg font-bold rounded-xl text-white overflow-hidden transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                style={{
-                  background: 'linear-gradient(135deg, #9333ea 0%, #6366f1 50%, #3b82f6 100%)',
-                  boxShadow: '0 4px 14px rgba(147, 51, 234, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-                }}
+                className="w-full"
+                size="lg"
+                style={{ backgroundColor: '#e6e6e6', color: '#000' }}
               >
-                {/* Shimmer effect */}
-                <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 {isLoading ? (
-                  <div className="relative z-10 flex items-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent mr-2"></div>
                     {isLogin ? 'Signing in...' : 'Creating account...'}
-                  </div>
+                  </>
                 ) : (
-                  <span className="relative z-10 drop-shadow-sm">{isLogin ? 'Sign In' : 'Register'}</span>
+                  isLogin ? 'Login' : 'Register'
                 )}
-              </button>
+              </Button>
 
               {/* Divider */}
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-600"></div>
+                  <div className="w-full border-t border-border"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-gray-900 text-gray-400">Or continue with</span>
+                  <span className="px-2 text-muted-foreground" style={{ backgroundColor: '#171717' }}>Or continue with</span>
                 </div>
               </div>
 
               {/* Google Login Button */}
-              <button
+              <Button
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={isLoading}
-                className="group relative w-full flex items-center justify-center px-4 py-3.5 border rounded-xl text-white font-semibold overflow-hidden transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-                  borderColor: 'rgba(255, 255, 255, 0.2)',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-                }}
+                variant="outline"
+                className="w-full"
+                size="lg"
+                style={{ backgroundColor: '#212121' }}
               >
-                {/* Shimmer effect */}
-                <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <svg className="relative z-10 w-5 h-5 mr-3" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -578,81 +585,64 @@ export default function Login({ onLogin }: LoginProps) {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                   />
                 </svg>
-                <span className="relative z-10">Continue with Google</span>
-              </button>
-            </form>
+                Continue with Google
+              </Button>
 
-            {/* Firebase Status */}
-            <div className="relative mt-6 p-4 bg-gradient-to-br from-gray-800/60 to-gray-800/40 backdrop-blur-sm border border-gray-700/50 rounded-xl overflow-hidden">
-              <h3 className="relative text-sm font-semibold text-gray-200 mb-2">System Status:</h3>
-              <div className="relative text-xs text-gray-300 space-y-1">
-                <p className="flex items-center gap-2">
-                  Firebase:
-                  <span className={`px-2.5 py-1 rounded-lg text-xs font-medium ${firebaseStatus === 'connected' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                      firebaseStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                        'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                    }`}>
-                    {firebaseStatus === 'connected' ? '✓ Connected' :
-                      firebaseStatus === 'error' ? '⚠ Offline Mode' :
-                        '⟳ Checking...'}
-                  </span>
-                </p>
-                {firebaseStatus === 'error' && (
-                  <p className="text-yellow-400 mt-2 flex items-center gap-1">
-                    <span>⚠</span>
-                    <span>Firebase is not available. Registration will create local accounts for testing.</span>
-                  </p>
-                )}
-                {!isLogin && firebaseStatus === 'connected' && (
-                  <p className="text-blue-400 mt-2 flex items-center gap-1">
-                    <span>✅</span>
-                    <span>Firebase connected! You can register with any username and password.</span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Demo Credentials - Only show on login */}
-            {isLogin && (
-              <div className="relative mt-4 p-4 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 backdrop-blur-sm border border-blue-500/50 rounded-xl overflow-hidden">
-                <h3 className="relative text-sm font-semibold text-blue-200 mb-2">Demo Credentials:</h3>
-                <div className="relative text-xs text-blue-300 space-y-1.5">
-                  <p className="flex items-center gap-2"><span className="font-semibold">Admin:</span> <code className="px-2 py-0.5 bg-blue-500/20 rounded text-blue-200">admin</code> / <code className="px-2 py-0.5 bg-blue-500/20 rounded text-blue-200">password</code></p>
-                  <p className="flex items-center gap-2"><span className="font-semibold">Demo:</span> <code className="px-2 py-0.5 bg-blue-500/20 rounded text-blue-200">demo</code> / <code className="px-2 py-0.5 bg-blue-500/20 rounded text-blue-200">demo</code></p>
-                </div>
-              </div>
-            )}
-
-            {/* Toggle Login/Register */}
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-300">
+              {/* Toggle Login/Register */}
+              <p className="text-center text-sm text-muted-foreground">
                 {isLogin ? "Don't have an account? " : "Already have an account? "}
                 <button
+                  type="button"
                   onClick={toggleMode}
-                  className="font-semibold text-blue-400 hover:text-blue-300 transition-colors underline-offset-2 hover:underline"
+                  className="text-primary hover:underline font-medium"
                 >
                   {isLogin ? 'Sign up' : 'Sign in'}
                 </button>
               </p>
-            </div>
+            </form>
 
-            {/* Admin Login Link */}
-            {isLogin && (
-              <div className="mt-4 text-center">
-                <a href="#" className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-semibold underline-offset-2 hover:underline">
-                  Admin Login
-                </a>
+            {/* Right side - Image or Info */}
+            <div className="relative hidden md:block overflow-hidden" style={{ backgroundColor: '#2e2e2e' }}>
+              {/* Background Image */}
+              <div className="absolute inset-0">
+                <img
+                  src="https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=1200&q=80&auto=format&fit=crop"
+                  alt="Chemistry Research"
+                  className="w-full h-full object-cover"
+                  style={{ filter: 'blur(0.5px)' }}
+                  onError={(e) => {
+                    // Fallback to a different image if the first one fails
+                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554475901-4538ddfbccc2?w=1200&q=80&auto=format&fit=crop';
+                  }}
+                />
               </div>
-            )}
-          </div>
-        </div>
+              {/* Subtle Overlay for better contrast */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[#2e2e2e]/40 via-transparent to-[#2e2e2e]/40" />
+              {/* Content */}
+              <div className="relative z-10 flex items-center justify-center h-full p-8">
+                <div className="text-center">
+                  {/* Text with strong background for readability */}
+                  <div className="inline-block px-10 py-6 rounded-xl bg-black/70 border-2 border-white/20 shadow-2xl">
+                    <h2 className="text-6xl md:text-8xl font-bold text-white tracking-tight" style={{ 
+                      textShadow: '0 4px 15px rgba(0, 0, 0, 0.9), 0 8px 30px rgba(0, 0, 0, 0.7)',
+                      letterSpacing: '-0.03em',
+                      fontWeight: 800
+                    }}>
+                      Studium
+                    </h2>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Footer */}
+        <p className="mt-6 px-6 text-center text-xs text-muted-foreground">
+          By clicking continue, you agree to our <a href="#" className="text-primary hover:underline">Terms of Service</a> and <a href="#" className="text-primary hover:underline">Privacy Policy</a>.
+        </p>
       </div>
 
-      {/* Footer */}
-      <div className="flex justify-between items-center px-8 py-4 text-xs text-gray-400">
-        <p>© 2025 Studium. All rights reserved.</p>
-        <a href="#" className="hover:text-white transition-colors">Terms & Conditions</a>
-      </div>
     </div>
   );
 }
