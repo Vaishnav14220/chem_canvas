@@ -1,9 +1,9 @@
 'use client';
 
 import { cn } from "@/lib/utils";
-import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion, AnimatePresence, useMotionValue } from "framer-motion";
 import { useState, useRef, useEffect } from "react";
-import { Mic, PhoneOff, Activity } from "lucide-react";
+import { Mic, PhoneOff, Activity, Monitor, MonitorOff, Video, VideoOff, Image as ImageIcon } from "lucide-react";
 
 export interface Character {
   id?: string | number;
@@ -43,6 +43,14 @@ export interface MessageDockProps {
   isListening?: boolean;
   isSpeaking?: boolean;
   onDisconnect?: () => void;
+  // Screen share props
+  isScreenSharing?: boolean;
+  onStartScreenShare?: () => void;
+  onStopScreenShare?: () => void;
+  // Webcam share props
+  isWebcamSharing?: boolean;
+  onStartWebcamShare?: () => void;
+  onStopWebcamShare?: () => void;
 }
 
 const defaultCharacters: Character[] = [
@@ -115,6 +123,14 @@ export function MessageDock({
   isListening = false,
   isSpeaking = false,
   onDisconnect,
+  // Screen share
+  isScreenSharing = false,
+  onStartScreenShare,
+  onStopScreenShare,
+  // Webcam share
+  isWebcamSharing = false,
+  onStartWebcamShare,
+  onStopWebcamShare,
 }: MessageDockProps) {
   const shouldReduceMotion = useReducedMotion();
   const [expandedCharacter, setExpandedCharacter] = useState<number | null>(
@@ -233,6 +249,7 @@ export function MessageDock({
   const selectedCharacter =
     expandedCharacter !== null ? characters[expandedCharacter] : null;
   const isExpanded = expandedCharacter !== null;
+  const mouseX = useMotionValue(Infinity);
 
   const defaultPositionClasses = position === "top" 
     ? "fixed top-6 left-1/2 -translate-x-1/2 z-[9999]"
@@ -249,14 +266,16 @@ export function MessageDock({
       initial={enableAnimations ? "hidden" : "visible"}
       animate="visible"
       variants={enableAnimations ? containerVariants : {}}
+      onMouseMove={(e) => mouseX.set(e.pageX)}
+      onMouseLeave={() => mouseX.set(Infinity)}
     >
       <motion.div
-        className="rounded-full px-4 py-2 shadow-2xl border border-border bg-background/95 backdrop-blur-md"
+        className="mx-auto flex h-[68px] w-max items-center justify-center gap-2 rounded-full px-4 py-2 border backdrop-blur-xl shadow-2xl bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95 border-cyan-500/30 shadow-cyan-500/10"
         animate={{
           width: isExpanded ? expandedWidth : collapsedWidth,
           background: isExpanded && selectedCharacter
             ? `linear-gradient(to right, ${getGradientColors(selectedCharacter)})`
-            : "hsl(var(--background))",
+            : undefined,
         }}
         transition={enableAnimations ? { 
           type: "spring", 
@@ -287,15 +306,16 @@ export function MessageDock({
           >
             <motion.button
               className={cn(
-                "w-12 h-12 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300",
-                isLiveActive && "bg-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse"
+                "w-12 h-12 flex items-center justify-center cursor-pointer rounded-full transition-all duration-200",
+                isLiveActive 
+                  ? "bg-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse ring-2 ring-red-500/60"
+                  : "bg-slate-800/80 hover:bg-slate-700/40 hover:ring-2 hover:ring-cyan-500/30"
               )}
               onClick={onSparkleClick}
               whileHover={
                 !isExpanded
                   ? {
-                      scale: 1.02,
-                      y: -2,
+                      scale: 1.05,
                       transition: {
                         type: "spring",
                         stiffness: 400,
@@ -310,7 +330,32 @@ export function MessageDock({
               <span className="text-2xl">✨</span>
             </motion.button>
 
-            {isLiveActive && showShareCanvas && (
+            {/* Screen Share Button */}
+            {onStartScreenShare && onStopScreenShare && (
+              <motion.button
+                className={cn(
+                  "w-10 h-10 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border",
+                  isScreenSharing
+                    ? "bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/20"
+                    : "bg-slate-800/80 hover:bg-slate-700/80 text-slate-400 border-slate-700/50"
+                )}
+                onClick={isScreenSharing ? onStopScreenShare : onStartScreenShare}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                title={isScreenSharing ? 'Stop Screen Share' : 'Start Screen Share'}
+              >
+                {isScreenSharing ? (
+                  <MonitorOff className="w-5 h-5" />
+                ) : (
+                  <Monitor className="w-5 h-5" />
+                )}
+              </motion.button>
+            )}
+
+            {/* Share Canvas Button */}
+            {isLiveActive && showShareCanvas && onShareCanvas && (
               <motion.button
                 className="w-10 h-10 flex items-center justify-center cursor-pointer rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-all duration-300 border border-blue-500/20"
                 onClick={onShareCanvas}
@@ -320,20 +365,7 @@ export function MessageDock({
                 whileTap={{ scale: 0.95 }}
                 title="Share Canvas"
               >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                  <circle cx="9" cy="9" r="2" />
-                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                </svg>
+                <ImageIcon className="w-5 h-5" />
               </motion.button>
             )}
 
@@ -377,8 +409,9 @@ export function MessageDock({
           </motion.div>
           )}
 
+          {/* Separator */}
           <motion.div
-            className="w-px h-6 bg-gray-300 mr-2 -ml-2"
+            className="w-px h-6 bg-gradient-to-b from-transparent via-cyan-500/30 to-transparent mr-2 -ml-2"
             animate={{
               opacity: isExpanded ? 0 : 1,
               scaleY: isExpanded ? 0 : 1,
@@ -390,6 +423,49 @@ export function MessageDock({
               delay: isExpanded ? 0 : 0.3,
             }}
           />
+
+          {/* Webcam Share Button */}
+          {onStartWebcamShare && onStopWebcamShare && (
+            <motion.button
+              className={cn(
+                "w-10 h-10 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border",
+                isWebcamSharing
+                  ? "bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border-purple-500/20"
+                  : "bg-slate-800/80 hover:bg-slate-700/80 text-slate-400 border-slate-700/50"
+              )}
+              onClick={isWebcamSharing ? onStopWebcamShare : onStartWebcamShare}
+              animate={{
+                opacity: isExpanded ? 0 : 1,
+                scale: isExpanded ? 0.8 : 1,
+              }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              title={isWebcamSharing ? 'Stop Camera' : 'Start Camera'}
+            >
+              {isWebcamSharing ? (
+                <VideoOff className="w-5 h-5" />
+              ) : (
+                <Video className="w-5 h-5" />
+              )}
+            </motion.button>
+          )}
+
+          {/* Separator before characters */}
+          {onStartWebcamShare && (
+            <motion.div
+              className="w-px h-6 bg-gradient-to-b from-transparent via-cyan-500/30 to-transparent mx-2"
+              animate={{
+                opacity: isExpanded ? 0 : 1,
+                scaleY: isExpanded ? 0 : 1,
+              }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 30,
+                delay: isExpanded ? 0 : 0.3,
+              }}
+            />
+          )}
 
           {characters.slice(1, -1).map((character, index) => {
             const actualIndex = index + 1;
@@ -427,13 +503,16 @@ export function MessageDock({
               >
                 <motion.button
                   className={cn(
-                    "relative w-10 h-10 rounded-full flex items-center justify-center text-xl cursor-pointer",
+                    "relative w-10 h-10 rounded-full flex items-center justify-center text-xl cursor-pointer transition-all duration-200",
                     isSelected && isExpanded
-                      ? "bg-white/90"
-                      : character.backgroundColor
+                      ? "bg-white/90 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20"
+                      : cn(
+                          character.backgroundColor || "bg-slate-800/80",
+                          "hover:bg-slate-700/40 hover:ring-2 hover:ring-cyan-500/30"
+                        )
                   )}
                   onClick={() => handleCharacterClick(actualIndex)}
-                  whileHover={!isExpanded ? hoverAnimation : { scale: 1.05 }}
+                  whileHover={!isExpanded ? { scale: 1.05, ...hoverAnimation } : { scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   aria-label={`Message ${character.name}`}
                 >

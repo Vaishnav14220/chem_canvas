@@ -11,17 +11,19 @@ import {
   AnimatePresence,
 } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { 
-  PhoneOff, 
-  Loader2, 
-  Activity, 
+import {
+  PhoneOff,
+  Loader2,
+  Activity,
   Monitor,
   MonitorOff,
   Sparkles,
   Image as ImageIcon,
   Send,
   X,
-  PenTool
+  PenTool,
+  Video,
+  VideoOff
 } from "lucide-react";
 import { getQuickAnswer } from "@/services/quickAnswerService";
 
@@ -34,7 +36,7 @@ const DEFAULT_MAGNIFICATION = 64;
 const DEFAULT_DISTANCE = 140;
 
 const dockVariants = cva(
-  "mx-auto flex h-[68px] w-max items-center justify-center gap-2 rounded-2xl border p-2 backdrop-blur-xl bg-background/80 border-border/50 shadow-2xl"
+  "mx-auto flex h-[68px] w-max items-center justify-center gap-2 rounded-2xl border p-2 backdrop-blur-xl shadow-2xl bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95 border-cyan-500/30 shadow-cyan-500/10"
 );
 
 interface DockProps extends VariantProps<typeof dockVariants> {
@@ -143,13 +145,15 @@ const DockIcon = ({
       ref={ref}
       style={{ width: scaleSize, height: scaleSize }}
       className={cn(
-        "relative flex aspect-square cursor-pointer items-center justify-center rounded-full transition-colors",
-        active && "ring-2 ring-cyan-500/50",
+        "relative flex aspect-square cursor-pointer items-center justify-center rounded-full transition-all duration-200",
+        "hover:bg-slate-700/40 hover:ring-2 hover:ring-cyan-500/30",
+        active && "bg-gradient-to-br from-cyan-500/20 to-blue-500/10 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20",
         className
       )}
       onClick={onClick}
       title={title}
       whileTap={{ scale: 0.95 }}
+      whileHover={{ scale: 1.05 }}
       {...props}
     >
       {children}
@@ -172,7 +176,7 @@ DockIcon.displayName = "DockIcon";
 // =============================================================================
 
 const DockSeparator = () => (
-  <div className="mx-1 h-10 w-px bg-border/50" />
+  <div className="mx-1 h-10 w-px bg-gradient-to-b from-transparent via-cyan-500/30 to-transparent" />
 );
 
 // =============================================================================
@@ -192,13 +196,13 @@ interface UnifiedDockProps {
   characters?: Character[];
   onCharacterSelect?: (character: Character, index: number) => void;
   onMessageSend?: (message: string, character: Character) => void;
-  
+
   // Write answer directly to canvas
   onWriteToCanvas?: (text: string) => void;
-  
+
   // Callback when Gemini Live mic connects - use to open canvas
   onLiveConnect?: () => void;
-  
+
   // Gemini Live props
   isConnected?: boolean;
   isConnecting?: boolean;
@@ -211,10 +215,15 @@ interface UnifiedDockProps {
   onStopScreenShare?: () => void;
   onShareCanvas?: () => void;
   showShareCanvas?: boolean;
-  
+
+  // Webcam props
+  isWebcamSharing?: boolean;
+  onStartWebcamShare?: () => void;
+  onStopWebcamShare?: () => void;
+
   // Audio visualizer
   analyser?: AnalyserNode | null;
-  
+
   className?: string;
 }
 
@@ -244,6 +253,9 @@ export function UnifiedDock({
   onStopScreenShare,
   onShareCanvas,
   showShareCanvas = true,
+  isWebcamSharing = false,
+  onStartWebcamShare,
+  onStopWebcamShare,
   analyser,
   className,
 }: UnifiedDockProps) {
@@ -252,7 +264,7 @@ export function UnifiedDock({
   const [isExpanded, setIsExpanded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
-  
+
   // Loading state for getting answer
   const [isLoadingAnswer, setIsLoadingAnswer] = useState(false);
 
@@ -321,25 +333,25 @@ export function UnifiedDock({
   // Handle sending message and writing answer directly to canvas
   const handleSendMessage = useCallback(async () => {
     if (!messageInput.trim() || selectedCharacter === null) return;
-    
+
     const question = messageInput.trim();
     const character = characters[selectedCharacter];
-    
+
     // Notify parent if callback exists
     onMessageSend?.(question, character);
-    
+
     // Clear input and close popup
     setMessageInput("");
     setSelectedCharacter(null);
     setIsExpanded(false);
-    
+
     // Show loading state
     setIsLoadingAnswer(true);
-    
+
     try {
       // Get answer from Gemini 2.5 Flash
       const answer = await getQuickAnswer(question);
-      
+
       // Write answer directly to canvas (smart placement)
       if (onWriteToCanvas) {
         onWriteToCanvas(answer);
@@ -383,7 +395,7 @@ export function UnifiedDock({
                   <PenTool className="w-3 h-3" />
                   <span className="text-[10px]">Handwritten</span>
                 </div>
-                <button 
+                <button
                   onClick={() => { setSelectedCharacter(null); setIsExpanded(false); }}
                   className="ml-auto p-1 rounded-full hover:bg-muted transition-colors"
                 >
@@ -448,8 +460,8 @@ export function UnifiedDock({
           title={isScreenSharing ? 'Stop Screen Share' : 'Start Screen Share'}
           active={isScreenSharing}
           className={cn(
-            isScreenSharing 
-              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
+            isScreenSharing
+              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
               : "bg-slate-800/80 text-slate-400 hover:bg-slate-700/80"
           )}
         >
@@ -481,6 +493,22 @@ export function UnifiedDock({
             <PhoneOff className="w-5 h-5" />
           </DockIcon>
         )}
+
+        <DockSeparator />
+
+        {/* Webcam Share Button */}
+        <DockIcon
+          onClick={isWebcamSharing ? onStopWebcamShare : onStartWebcamShare}
+          title={isWebcamSharing ? 'Stop Camera' : 'Start Camera'}
+          active={isWebcamSharing}
+          className={cn(
+            isWebcamSharing
+              ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30"
+              : "bg-slate-800/80 text-slate-400 hover:bg-slate-700/80"
+          )}
+        >
+          {isWebcamSharing ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+        </DockIcon>
 
         <DockSeparator />
 

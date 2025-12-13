@@ -2701,7 +2701,7 @@ export default function Canvas({
       canvas.height = canvas.offsetHeight;
 
       // Fill canvas with background color
-      ctx.fillStyle = canvasBackground === 'dark' ? '#0f172a' : '#ffffff';
+      ctx.fillStyle = canvasBackground === 'dark' ? '#1F1F1F' : '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Draw grid if enabled
@@ -7151,7 +7151,7 @@ export default function Canvas({
 
       {/* Canvas Controls - Compact Header Layout */}
       <div className="absolute top-4 left-1/2 z-50 w-full max-w-4xl -translate-x-1/2 px-3">
-        <div className="flex flex-col gap-3 rounded-2xl border border-slate-700/60 bg-slate-900/90 px-4 py-3 shadow-xl backdrop-blur-lg lg:flex-row lg:items-center lg:gap-4">
+        <div className="flex flex-col gap-3 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg lg:flex-row lg:items-center lg:gap-4" style={{ backgroundColor: '#1C2025', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
           <div className="flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:overflow-x-auto">
             {quickActionButtons.map((button) => {
               const IconComponent = button.icon;
@@ -7358,7 +7358,8 @@ export default function Canvas({
         style={{
           transform: `scale(${zoom})`,
           transformOrigin: 'center center',
-          touchAction: 'none'
+          touchAction: 'none',
+          backgroundColor: '#1F1F1F'
         }}
         onMouseDown={startDrawing}
         onMouseMove={draw}
