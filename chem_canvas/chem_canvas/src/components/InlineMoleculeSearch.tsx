@@ -155,7 +155,7 @@ export default function InlineMoleculeSearch({ onSelectMolecule, className = '' 
 
   return (
     <div ref={componentRef} className={`relative ${className}`}>
-      <div className="flex items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-900/80 px-4 py-2 text-slate-100 shadow-inner transition-all duration-200 focus-within:border-blue-400 focus-within:shadow-lg">
+      <div className="flex items-center gap-2 rounded-xl border border-slate-700/60 px-4 py-2 text-slate-100 shadow-inner transition-all duration-200 focus-within:border-blue-400 focus-within:shadow-lg" style={{ backgroundColor: '#212121' }}>
         <input
           type="text"
           value={searchTerm}

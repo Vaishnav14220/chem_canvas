@@ -248,7 +248,6 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         { emoji: "✨", name: "Sparkle", online: false, backgroundColor: "bg-amber-200", gradientColors: "#fde68a, #fffbeb" },
         { emoji: "🧙‍♂️", name: "Wizard", online: true, backgroundColor: "bg-emerald-200 dark:bg-emerald-300", gradientColors: "#a7f3d0, #ecfdf5" },
         { emoji: "🦄", name: "Unicorn", online: true, backgroundColor: "bg-violet-200 dark:bg-violet-300", gradientColors: "#c4b5fd, #f5f3ff" },
-        { emoji: "🐵", name: "Monkey", online: true, backgroundColor: "bg-amber-200 dark:bg-amber-300", gradientColors: "#fde68a, #fffbeb" },
         { emoji: "🤖", name: "Robot", online: false, backgroundColor: "bg-rose-200 dark:bg-rose-300", gradientColors: "#fecaca, #fef2f2" },
     ];
 
@@ -5423,16 +5422,16 @@ sys.stderr = StringIO()
 
             case 'audio-lesson':
                 return (
-                    <div className="flex h-full bg-[#fbf7f2]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
+                    <div className="flex h-full bg-[#eef2f7]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
                         <div className="flex-1 flex flex-col items-center p-8 overflow-y-auto">
                             <div className="w-full max-w-3xl space-y-6">
                                 {/* Header Card */}
-                                <div className="bg-white rounded-[24px] p-8 shadow-sm text-center">
-                                    <div className="w-16 h-16 mx-auto mb-4 bg-[#e6f4ea] rounded-full flex items-center justify-center">
-                                        <Volume2 className="w-8 h-8 text-[#1e8e3e]" />
+                                <div className="bg-[#1F1F1F] p-8 text-center">
+                                    <div className="w-16 h-16 mx-auto mb-4 bg-[#1F1F1F] flex items-center justify-center">
+                                        <Volume2 className="w-8 h-8 text-slate-300" />
                                     </div>
-                                    <h2 className="text-[24px] font-medium text-[#1f1f1f] mb-2">Audio Lesson Podcast</h2>
-                                    <p className="text-[#5f6368] mb-6">
+                                    <h2 className="text-[24px] font-medium text-slate-200 mb-2">Audio Lesson Podcast</h2>
+                                    <p className="text-slate-400 mb-6">
                                         Generate an AI-hosted podcast about this topic. Listen to a conversation between an expert and a host.
                                     </p>
 
@@ -5440,7 +5439,7 @@ sys.stderr = StringIO()
                                         <button
                                             onClick={handleGeneratePodcast}
                                             disabled={isGeneratingScript}
-                                            className="px-6 py-3 bg-[#1e8e3e] hover:bg-[#188038] text-white rounded-full font-medium transition-colors flex items-center gap-2 mx-auto disabled:opacity-50"
+                                            className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto disabled:opacity-50"
                                         >
                                             <Sparkles className="w-5 h-5" />
                                             Generate Podcast
@@ -5449,7 +5448,7 @@ sys.stderr = StringIO()
 
                                     {/* Script Generation Loading State */}
                                     {isGeneratingScript && (
-                                        <div className="flex items-center justify-center gap-2 text-[#1e8e3e]">
+                                        <div className="flex items-center justify-center gap-2 text-slate-300">
                                             <Loader2 className="w-5 h-5 animate-spin" />
                                             <span>Generating podcast script...</span>
                                         </div>
@@ -5458,11 +5457,11 @@ sys.stderr = StringIO()
 
                                 {/* Audio Player */}
                                 {podcastAudio && (
-                                    <div className="bg-white rounded-[24px] p-6 shadow-sm border border-[#e8eaed] sticky top-0 z-10">
+                                    <div className="bg-[#1F1F1F] p-6 border border-slate-700 sticky top-0 z-10">
                                         <div className="flex items-center gap-4">
                                             <button
                                                 onClick={toggleAudioPlayback}
-                                                className="w-12 h-12 bg-[#1e8e3e] hover:bg-[#188038] rounded-full flex items-center justify-center text-white transition-colors flex-shrink-0"
+                                                className="w-12 h-12 bg-[#2c4066] hover:bg-[#34507c] flex items-center justify-center text-white transition-colors flex-shrink-0"
                                             >
                                                 {isPlayingAudio ? (
                                                     <div className="w-4 h-4 bg-white rounded-[2px]" />
@@ -5498,16 +5497,16 @@ sys.stderr = StringIO()
 
                                 {/* Loading State for Audio */}
                                 {isGeneratingAudio && (
-                                    <div className="bg-white rounded-[24px] p-8 shadow-sm text-center">
-                                        <Loader2 className="w-8 h-8 animate-spin text-[#1e8e3e] mx-auto mb-3" />
-                                        <p className="text-[#1f1f1f] font-medium">Generating audio...</p>
-                                        <p className="text-[13px] text-[#5f6368]">This may take a minute</p>
+                                    <div className="bg-[#1F1F1F] p-8 text-center">
+                                        <Loader2 className="w-8 h-8 animate-spin text-slate-300 mx-auto mb-3" />
+                                        <p className="text-slate-200 font-medium">Generating audio...</p>
+                                        <p className="text-[13px] text-slate-400">This may take a minute</p>
                                     </div>
                                 )}
 
                                 {/* Error State for Audio */}
                                 {audioGenerationError && (
-                                    <div className="bg-red-50 rounded-[24px] p-8 shadow-sm text-center border border-red-100">
+                                    <div className="bg-red-900/20 p-8 text-center border border-red-500/30">
                                         <div className="w-12 h-12 mx-auto mb-3 bg-red-100 rounded-full flex items-center justify-center">
                                             <Volume2 className="w-6 h-6 text-red-600" />
                                         </div>
@@ -5525,8 +5524,8 @@ sys.stderr = StringIO()
 
                                 {/* Script Display */}
                                 {podcastScript && (
-                                    <div className="bg-white rounded-[24px] p-8 shadow-sm space-y-6">
-                                        <h3 className="text-[18px] font-medium text-[#1f1f1f] border-b border-[#e8eaed] pb-4">Transcript</h3>
+                                    <div className="bg-[#1F1F1F] p-8 space-y-6">
+                                        <h3 className="text-[18px] font-medium text-slate-200 border-b border-slate-700 pb-4">Transcript</h3>
                                         <div className="space-y-4">
                                             {podcastScript.split('\n').map((line, idx) => {
                                                 const isHost = line.startsWith('Host:');
@@ -5574,12 +5573,12 @@ sys.stderr = StringIO()
                 ] : [];
 
                 return (
-                    <div className="flex h-full bg-[#f5f5f5]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
+                    <div className="flex h-full bg-[#eef2f7]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
                         {/* Left Sidebar - Video Playlist */}
                         {(relevantVideos.length > 0 || isLoadingVideos) && (
-                            <div className="w-[200px] bg-white border-r border-[#e0e0e0] overflow-y-auto flex-shrink-0">
+                            <div className="w-[200px] bg-[#1F1F1F] border-r border-slate-700 overflow-y-auto flex-shrink-0">
                                 <div className="p-3">
-                                    <h3 className="text-[13px] font-medium text-[#1f1f1f] mb-2 px-1">Playlist</h3>
+                                    <h3 className="text-[13px] font-medium text-slate-200 mb-2 px-1">Playlist</h3>
                                     <div className="space-y-1">
                                         {isLoadingVideos ? (
                                             [...Array(5)].map((_, i) => (
@@ -6161,10 +6160,10 @@ sys.stderr = StringIO()
 
             case 'mindmap':
                 return (
-                    <div className="flex flex-col h-full bg-white">
+                    <div className="flex flex-col h-full bg-[#eef2f7]">
                         {/* Mind Map Container */}
                         <div
-                            className="flex-1 relative bg-[#f8f9fa] overflow-hidden"
+                            className="flex-1 relative bg-[#eef2f7] overflow-hidden"
                             style={{ minHeight: '400px' }}
                         >
                             {reactFlowData ? (
@@ -6172,10 +6171,10 @@ sys.stderr = StringIO()
                             ) : (
                                 <div className="flex items-center justify-center h-full">
                                     <div className="text-center">
-                                        <div className="w-16 h-16 mx-auto mb-4 bg-[#e8f0fe] rounded-full flex items-center justify-center">
+                                        <div className="w-16 h-16 mx-auto mb-4 bg-[#1F1F1F] flex items-center justify-center">
                                             <MindmapIcon active />
                                         </div>
-                                        <p className="text-[15px] text-[#5f6368]">
+                                        <p className="text-[15px] text-slate-600">
                                             {processingStage === 'idle' ? 'Upload a document to generate a mind map' : 'Generating mind map...'}
                                         </p>
                                     </div>
@@ -6187,39 +6186,80 @@ sys.stderr = StringIO()
 
             case 'simulation':
                 return (
-                    <div className={`flex flex-col bg-white ${isSimulationFullscreen ? 'fixed inset-0 z-[100]' : 'h-full p-6'}`} style={{ height: isSimulationFullscreen ? '100vh' : '100%' }}>
-                        {/* Simulation Header */}
+                    <div className={`flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden ${isSimulationFullscreen ? 'fixed inset-0 z-[100]' : ''}`} style={{ height: isSimulationFullscreen ? '100vh' : '100%' }}>
+                        {/* Left Sidebar - Controls */}
                         {!isSimulationFullscreen && (
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-[#fff3e0] rounded-full flex items-center justify-center">
-                                        <SimulationIcon active />
+                            <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
+                                <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                    {/* Header */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-white/5 flex items-center justify-center border border-white/10">
+                                                <SimulationIcon active />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-semibold text-slate-200">Interactive 3D Simulation</h2>
+                                                <p className="text-xs text-slate-400">
+                                                    {simulationBlueprint ? simulationBlueprint.meta.topic : 'AI-generated educational simulation'}
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h2 className="text-[18px] font-medium text-[#1f1f1f]">Interactive 3D Simulation</h2>
-                                        <p className="text-[13px] text-[#5f6368]">
-                                            {simulationBlueprint ? simulationBlueprint.meta.topic : 'AI-generated educational simulation based on your document'}
-                                        </p>
-                                    </div>
+
+                                    {/* Controls */}
+                                    {simulationHTML && (
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Controls</label>
+                                            <div className="flex flex-col gap-2">
+                                                <button
+                                                    onClick={handleRegenerateSimulation}
+                                                    className="w-full px-4 py-2.5 text-sm text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
+                                                >
+                                                    <RefreshCw className="w-4 h-4" />
+                                                    Regenerate
+                                                </button>
+                                                <button
+                                                    onClick={toggleSimulationFullscreen}
+                                                    className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2"
+                                                >
+                                                    <Maximize2 className="w-4 h-4" />
+                                                    Fullscreen
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Generate Button */}
+                                    {!simulationHTML && !isGeneratingSimulation && immersiveContent && (
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Generate Simulation</label>
+                                            <button
+                                                onClick={handleGenerateSimulation}
+                                                className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Sparkles className="w-4 h-4" />
+                                                Generate Simulation
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Progress Steps */}
+                                    {isGeneratingSimulation && simulationProgressSteps.length > 0 && (
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Progress</label>
+                                            <div className="space-y-2">
+                                                {simulationProgressSteps.map((step, idx) => (
+                                                    <div key={idx} className="flex items-center gap-2 text-xs text-slate-300">
+                                                        {step.status === 'done' && <span className="text-green-400">✔</span>}
+                                                        {step.status === 'active' && <span className="text-orange-400 animate-pulse">●</span>}
+                                                        {step.status === 'pending' && <span className="text-slate-600">○</span>}
+                                                        <span className={step.status === 'pending' ? 'text-slate-500' : ''}>{step.step}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                                {simulationHTML && (
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={handleRegenerateSimulation}
-                                            className="px-3 py-1.5 text-[13px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors flex items-center gap-1.5"
-                                        >
-                                            <RefreshCw className="w-4 h-4" />
-                                            Regenerate
-                                        </button>
-                                        <button
-                                            onClick={toggleSimulationFullscreen}
-                                            className="px-3 py-1.5 text-[13px] text-white bg-[#ff6d01] hover:bg-[#e56200] rounded-lg transition-colors flex items-center gap-1.5"
-                                        >
-                                            <Maximize2 className="w-4 h-4" />
-                                            Fullscreen
-                                        </button>
-                                    </div>
-                                )}
                             </div>
                         )}
 
@@ -6229,7 +6269,7 @@ sys.stderr = StringIO()
                                 {simulationHTML && (
                                     <button
                                         onClick={handleRegenerateSimulation}
-                                        className="px-3 py-1.5 text-[13px] text-white bg-black/50 hover:bg-black/70 rounded-lg transition-colors flex items-center gap-1.5 backdrop-blur-sm"
+                                        className="px-3 py-1.5 text-sm text-white bg-black/50 hover:bg-black/70 transition-colors flex items-center gap-1.5 backdrop-blur-sm"
                                     >
                                         <RefreshCw className="w-4 h-4" />
                                         Regenerate
@@ -6237,7 +6277,7 @@ sys.stderr = StringIO()
                                 )}
                                 <button
                                     onClick={toggleSimulationFullscreen}
-                                    className="px-3 py-1.5 text-[13px] text-white bg-[#ff6d01] hover:bg-[#e56200] rounded-lg transition-colors flex items-center gap-1.5 backdrop-blur-sm"
+                                    className="px-3 py-1.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center gap-1.5 backdrop-blur-sm"
                                 >
                                     <Minimize2 className="w-4 h-4" />
                                     Exit Fullscreen
@@ -6245,174 +6285,120 @@ sys.stderr = StringIO()
                             </div>
                         )}
 
-                        {/* Simulation Content */}
-                        <div className={`flex-1 ${isSimulationFullscreen ? 'h-full' : 'rounded-xl border border-[#e8eaed] overflow-hidden'}`} style={{ height: isSimulationFullscreen ? 'calc(100vh - 60px)' : undefined }}>
-                            {/* Initial State - No Simulation */}
-                            {!simulationHTML && !isGeneratingSimulation && !simulationError && (
-                                <div className="flex items-center justify-center h-full bg-gradient-to-br from-[#fff3e0] to-[#ffe0b2]">
-                                    <div className="text-center max-w-md px-6">
-                                        <div className="w-20 h-20 mx-auto mb-6 bg-white rounded-2xl shadow-lg flex items-center justify-center">
-                                            <SimulationIcon active />
-                                        </div>
-                                        <h3 className="text-[22px] font-medium text-[#1f1f1f] mb-3">Generate Interactive Simulation</h3>
-                                        <p className="text-[15px] text-[#5f6368] mb-6">
-                                            Create an AI-powered 3D simulation to visualize and interact with concepts from your document.
-                                        </p>
-
-                                        {immersiveContent ? (
-                                            <button
-                                                onClick={handleGenerateSimulation}
-                                                className="px-6 py-3 bg-[#ff6d01] hover:bg-[#e56200] text-white rounded-full font-medium transition-colors flex items-center gap-2 mx-auto shadow-lg hover:shadow-xl"
-                                            >
-                                                <Sparkles className="w-5 h-5" />
-                                                Generate Simulation
-                                            </button>
-                                        ) : (
-                                            <p className="text-[14px] text-[#ff6d01] font-medium">
-                                                Please upload a document first to generate a simulation
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Loading State - Terminal Style with WarpBackground */}
-                            {isGeneratingSimulation && (
-                                <WarpBackground
-                                    className="flex-1 flex items-center justify-center h-full border-0 p-0 bg-slate-950"
-                                    perspective={150}
-                                    beamsPerSide={4}
-                                    beamSize={4}
-                                    beamDelayMax={2}
-                                    beamDuration={4}
-                                    gridColor="rgba(255, 109, 1, 0.15)"
-                                >
-                                    {/* Terminal Display - Centered */}
-                                    <div className="relative z-10 w-full max-w-3xl mx-auto px-8">
-                                        <Terminal className="w-full max-w-none shadow-2xl backdrop-blur-sm">
-                                            {/* Command line with typing */}
-                                            <div className="flex items-center gap-2 text-slate-400 mb-3">
-                                                <span className="text-orange-400">➜</span>
-                                                <span className="text-amber-400">~/simulation</span>
-                                                <span className="text-slate-500">$</span>
-                                                <TypingAnimation className="text-slate-300" duration={25} delay={0}>
-                                                    gemini generate --mode 3d-simulation
-                                                </TypingAnimation>
+                        {/* Main Content Area */}
+                        <div className="flex-1 overflow-hidden flex flex-col">
+                            {/* Simulation Content */}
+                            <div className={`flex-1 ${isSimulationFullscreen ? 'h-full' : 'overflow-hidden'}`} style={{ height: isSimulationFullscreen ? 'calc(100vh - 60px)' : undefined }}>
+                                {/* Initial State - No Simulation */}
+                                {!simulationHTML && !isGeneratingSimulation && !simulationError && (
+                                    <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
+                                        <div className="text-center max-w-md px-6">
+                                            <div className="w-20 h-20 mx-auto mb-6 bg-white/5 border border-white/10 flex items-center justify-center">
+                                                <SimulationIcon active />
                                             </div>
+                                            <h3 className="text-xl font-medium text-slate-200 mb-3">Generate Interactive Simulation</h3>
+                                            <p className="text-sm text-slate-400 mb-6">
+                                                Create an AI-powered 3D simulation to visualize and interact with concepts from your document.
+                                            </p>
 
-                                            {/* Dynamic Progress Steps */}
-                                            {simulationProgressSteps.map((step, idx) => (
-                                                <AnimatedSpan key={idx} delay={800 + (idx * 600)} className="text-slate-300">
-                                                    {step.status === 'done' && (
-                                                        <><span className="text-green-400">✔</span> {step.step}</>
-                                                    )}
-                                                    {step.status === 'active' && (
-                                                        <><span className="text-orange-400 animate-pulse">●</span> {step.step}...</>
-                                                    )}
-                                                    {step.status === 'pending' && (
-                                                        <><span className="text-slate-600">○</span> <span className="text-slate-500">{step.step}</span></>
-                                                    )}
-                                                </AnimatedSpan>
-                                            ))}
-
-                                            {/* Current Status */}
-                                            {simulationProgress && (
-                                                <AnimatedSpan delay={5000} className="text-amber-400 flex items-center gap-2 mt-2">
-                                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                                    <span>{simulationProgress}</span>
-                                                </AnimatedSpan>
+                                            {immersiveContent ? (
+                                                <button
+                                                    onClick={handleGenerateSimulation}
+                                                    className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto"
+                                                >
+                                                    <Sparkles className="w-5 h-5" />
+                                                    Generate Simulation
+                                                </button>
+                                            ) : (
+                                                <p className="text-sm text-slate-400 font-medium">
+                                                    Please upload a document first to generate a simulation
+                                                </p>
                                             )}
-
-                                            {/* Progress bar */}
-                                            <AnimatedSpan delay={5200} className="mt-4 pt-3 border-t border-slate-800">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-slate-500 text-xs">Progress:</span>
-                                                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[200px]">
-                                                        <div
-                                                            className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500"
-                                                            style={{ width: `${Math.round((simulationProgressSteps.filter(s => s.status === 'done').length / simulationProgressSteps.length) * 100)}%` }}
-                                                        />
-                                                    </div>
-                                                    <span className="text-amber-400 text-xs font-mono">
-                                                        {Math.round((simulationProgressSteps.filter(s => s.status === 'done').length / simulationProgressSteps.length) * 100)}%
-                                                    </span>
-                                                </div>
-                                            </AnimatedSpan>
-                                        </Terminal>
-                                    </div>
-                                </WarpBackground>
-                            )}
-
-                            {/* Error State */}
-                            {simulationError && !isGeneratingSimulation && (
-                                <div className="flex items-center justify-center h-full bg-red-50">
-                                    <div className="text-center max-w-md px-6">
-                                        <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
-                                            <X className="w-8 h-8 text-red-500" />
-                                        </div>
-                                        <h3 className="text-[18px] font-medium text-red-800 mb-2">Generation Failed</h3>
-                                        <p className="text-[14px] text-red-600 mb-4">{simulationError}</p>
-                                        <button
-                                            onClick={handleGenerateSimulation}
-                                            className="px-5 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-700 rounded-full font-medium transition-colors"
-                                        >
-                                            Try Again
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Simulation Iframe */}
-                            {simulationHTML && !isGeneratingSimulation && (
-                                <iframe
-                                    ref={simulationIframeRef}
-                                    srcDoc={simulationHTML}
-                                    className="w-full border-0"
-                                    title="Interactive Simulation"
-                                    sandbox="allow-scripts allow-same-origin allow-forms"
-                                    style={{ height: isSimulationFullscreen ? '100%' : '500px', minHeight: isSimulationFullscreen ? 'calc(100vh - 60px)' : '500px' }}
-                                />
-                            )}
-                        </div>
-
-                        {/* Blueprint Info Panel (shown when not fullscreen) */}
-                        {simulationBlueprint && simulationHTML && !isSimulationFullscreen && (
-                            <div className="mt-4 p-4 bg-[#f8f9fa] rounded-xl border border-[#e8eaed]">
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div>
-                                        <h4 className="text-[12px] font-medium text-[#5f6368] uppercase tracking-wide mb-1">Library</h4>
-                                        <p className="text-[14px] text-[#1f1f1f]">{simulationBlueprint.simulation_logic.preferred_library}</p>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-[12px] font-medium text-[#5f6368] uppercase tracking-wide mb-1">Level</h4>
-                                        <p className="text-[14px] text-[#1f1f1f]">{simulationBlueprint.meta.academic_level}</p>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-[12px] font-medium text-[#5f6368] uppercase tracking-wide mb-1">Complexity</h4>
-                                        <div className="flex items-center gap-1">
-                                            {[...Array(10)].map((_, i) => (
-                                                <div
-                                                    key={i}
-                                                    className={`w-2 h-2 rounded-full ${i < simulationBlueprint.meta.complexity_rating ? 'bg-[#ff6d01]' : 'bg-[#e8eaed]'}`}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                                {simulationBlueprint.educational_content.key_points.length > 0 && (
-                                    <div className="mt-4 pt-4 border-t border-[#e8eaed]">
-                                        <h4 className="text-[12px] font-medium text-[#5f6368] uppercase tracking-wide mb-2">Key Learning Points</h4>
-                                        <div className="flex flex-wrap gap-2">
-                                            {simulationBlueprint.educational_content.key_points.slice(0, 4).map((point, idx) => (
-                                                <span key={idx} className="px-3 py-1 bg-white rounded-full text-[13px] text-[#1f1f1f] border border-[#e8eaed]">
-                                                    {point.length > 50 ? point.substring(0, 50) + '...' : point}
-                                                </span>
-                                            ))}
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Loading State */}
+                                {isGeneratingSimulation && (
+                                    <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
+                                        <div className="text-center max-w-md px-6">
+                                            <Loader2 className="w-12 h-12 mx-auto mb-4 text-[#2c4066] animate-spin" />
+                                            <p className="text-sm text-slate-300 mb-4">Generating simulation...</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Error State */}
+                                {/* Error State */}
+                                {simulationError && !isGeneratingSimulation && (
+                                    <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
+                                        <div className="text-center max-w-md px-6">
+                                            <div className="w-16 h-16 mx-auto mb-4 bg-red-500/20 border border-red-500/50 flex items-center justify-center">
+                                                <X className="w-8 h-8 text-red-400" />
+                                            </div>
+                                            <h3 className="text-lg font-medium text-slate-200 mb-2">Error</h3>
+                                            <p className="text-sm text-slate-400 mb-4">{simulationError}</p>
+                                            <button
+                                                onClick={handleGenerateSimulation}
+                                                className="px-4 py-2 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors"
+                                            >
+                                                Try Again
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Simulation Iframe */}
+                                {simulationHTML && !isGeneratingSimulation && !simulationError && (
+                                    <iframe
+                                        ref={simulationIframeRef}
+                                        srcDoc={simulationHTML}
+                                        className="w-full h-full border-0"
+                                        title="Interactive Simulation"
+                                        sandbox="allow-scripts allow-same-origin allow-forms"
+                                    />
+                                )}
                             </div>
-                        )}
+
+                            {/* Blueprint Info Panel (shown when not fullscreen) */}
+                            {simulationBlueprint && simulationHTML && !isSimulationFullscreen && (
+                                <div className="p-4 bg-[#1F1F1F] border-t border-white/10">
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Library</h4>
+                                            <p className="text-sm text-slate-200">{simulationBlueprint.simulation_logic.preferred_library}</p>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Level</h4>
+                                            <p className="text-sm text-slate-200">{simulationBlueprint.meta.academic_level}</p>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Complexity</h4>
+                                            <div className="flex items-center gap-1">
+                                                {[...Array(10)].map((_, i) => (
+                                                    <div
+                                                        key={i}
+                                                        className={`w-2 h-2 ${i < simulationBlueprint.meta.complexity_rating ? 'bg-[#2c4066]' : 'bg-white/10'}`}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {simulationBlueprint.educational_content.key_points.length > 0 && (
+                                        <div className="mt-4 pt-4 border-t border-white/10">
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Key Learning Points</h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {simulationBlueprint.educational_content.key_points.slice(0, 4).map((point, idx) => (
+                                                    <span key={idx} className="px-3 py-1 bg-white/5 text-sm text-slate-300 border border-white/10">
+                                                        {point.length > 50 ? point.substring(0, 50) + '...' : point}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 );
 
@@ -7072,25 +7058,25 @@ sys.stderr = StringIO()
 
             case 'viewer3d':
                 return (
-                    <div className="flex flex-col h-full bg-white p-6">
+                    <div className="flex flex-col h-full bg-[#eef2f7] p-6">
                         {/* Header */}
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-[#ede9fe] rounded-full flex items-center justify-center">
+                                <div className="w-10 h-10 bg-[#1F1F1F] flex items-center justify-center">
                                     <Viewer3DIcon active />
                                 </div>
                                 <div>
-                                    <h2 className="text-[18px] font-medium text-[#1f1f1f]">3D Object Viewer</h2>
-                                    <p className="text-[13px] text-[#5f6368]">Hand gesture controls for 3D models</p>
+                                    <h2 className="text-[18px] font-medium text-slate-800">3D Object Viewer</h2>
+                                    <p className="text-[13px] text-slate-600">Hand gesture controls for 3D models</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 {/* Voice Command Toggle */}
                                 <button
                                     onClick={() => setViewer3dVoiceActive(!viewer3dVoiceActive)}
-                                    className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 ${viewer3dVoiceActive
-                                        ? 'bg-red-500 text-white'
-                                        : 'bg-[#f1f3f4] text-[#5f6368] hover:bg-[#e8eaed]'
+                                    className={`p-2 transition-colors flex items-center gap-1.5 ${viewer3dVoiceActive
+                                        ? 'bg-[#2c4066] text-white'
+                                        : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'
                                         }`}
                                     title={viewer3dVoiceActive ? 'Stop Voice Commands' : 'Start Voice Commands'}
                                 >
@@ -7098,18 +7084,15 @@ sys.stderr = StringIO()
                                     {viewer3dVoiceActive && <span className="text-[11px]">Listening...</span>}
                                 </button>
                                 {/* Interaction Mode Selector */}
-                                <div className="flex bg-[#f1f3f4] rounded-lg p-1">
+                                <div className="flex bg-[#1F1F1F] p-1">
                                     {(['drag', 'rotate', 'scale', 'animate'] as const).map(mode => (
                                         <button
                                             key={mode}
                                             onClick={() => setViewer3dInteractionMode(mode)}
-                                            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${viewer3dInteractionMode === mode
-                                                ? 'text-white'
-                                                : 'text-[#5f6368] hover:bg-[#e8eaed]'
+                                            className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${viewer3dInteractionMode === mode
+                                                ? 'bg-[#2c4066] text-white'
+                                                : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'
                                                 }`}
-                                            style={{
-                                                backgroundColor: viewer3dInteractionMode === mode ? getModeColor(mode) : undefined
-                                            }}
                                         >
                                             {mode.charAt(0).toUpperCase() + mode.slice(1)}
                                         </button>
@@ -7121,7 +7104,7 @@ sys.stderr = StringIO()
                                         setViewer3dPosition({ x: 0, y: 0, z: 0 });
                                         setViewer3dScale(1);
                                     }}
-                                    className="px-3 py-1.5 text-[13px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors flex items-center gap-1.5"
+                                    className="px-3 py-1.5 text-[13px] text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center gap-1.5"
                                 >
                                     <RefreshCw className="w-4 h-4" />
                                     Reset
@@ -7131,7 +7114,7 @@ sys.stderr = StringIO()
 
                         {/* Voice Command Transcript */}
                         {viewer3dVoiceActive && viewer3dVoiceTranscript && (
-                            <div className="mb-2 px-3 py-1.5 bg-[#ede9fe] rounded-lg text-[13px] text-[#7c3aed] flex items-center gap-2">
+                            <div className="mb-2 px-3 py-1.5 bg-[#1F1F1F] text-[13px] text-slate-200 flex items-center gap-2">
                                 <Mic className="w-4 h-4" />
                                 <span>"{viewer3dVoiceTranscript}"</span>
                             </div>
@@ -7141,7 +7124,7 @@ sys.stderr = StringIO()
                         <div className="flex-1 min-h-0 flex gap-4">
                             {/* Left: 3D Viewer */}
                             <div
-                                className={`flex-[2] min-h-0 relative rounded-xl border-2 overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800 transition-colors ${viewer3dIsDraggingFile ? 'border-[#7c3aed] border-dashed' : 'border-[#e8eaed]'
+                                className={`flex-1 min-h-0 relative border-2 overflow-hidden bg-[#eef2f7] transition-colors ${viewer3dIsDraggingFile ? 'border-[#7c3aed] border-dashed' : 'border-slate-300'
                                     }`}
                                 onDragOver={(e) => {
                                     e.preventDefault();
@@ -7177,7 +7160,7 @@ sys.stderr = StringIO()
                                     <div className="absolute inset-0 bg-[#7c3aed]/20 flex items-center justify-center z-50 pointer-events-none">
                                         <div className="text-center">
                                             <Upload className="w-16 h-16 text-[#7c3aed] mx-auto mb-4" />
-                                            <p className="text-white text-lg font-medium">Drop GLB/GLTF file here</p>
+                                            <p className="text-slate-800 text-lg font-medium">Drop GLB/GLTF file here</p>
                                         </div>
                                     </div>
                                 )}
@@ -7185,11 +7168,11 @@ sys.stderr = StringIO()
                                 {!viewer3dModelUrl ? (
                                     <div className="flex items-center justify-center h-full">
                                         <div className="text-center max-w-md px-6">
-                                            <div className="w-20 h-20 mx-auto mb-6 bg-white/10 rounded-2xl flex items-center justify-center">
-                                                <Box className="w-10 h-10 text-[#7c3aed]" />
+                                            <div className="w-20 h-20 mx-auto mb-6 bg-[#1F1F1F] flex items-center justify-center">
+                                                <Box className="w-10 h-10 text-slate-300" />
                                             </div>
-                                            <h3 className="text-[22px] font-medium text-white mb-3">Load a 3D Model</h3>
-                                            <p className="text-[15px] text-gray-400 mb-6">
+                                            <h3 className="text-[22px] font-medium text-slate-800 mb-3">Load a 3D Model</h3>
+                                            <p className="text-[15px] text-slate-600 mb-6">
                                                 Drag & drop a GLB/GLTF file, upload from your computer, or try a demo shape to interact with using hand gestures.
                                             </p>
                                             <div className="flex flex-col gap-3">
@@ -7209,7 +7192,7 @@ sys.stderr = StringIO()
                                                 />
                                                 <button
                                                     onClick={() => viewer3dFileInputRef.current?.click()}
-                                                    className="px-6 py-3 bg-[#7c3aed] hover:bg-[#6d28d9] text-white rounded-full font-medium transition-colors flex items-center gap-2 mx-auto shadow-lg hover:shadow-xl"
+                                                    className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto"
                                                 >
                                                     <Upload className="w-5 h-5" />
                                                     Upload 3D Model (GLB/GLTF)
@@ -7229,13 +7212,13 @@ sys.stderr = StringIO()
                                                                 setViewer3dModelUrl(`demo:${shape.shape}`);
                                                                 setViewer3dModelName(shape.name);
                                                             }}
-                                                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-[12px] rounded-full transition-colors"
+                                                            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[12px] transition-colors"
                                                         >
                                                             {shape.name}
                                                         </button>
                                                     ))}
                                                 </div>
-                                                <p className="text-[12px] text-gray-500 mt-2">
+                                                <p className="text-[12px] text-slate-500 mt-2">
                                                     Or drag and drop a .glb or .gltf file anywhere on this viewer
                                                 </p>
                                             </div>
@@ -7355,7 +7338,7 @@ sys.stderr = StringIO()
 
                                         {/* Mode indicator */}
                                         <div
-                                            className="absolute top-4 right-16 px-3 py-1.5 rounded-full text-white text-[12px] font-medium flex items-center gap-2"
+                                            className="absolute top-4 right-16 px-3 py-1.5 text-white text-[12px] font-medium flex items-center gap-2"
                                             style={{ backgroundColor: getModeColor(viewer3dInteractionMode) }}
                                         >
                                             {viewer3dInteractionMode === 'drag' && <Move className="w-4 h-4" />}
@@ -7367,13 +7350,13 @@ sys.stderr = StringIO()
 
                                         {/* Animation Index (for animate mode) */}
                                         {viewer3dInteractionMode === 'animate' && (
-                                            <div className="absolute top-14 right-16 px-3 py-1.5 bg-black/50 rounded-full text-white text-[12px]">
+                                            <div className="absolute top-14 right-16 px-3 py-1.5 bg-black/50 text-white text-[12px]">
                                                 Animation: {viewer3dAnimationIndex + 1}/6
                                             </div>
                                         )}
 
                                         {/* Model Name Badge */}
-                                        <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/50 rounded-full text-white text-[13px] flex items-center gap-2">
+                                        <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/50 text-white text-[13px] flex items-center gap-2">
                                             <Atom className="w-4 h-4 text-[#7c3aed]" />
                                             {viewer3dModelName}
                                         </div>
@@ -7388,13 +7371,13 @@ sys.stderr = StringIO()
                                                 setViewer3dScale(1);
                                                 setViewer3dAnimationIndex(0);
                                             }}
-                                            className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors"
+                                            className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 text-white transition-colors"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
 
                                         {/* Transform Info */}
-                                        <div className="absolute bottom-4 left-4 px-3 py-2 bg-black/50 rounded-lg text-white text-[11px] font-mono">
+                                        <div className="absolute bottom-4 left-4 px-3 py-2 bg-black/50 text-white text-[11px] font-mono">
                                             <div>Rotation: X:{Math.round(viewer3dRotation.x)}° Y:{Math.round(viewer3dRotation.y)}° Z:{Math.round(viewer3dRotation.z)}°</div>
                                             <div>Position: X:{Math.round(viewer3dPosition.x)} Y:{Math.round(viewer3dPosition.y)}</div>
                                             <div>Scale: {viewer3dScale.toFixed(2)}x</div>
@@ -7405,14 +7388,16 @@ sys.stderr = StringIO()
                             </div>
 
                             {/* Right: Hand Tracking Panel */}
-                            <div className="w-[350px] min-h-0 flex flex-col gap-4">
+                            <div className="w-96 flex-shrink-0 min-h-0 flex flex-col gap-4 bg-[#1F1F1F] p-4">
                                 {/* Webcam View */}
-                                <div className="relative rounded-xl border border-[#e8eaed] overflow-hidden bg-black" style={{ height: '250px' }}>
+                                <div className="relative border border-slate-700 overflow-hidden bg-black flex-1 min-h-0">
                                     {!viewer3dWebcamActive ? (
-                                        <div className="flex items-center justify-center h-full bg-gradient-to-br from-[#ede9fe] to-[#ddd6fe]">
+                                        <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
                                             <div className="text-center px-4">
-                                                <Hand className="w-10 h-10 mx-auto mb-3 text-[#7c3aed]" />
-                                                <p className="text-[14px] text-[#5f6368] mb-3">Enable hand tracking for gesture controls</p>
+                                                <div className="w-16 h-16 mx-auto mb-4 bg-white/5 border border-white/10 flex items-center justify-center">
+                                                    <Hand className="w-8 h-8 text-slate-300" />
+                                                </div>
+                                                <p className="text-[14px] text-slate-200 mb-4 font-medium">Enable hand tracking for gesture controls</p>
                                                 <button
                                                     onClick={async () => {
                                                         try {
@@ -7423,7 +7408,7 @@ sys.stderr = StringIO()
                                                             console.error('Webcam error:', err);
                                                         }
                                                     }}
-                                                    className="px-4 py-2 bg-[#7c3aed] hover:bg-[#6d28d9] text-white rounded-full text-[13px] font-medium transition-colors flex items-center gap-2 mx-auto"
+                                                    className="px-5 py-2.5 bg-[#2c4066] hover:bg-[#34507c] text-white text-sm font-semibold transition-all flex items-center gap-2 mx-auto shadow-md hover:shadow-lg"
                                                 >
                                                     <Play className="w-4 h-4" />
                                                     Start Hand Tracking
@@ -7497,7 +7482,7 @@ sys.stderr = StringIO()
                                                     setViewer3dWebcamStream(null);
                                                     setViewer3dHandLandmarks([]);
                                                 }}
-                                                className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 rounded-full text-white transition-colors"
+                                                className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white transition-colors shadow-lg"
                                             >
                                                 <X className="w-4 h-4" />
                                             </button>
@@ -7506,85 +7491,117 @@ sys.stderr = StringIO()
                                 </div>
 
                                 {/* Gesture Guide */}
-                                <div className="p-4 bg-[#f8f9fa] rounded-xl border border-[#e8eaed]">
-                                    <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-3">Gesture Controls</h3>
-                                    <div className="space-y-2">
+                                <div className="p-4 bg-black border border-slate-700">
+                                    <h3 className="text-sm font-semibold text-slate-200 mb-4 uppercase tracking-wide">Gesture Controls</h3>
+                                    <div className="space-y-2.5">
                                         <div
-                                            className={`p-2 rounded-lg border-2 transition-colors cursor-pointer ${viewer3dInteractionMode === 'drag' ? 'border-[#00FFFF] bg-[#00FFFF]/10' : 'border-[#e8eaed] bg-white hover:bg-gray-50'}`}
+                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'drag' 
+                                                ? 'border-cyan-400 bg-cyan-500/10 shadow-md shadow-cyan-500/20' 
+                                                : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
                                             onClick={() => setViewer3dInteractionMode('drag')}
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-5 h-5 bg-[#00FFFF] rounded-full flex items-center justify-center">
-                                                    <Move className="w-3 h-3 text-black" />
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'drag' ? 'bg-cyan-400 scale-110' : 'bg-slate-700'}`}>
+                                                    <Move className={`w-4 h-4 ${viewer3dInteractionMode === 'drag' ? 'text-black' : 'text-slate-300'}`} />
                                                 </div>
-                                                <span className="text-[12px] font-medium text-[#1f1f1f]">Drag</span>
-                                                <span className="text-[10px] text-[#9aa0a6] ml-auto">Pinch + move</span>
+                                                <div className="flex-1">
+                                                    <span className={`text-sm font-semibold block ${viewer3dInteractionMode === 'drag' ? 'text-cyan-300' : 'text-slate-200'}`}>Drag</span>
+                                                    <span className="text-[11px] text-slate-400">Pinch + move</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div
-                                            className={`p-2 rounded-lg border-2 transition-colors cursor-pointer ${viewer3dInteractionMode === 'rotate' ? 'border-[#FF00FF] bg-[#FF00FF]/10' : 'border-[#e8eaed] bg-white hover:bg-gray-50'}`}
+                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'rotate' 
+                                                ? 'border-purple-400 bg-purple-500/10 shadow-md shadow-purple-500/20' 
+                                                : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
                                             onClick={() => setViewer3dInteractionMode('rotate')}
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-5 h-5 bg-[#FF00FF] rounded-full flex items-center justify-center">
-                                                    <RefreshCw className="w-3 h-3 text-white" />
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'rotate' ? 'bg-purple-400 scale-110' : 'bg-slate-700'}`}>
+                                                    <RefreshCw className={`w-4 h-4 ${viewer3dInteractionMode === 'rotate' ? 'text-white' : 'text-slate-300'}`} />
                                                 </div>
-                                                <span className="text-[12px] font-medium text-[#1f1f1f]">Rotate</span>
-                                                <span className="text-[10px] text-[#9aa0a6] ml-auto">Pinch + slide L/R</span>
+                                                <div className="flex-1">
+                                                    <span className={`text-sm font-semibold block ${viewer3dInteractionMode === 'rotate' ? 'text-purple-300' : 'text-slate-200'}`}>Rotate</span>
+                                                    <span className="text-[11px] text-slate-400">Pinch + slide L/R</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div
-                                            className={`p-2 rounded-lg border-2 transition-colors cursor-pointer ${viewer3dInteractionMode === 'scale' ? 'border-[#FFFF00] bg-[#FFFF00]/10' : 'border-[#e8eaed] bg-white hover:bg-gray-50'}`}
+                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'scale' 
+                                                ? 'border-yellow-400 bg-yellow-500/10 shadow-md shadow-yellow-500/20' 
+                                                : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
                                             onClick={() => setViewer3dInteractionMode('scale')}
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-5 h-5 bg-[#FFFF00] rounded-full flex items-center justify-center">
-                                                    <Maximize2 className="w-3 h-3 text-black" />
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'scale' ? 'bg-yellow-400 scale-110' : 'bg-slate-700'}`}>
+                                                    <Maximize2 className={`w-4 h-4 ${viewer3dInteractionMode === 'scale' ? 'text-black' : 'text-slate-300'}`} />
                                                 </div>
-                                                <span className="text-[12px] font-medium text-[#1f1f1f]">Scale</span>
-                                                <span className="text-[10px] text-[#9aa0a6] ml-auto">2 hands pinch</span>
+                                                <div className="flex-1">
+                                                    <span className={`text-sm font-semibold block ${viewer3dInteractionMode === 'scale' ? 'text-yellow-300' : 'text-slate-200'}`}>Scale</span>
+                                                    <span className="text-[11px] text-slate-400">2 hands pinch</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div
-                                            className={`p-2 rounded-lg border-2 transition-colors cursor-pointer ${viewer3dInteractionMode === 'animate' ? 'border-[#FFA500] bg-[#FFA500]/10' : 'border-[#e8eaed] bg-white hover:bg-gray-50'}`}
+                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'animate' 
+                                                ? 'border-orange-400 bg-orange-500/10 shadow-md shadow-orange-500/20' 
+                                                : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
                                             onClick={() => setViewer3dInteractionMode('animate')}
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-5 h-5 bg-[#FFA500] rounded-full flex items-center justify-center">
-                                                    <Film className="w-3 h-3 text-white" />
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'animate' ? 'bg-orange-400 scale-110' : 'bg-slate-700'}`}>
+                                                    <Film className={`w-4 h-4 ${viewer3dInteractionMode === 'animate' ? 'text-white' : 'text-slate-300'}`} />
                                                 </div>
-                                                <span className="text-[12px] font-medium text-[#1f1f1f]">Animate</span>
-                                                <span className="text-[10px] text-[#9aa0a6] ml-auto">Pinch + U/D</span>
+                                                <div className="flex-1">
+                                                    <span className={`text-sm font-semibold block ${viewer3dInteractionMode === 'animate' ? 'text-orange-300' : 'text-slate-200'}`}>Animate</span>
+                                                    <span className="text-[11px] text-slate-400">Pinch + U/D</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Voice Commands Info */}
-                                    <div className="mt-3 pt-3 border-t border-[#e8eaed]">
-                                        <div className="flex items-center gap-2 text-[11px] text-[#5f6368]">
-                                            <Mic className="w-3 h-3" />
-                                            <span>Say "drag", "rotate", "scale", "animate", or "reset"</span>
+                                    <div className="mt-4 pt-4 border-t border-slate-700">
+                                        <div className="flex items-center gap-2 px-2 py-2 bg-white/5 border border-white/10">
+                                            <Mic className="w-4 h-4 text-slate-400" />
+                                            <span className="text-[11px] text-slate-400">Say "drag", "rotate", "scale", "animate", or "reset"</span>
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* Status */}
-                                <div className="p-4 bg-white rounded-xl border border-[#e8eaed]">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-[13px] text-[#5f6368]">Hand Tracking</span>
-                                        <span className={`text-[12px] font-medium ${viewer3dWebcamActive ? 'text-green-500' : 'text-[#9aa0a6]'}`}>
-                                            {viewer3dWebcamActive ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-[13px] text-[#5f6368]">Hands Detected</span>
-                                        <span className="text-[12px] font-medium text-[#1f1f1f]">{viewer3dHandLandmarks.length}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[13px] text-[#5f6368]">Pinching</span>
-                                        <div className="flex gap-2">
-                                            <span className={`px-2 py-0.5 rounded text-[11px] ${viewer3dIsPinching[0] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>L</span>
-                                            <span className={`px-2 py-0.5 rounded text-[11px] ${viewer3dIsPinching[1] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>R</span>
+                                <div className="p-4 bg-black border border-slate-700">
+                                    <h3 className="text-sm font-semibold text-slate-200 mb-3 uppercase tracking-wide">Status</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-slate-300">Hand Tracking</span>
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-2 h-2 ${viewer3dWebcamActive ? 'bg-green-500' : 'bg-slate-500'} ${viewer3dWebcamActive ? 'animate-pulse' : ''}`}></div>
+                                                <span className={`text-sm font-semibold ${viewer3dWebcamActive ? 'text-green-400' : 'text-slate-400'}`}>
+                                                    {viewer3dWebcamActive ? 'Active' : 'Inactive'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-slate-300">Hands Detected</span>
+                                            <span className="text-sm font-semibold text-slate-200 bg-white/5 px-2 py-1 border border-white/10">
+                                                {viewer3dHandLandmarks.length}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-slate-300">Pinching</span>
+                                            <div className="flex gap-2">
+                                                <span className={`px-3 py-1 text-xs font-semibold transition-all ${
+                                                    viewer3dIsPinching[0] 
+                                                        ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20' 
+                                                        : 'bg-white/5 text-slate-400 border border-slate-600'
+                                                }`}>L</span>
+                                                <span className={`px-3 py-1 text-xs font-semibold transition-all ${
+                                                    viewer3dIsPinching[1] 
+                                                        ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20' 
+                                                        : 'bg-white/5 text-slate-400 border border-slate-600'
+                                                }`}>R</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -7647,11 +7664,6 @@ sys.stderr = StringIO()
             <header className="h-[50px] px-5 flex items-center justify-between border-b" style={{ backgroundColor: '#1F1F1F', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
                 {/* Left: Logo & Workspaces */}
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                        <span className="text-[22px] font-medium text-slate-100" style={{ fontFamily: '"Google Sans", sans-serif' }}>
-                            Immersive Learning
-                        </span>
-                    </div>
                     {/* My Workspaces Button */}
                     {immersiveContent && (
                         <button
@@ -7865,19 +7877,15 @@ sys.stderr = StringIO()
                 {/* Main Content Card */}
                 <div className={`flex-1 ${activeMode === 'source'
                     ? 'bg-[#131314] overflow-hidden p-0'
-                    : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity'
-                        ? 'bg-[#0b0d12] overflow-hidden p-0'
-                        : activeMode === 'viewer3d'
-                            ? 'bg-[#0b0d12] overflow-hidden p-4'
+                    : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity' || activeMode === 'viewer3d' || activeMode === 'audio-lesson' || activeMode === 'slides-narration' || activeMode === 'simulation'
+                        ? 'bg-[#eef2f7] overflow-hidden p-0'
                             : 'bg-[#0b0d12] overflow-y-auto p-4'
                     }`}>
                     <div className={`${activeMode === 'source'
                         ? 'h-full'
-                        : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity'
-                            ? 'h-full rounded-none shadow-none bg-[#0f1117]'
-                            : activeMode === 'viewer3d'
-                                ? 'h-full rounded-[24px] shadow-sm bg-[#0f1117]'
-                                : 'min-h-full rounded-[24px] shadow-sm bg-[#0f1117]'
+                        : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity' || activeMode === 'viewer3d' || activeMode === 'audio-lesson' || activeMode === 'slides-narration' || activeMode === 'simulation'
+                            ? 'h-full rounded-none shadow-none'
+                            : 'min-h-full rounded-[24px] shadow-sm bg-[#0f1117]'
                         } overflow-hidden`}>
                         {renderContent()}
                     </div>

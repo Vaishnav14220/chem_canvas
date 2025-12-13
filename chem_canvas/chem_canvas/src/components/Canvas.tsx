@@ -7151,7 +7151,7 @@ export default function Canvas({
 
       {/* Canvas Controls - Compact Header Layout */}
       <div className="absolute top-4 left-1/2 z-50 w-full max-w-4xl -translate-x-1/2 px-3">
-        <div className="flex flex-col gap-3 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg lg:flex-row lg:items-center lg:gap-4" style={{ backgroundColor: '#1C2025', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
+        <div className="flex flex-col gap-3 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg lg:flex-row lg:items-center lg:gap-4" style={{ backgroundColor: '#171717', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
           <div className="flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:overflow-x-auto">
             {quickActionButtons.map((button) => {
               const IconComponent = button.icon;
@@ -7216,14 +7216,14 @@ export default function Canvas({
 
       {/* Right-side Controls - Consolidated */}
       <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
-        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3 shadow-lg space-y-3">
+        <div className="bg-gradient-to-br from-slate-800/95 via-slate-900/95 to-slate-800/95 backdrop-blur-sm border border-cyan-500/20 rounded-xl p-3 shadow-lg shadow-cyan-500/10 space-y-3">
 
           {/* Grid Toggle */}
           <button
             onClick={() => setShowGrid(!showGrid)}
             className={`w-full p-2 rounded-lg transition-all flex items-center justify-center ${showGrid
-              ? 'bg-blue-600 text-white'
-              : 'text-slate-400 hover:bg-slate-700/50'
+              ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/25'
+              : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
               }`}
             title="Toggle Grid"
           >
@@ -7235,8 +7235,8 @@ export default function Canvas({
             <button
               onClick={() => setCanvasBackground('dark')}
               className={`p-2 rounded-lg transition-all ${canvasBackground === 'dark'
-                ? 'bg-slate-600 text-white'
-                : 'text-slate-400 hover:bg-slate-700/50'
+                ? 'bg-gradient-to-r from-cyan-500/40 to-blue-500/40 text-cyan-200 border border-cyan-500/30'
+                : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
                 }`}
               title="Dark Canvas"
             >
@@ -7245,8 +7245,8 @@ export default function Canvas({
             <button
               onClick={() => setCanvasBackground('white')}
               className={`p-2 rounded-lg transition-all ${canvasBackground === 'white'
-                ? 'bg-slate-600 text-white'
-                : 'text-slate-400 hover:bg-slate-700/50'
+                ? 'bg-gradient-to-r from-cyan-500/40 to-blue-500/40 text-cyan-200 border border-cyan-500/30'
+                : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
                 }`}
               title="Light Canvas"
             >
@@ -7258,21 +7258,21 @@ export default function Canvas({
           <div className="flex flex-col gap-1">
             <button
               onClick={handleZoomIn}
-              className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
+              className="p-2 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
               title="Zoom In"
             >
               <ZoomIn size={14} />
             </button>
             <button
               onClick={handleResetZoom}
-              className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
+              className="p-2 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
               title="Reset Zoom"
             >
               <RotateCcw size={12} />
             </button>
             <button
               onClick={handleZoomOut}
-              className="p-2 text-slate-400 hover:bg-slate-700/50 rounded-lg transition-all"
+              className="p-2 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
               title="Zoom Out"
             >
               <ZoomOut size={14} />

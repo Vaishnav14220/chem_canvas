@@ -253,8 +253,8 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
   };
 
   const containerClassName = className
-    ? `${className} space-y-4`
-    : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4';
+    ? `${className}`
+    : 'bg-[#171717] p-4';
 
   useEffect(() => {
     if (!initialQuery) {
@@ -267,7 +267,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
   return (
     <div className={containerClassName}>
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-600 to-purple-600 text-white">
+        <div className="flex h-10 w-10 items-center justify-center bg-gradient-to-br from-pink-600 to-purple-600 text-white">
           <FlaskConical className="h-5 w-5" />
         </div>
         <div>
@@ -278,7 +278,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div>
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
@@ -287,7 +287,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="e.g. Aldol condensation between acetone and benzaldehyde"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full bg-slate-800 border border-slate-700 pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   event.preventDefault();
@@ -299,12 +299,17 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
           <button
             onClick={() => void handleSearch()}
             disabled={isLoading}
-            className="inline-flex items-center justify-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-500 disabled:opacity-60"
+            className="relative inline-flex items-center justify-center px-2 py-1 text-sm font-medium text-white transition-all duration-200 overflow-hidden group border bg-gradient-to-r from-purple-500 via-purple-600 to-purple-500 shadow-md shadow-purple-500/25  disabled:opacity-60"
           >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {!isLoading && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+            )}
+            <span className="relative z-10">
+              {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            </span>
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-1 gap-0.5">
           {SAMPLE_PROMPTS.map(sample => (
             <button
               key={sample}
@@ -312,32 +317,32 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                 setQuery(sample);
                 void handleSearch(sample);
               }}
-              className="rounded-full border border-slate-700/70 px-3 py-1 text-[11px] text-slate-300 hover:border-purple-500 hover:text-white"
+              className="relative px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-purple-200 border-slate-700/50"
             >
-              {sample}
+              <span className="relative z-10 whitespace-nowrap">{sample}</span>
             </button>
           ))}
         </div>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-rose-500/60 bg-rose-950/40 px-3 py-2 text-xs text-rose-100">
+        <div className=" bg-rose-950/40 px-3 py-2 text-xs text-rose-100">
           {error}
         </div>
       )}
 
       {resolution ? (
-        <div className="space-y-3">
+        <div>
           <ReactionMechanismScene resolution={resolution} />
 
           {/* ChemTube3D-style Animation Controls */}
           {viewableComponents.length > 0 && (
-            <div className="rounded-xl border border-purple-500/40 bg-slate-900/90 p-3 space-y-3">
+            <div className="bg-[#171717] p-3">
               {/* Progress Indicator */}
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-slate-400">Stage:</span>
                 <span className="text-white font-medium">{currentStageIndex + 1} / {viewableComponents.length}</span>
-                <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div className="flex-1 h-1.5 bg-slate-700 overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
                     style={{ width: `${((currentStageIndex + 1) / viewableComponents.length) * 100}%` }}
@@ -346,118 +351,134 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
               </div>
 
               {/* Playback Controls */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-0.5">
                 <button
                   onClick={rewindAnimation}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white text-[11px]"
+                  className="relative flex items-center gap-1 px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700/50"
                   title="First Frame"
                 >
-                  <RotateCcw className="h-3 w-3" />
+                  <RotateCcw className="h-2.5 w-2.5 relative z-10" />
                 </button>
                 <button
                   onClick={prevFrame}
                   disabled={currentStageIndex === 0}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-40 text-[11px]"
+                  className="relative flex items-center gap-1 px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700/50 disabled:opacity-40"
                   title="Previous"
                 >
-                  <SkipBack className="h-3 w-3" />
+                  <SkipBack className="h-2.5 w-2.5 relative z-10" />
                 </button>
                 <button
                   onClick={isPlaying ? stopAnimation : playAnimation}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium ${isPlaying
-                    ? 'bg-amber-600 text-white hover:bg-amber-500'
-                    : 'bg-green-600 text-white hover:bg-green-500'
+                  className={`relative flex items-center gap-1 px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border ${isPlaying
+                    ? 'bg-amber-600/80 hover:bg-amber-500 text-white '
+                    : 'bg-green-600/80 hover:bg-green-500 text-white '
                     }`}
                 >
-                  {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                  {isPlaying ? 'Pause' : 'Play'}
+                  {isPlaying ? <Pause className="h-2.5 w-2.5 relative z-10" /> : <Play className="h-2.5 w-2.5 relative z-10" />}
+                  <span className="relative z-10 whitespace-nowrap">{isPlaying ? 'Pause' : 'Play'}</span>
                 </button>
                 <button
                   onClick={nextFrame}
                   disabled={currentStageIndex >= viewableComponents.length - 1}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-40 text-[11px]"
+                  className="relative flex items-center gap-1 px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700/50 disabled:opacity-40"
                   title="Next"
                 >
-                  <SkipForward className="h-3 w-3" />
+                  <SkipForward className="h-2.5 w-2.5 relative z-10" />
                 </button>
                 <button
                   onClick={stopAnimation}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white text-[11px]"
+                  className="relative flex items-center gap-1 px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700/50"
                   title="Stop"
                 >
-                  <Square className="h-3 w-3" />
+                  <Square className="h-2.5 w-2.5 relative z-10" />
                 </button>
 
                 {/* Animation Mode Toggle */}
-                <div className="flex items-center gap-1 ml-auto">
+                <div className="flex items-center gap-0.5 ml-auto">
                   {(['once', 'loop', 'palindrome'] as AnimationMode[]).map(mode => (
                     <button
                       key={mode}
                       onClick={() => setAnimationMode(mode)}
-                      className={`px-2 py-1 rounded text-[10px] ${animationMode === mode
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                      className={`relative px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border ${animationMode === mode
+                        ? 'bg-gradient-to-r from-purple-500 via-purple-600 to-purple-500 text-white shadow-md shadow-purple-500/25 '
+                        : 'bg-slate-800/80 text-slate-300 hover:text-purple-200 hover:bg-slate-700/80 border-slate-700/50'
                         }`}
                     >
-                      {mode === 'once' ? 'Once' : mode === 'loop' ? 'Loop' : '↔️'}
+                      {animationMode === mode && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                      )}
+                      <span className="relative z-10 whitespace-nowrap">{mode === 'once' ? 'Once' : mode === 'loop' ? 'Loop' : '↔️'}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* Display Controls */}
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800">
+              <div className="flex flex-wrap items-center gap-0.5 pt-2 border-t border-transparent">
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider">Display:</span>
                 {DISPLAY_MODES.map(mode => (
                   <button
                     key={mode.id}
                     onClick={() => applyDisplayMode(mode.id)}
-                    className={`px-2 py-1 rounded text-[10px] ${displayMode === mode.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                    className={`relative px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border ${displayMode === mode.id
+                      ? 'bg-gradient-to-r from-blue-500 via-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/25 '
+                      : 'bg-slate-800/80 text-slate-300 hover:text-blue-200 hover:bg-slate-700/80 border-slate-700/50'
                       }`}
                   >
-                    {mode.label}
+                    {displayMode === mode.id && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                    )}
+                    <span className="relative z-10 whitespace-nowrap">{mode.label}</span>
                   </button>
                 ))}
                 <button
                   onClick={toggleHydrogens}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] ml-auto ${showHydrogens ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+                  className={`relative flex items-center gap-1 px-1 py-0.5 text-sm font-medium transition-all duration-200 overflow-hidden group border ml-auto ${showHydrogens 
+                    ? 'bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-500 text-white shadow-md shadow-emerald-500/25 '
+                    : 'bg-slate-800/80 text-slate-300 hover:text-emerald-200 hover:bg-slate-700/80 border-slate-700/50'
                     }`}
                 >
-                  {showHydrogens ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                  H
+                  {showHydrogens && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                  )}
+                  {showHydrogens ? <Eye className="h-2.5 w-2.5 relative z-10" /> : <EyeOff className="h-2.5 w-2.5 relative z-10" />}
+                  <span className="relative z-10 whitespace-nowrap">H</span>
                 </button>
               </div>
 
               {/* ChemTube3D Mechanism Animation */}
-              <div className="pt-2 border-t border-slate-800">
+              <div className="pt-2 border-t border-transparent">
                 <button
                   onClick={() => void playMechanismAnimation()}
                   disabled={mechanismLoading || !lastPrompt}
-                  className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${mechanismAnimating
-                    ? 'bg-rose-600 text-white hover:bg-rose-500'
+                  className={`relative w-full flex items-center justify-center gap-1.5 px-2 py-1 text-sm font-medium transition-all duration-200 overflow-hidden group border ${mechanismAnimating
+                    ? 'bg-gradient-to-r from-rose-500 via-rose-600 to-rose-500 text-white shadow-md shadow-rose-500/25 '
                     : mechanismLoading
-                      ? 'bg-slate-700 text-slate-400 cursor-wait'
-                      : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500'
-                    }`}
+                      ? 'bg-slate-700/80 text-slate-400 cursor-wait border-slate-700/50'
+                      : 'bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500 text-white shadow-md shadow-purple-500/25 '
+                    } disabled:opacity-60`}
                 >
-                  {mechanismLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Generating Animation...
-                    </>
-                  ) : mechanismAnimating ? (
-                    <>
-                      <Square className="h-4 w-4" />
-                      Stop Mechanism
-                    </>
-                  ) : (
-                    <>
-                      <Film className="h-4 w-4" />
-                      Play Full Mechanism (ChemTube3D Style)
-                    </>
+                  {!mechanismLoading && !mechanismAnimating && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                   )}
+                  <span className="relative z-10 flex items-center gap-1.5 whitespace-nowrap">
+                    {mechanismLoading ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Generating Animation...
+                      </>
+                    ) : mechanismAnimating ? (
+                      <>
+                        <Square className="h-3 w-3" />
+                        Stop Mechanism
+                      </>
+                    ) : (
+                      <>
+                        <Film className="h-3 w-3" />
+                        Play Full Mechanism
+                      </>
+                    )}
+                  </span>
                 </button>
                 <p className="text-[10px] text-slate-500 mt-1 text-center">
                   AI generates multi-frame 3D animation showing reactants approaching → transition state → products
@@ -466,7 +487,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
             </div>
           )}
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-xs text-slate-200 space-y-1">
+          <div className="bg-[#171717] p-3 text-xs text-slate-200">
             <div className="flex items-center justify-between text-white text-sm font-semibold">
               <span>{resolution.reactionName ?? 'Resolved reaction'}</span>
               {resolution.confidence !== undefined && (
@@ -487,9 +508,9 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
             )}
           </div>
 
-          <div className="space-y-3">
+          <div>
             {groupedComponents.map(stage => (
-              <div key={stage.key} className="rounded-xl border border-slate-800/80 bg-slate-900/80 p-3">
+              <div key={stage.key} className="bg-[#171717] p-3">
                 <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: stage.colour }}>
                   <Beaker className="h-3.5 w-3.5" />
                   {stage.label}
@@ -497,9 +518,9 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                 {stage.components.length === 0 ? (
                   <p className="mt-2 text-[11px] text-slate-400">No entries</p>
                 ) : (
-                  <ul className="mt-2 space-y-2 text-sm text-white">
+                  <ul className="mt-2 text-sm text-white">
                     {stage.components.map((component, index) => (
-                      <li key={`${stage.key}-${index}`} className="rounded-lg border border-slate-800/80 bg-slate-950/40 p-2">
+                      <li key={`${stage.key}-${index}`} className="bg-[#171717] p-2">
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium text-white">
@@ -515,7 +536,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
                           {component.smiles && onScriptChange && (
                             <button
                               onClick={() => handleComponentView(component)}
-                              className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:border-purple-400 hover:text-white"
+                              className="border border-slate-700 px-2 py-1 text-[11px] text-slate-200  hover:text-white"
                             >
                               View in 3D
                             </button>
@@ -530,7 +551,7 @@ const ReactionMechanismAnimator: React.FC<ReactionMechanismAnimatorProps> = ({
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-slate-700/70 bg-slate-900/70 p-6 text-center text-sm text-slate-400">
+        <div className="bg-[#171717] p-6 text-center text-sm text-slate-400">
           Describe a named reaction, reagents + products, or paste reaction SMILES. Gemini will assemble the components and the mechanism view will animate them in 3D.
         </div>
       )}

@@ -187,7 +187,7 @@ const JSmolViewer: React.FC<JSmolViewerProps> = ({
 
 
   return (
-    <div className="relative rounded-xl border border-slate-700 overflow-hidden" style={{ height }}>
+    <div className="relative overflow-hidden" style={{ height }}>
       <div ref={containerRef} className="w-full h-full bg-slate-900" />
       {status === 'loading' && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-900/70 text-slate-200 text-sm">

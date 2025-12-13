@@ -74,15 +74,6 @@ const defaultCharacters: Character[] = [
     gradientColors: "#c4b5fd, #f5f3ff",
   },
   {
-    emoji: "🐵",
-    name: "Monkey",
-    online: true,
-    backgroundColor: "bg-amber-200 dark:bg-amber-300",
-    gradientFrom: "from-amber-200",
-    gradientTo: "to-amber-50",
-    gradientColors: "#fde68a, #fffbeb",
-  },
-  {
     emoji: "🤖",
     name: "Robot",
     online: false,
@@ -308,8 +299,8 @@ export function MessageDock({
               className={cn(
                 "w-12 h-12 flex items-center justify-center cursor-pointer rounded-full transition-all duration-200",
                 isLiveActive 
-                  ? "bg-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse ring-2 ring-red-500/60"
-                  : "bg-slate-800/80 hover:bg-slate-700/40 hover:ring-2 hover:ring-cyan-500/30"
+                  ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse ring-2 ring-red-500/60 text-red-200"
+                  : "bg-gradient-to-br from-cyan-500/30 to-emerald-500/30 hover:from-cyan-500/40 hover:to-emerald-500/40 hover:ring-2 hover:ring-cyan-500/50 text-cyan-200"
               )}
               onClick={onSparkleClick}
               whileHover={
@@ -336,8 +327,8 @@ export function MessageDock({
                 className={cn(
                   "w-10 h-10 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border",
                   isScreenSharing
-                    ? "bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/20"
-                    : "bg-slate-800/80 hover:bg-slate-700/80 text-slate-400 border-slate-700/50"
+                    ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 hover:from-red-500/50 hover:to-orange-500/50 text-red-300 border-red-500/30"
+                    : "bg-gradient-to-br from-blue-500/30 to-indigo-500/30 hover:from-blue-500/40 hover:to-indigo-500/40 text-blue-200 border-blue-500/30"
                 )}
                 onClick={isScreenSharing ? onStopScreenShare : onStartScreenShare}
                 initial={{ scale: 0, opacity: 0 }}
@@ -430,8 +421,8 @@ export function MessageDock({
               className={cn(
                 "w-10 h-10 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border",
                 isWebcamSharing
-                  ? "bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border-purple-500/20"
-                  : "bg-slate-800/80 hover:bg-slate-700/80 text-slate-400 border-slate-700/50"
+                  ? "bg-gradient-to-br from-purple-500/40 to-pink-500/40 hover:from-purple-500/50 hover:to-pink-500/50 text-purple-300 border-purple-500/30"
+                  : "bg-gradient-to-br from-purple-500/30 to-pink-500/30 hover:from-purple-500/40 hover:to-pink-500/40 text-purple-200 border-purple-500/30"
               )}
               onClick={isWebcamSharing ? onStopWebcamShare : onStartWebcamShare}
               animate={{

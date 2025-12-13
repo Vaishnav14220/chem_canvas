@@ -26,10 +26,10 @@ export type DrawingTool =
   | 'move' 
   | 'rotate' 
   | 'pan'
-  | 'text'
-  | 'rectangle'
+  | 'textbox'
+  | 'square'
   | 'circle'
-  | 'line';
+  | 'minus';
 
 interface DrawingToolsDockProps {
   currentTool: DrawingTool;
@@ -37,6 +37,7 @@ interface DrawingToolsDockProps {
   className?: string;
   position?: 'bottom' | 'left' | 'right' | 'bottom-right';
   enableKeyboardShortcuts?: boolean;
+  forceCollapsed?: boolean;
 }
 
 const tools: { id: DrawingTool; icon: React.ElementType; label: string; shortcut?: string }[] = [
@@ -49,10 +50,10 @@ const tools: { id: DrawingTool; icon: React.ElementType; label: string; shortcut
 ];
 
 const shapeTools: { id: DrawingTool; icon: React.ElementType; label: string; shortcut?: string }[] = [
-  { id: 'text', icon: Type, label: 'Text', shortcut: 'T' },
-  { id: 'rectangle', icon: Square, label: 'Rectangle', shortcut: 'U' },
+  { id: 'textbox', icon: Type, label: 'Text', shortcut: 'T' },
+  { id: 'square', icon: Square, label: 'Rectangle', shortcut: 'U' },
   { id: 'circle', icon: Circle, label: 'Circle', shortcut: 'O' },
-  { id: 'line', icon: Minus, label: 'Line', shortcut: 'L' },
+  { id: 'minus', icon: Minus, label: 'Line', shortcut: 'L' },
 ];
 
 // Map keyboard shortcuts to tools
@@ -63,10 +64,10 @@ const shortcutMap: Record<string, DrawingTool> = {
   'm': 'move',
   'r': 'rotate',
   'h': 'pan',
-  't': 'text',
-  'u': 'rectangle',
+  't': 'textbox',
+  'u': 'square',
   'o': 'circle',
-  'l': 'line',
+  'l': 'minus',
 };
 
 export default function DrawingToolsDock({ 
@@ -74,9 +75,15 @@ export default function DrawingToolsDock({
   onToolChange, 
   className,
   position = 'bottom',
-  enableKeyboardShortcuts = true
+  enableKeyboardShortcuts = true,
+  forceCollapsed = false
 }: DrawingToolsDockProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Auto-collapse/expand based on forceCollapsed prop
+  useEffect(() => {
+    setIsCollapsed(forceCollapsed);
+  }, [forceCollapsed]);
 
   // Keyboard shortcut handler
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -156,13 +163,14 @@ export default function DrawingToolsDock({
           >
             <Dock 
               iconSize={36} 
-              iconMagnification={52} 
+              iconMagnification={36} 
               iconDistance={100}
+              disableMagnification={true}
               className={cn(
                 "bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95",
                 "border border-cyan-500/20 shadow-2xl shadow-black/50",
                 "backdrop-blur-xl",
-                isVertical && "flex-col h-auto w-[58px]"
+                isVertical && "flex-col h-auto w-[58px] !w-[58px]"
               )}
             >
               {/* Main Drawing Tools */}
@@ -250,6 +258,7 @@ export default function DrawingToolsDock({
       {/* Tooltip showing current tool - only show when expanded */}
       {!isCollapsed && (
         <motion.div 
+          key={currentTool}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -262,18 +271,21 @@ export default function DrawingToolsDock({
             position === 'right' && "right-full mr-2 top-1/2 -translate-y-1/2"
           )}
         >
-          <span className="text-cyan-300">
-            {tools.find(t => t.id === currentTool)?.label || 
-             shapeTools.find(t => t.id === currentTool)?.label || 
-             'Select Tool'}
-          </span>
-          {(tools.find(t => t.id === currentTool)?.shortcut || 
-            shapeTools.find(t => t.id === currentTool)?.shortcut) && (
-            <span className="ml-2 text-slate-400">
-              ({tools.find(t => t.id === currentTool)?.shortcut || 
-                shapeTools.find(t => t.id === currentTool)?.shortcut})
-            </span>
-          )}
+          {(() => {
+            const tool = tools.find(t => t.id === currentTool) || shapeTools.find(t => t.id === currentTool);
+            return (
+              <>
+                <span className="text-cyan-300">
+                  {tool?.label || 'Select Tool'}
+                </span>
+                {tool?.shortcut && (
+                  <span className="ml-2 text-slate-400">
+                    ({tool.shortcut})
+                  </span>
+                )}
+              </>
+            );
+          })()}
         </motion.div>
       )}
     </div>

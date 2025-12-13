@@ -436,8 +436,8 @@ export function UnifiedDock({
           badge={isConnected}
           badgeColor="bg-emerald-500"
           className={cn(
-            "relative",
-            isConnected ? "bg-cyan-500/20 text-cyan-400" : "bg-slate-800/80 text-slate-400 hover:bg-slate-700/80"
+            "relative hover:ring-2 hover:ring-cyan-500/50",
+            isConnected ? "bg-gradient-to-br from-cyan-500/40 to-emerald-500/40 text-cyan-300" : "bg-gradient-to-br from-cyan-500/30 to-emerald-500/30 text-cyan-200 hover:from-cyan-500/40 hover:to-emerald-500/40"
           )}
         >
           {isConnecting ? (
@@ -460,9 +460,10 @@ export function UnifiedDock({
           title={isScreenSharing ? 'Stop Screen Share' : 'Start Screen Share'}
           active={isScreenSharing}
           className={cn(
+            "hover:ring-2 hover:ring-blue-500/50",
             isScreenSharing
-              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-              : "bg-slate-800/80 text-slate-400 hover:bg-slate-700/80"
+              ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 text-red-300 hover:from-red-500/50 hover:to-orange-500/50"
+              : "bg-gradient-to-br from-blue-500/30 to-indigo-500/30 text-blue-200 hover:from-blue-500/40 hover:to-indigo-500/40"
           )}
         >
           {isScreenSharing ? (
@@ -502,9 +503,10 @@ export function UnifiedDock({
           title={isWebcamSharing ? 'Stop Camera' : 'Start Camera'}
           active={isWebcamSharing}
           className={cn(
+            "hover:ring-2 hover:ring-purple-500/50",
             isWebcamSharing
-              ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30"
-              : "bg-slate-800/80 text-slate-400 hover:bg-slate-700/80"
+              ? "bg-gradient-to-br from-purple-500/40 to-pink-500/40 text-purple-300 hover:from-purple-500/50 hover:to-pink-500/50"
+              : "bg-gradient-to-br from-purple-500/30 to-pink-500/30 text-purple-200 hover:from-purple-500/40 hover:to-pink-500/40"
           )}
         >
           {isWebcamSharing ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
