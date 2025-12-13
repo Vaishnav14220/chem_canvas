@@ -7,6 +7,8 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
     const [fileContent, setFileContent] = useState<string | null>(null); // Legacy text content
     const [fileName, setFileName] = useState<string | null>(null);
     const [topic, setTopic] = useState<string>('');
+    const [extractFormulaSheet, setExtractFormulaSheet] = useState<boolean>(false);
+    const [questionAndAnswer, setQuestionAndAnswer] = useState<boolean>(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
     const [previewHtml, setPreviewHtml] = useState<string>('');
@@ -185,30 +187,15 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
         <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
             {/* Left Sidebar - Input & Thinking Stream */}
             {sidebarOpen && (
-                <div className="w-96 flex-shrink-0 bg-[#0d1526] border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen">
+                <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
                     {/* Main Content Area */}
                     <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
-                        {/* Header */}
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-[#1f2d48] flex items-center justify-center text-white shadow-lg shadow-black/30">
-                                <Sparkles className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h2 className="text-lg font-bold text-white">Interactive Tutor</h2>
-                                <p className="text-xs text-slate-400">Powered by Gemini 3 Pro</p>
-                            </div>
-                        </div>
-
-                        <p className="text-slate-400 text-sm leading-relaxed">
-                            Upload your assignment or describe a topic. Gemini will build an interactive HTML experience with live reasoning.
-                        </p>
-
                         {/* File Upload */}
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Source Material</label>
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="border border-white/10 bg-white/5 hover:bg-white/10 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all group"
+                                className="border border-white/10 bg-white/5 hover:bg-white/10 p-5 flex flex-col items-center justify-center cursor-pointer transition-all group"
                             >
                                 <input
                                     type="file"
@@ -241,8 +228,37 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                                 placeholder="e.g. Projectile Motion..."
                                 value={topic}
                                 onChange={(e) => setTopic(e.target.value)}
-                                className="w-full px-4 py-2 bg-white/5 border border-white/10 text-white placeholder-slate-500 rounded-lg focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all"
+                                className="w-full px-4 py-2 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all"
                             />
+                        </div>
+
+                        {/* Options */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Options</label>
+                            <div className="flex flex-col gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setExtractFormulaSheet(!extractFormulaSheet)}
+                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all ${
+                                        extractFormulaSheet
+                                            ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md'
+                                            : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
+                                    }`}
+                                >
+                                    Extract Formula Sheet
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setQuestionAndAnswer(!questionAndAnswer)}
+                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all ${
+                                        questionAndAnswer
+                                            ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md'
+                                            : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
+                                    }`}
+                                >
+                                    Question and Answer
+                                </button>
+                            </div>
                         </div>
 
                         {/* Generate Button */}
@@ -250,7 +266,7 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                             onClick={handleGenerate}
                             disabled={disableGenerate}
                             className={`
-            w-full py-3 rounded-xl flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all
+            w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all
             ${disableGenerate
                                 ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                                 : 'bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95'}
@@ -272,52 +288,11 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                         <div className="h-px bg-slate-700"></div>
                     </div>
 
-                    {/* Thinking Stream Panel */}
-                    <div className="border-t border-white/10 bg-[#0b1120] flex-shrink-0">
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-white/5">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
-                                <span className="text-xs font-bold text-sky-100 uppercase tracking-wide">Thinking Stream</span>
-                            </div>
-                            <span className="text-[10px] font-mono text-slate-400">
-                                {isGenerating ? '◉ Live' : '○ Idle'}
-                            </span>
-                        </div>
-                        <div
-                            ref={terminalRef}
-                            className="p-3 h-64 overflow-y-auto space-y-2 text-[12px] leading-relaxed font-mono custom-scrollbar bg-[#0b1120]"
-                        >
-                            {thoughtLog.length === 0 ? (
-                                <div className="text-slate-600 italic flex items-center gap-2 py-8">
-                                    <span className="text-[11px]">Awaiting reasoning output...</span>
-                                </div>
-                            ) : (
-                                thoughtLog.map((log, idx) => (
-                                    <div key={idx} className="flex gap-2 text-sky-100/90">
-                                        <span className="text-sky-400/80 flex-shrink-0">›</span>
-                                        <span className="break-words whitespace-pre-wrap">
-                                            {log}
-                                            {idx === thoughtLog.length - 1 && isStreamingThoughts && showCursor && (
-                                                <span className="inline-block w-1.5 h-4 bg-sky-400 ml-0.5 align-text-bottom animate-pulse" />
-                                            )}
-                                        </span>
-                                    </div>
-                                ))
-                            )}
-                            {isGenerating && thoughtLog.length === 0 && (
-                                <div className="flex items-center gap-2 text-sky-300/80 text-[11px] py-8">
-                                    <span className="inline-block w-1.5 h-3 bg-sky-400 animate-pulse rounded-sm"></span>
-                                    <span>Initializing Gemini 3 Pro reasoning...</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
                     {/* Collapse Button */}
                     <div className="border-t border-slate-700 p-3">
                         <button
                             onClick={() => setSidebarOpen(false)}
-                            className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 rounded transition-colors flex items-center justify-center gap-2"
+                            className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
                         >
                             <ChevronRight className="w-4 h-4" />
                             <span>Collapse Panel</span>
@@ -331,7 +306,7 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                 {!sidebarOpen && (
                     <button
                         onClick={() => setSidebarOpen(true)}
-                        className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 rounded-lg transition-colors z-10 shadow-lg"
+                        className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 transition-colors z-10 shadow-lg"
                         title="Open sidebar"
                     >
                         <ChevronRight className="w-5 h-5 transform rotate-180" />
@@ -352,21 +327,21 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                             {isGenerating ? (
                                 <div className="flex flex-col items-center gap-6 text-center max-w-md">
                                     <div className="relative w-16 h-16">
-                                        <div className="absolute inset-0 bg-slate-300 rounded-lg opacity-40 blur-xl"></div>
+                                        <div className="absolute inset-0 bg-slate-300 opacity-40 blur-xl"></div>
                                         <Loader2 className="w-16 h-16 animate-spin text-[#2c4066] relative" />
                                     </div>
                                     <div>
                                         <p className="text-lg font-bold text-slate-700 mb-2">Generating Interactive Content</p>
                                         <p className="text-sm text-slate-500 mb-4">Watch the thinking stream on the left for live reasoning process</p>
                                         <div className="flex items-center justify-center gap-2 text-xs text-[#2c4066]">
-                                            <span className="inline-block w-2 h-2 bg-[#2c4066] rounded-full animate-pulse"></span>
+                                            <span className="inline-block w-2 h-2 bg-[#2c4066] animate-pulse"></span>
                                             <span>Gemini 3 Pro is thinking...</span>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-center gap-6 text-center max-w-xl">
-                                    <div className="w-24 h-24 rounded-full bg-[#e4e9f2] flex items-center justify-center">
+                                    <div className="w-24 h-24 bg-[#e4e9f2] flex items-center justify-center">
                                         <BookOpen className="w-12 h-12 text-[#2c4066]" />
                                     </div>
                                     <div>
@@ -379,12 +354,12 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                                                 <FileUp className="w-4 h-4" />
                                                 <span>Upload or paste</span>
                                             </div>
-                                            <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                                            <div className="w-1 h-1 bg-slate-300"></div>
                                             <div className="flex items-center gap-2">
                                                 <Sparkles className="w-4 h-4" />
                                                 <span>Generate</span>
                                             </div>
-                                            <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                                            <div className="w-1 h-1 bg-slate-300"></div>
                                             <div className="flex items-center gap-2">
                                                 <BookOpen className="w-4 h-4" />
                                                 <span>Learn</span>
@@ -401,14 +376,14 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                 {generatedHtml && (
                     <div className="h-16 border-t border-slate-200 bg-white flex items-center justify-between px-6 flex-shrink-0">
                         <div className="flex items-center gap-3">
-                            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className="w-2.5 h-2.5 bg-green-500 animate-pulse"></span>
                             <span className="text-sm font-medium text-slate-600">Preview Active</span>
                             <span className="text-xs text-slate-400">• Self-contained HTML file</span>
                         </div>
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={handleGenerate}
-                                className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                                 title="Regenerate"
                             >
                                 <RefreshCw className="w-5 h-5" />
@@ -416,7 +391,7 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                             <div className="h-6 w-px bg-slate-200"></div>
                             <button
                                 onClick={handleDownload}
-                                className="flex items-center gap-2 px-4 py-2 bg-[#2c4066] text-white rounded-lg hover:bg-[#34507c] transition-all font-medium text-sm"
+                                className="flex items-center gap-2 px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm"
                             >
                                 <Download className="w-4 h-4" />
                                 Download HTML

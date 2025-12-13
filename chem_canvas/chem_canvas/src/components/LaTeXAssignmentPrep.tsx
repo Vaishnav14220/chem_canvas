@@ -270,112 +270,97 @@ Special Instructions:
     };
 
     return (
-        <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#0b1220] text-slate-100 overflow-hidden">
+        <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
             {/* Left Sidebar - Input & Controls */}
             {sidebarOpen && (
-                <div className="w-[26rem] flex-shrink-0 bg-[#0e172b] border-r border-white/5 flex flex-col overflow-hidden z-20 shadow-[0_20px_80px_rgba(0,0,0,0.35)] h-screen">
+                <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
                     <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
-                        {/* Hero */}
-                        <div className="relative rounded-2xl overflow-hidden bg-[#121c32] border border-white/10 px-4 py-5">
-                            <div className="absolute inset-0 opacity-25 blur-3xl bg-[#1e2a45]" />
-                            <div className="relative flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-xl bg-[#1f3a5f] flex items-center justify-center text-white shadow-lg shadow-black/30">
-                                    <Sparkles className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Gemini LaTeX Studio</p>
-                                    <h2 className="text-xl font-semibold text-white">Assignment Generator</h2>
-                                </div>
-                            </div>
-                            <div className="relative mt-4 flex flex-wrap gap-2 text-[11px]">
-                                <span className="px-3 py-1 rounded-full bg-white/10 text-slate-100 border border-white/10">PDF · Image · Text</span>
-                                <span className="px-3 py-1 rounded-full bg-white/5 text-slate-200 border border-white/5">Live LaTeX streaming</span>
-                                <span className="px-3 py-1 rounded-full bg-white/10 text-slate-100 border border-white/10">Gemini 3 Pro</span>
-                            </div>
-                        </div>
-
-                        {/* Upload */}
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Upload material</div>
-                                {fileContent && <span className="text-[11px] text-emerald-300">Ready</span>}
-                            </div>
+                        {/* File Upload */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Source Material</label>
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="group border border-white/10 rounded-2xl p-4 cursor-pointer bg-white/5 hover:bg-white/10 transition-all shadow-inner shadow-black/30"
+                                className="border border-white/10 bg-white/5 hover:bg-white/10 p-5 flex flex-col items-center justify-center cursor-pointer transition-all group"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-[#1a2438] flex items-center justify-center border border-white/10">
-                                        <FileUp className="w-5 h-5 text-slate-200" />
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    accept=".pdf,.txt,.md,image/*"
+                                    onChange={handleFileUpload}
+                                />
+                                {fileContent ? (
+                                    <div className="flex flex-col items-center text-slate-100">
+                                        <Check className="w-7 h-7 mb-2" />
+                                        <span className="text-xs font-medium text-center break-all">{fileContent.substring(0, 50)}...</span>
+                                        <span className="text-[11px] text-slate-400 mt-1">Click to replace</span>
                                     </div>
-                                    <div className="flex-1">
-                                        <p className="text-sm text-white">Drop PDF, Image, or Text</p>
-                                        <p className="text-xs text-slate-400">Structured content yields better LaTeX</p>
+                                ) : (
+                                    <div className="flex flex-col items-center text-slate-400 group-hover:text-white transition-colors">
+                                        <FileUp className="w-6 h-6 mb-2" />
+                                        <span className="text-xs font-medium">Upload / Paste Notes</span>
+                                        <span className="text-[11px] mt-1">PDF, Text, or Markdown</span>
                                     </div>
-                                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition" />
-                                </div>
-                                {fileContent && (
-                                    <div className="mt-3 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">{fileContent}</div>
                                 )}
                             </div>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept=".pdf,.txt,.md,image/*"
-                                onChange={handleFileUpload}
-                                className="hidden"
-                            />
                         </div>
 
-                        {/* Topic */}
+                        {/* Topic Input */}
                         <div className="space-y-2">
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Describe topic</div>
-                            <div className="rounded-2xl border border-white/10 bg-white/5 focus-within:border-[#3b5b8a]/60 transition-all">
-                                <textarea
-                                    value={topic}
-                                    onChange={(e) => setTopic(e.target.value)}
-                                    placeholder="e.g., Board exam quadratic equations, AP & GP practice"
-                                    className="w-full bg-transparent rounded-2xl p-3 text-sm text-white placeholder-slate-500 focus:outline-none"
-                                    rows={4}
-                                />
-                            </div>
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Topic / Concept</label>
+                            <textarea
+                                value={topic}
+                                onChange={(e) => setTopic(e.target.value)}
+                                placeholder="e.g., Board exam quadratic equations, AP & GP practice"
+                                className="w-full px-4 py-2 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all resize-none"
+                                rows={4}
+                            />
                         </div>
 
                         {/* Error */}
                         {error && (
-                            <div className="flex gap-2 items-start p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+                            <div className="flex gap-2 items-start p-3 bg-red-500/10 border border-red-500/30">
                                 <AlertCircle className="w-4 h-4 text-red-300 flex-shrink-0 mt-0.5" />
                                 <p className="text-xs text-red-100">{error}</p>
                             </div>
                         )}
 
-                        {/* Primary action */}
+                        {/* Generate Button */}
                         <button
                             onClick={handleGenerate}
                             disabled={isGenerating || (!fileContent && !topic)}
-                            className="w-full bg-[#1f3a5f] hover:bg-[#27466f] disabled:bg-slate-700 disabled:opacity-60 text-white font-semibold py-3 px-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-black/30"
+                            className={`
+            w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all
+            ${(isGenerating || (!fileContent && !topic))
+                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                : 'bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95'}
+          `}
                         >
                             {isGenerating ? (
                                 <>
                                     <Loader2 className="w-4 h-4 animate-spin" />
-                                    Generating...
+                                    <span className="text-xs">Generating...</span>
                                 </>
                             ) : (
                                 <>
                                     <Sparkles className="w-4 h-4" />
-                                    Generate LaTeX
+                                    <span>Generate</span>
                                 </>
                             )}
                         </button>
 
                         {/* Secondary actions */}
                         {latexOutput && (
-                            <div className="space-y-2 border-t border-white/5 pt-4">
+                            <div className="space-y-2 border-t border-slate-700 pt-4">
                                 <div className="grid grid-cols-2 gap-2">
                                     <button
                                         onClick={handleCompile}
                                         disabled={!latexOutput || isCompiling}
-                                        className="bg-[#2b4a74] hover:bg-[#335684] text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className={`w-full px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                                            (!latexOutput || isCompiling)
+                                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                                : 'bg-[#2c4066] text-white hover:bg-[#34507c]'
+                                        }`}
                                     >
                                         {isCompiling ? (
                                             <>
@@ -391,7 +376,7 @@ Special Instructions:
                                     </button>
                                     <button
                                         onClick={handleCopy}
-                                        className="bg-white/10 hover:bg-white/15 text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all"
+                                        className="w-full px-4 py-2.5 bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white text-sm font-medium transition-all flex items-center justify-center gap-2"
                                     >
                                         {copied ? (
                                             <>
@@ -407,7 +392,7 @@ Special Instructions:
                                     </button>
                                     <button
                                         onClick={handleDownload}
-                                        className="bg-white/10 hover:bg-white/15 text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all"
+                                        className="w-full px-4 py-2.5 bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white text-sm font-medium transition-all flex items-center justify-center gap-2"
                                     >
                                         <Download className="w-4 h-4" />
                                         Download .tex
@@ -419,7 +404,7 @@ Special Instructions:
                                             setFileContent('');
                                             setFileData(null);
                                         }}
-                                        className="bg-white/5 hover:bg-white/10 text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all"
+                                        className="w-full px-4 py-2.5 bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white text-sm font-medium transition-all flex items-center justify-center gap-2"
                                     >
                                         <RefreshCw className="w-4 h-4" />
                                         Reset & New
@@ -427,74 +412,78 @@ Special Instructions:
                                 </div>
                             </div>
                         )}
+
+                        <div className="h-px bg-slate-700"></div>
                     </div>
 
-                    <button
-                        onClick={() => setSidebarOpen(false)}
-                        className="border-t border-white/5 px-4 py-3 text-slate-400 hover:text-white hover:bg-white/5 transition-all flex items-center justify-center"
-                    >
-                        <ChevronRight className="w-5 h-5" />
-                    </button>
+                    {/* Collapse Button */}
+                    <div className="border-t border-slate-700 p-3">
+                        <button
+                            onClick={() => setSidebarOpen(false)}
+                            className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                            <span>Collapse Panel</span>
+                        </button>
+                    </div>
                 </div>
             )}
 
             {/* Right Panel - LaTeX Output Preview */}
-            <div className="flex-1 w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
-                <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_20%_20%,rgba(59,91,138,0.15),transparent_30%),radial-gradient(circle_at_70%_20%,rgba(30,42,69,0.18),transparent_32%)]" />
+            <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+                {!sidebarOpen && (
+                    <button
+                        onClick={() => setSidebarOpen(true)}
+                        className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 transition-colors z-10 shadow-lg"
+                        title="Open sidebar"
+                    >
+                        <ChevronRight className="w-5 h-5 transform rotate-180" />
+                    </button>
+                )}
 
                 {/* Header Bar */}
-                <div className="relative bg-[#0b1226]/80 backdrop-blur border-b border-white/5 px-6 py-4 flex items-center justify-between">
+                <div className="relative bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
                     <div className="flex items-center gap-3">
-                        {!sidebarOpen && (
-                            <button
-                                onClick={() => setSidebarOpen(true)}
-                                className="text-slate-300 hover:text-white transition-colors"
-                            >
-                                <ChevronRight className="w-5 h-5 rotate-180" />
-                            </button>
-                        )}
                         <div>
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Canvas</p>
-                            <h3 className="text-lg font-semibold text-white">LaTeX Output</h3>
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Canvas</p>
+                            <h3 className="text-lg font-semibold text-slate-900">LaTeX Output</h3>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 bg-white/5 rounded-full p-1 border border-white/5">
+                    <div className="flex items-center gap-2 bg-slate-100 p-1">
                         <button
                             onClick={() => setActiveTab('code')}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${activeTab === 'code'
-                                ? 'bg-white text-slate-900 shadow'
-                                : 'text-slate-200 hover:text-white'
-                                }`}
+                            className={`px-3 py-1.5 text-xs font-semibold transition-all flex items-center gap-2 ${
+                                activeTab === 'code'
+                                    ? 'bg-white text-slate-900 shadow-sm'
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
                         >
-                            <span className="flex items-center gap-2">
-                                <FileText className="w-3 h-3" />
-                                Code
-                            </span>
+                            <FileText className="w-3 h-3" />
+                            Code
                         </button>
                         <button
                             onClick={() => setActiveTab('pdf')}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${activeTab === 'pdf'
-                                ? 'bg-white text-slate-900 shadow'
-                                : 'text-slate-200 hover:text-white'
-                                }`}
+                            className={`px-3 py-1.5 text-xs font-semibold transition-all flex items-center gap-2 ${
+                                activeTab === 'pdf'
+                                    ? 'bg-white text-slate-900 shadow-sm'
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
                         >
-                            <span className="flex items-center gap-2">
-                                <Play className="w-3 h-3" />
-                                Preview PDF
-                            </span>
+                            <Play className="w-3 h-3" />
+                            Preview PDF
                         </button>
                     </div>
 
                     <div className="flex items-center gap-3 text-xs">
                         {isGenerating && (
-                            <div className="flex items-center gap-1 text-slate-100 bg-white/10 px-3 py-1.5 rounded-full border border-white/15">
+                            <div className="flex items-center gap-1 text-slate-600 bg-slate-100 px-3 py-1.5 border border-slate-200">
                                 <Loader2 className="w-4 h-4 animate-spin" />
                                 <span>Generating</span>
                             </div>
                         )}
                         {isCompiling && (
-                            <div className="flex items-center gap-1 text-slate-100 bg-white/10 px-3 py-1.5 rounded-full border border-white/15">
+                            <div className="flex items-center gap-1 text-slate-600 bg-slate-100 px-3 py-1.5 border border-slate-200">
                                 <Loader2 className="w-4 h-4 animate-spin" />
                                 <span>Compiling</span>
                             </div>
@@ -503,60 +492,65 @@ Special Instructions:
                 </div>
 
                 {/* Output Container */}
-                <div
-                    ref={latexOutputRef}
-                    className="relative flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col"
-                >
+                <div className="flex-1 w-full h-full min-h-0 overflow-auto">
                     {activeTab === 'code' ? (
                         !latexOutput ? (
-                            <div className="flex items-center justify-center h-full text-slate-300">
-                                <div className="text-center space-y-2 bg-white/5 border border-white/10 rounded-2xl px-10 py-12 backdrop-blur">
-                                    <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-60" />
-                                    <p className="text-sm">Generate LaTeX to view the live stream</p>
-                                    <p className="text-xs text-slate-400">Clean layout, syntax highlighting, and cursor pulse while streaming</p>
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-[#f6f8fc] text-slate-500 px-8 overflow-auto">
+                                <div className="flex flex-col items-center gap-6 text-center max-w-xl">
+                                    <div className="w-24 h-24 bg-[#e4e9f2] flex items-center justify-center">
+                                        <BookOpen className="w-12 h-12 text-[#2c4066]" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-2xl font-bold text-slate-700 mb-2">Ready to Generate</h3>
+                                        <p className="text-slate-500 mb-6">
+                                            Upload a file or enter a topic, then generate LaTeX content.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         ) : (
-                            <CodeMirror
-                                value={latexOutput + (isStreamingLatex && showCursor ? '|' : '')}
-                                theme={vscodeDark}
-                                height="100%"
-                                editable={false}
-                                extensions={[]}
-                                className="w-full h-full"
-                                basicSetup={{
-                                    lineNumbers: true,
-                                    foldGutter: true,
-                                    dropCursor: false,
-                                    allowMultipleSelections: false,
-                                    indentOnInput: false,
-                                    bracketMatching: true,
-                                    closeBrackets: false,
-                                    autocompletion: false,
-                                    rectangularSelection: false,
-                                    highlightSelectionMatches: false,
-                                    searchKeymap: false,
-                                    lintKeymap: false,
-                                }}
-                                style={{
-                                    fontSize: '13px',
-                                    fontFamily: 'Fira Code, monospace',
-                                }}
-                            />
+                            <div ref={latexOutputRef} className="w-full h-full">
+                                <CodeMirror
+                                    value={latexOutput + (isStreamingLatex && showCursor ? '|' : '')}
+                                    theme={vscodeDark}
+                                    height="100%"
+                                    editable={false}
+                                    extensions={[]}
+                                    className="w-full h-full"
+                                    basicSetup={{
+                                        lineNumbers: true,
+                                        foldGutter: true,
+                                        dropCursor: false,
+                                        allowMultipleSelections: false,
+                                        indentOnInput: false,
+                                        bracketMatching: true,
+                                        closeBrackets: false,
+                                        autocompletion: false,
+                                        rectangularSelection: false,
+                                        highlightSelectionMatches: false,
+                                        searchKeymap: false,
+                                        lintKeymap: false,
+                                    }}
+                                    style={{
+                                        fontSize: '13px',
+                                        fontFamily: 'Fira Code, monospace',
+                                    }}
+                                />
+                            </div>
                         )
                     ) : (
-                        <div className="flex-1 w-full h-full bg-[#0c1428] overflow-auto flex justify-center p-6">
+                        <div className="flex-1 w-full h-full bg-[#f6f8fc] overflow-auto flex justify-center p-6">
                             {pdfUrl ? (
                                 <Document
                                     file={pdfUrl}
-                                    className="max-w-full shadow-2xl shadow-black/40 border border-white/5 rounded-xl overflow-hidden"
+                                    className="max-w-full shadow-2xl shadow-black/20 border border-slate-200 overflow-hidden"
                                     loading={
                                         <div className="flex items-center justify-center h-64">
-                                            <Loader2 className="w-8 h-8 animate-spin text-white" />
+                                            <Loader2 className="w-8 h-8 animate-spin text-slate-600" />
                                         </div>
                                     }
                                     error={
-                                        <div className="flex items-center justify-center h-64 text-red-200">
+                                        <div className="flex items-center justify-center h-64 text-red-600">
                                             <p>Failed to load PDF</p>
                                         </div>
                                     }
@@ -570,17 +564,17 @@ Special Instructions:
                                     />
                                 </Document>
                             ) : (
-                                <div className="flex items-center justify-center h-full text-slate-200">
-                                    <div className="text-center bg-white/5 border border-white/10 rounded-2xl px-10 py-12 backdrop-blur">
+                                <div className="flex items-center justify-center h-full text-slate-500">
+                                    <div className="text-center bg-white border border-slate-200 px-10 py-12 shadow-sm">
                                         {isCompiling ? (
                                             <>
-                                                <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin opacity-50" />
-                                                <p>Compiling PDF...</p>
+                                                <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-slate-600" />
+                                                <p className="text-slate-700">Compiling PDF...</p>
                                             </>
                                         ) : (
                                             <>
-                                                <Play className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                                <p>Click "Compile PDF" to generate preview</p>
+                                                <Play className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                                                <p className="text-slate-700">Click "Compile PDF" to generate preview</p>
                                             </>
                                         )}
                                     </div>

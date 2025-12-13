@@ -107,122 +107,135 @@ const SourceIcon = () => (
 
 const ImmersiveTextIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="3" y="5" width="18" height="14" rx="2" fill={active ? "#ea4335" : "#9aa0a6"} />
-        <rect x="6" y="8" width="12" height="1.5" rx="0.75" fill="white" />
-        <rect x="6" y="11" width="8" height="1.5" rx="0.75" fill="white" />
-        <circle cx="17" cy="15" r="3.5" fill={active ? "#fbbc04" : "#bdc1c6"} stroke="white" strokeWidth="1" />
-        <text x="17" y="17" fontSize="5" fill="white" textAnchor="middle" fontWeight="bold">?</text>
+        <rect x="3" y="5" width="18" height="14" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <rect x="6" y="8" width="12" height="1.5" rx="0.75" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <rect x="6" y="11" width="8" height="1.5" rx="0.75" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <circle cx="17" cy="15" r="3.5" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.3" : "0.2"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1" />
+        <text x="17" y="17" fontSize="5" fill={active ? "#ffffff" : "#9aa0a6"} textAnchor="middle" fontWeight="bold">?</text>
     </svg>
 );
 
 const SlidesIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="4" y="6" width="16" height="12" rx="2" fill={active ? "#9334e9" : "#9aa0a6"} />
-        <polygon points="10,10 10,14 14,12" fill="white" />
+        <rect x="4" y="6" width="16" height="12" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <polygon points="10,10 10,14 14,12" fill={active ? "#ffffff" : "#9aa0a6"} />
     </svg>
 );
 
 const AudioIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="5" y="8" width="2.5" height="8" rx="1" fill={active ? "#34a853" : "#9aa0a6"} />
-        <rect x="9" y="5" width="2.5" height="14" rx="1" fill={active ? "#34a853" : "#9aa0a6"} />
-        <rect x="13" y="9" width="2.5" height="6" rx="1" fill={active ? "#34a853" : "#9aa0a6"} />
-        <rect x="17" y="7" width="2.5" height="10" rx="1" fill={active ? "#34a853" : "#9aa0a6"} />
+        <rect x="5" y="8" width="2.5" height="8" rx="1" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <rect x="9" y="5" width="2.5" height="14" rx="1" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <rect x="13" y="9" width="2.5" height="6" rx="1" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <rect x="17" y="7" width="2.5" height="10" rx="1" fill={active ? "#ffffff" : "#9aa0a6"} />
     </svg>
 );
 
 const MindmapIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="12" cy="12" r="3" fill={active ? "#4285f4" : "#9aa0a6"} />
-        <circle cx="5" cy="7" r="2" fill={active ? "#4285f4" : "#9aa0a6"} fillOpacity="0.8" />
-        <circle cx="19" cy="7" r="2" fill={active ? "#4285f4" : "#9aa0a6"} fillOpacity="0.8" />
-        <circle cx="5" cy="17" r="2" fill={active ? "#4285f4" : "#9aa0a6"} fillOpacity="0.8" />
-        <circle cx="19" cy="17" r="2" fill={active ? "#4285f4" : "#9aa0a6"} fillOpacity="0.8" />
-        <line x1="9" y1="10" x2="7" y2="8" stroke={active ? "#4285f4" : "#9aa0a6"} strokeWidth="1.5" />
-        <line x1="15" y1="10" x2="17" y2="8" stroke={active ? "#4285f4" : "#9aa0a6"} strokeWidth="1.5" />
-        <line x1="9" y1="14" x2="7" y2="16" stroke={active ? "#4285f4" : "#9aa0a6"} strokeWidth="1.5" />
-        <line x1="15" y1="14" x2="17" y2="16" stroke={active ? "#4285f4" : "#9aa0a6"} strokeWidth="1.5" />
+        <circle cx="12" cy="12" r="3" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <circle cx="5" cy="7" r="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.6"} />
+        <circle cx="19" cy="7" r="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.6"} />
+        <circle cx="5" cy="17" r="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.6"} />
+        <circle cx="19" cy="17" r="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.6"} />
+        <line x1="9" y1="10" x2="7" y2="8" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <line x1="15" y1="10" x2="17" y2="8" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <line x1="9" y1="14" x2="7" y2="16" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <line x1="15" y1="14" x2="17" y2="16" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
     </svg>
 );
 
 const SimulationIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         {/* 3D Cube */}
-        <path d="M12 2L4 6V18L12 22L20 18V6L12 2Z" fill={active ? "#ff6d01" : "#9aa0a6"} fillOpacity="0.3" />
-        <path d="M12 2L20 6L12 10L4 6L12 2Z" fill={active ? "#ff6d01" : "#9aa0a6"} />
-        <path d="M12 10V22" stroke={active ? "#ff6d01" : "#9aa0a6"} strokeWidth="1.5" />
-        <path d="M4 6V18L12 22" stroke={active ? "#ff6d01" : "#9aa0a6"} strokeWidth="1.5" />
-        <path d="M20 6V18L12 22" stroke={active ? "#ff6d01" : "#9aa0a6"} strokeWidth="1.5" />
+        <path d="M12 2L4 6V18L12 22L20 18V6L12 2Z" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.3" : "0.1"} />
+        <path d="M12 2L20 6L12 10L4 6L12 2Z" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <path d="M12 10V22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <path d="M4 6V18L12 22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <path d="M20 6V18L12 22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
         {/* Play indicator */}
-        <circle cx="17" cy="17" r="4" fill={active ? "#34a853" : "#bdc1c6"} />
-        <polygon points="16,15 16,19 19,17" fill="white" />
+        <circle cx="17" cy="17" r="4" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.6" : "0.4"} />
+        <polygon points="16,15 16,19 19,17" fill={active ? "#ffffff" : "#9aa0a6"} />
     </svg>
 );
 
 const RoboticsIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         {/* Camera/Eye */}
-        <circle cx="12" cy="10" r="6" fill={active ? "#00bcd4" : "#9aa0a6"} fillOpacity="0.2" stroke={active ? "#00bcd4" : "#9aa0a6"} strokeWidth="1.5" />
-        <circle cx="12" cy="10" r="3" fill={active ? "#00bcd4" : "#9aa0a6"} />
-        <circle cx="12" cy="10" r="1.2" fill="white" />
+        <circle cx="12" cy="10" r="6" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <circle cx="12" cy="10" r="3" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <circle cx="12" cy="10" r="1.2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "1" : "0.5"} />
         {/* Detection rays */}
-        <line x1="4" y1="6" x2="6" y2="8" stroke={active ? "#00bcd4" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="20" y1="6" x2="18" y2="8" stroke={active ? "#00bcd4" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="4" y1="6" x2="6" y2="8" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="20" y1="6" x2="18" y2="8" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
         {/* Bounding box indicator */}
-        <rect x="3" y="17" width="7" height="5" rx="1" fill={active ? "#ff5722" : "#bdc1c6"} fillOpacity="0.8" />
-        <rect x="14" y="17" width="7" height="5" rx="1" fill={active ? "#4caf50" : "#bdc1c6"} fillOpacity="0.8" />
+        <rect x="3" y="17" width="7" height="5" rx="1" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.4"} />
+        <rect x="14" y="17" width="7" height="5" rx="1" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.4"} />
     </svg>
 );
 
 const Viewer3DIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         {/* 3D Cube with perspective */}
-        <path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" fill={active ? "#7c3aed" : "#9aa0a6"} fillOpacity="0.2" stroke={active ? "#7c3aed" : "#9aa0a6"} strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M12 12L3 7M12 12L21 7M12 12V22" stroke={active ? "#7c3aed" : "#9aa0a6"} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M12 12L3 7M12 12L21 7M12 12V22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinejoin="round" />
         {/* Hand gesture indicator */}
-        <circle cx="18" cy="18" r="4" fill={active ? "#ec4899" : "#bdc1c6"} fillOpacity="0.9" />
-        <path d="M16.5 18.5L17.5 17L18.5 18L19.5 16.5" stroke="white" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="18" cy="18" r="4" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.9" : "0.5"} />
+        <path d="M16.5 18.5L17.5 17L18.5 18L19.5 16.5" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
 );
 
 const ImageActivityIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         {/* Image frame */}
-        <rect x="2" y="3" width="20" height="18" rx="2" fill={active ? "#f97316" : "#9aa0a6"} fillOpacity="0.2" stroke={active ? "#f97316" : "#9aa0a6"} strokeWidth="1.5" />
+        <rect x="2" y="3" width="20" height="18" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
         {/* Interactive label indicators */}
-        <circle cx="8" cy="10" r="1.5" fill={active ? "#06b6d4" : "#bdc1c6"} />
-        <circle cx="16" cy="14" r="1.5" fill={active ? "#06b6d4" : "#bdc1c6"} />
-        <rect x="5" y="15" width="3" height="2" rx="0.5" fill={active ? "#10b981" : "#bdc1c6"} />
-        <rect x="14" y="8" width="3" height="2" rx="0.5" fill={active ? "#10b981" : "#bdc1c6"} />
+        <circle cx="8" cy="10" r="1.5" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <circle cx="16" cy="14" r="1.5" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <rect x="5" y="15" width="3" height="2" rx="0.5" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <rect x="14" y="8" width="3" height="2" rx="0.5" fill={active ? "#ffffff" : "#9aa0a6"} />
         {/* Question mark in corner */}
-        <circle cx="19" cy="6" r="2" fill={active ? "#f59e0b" : "#bdc1c6"} />
-        <text x="19" y="7" fontSize="2" fill="white" textAnchor="middle" fontWeight="bold">?</text>
+        <circle cx="19" cy="6" r="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.6" : "0.4"} />
+        <text x="19" y="7" fontSize="2" fill={active ? "#ffffff" : "#9aa0a6"} textAnchor="middle" fontWeight="bold">?</text>
     </svg>
 );
 
 const CodeLabIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         {/* Code editor window */}
-        <rect x="2" y="3" width="20" height="18" rx="2" fill={active ? "#10b981" : "#9aa0a6"} fillOpacity="0.2" stroke={active ? "#10b981" : "#9aa0a6"} strokeWidth="1.5" />
+        <rect x="2" y="3" width="20" height="18" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
         {/* Window controls */}
-        <circle cx="5" cy="6" r="1" fill={active ? "#ef4444" : "#bdc1c6"} />
-        <circle cx="8" cy="6" r="1" fill={active ? "#f59e0b" : "#bdc1c6"} />
-        <circle cx="11" cy="6" r="1" fill={active ? "#22c55e" : "#bdc1c6"} />
+        <circle cx="5" cy="6" r="1" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.5"} />
+        <circle cx="8" cy="6" r="1" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.5"} />
+        <circle cx="11" cy="6" r="1" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.5"} />
         {/* Code lines */}
-        <path d="M6 11L9 13L6 15" stroke={active ? "#10b981" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <line x1="11" y1="15" x2="18" y2="15" stroke={active ? "#60a5fa" : "#bdc1c6"} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M6 11L9 13L6 15" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="11" y1="15" x2="18" y2="15" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
         {/* Python snake indicator */}
-        <circle cx="19" cy="6" r="2" fill={active ? "#3b82f6" : "#bdc1c6"} />
-        <text x="19" y="7" fontSize="3" fill="white" textAnchor="middle" fontWeight="bold">🐍</text>
+        <circle cx="19" cy="6" r="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.6" : "0.4"} />
+        <text x="19" y="7" fontSize="3" fill={active ? "#ffffff" : "#9aa0a6"} textAnchor="middle" fontWeight="bold">🐍</text>
     </svg>
 );
 
 const AssignmentIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="4" y="3" width="16" height="18" rx="2" fill={active ? "#8ab4f8" : "#9aa0a6"} fillOpacity="0.2" stroke={active ? "#8ab4f8" : "#9aa0a6"} strokeWidth="1.5" />
-        <path d="M8 12L11 15L16 9" stroke={active ? "#1a73e8" : "white"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <line x1="8" y1="7" x2="16" y2="7" stroke={active ? "#1a73e8" : "white"} strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="8" y1="17" x2="12" y2="17" stroke={active ? "#1a73e8" : "white"} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="4" y="3" width="16" height="18" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <path d="M8 12L11 15L16 9" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="8" y1="7" x2="16" y2="7" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="8" y1="17" x2="12" y2="17" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+);
+
+const LaTeXIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Document background */}
+        <rect x="4" y="3" width="16" height="18" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        {/* LaTeX symbol - stylized L */}
+        <path d="M8 7L8 17M8 7L12 7M8 11L11 11" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {/* X symbol */}
+        <path d="M14 9L18 13M18 9L14 13" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="2" strokeLinecap="round" />
+        {/* Code brackets */}
+        <path d="M10 15L8 17L10 19M14 15L16 17L14 19" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
 );
 
@@ -1970,7 +1983,7 @@ Respond in JSON format only:
         { id: 'image-activity', icon: <ImageActivityIcon active={activeMode === 'image-activity'} />, label: 'Image Activity', activeColor: '#f97316', activeBg: '#ffedd5' },
         { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' },
         { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Assignment', activeColor: '#1a73e8', activeBg: '#e8f0fe' },
-        { id: 'latex-assignment', icon: <Code2 className={`w-5 h-5 ${activeMode === 'latex-assignment' ? 'text-orange-600' : 'text-slate-400'}`} />, label: 'LaTeX', activeColor: '#f97316', activeBg: '#ffedd5' }
+        { id: 'latex-assignment', icon: <LaTeXIcon active={activeMode === 'latex-assignment'} />, label: 'LaTeX', activeColor: '#f97316', activeBg: '#ffedd5' }
     ];
 
 
@@ -3933,8 +3946,9 @@ sys.stderr = StringIO()
         }
 
         return (
-            <div className="h-full flex flex-col">
-                <div className="flex items-center gap-3 border-b border-[#e8eaed] bg-white px-4 py-3">
+            <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-y-auto text-slate-900">
+                <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-y-auto flex flex-col relative">
+                <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 flex-shrink-0">
                     <div className="flex items-center gap-2">
                         {codeLabFiles.map(file => {
                             const isActive = file.id === activeFile.id;
@@ -3942,7 +3956,7 @@ sys.stderr = StringIO()
                                 <button
                                     key={file.id}
                                     onClick={() => handleFileSelect(file.id)}
-                                    className={`px-3 py-1.5 rounded-full text-sm transition-colors ${isActive ? 'bg-[#ecfdf3] text-[#065f46] border border-[#bbf7d0]' : 'bg-[#f1f3f4] text-[#444746] border border-transparent hover:bg-[#e4e7ea]'}`}
+                                    className={`px-3 py-1.5 text-sm transition-colors ${isActive ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md' : 'bg-white/5 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
                                 >
                                     {file.name}
                                 </button>
@@ -3954,22 +3968,22 @@ sys.stderr = StringIO()
                         <select
                             value={codeLabTheme}
                             onChange={(e) => setCodeLabTheme(e.target.value as 'vscode' | 'dracula')}
-                            className="text-sm border border-[#dadce0] rounded-lg px-2 py-1 bg-white text-[#1f1f1f]"
+                            className="text-sm border border-slate-200 px-2 py-1 bg-white text-slate-900"
                         >
                             <option value="vscode">VS Code</option>
                             <option value="dracula">Dracula</option>
                         </select>
-                        <span className="text-xs text-[#5f6368] px-2 py-1 bg-[#f1f3f4] rounded-lg border border-[#dadce0]">
+                        <span className="text-xs text-slate-600 px-2 py-1 bg-slate-100 border border-slate-200">
                             {activeFile.language === 'java' || activeFile.language === 'cpp' ? 'Run coming soon for Java/C++' : 'Python + JS runnable'}
                         </span>
                     </div>
                 </div>
 
-                <div className="flex flex-col lg:flex-row gap-4 p-4 h-full overflow-hidden">
-                    <div className="flex-1 min-h-[340px] h-full">
+                <div className="flex flex-col lg:flex-row gap-4 p-4 min-h-full overflow-y-auto">
+                    <div className="flex-1 min-h-[340px] h-full flex flex-col">
                         <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
                             <div className="flex items-center gap-2">
-                                <span className="text-sm text-[#5f6368]">Language</span>
+                                <span className="text-sm text-slate-600">Language</span>
                                 <select
                                     value={codeLabLanguage}
                                     onChange={(e) => {
@@ -3977,7 +3991,7 @@ sys.stderr = StringIO()
                                         setCodeLabLanguage(nextLang);
                                         setCodeLabFiles(prev => prev.map(file => file.id === activeFile.id ? { ...file, language: nextLang } : file));
                                     }}
-                                    className="text-sm border border-[#dadce0] rounded-lg px-2 py-1 bg-white text-[#1f1f1f]"
+                                    className="text-sm border border-slate-200 px-2 py-1 bg-white text-slate-900"
                                 >
                                     <option value="python">Python</option>
                                     <option value="javascript">JavaScript</option>
@@ -3988,14 +4002,14 @@ sys.stderr = StringIO()
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={clearOutput}
-                                    className="px-3 py-1.5 text-sm border border-[#dadce0] rounded-lg text-[#5f6368] hover:bg-[#f1f3f4]"
+                                    className="px-3 py-1.5 text-sm border border-slate-200 text-slate-600 hover:bg-slate-100"
                                 >
                                     Clear Output
                                 </button>
                                 <button
                                     onClick={runCode}
                                     disabled={codeLabIsRunning}
-                                    className={`px-4 py-1.5 text-sm rounded-lg text-white flex items-center gap-2 ${codeLabIsRunning ? 'bg-[#9aa0a6] cursor-not-allowed' : 'bg-[#10b981] hover:bg-[#0ea271]'}`}
+                                    className={`px-4 py-1.5 text-sm text-white flex items-center gap-2 ${codeLabIsRunning ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#2c4066] hover:bg-[#34507c]'}`}
                                 >
                                     {codeLabIsRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                                     {codeLabIsRunning ? 'Running' : 'Run'}
@@ -4009,13 +4023,13 @@ sys.stderr = StringIO()
                                     value={codeLabAiPrompt}
                                     onChange={(e) => setCodeLabAiPrompt(e.target.value)}
                                     placeholder="Ask AI to refactor, explain, or add a feature..."
-                                    className="flex-1 text-sm border border-[#dadce0] rounded-lg px-3 py-2 bg-white text-[#1f1f1f] focus:outline-none focus:ring-2 focus:ring-[#10b981]"
+                                    className="flex-1 text-sm border border-slate-200 px-3 py-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#3b5b8a]"
                                 />
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={handleAskCodeLabAi}
                                         disabled={codeLabAiLoading}
-                                        className={`px-4 py-2 text-sm rounded-lg text-white flex items-center gap-2 ${codeLabAiLoading ? 'bg-[#9aa0a6] cursor-not-allowed' : 'bg-[#10b981] hover:bg-[#0ea271]'}`}
+                                        className={`px-4 py-2 text-sm text-white flex items-center gap-2 ${codeLabAiLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#2c4066] hover:bg-[#34507c]'}`}
                                     >
                                         {codeLabAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                                         {codeLabAiStreaming ? 'Streaming…' : 'Ask AI'}
@@ -4023,7 +4037,7 @@ sys.stderr = StringIO()
                                     <button
                                         onClick={handleInsertAiCode}
                                         disabled={!codeLabAiResponse}
-                                        className={`px-4 py-2 text-sm rounded-lg border ${codeLabAiResponse ? 'border-[#10b981] text-[#065f46] hover:bg-[#ecfdf3]' : 'border-[#dadce0] text-[#9aa0a6] cursor-not-allowed'}`}
+                                        className={`px-4 py-2 text-sm border ${codeLabAiResponse ? 'border-[#3b5b8a] text-[#3b5b8a] hover:bg-slate-50' : 'border-slate-200 text-slate-400 cursor-not-allowed'}`}
                                     >
                                         Insert
                                     </button>
@@ -4033,43 +4047,44 @@ sys.stderr = StringIO()
                                 <div className="text-sm text-red-600">{codeLabAiError}</div>
                             )}
                             {codeLabAiResponse && (
-                                <div className="border border-[#e8eaed] rounded-lg bg-white p-3 text-sm text-[#1f1f1f] max-h-48 overflow-auto">
-                                    <div className="font-medium text-[#5f6368] mb-1">AI Suggestion</div>
-                                    <pre className="whitespace-pre-wrap text-xs text-[#111827]">{codeLabAiResponse}</pre>
+                                <div className="border border-slate-200 bg-white p-3 text-sm text-slate-900 max-h-48 overflow-auto">
+                                    <div className="font-medium text-slate-600 mb-1">AI Suggestion</div>
+                                    <pre className="whitespace-pre-wrap text-xs text-slate-800">{codeLabAiResponse}</pre>
                                 </div>
                             )}
                         </div>
 
-                        <div className="border border-[#e8eaed] rounded-xl overflow-hidden h-[70vh]">
+                        <div className="flex-1 border border-slate-200 overflow-hidden flex flex-col min-h-0">
                             <CodeMirror
                                 value={codeLabCode}
                                 height="100%"
                                 editable
                                 theme={codeLabTheme === 'vscode' ? vscodeDark : dracula}
                                 basicSetup={codeLabBasicSetup}
-                                className="h-full"
-                                style={{ height: '100%', minHeight: '70vh', backgroundColor: '#0b1220' }}
+                                className="flex-1"
+                                style={{ height: '100%', backgroundColor: '#0b1220' }}
                                 extensions={codeLabExtensions}
                                 onChange={handleCodeChange}
                             />
                         </div>
                     </div>
 
-                    <div className="w-full lg:w-80 flex-shrink-0 h-full">
-                        <div className="bg-white border border-[#e8eaed] rounded-xl h-full flex flex-col shadow-sm">
-                            <div className="px-4 py-3 border-b border-[#e8eaed] flex items-center justify-between">
-                                <span className="text-sm font-medium text-[#1f1f1f]">Output</span>
-                                <button onClick={clearOutput} className="text-xs text-[#5f6368] hover:text-[#1f1f1f]">Clear</button>
+                    <div className="w-full lg:w-80 flex-shrink-0 h-full flex flex-col">
+                        <div className="bg-white border border-slate-200 h-full flex flex-col">
+                            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                                <span className="text-sm font-medium text-slate-900">Output</span>
+                                <button onClick={clearOutput} className="text-xs text-slate-600 hover:text-slate-900">Clear</button>
                             </div>
-                            <div className="flex-1 px-4 py-3 overflow-auto bg-[#0b1220] text-[#e8eaed] font-mono text-sm rounded-b-xl">
+                            <div className="flex-1 px-4 py-3 overflow-auto font-mono text-sm min-h-0" style={{ backgroundColor: '#1F1F1F' }}>
                                 {codeLabOutput ? codeLabOutput.split('\n').map((line, idx) => (
-                                    <div key={idx} className="whitespace-pre-wrap leading-6">{line || ' '}</div>
+                                    <div key={idx} className="whitespace-pre-wrap leading-6 text-slate-200">{line || ' '}</div>
                                 )) : (
-                                    <div className="text-[#9aa0a6]">Run code to see output here.</div>
+                                    <div className="text-slate-400">Run code to see output here.</div>
                                 )}
                             </div>
                         </div>
                     </div>
+                </div>
                 </div>
             </div>
         );
@@ -4184,14 +4199,8 @@ sys.stderr = StringIO()
                         <div className="px-4 sm:px-6 pt-4 pb-3 border-b border-[#3c4043]">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8ab4f8] to-[#669df6] flex items-center justify-center">
-                                        <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
-                                        </svg>
-                                    </div>
                                     <div>
                                         <h1 className="text-xl font-medium text-white">Immersive Learning</h1>
-                                        <p className="text-xs text-[#9aa0a6]">Your AI-powered learning workspace</p>
                                     </div>
                                 </div>
                                 <button
@@ -6408,16 +6417,16 @@ sys.stderr = StringIO()
 
             case 'robotics':
                 return (
-                    <div className="flex flex-col h-full bg-white p-6">
+                    <div className="flex flex-col h-full p-6" style={{ backgroundColor: '#1F1F1F' }}>
                         {/* Header */}
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-[#e0f7fa] rounded-full flex items-center justify-center">
+                                <div className="w-10 h-10 flex items-center justify-center">
                                     <RoboticsIcon active />
                                 </div>
                                 <div>
-                                    <h2 className="text-[18px] font-medium text-[#1f1f1f]">Robotics Vision</h2>
-                                    <p className="text-[13px] text-[#5f6368]">Real-time object detection & spatial understanding with Gemini</p>
+                                    <h2 className="text-[18px] font-medium text-white">Robotics Vision</h2>
+                                    <p className="text-[13px] text-slate-300">Real-time object detection & spatial understanding with Gemini</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -6425,9 +6434,9 @@ sys.stderr = StringIO()
                                     <>
                                         <button
                                             onClick={toggleAutoAnalysis}
-                                            className={`px-3 py-1.5 text-[13px] rounded-lg transition-colors flex items-center gap-1.5 ${isAutoAnalyzing
-                                                ? 'bg-[#00bcd4] text-white'
-                                                : 'text-[#5f6368] hover:bg-[#f1f3f4]'
+                                            className={`px-3 py-1.5 text-[13px] transition-colors flex items-center gap-1.5 ${isAutoAnalyzing
+                                                ? 'bg-[#2c4066] text-white'
+                                                : 'text-slate-300 hover:bg-slate-700 border border-slate-600'
                                                 }`}
                                         >
                                             {isAutoAnalyzing ? (
@@ -6445,7 +6454,7 @@ sys.stderr = StringIO()
                                         <button
                                             onClick={runRoboticsAnalysis}
                                             disabled={isAnalyzing}
-                                            className="px-3 py-1.5 text-[13px] text-white bg-[#00bcd4] hover:bg-[#00acc1] disabled:opacity-50 rounded-lg transition-colors flex items-center gap-1.5"
+                                            className="px-3 py-1.5 text-[13px] text-white bg-[#2c4066] hover:bg-[#34507c] disabled:opacity-50 transition-colors flex items-center gap-1.5"
                                         >
                                             {isAnalyzing ? (
                                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -6462,23 +6471,23 @@ sys.stderr = StringIO()
                         {/* Main Content */}
                         <div className="flex-1 min-h-0 flex gap-4">
                             {/* Webcam View */}
-                            <div className="flex-1 min-h-0 relative rounded-xl border border-[#e8eaed] overflow-hidden bg-black">
+                            <div className="flex-1 min-h-0 relative border border-slate-700 overflow-hidden bg-black">
                                 {!isWebcamActive ? (
-                                    <div className="flex items-center justify-center h-full bg-gradient-to-br from-[#e0f7fa] to-[#b2ebf2]">
+                                    <div className="flex items-center justify-center h-full" style={{ backgroundColor: '#1F1F1F' }}>
                                         <div className="text-center max-w-md px-6">
-                                            <div className="w-20 h-20 mx-auto mb-6 bg-white rounded-2xl shadow-lg flex items-center justify-center">
+                                            <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center">
                                                 <RoboticsIcon active />
                                             </div>
-                                            <h3 className="text-[22px] font-medium text-[#1f1f1f] mb-3">Start Robotics Vision</h3>
-                                            <p className="text-[15px] text-[#5f6368] mb-6">
+                                            <h3 className="text-[22px] font-medium text-white mb-3">Start Robotics Vision</h3>
+                                            <p className="text-[15px] text-slate-300 mb-6">
                                                 Use your webcam to detect objects, understand scenes, and explore spatial reasoning with Gemini Robotics-ER.
                                             </p>
                                             {webcamError ? (
-                                                <p className="text-[14px] text-red-500 mb-4">{webcamError}</p>
+                                                <p className="text-[14px] text-red-400 mb-4">{webcamError}</p>
                                             ) : null}
                                             <button
                                                 onClick={startWebcam}
-                                                className="px-6 py-3 bg-[#00bcd4] hover:bg-[#00acc1] text-white rounded-full font-medium transition-colors flex items-center gap-2 mx-auto shadow-lg hover:shadow-xl"
+                                                className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto"
                                             >
                                                 <Play className="w-5 h-5" />
                                                 Start Webcam
@@ -6693,8 +6702,8 @@ sys.stderr = StringIO()
                             {/* Control Panel */}
                             <div className="w-[320px] min-h-0 flex flex-col gap-4">
                                 {/* Analysis Mode Selector */}
-                                <div className="bg-[#f8f9fa] rounded-xl p-4 border border-[#e8eaed]">
-                                    <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-3">Analysis Mode</h3>
+                                <div className="p-4 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
+                                    <h3 className="text-[14px] font-medium text-white mb-3">Analysis Mode</h3>
                                     <div className="flex flex-wrap gap-2">
                                         {[
                                             { id: 'detect', label: 'Detect Objects', icon: '🔍' },
@@ -6707,9 +6716,9 @@ sys.stderr = StringIO()
                                             <button
                                                 key={mode.id}
                                                 onClick={() => setAnalysisMode(mode.id as any)}
-                                                className={`px-3 py-2 rounded-lg text-[13px] transition-colors flex items-center gap-1.5 ${analysisMode === mode.id
-                                                    ? 'bg-[#00bcd4] text-white'
-                                                    : 'bg-white text-[#5f6368] hover:bg-[#e8eaed]'
+                                                className={`px-3 py-2 text-[13px] transition-colors flex items-center gap-1.5 ${analysisMode === mode.id
+                                                    ? 'bg-[#2c4066] text-white'
+                                                    : 'border border-slate-600 text-slate-300 hover:bg-slate-700'
                                                     }`}
                                             >
                                                 <span>{mode.icon}</span>
@@ -6721,8 +6730,8 @@ sys.stderr = StringIO()
 
                                 {/* Query Input (for count/question modes) */}
                                 {(analysisMode === 'count' || analysisMode === 'question') && (
-                                    <div className="bg-[#f8f9fa] rounded-xl p-4 border border-[#e8eaed]">
-                                        <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-2">
+                                    <div className="p-4 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
+                                        <h3 className="text-[14px] font-medium text-white mb-2">
                                             {analysisMode === 'count' ? 'What to count?' : 'Your question'}
                                         </h3>
                                         <input
@@ -6730,21 +6739,22 @@ sys.stderr = StringIO()
                                             value={roboticsQuery}
                                             onChange={(e) => setRoboticsQuery(e.target.value)}
                                             placeholder={analysisMode === 'count' ? 'e.g., people, cups, books...' : 'e.g., What should I move to make space?'}
-                                            className="w-full px-3 py-2 border border-[#e8eaed] rounded-lg text-[14px] focus:outline-none focus:ring-2 focus:ring-[#00bcd4] focus:border-transparent"
+                                            className="w-full px-3 py-2 border border-slate-600 text-[14px] text-white bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent"
+                                            style={{ backgroundColor: '#1F1F1F' }}
                                         />
                                     </div>
                                 )}
 
                                 {/* Auto-Analysis Settings */}
-                                <div className="bg-[#f8f9fa] rounded-xl p-4 border border-[#e8eaed]">
-                                    <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-2">
+                                <div className="p-4 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
+                                    <h3 className="text-[14px] font-medium text-white mb-2">
                                         Real-time Speed
-                                        <span className="ml-2 text-[12px] text-[#00bcd4] font-normal">
+                                        <span className="ml-2 text-[12px] text-slate-300 font-normal">
                                             {analysisInterval <= 300 ? '⚡ Fast' : analysisInterval <= 1000 ? '🔄 Normal' : '🐢 Slow'}
                                         </span>
                                     </h3>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-[11px] text-[#5f6368]">Fast</span>
+                                        <span className="text-[11px] text-slate-300">Fast</span>
                                         <input
                                             type="range"
                                             min="100"
@@ -6760,29 +6770,29 @@ sys.stderr = StringIO()
                                                     autoAnalysisRef.current = setInterval(runRoboticsAnalysis, newInterval);
                                                 }
                                             }}
-                                            className="flex-1 accent-[#00bcd4]"
+                                            className="flex-1 accent-[#3b5b8a]"
                                         />
-                                        <span className="text-[11px] text-[#5f6368]">Slow</span>
-                                        <span className="text-[13px] text-[#5f6368] w-14 text-right">{analysisInterval}ms</span>
+                                        <span className="text-[11px] text-slate-300">Slow</span>
+                                        <span className="text-[13px] text-slate-300 w-14 text-right">{analysisInterval}ms</span>
                                     </div>
                                 </div>
 
                                 {/* Results Panel */}
-                                <div className="flex-1 bg-[#f8f9fa] rounded-xl p-4 border border-[#e8eaed] overflow-y-auto">
-                                    <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-3">Results</h3>
+                                <div className="flex-1 p-4 border border-slate-700 overflow-y-auto" style={{ backgroundColor: '#1F1F1F' }}>
+                                    <h3 className="text-[14px] font-medium text-white mb-3">Results</h3>
 
                                     {/* Count Result */}
                                     {countResult && (
-                                        <div className="mb-4 p-3 bg-white rounded-lg border border-[#e8eaed]">
-                                            <div className="text-[32px] font-bold text-[#00bcd4]">{countResult.count}</div>
-                                            <div className="text-[13px] text-[#5f6368]">{roboticsQuery} found</div>
+                                        <div className="mb-4 p-3 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
+                                            <div className="text-[32px] font-bold text-white">{countResult.count}</div>
+                                            <div className="text-[13px] text-slate-300">{roboticsQuery} found</div>
                                         </div>
                                     )}
 
                                     {/* Scene Description */}
                                     {sceneDescription && (
-                                        <div className="mb-4 p-3 bg-white rounded-lg border border-[#e8eaed]">
-                                            <p className="text-[14px] text-[#1f1f1f] leading-relaxed">{sceneDescription}</p>
+                                        <div className="mb-4 p-3 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
+                                            <p className="text-[14px] text-slate-200 leading-relaxed">{sceneDescription}</p>
                                         </div>
                                     )}
 
@@ -6790,11 +6800,11 @@ sys.stderr = StringIO()
                                     {classificationResult && classificationResult.length > 0 && (
                                         <div className="space-y-2">
                                             {classificationResult.map((item, idx) => (
-                                                <div key={idx} className="p-3 bg-white rounded-lg border border-[#e8eaed]">
-                                                    <div className="font-medium text-[14px] text-[#1f1f1f]">{item.label}</div>
+                                                <div key={idx} className="p-3 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
+                                                    <div className="font-medium text-[14px] text-white">{item.label}</div>
                                                     <div className="flex flex-wrap gap-1 mt-1">
                                                         {item.attributes.map((attr, i) => (
-                                                            <span key={i} className="px-2 py-0.5 bg-[#e0f7fa] text-[#00838f] text-[11px] rounded-full">
+                                                            <span key={i} className="px-2 py-0.5 border border-slate-600 text-slate-300 text-[11px]" style={{ backgroundColor: '#1F1F1F' }}>
                                                                 {attr}
                                                             </span>
                                                         ))}
@@ -6808,9 +6818,9 @@ sys.stderr = StringIO()
                                     {!classificationResult && detectedObjects.length > 0 && (
                                         <div className="space-y-1">
                                             {detectedObjects.map((obj, idx) => (
-                                                <div key={idx} className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#e8eaed]">
-                                                    <span className="text-[14px] text-[#1f1f1f]">{obj.label}</span>
-                                                    <span className="text-[12px] text-[#5f6368]">
+                                                <div key={idx} className="flex items-center justify-between p-2 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
+                                                    <span className="text-[14px] text-white">{obj.label}</span>
+                                                    <span className="text-[12px] text-slate-300">
                                                         ({Math.round(obj.point[1] / 10)}%, {Math.round(obj.point[0] / 10)}%)
                                                     </span>
                                                 </div>
@@ -7585,15 +7595,12 @@ sys.stderr = StringIO()
             )}
 
             {/* Top Header Bar */}
-            <header className="bg-[#0f1117] h-[50px] px-5 flex items-center justify-between border-b border-[#1f2430]">
+            <header className="h-[50px] px-5 flex items-center justify-between border-b" style={{ backgroundColor: '#1F1F1F', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
                 {/* Left: Logo & Workspaces */}
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                         <span className="text-[22px] font-medium text-slate-100" style={{ fontFamily: '"Google Sans", sans-serif' }}>
-                            Learn Your Way
-                        </span>
-                        <span className="text-[10px] text-slate-400 border border-slate-700 rounded px-1.5 py-0.5 uppercase tracking-wide font-medium">
-                            Experiment
+                            Immersive Learning
                         </span>
                     </div>
                     {/* My Workspaces Button */}
@@ -7610,13 +7617,6 @@ sys.stderr = StringIO()
                             My Workspaces
                         </button>
                     )}
-                </div>
-
-                {/* Center: Interest pill */}
-                <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1.5 bg-slate-800/70 rounded-full">
-                    <span className="text-[14px] text-slate-300">Interest</span>
-                    <span className="text-[14px]">🧪</span>
-                    <span className="text-[14px] font-medium text-slate-100">Chemistry</span>
                 </div>
 
                 {/* Right: Icons */}
@@ -7663,38 +7663,67 @@ sys.stderr = StringIO()
                 </div>
             </header>
 
-            {/* Navigation Tabs */}
-            <nav className="bg-[#0f1117] px-8 py-4 flex items-center justify-center gap-2 border-b border-[#1f2430]">
-                {learningModes.map((mode) => {
-                    const isActive = activeMode === mode.id;
-                    return (
-                        <button
-                            key={mode.id}
-                            onClick={() => setActiveMode(mode.id)}
-                            className={`
-                                flex flex-col items-center gap-1.5 px-5 py-2.5 rounded-[24px] transition-all duration-200
-                                 ${isActive
-                                     ? 'border-2'
-                                     : 'border-2 border-transparent hover:bg-slate-800/60'
-                                 }
-                             `}
-                             style={{
-                                 backgroundColor: isActive ? mode.activeBg : 'transparent',
-                                 borderColor: isActive ? '#fea481' : 'transparent'
-                             }}
-                         >
-                            <div className="w-6 h-6 flex items-center justify-center">
-                                {mode.icon}
-                            </div>
-                             <span
-                                 className={`text-[13px] font-medium whitespace-nowrap`}
-                                style={{ color: isActive ? mode.activeColor : '#e2e8f0' }}
-                             >
-                                 {mode.label}
-                             </span>
-                        </button>
-                    );
-                })}
+            {/* Navigation Tabs - Enhanced with Magic UI styling */}
+            <nav className="px-8 py-4 flex items-center justify-center gap-2 border-b relative overflow-x-auto" style={{ backgroundColor: '#1F1F1F', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
+                <div className="flex items-center gap-2">
+                    {learningModes.map((mode) => {
+                        const isActive = activeMode === mode.id;
+                        return (
+                            <button
+                                key={mode.id}
+                                onClick={() => setActiveMode(mode.id)}
+                                className={`
+                                    group relative flex flex-col items-center gap-1.5 px-5 py-2.5 transition-all duration-300 overflow-hidden rounded-[24px]
+                                    ${isActive
+                                        ? 'scale-105'
+                                        : 'hover:scale-105'
+                                    }
+                                `}
+                                style={{
+                                    backgroundColor: isActive ? mode.activeBg : 'rgba(255, 255, 255, 0.05)',
+                                }}
+                            >
+                                {/* Active state glow effect - stronger */}
+                                {isActive && (
+                                    <>
+                                        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/40 via-purple-500/40 to-cyan-500/40 blur-xl opacity-70" />
+                                        <div className="absolute inset-0 border-2 rounded-[24px] border-cyan-400 shadow-xl shadow-cyan-500/40" />
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent rounded-[24px]" />
+                                    </>
+                                )}
+                                
+                                {/* Hover glow effect - more visible */}
+                                {!isActive && (
+                                    <>
+                                        <div className="absolute inset-0 bg-gradient-to-r from-slate-600/0 via-slate-600/40 to-slate-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[24px]" />
+                                        <div className="absolute inset-0 border border-slate-600/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[24px]" />
+                                    </>
+                                )}
+                                
+                                {/* Content */}
+                                <div className="relative z-10 flex flex-col items-center gap-1.5">
+                                    <div className={`w-6 h-6 flex items-center justify-center transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
+                                        {mode.icon}
+                                    </div>
+                                    <span
+                                        className={`text-[13px] font-semibold whitespace-nowrap transition-colors duration-300 ${
+                                            isActive 
+                                                ? 'text-white drop-shadow-lg' 
+                                                : 'text-slate-400 group-hover:text-slate-200'
+                                        }`}
+                                    >
+                                        {mode.label}
+                                    </span>
+                                </div>
+                                
+                                {/* Active indicator bar - more prominent */}
+                                {isActive && (
+                                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-gradient-to-r from-cyan-400 via-purple-400 to-cyan-400 rounded-full shadow-lg shadow-cyan-400/50" />
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
             </nav>
 
             {/* Main Content Area - 3 Column Layout */}
@@ -7787,17 +7816,17 @@ sys.stderr = StringIO()
                 {/* Main Content Card */}
                 <div className={`flex-1 ${activeMode === 'source'
                     ? 'bg-[#131314] overflow-hidden p-0'
-                    : activeMode === 'mindmap'
+                    : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics'
                         ? 'bg-[#0b0d12] overflow-hidden p-0'
-                        : activeMode === 'viewer3d' || activeMode === 'robotics'
+                        : activeMode === 'viewer3d'
                             ? 'bg-[#0b0d12] overflow-hidden p-4'
                             : 'bg-[#0b0d12] overflow-y-auto p-4'
                     }`}>
                     <div className={`${activeMode === 'source'
                         ? 'h-full'
-                        : activeMode === 'mindmap'
+                        : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics'
                             ? 'h-full rounded-none shadow-none bg-[#0f1117]'
-                            : activeMode === 'viewer3d' || activeMode === 'robotics'
+                            : activeMode === 'viewer3d'
                                 ? 'h-full rounded-[24px] shadow-sm bg-[#0f1117]'
                                 : 'min-h-full rounded-[24px] shadow-sm bg-[#0f1117]'
                         } overflow-hidden`}>
