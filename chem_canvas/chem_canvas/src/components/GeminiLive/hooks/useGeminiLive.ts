@@ -1932,21 +1932,32 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                     const { query } = fc.args as any;
                     console.log('Deep Reasoning Tool Called:', query);
                     
+                    // Show placeholder on canvas immediately to indicate work in progress
+                    pushTextToCanvas(
+                      "### 🧠 Deep Reasoning in Progress...\n\nI am analyzing this complex query. Please wait a moment while I generate a comprehensive response.\n\n*The conversation can continue while I work on this.*", 
+                      "Deep Analysis Status"
+                    );
+                    
                     try {
                       if (!aiInstanceRef.current) throw new Error('AI client not initialized');
                       const model = aiInstanceRef.current.getGenerativeModel({ model: REASONING_MODEL });
-                      const result = await model.generateContent(query);
+                      
+                      // Enforce strict formatting for the deep reasoning model
+                      const enhancedQuery = `${query}\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n- Use standard LaTeX for ALL math formulas (enclosed in $ for inline or $$ for block).\n- Use LaTeX for chemical reactions (e.g., \\ce{H2O}).\n- Use standard Markdown code blocks for any code.\n- Return the response in clean, structured Markdown.`;
+                      
+                      const result = await model.generateContent(enhancedQuery);
                       const responseText = result.response.text();
                       
-                      // Push result to canvas
+                      // Push final result to canvas
                       pushTextToCanvas(responseText, 'Deep Analysis Result');
                       
                       return {
                         id: fc.id,
                         name: fc.name,
-                        response: { result: `Deep analysis completed. Summary: ${responseText.substring(0, 200)}...` }
+                        response: { result: `Deep analysis completed. I have displayed the detailed answer on the canvas.` }
                       };
                     } catch (error: any) {
+                      pushTextToCanvas(`### ❌ Analysis Failed\n\nUnable to complete the deep reasoning request.\nError: ${error.message}`, 'Error');
                       return {
                          id: fc.id,
                          name: fc.name,

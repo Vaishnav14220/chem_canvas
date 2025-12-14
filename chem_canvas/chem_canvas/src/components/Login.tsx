@@ -609,7 +609,7 @@ export default function Login({ onLogin }: LoginProps) {
                   src="https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=1200&q=80&auto=format&fit=crop"
                   alt="Chemistry Research"
                   className="w-full h-full object-cover"
-                  style={{ filter: 'blur(0.5px)' }}
+                  style={{ filter: 'blur(3px)' }}
                   onError={(e) => {
                     // Fallback to a different image if the first one fails
                     (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554475901-4538ddfbccc2?w=1200&q=80&auto=format&fit=crop';
