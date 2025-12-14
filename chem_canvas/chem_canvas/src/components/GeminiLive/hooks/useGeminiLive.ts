@@ -10,8 +10,9 @@ import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLangua
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
 
-const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-09-2025';
+const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-12-2025';
 const CONCEPT_IMAGE_MODEL = 'gemini-3-pro-image-preview';
+const REASONING_MODEL = 'gemini-2.5-flash';
 const CONCEPT_IMAGE_SIZE = '1K';
 const IMAGE_GENERATION_TOOLS = [{ googleSearch: {} }];
 
@@ -209,10 +210,13 @@ CORE TEACHING STYLE:
 - Be concise in your spoken responses, as this is a real-time voice conversation.
 - Do not read out long chemical formulas character by character; describe the structure or name instead.
 - Maintain a professional but approachable academic tone.
+- **NO FILLERS ON CANVAS**: When using canvas tools, ensuring ONLY high-value academic content (formulas, definitions, diagrams) is displayed. Never put conversational fillers like "Here is the answer" or "Let me show you" on the canvas.
 
 IMPORTANT GLOBAL RULES:
 - Never refuse to answer simply because the topic is not chemistry. Handle every legitimate academic or creative question.
 - Encourage interdisciplinary thinking and connect ideas across math, science, and other areas when helpful.
+- **USE TOOLS FOR COMPLEXITY**: If a question is complex (proofs, deep analysis), use 'consult_deep_reasoning' to get a better answer.
+- **LEARNING BITES**: Use 'create_learning_bite' frequently to pin important formulas, definitions, and key takeaways to the board.
 
 CRITICAL: IF A PDF DOCUMENT IS PROVIDED IN THE CONTEXT BELOW:
 - You are viewing the CURRENT PAGE of a PDF document
@@ -243,7 +247,14 @@ INTERACTIVE VISUALIZATION TOOLS - USE THESE FREQUENTLY TO ENHANCE LEARNING:
    Always include step-by-step explanations with relevant equations (LaTeX), diagrams descriptions, or structured content
    DEFAULT BEHAVIOR: Always call this tool when answering questions to provide visual step-by-step learning
 
-4. 'highlight_pdf_section' - REQUIRED when a PDF document is provided
+4. 'create_learning_bite' - Use this for isolating specific KEY FACTS, FORMULAS, or DEFINITIONS.
+   - Example: "Newton's Second Law: F = ma"
+   - Example: "Mitochondria: Powerhouse of the cell"
+   - KEEP IT CLEAN: No "Here is...", just the content.
+
+5. 'consult_deep_reasoning' - Use this for hard questions that need "thinking" or deep analysis.
+
+6. 'highlight_pdf_section' - REQUIRED when a PDF document is provided
 - Break down your answer into clear, digestible steps with titles and explanations
 - Include equations when relevant (chemistry, physics, math), descriptions when visual (biology, geography), or structured steps (coding, history)
 - Make learning interactive and visual by default - do not just speak, always show steps on the canvas
@@ -673,6 +684,40 @@ const canvasReactionTool: FunctionDeclaration = {
       }
     },
     required: ['reactionSmiles']
+  }
+};
+
+const learningBiteTool: FunctionDeclaration = {
+  name: 'create_learning_bite',
+  description: 'Display a concise, high-value learning bite (formula, key point, definition) on the canvas. Use this for specific academic content that the student should remember. Do NOT include conversational fillers.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      content: {
+        type: Type.STRING,
+        description: 'The academic content (Markdown/LaTeX allowed). E.g., "F = ma" or "Mitochondria is the powerhouse of the cell".'
+      },
+      category: {
+        type: Type.STRING,
+        description: 'Category of the bite: "Formula", "Definition", "Key Point", "Insight".'
+      }
+    },
+    required: ['content', 'category']
+  }
+};
+
+const deepReasoningTool: FunctionDeclaration = {
+  name: 'consult_deep_reasoning',
+  description: 'Use a more capable "thinking" model to solve complex problems or generating comprehensive explanations for difficult questions.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      query: {
+        type: Type.STRING,
+        description: 'The complex question or topic to analyze.'
+      }
+    },
+    required: ['query']
   }
 };
 
@@ -1574,7 +1619,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
           systemInstruction: getSystemInstruction(selectedLanguage, pdfContent),
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          tools: [{ functionDeclarations: [simulationTool, molecule3DTool, learningCanvasTool, pdfHighlightTool, conceptImageTool, canvasSnapshotTool, canvasWriteTool, canvasMoleculeTool, canvasProteinTool, canvasReactionTool] }]
+          tools: [{ functionDeclarations: [simulationTool, molecule3DTool, learningCanvasTool, pdfHighlightTool, conceptImageTool, canvasSnapshotTool, canvasWriteTool, canvasMoleculeTool, canvasProteinTool, canvasReactionTool, learningBiteTool, deepReasoningTool] }]
         },
         callbacks: {
           onopen: () => {
@@ -1867,6 +1912,47 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                         response: { error: error?.message || 'Failed to render reaction on the canvas.' }
                       };
                     }
+                  } else if (fc.name === 'create_learning_bite') {
+                    const { content, category } = fc.args as any;
+                    console.log('Learning Bite Tool Called:', { content, category });
+                    if (canvasHandwritingHandlerRef.current) {
+                      // Push as handwriting but formatted
+                      const formattedContent = `[${category?.toUpperCase() || 'INFO'}] ${content}`;
+                      canvasHandwritingHandlerRef.current(formattedContent);
+                    } else {
+                       // Fallback if handwriting not available, push to regular text handler
+                       pushTextToCanvas(content, category || 'Key Point');
+                    }
+                    return {
+                      id: fc.id,
+                      name: fc.name,
+                      response: { result: 'Learning bite displayed on canvas.' }
+                    };
+                  } else if (fc.name === 'consult_deep_reasoning') {
+                    const { query } = fc.args as any;
+                    console.log('Deep Reasoning Tool Called:', query);
+                    
+                    try {
+                      if (!aiInstanceRef.current) throw new Error('AI client not initialized');
+                      const model = aiInstanceRef.current.getGenerativeModel({ model: REASONING_MODEL });
+                      const result = await model.generateContent(query);
+                      const responseText = result.response.text();
+                      
+                      // Push result to canvas
+                      pushTextToCanvas(responseText, 'Deep Analysis Result');
+                      
+                      return {
+                        id: fc.id,
+                        name: fc.name,
+                        response: { result: `Deep analysis completed. Summary: ${responseText.substring(0, 200)}...` }
+                      };
+                    } catch (error: any) {
+                      return {
+                         id: fc.id,
+                         name: fc.name,
+                         response: { error: error.message || 'Deep reasoning failed' }
+                      };
+                    }
                   }
                   return {
                     id: fc.id,
@@ -1894,9 +1980,10 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 currentOutputRef.current += text;
 
                 // Stream partial output directly to Excalidraw for realtime handwriting when in Excalidraw-only mode
-                if (excalidrawOnlyModeRef.current && canvasHandwritingHandlerRef.current) {
-                  pushHandwrittenChunkToCanvas(text);
-                }
+                // DISABLED to prevent fillers: Content will only appear via tools or at end of turn
+                // if (excalidrawOnlyModeRef.current && canvasHandwritingHandlerRef.current) {
+                //   pushHandwrittenChunkToCanvas(text);
+                // }
               }
 
               setTranscripts(prev => {
