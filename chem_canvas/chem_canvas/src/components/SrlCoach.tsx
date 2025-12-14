@@ -61,31 +61,31 @@ const SRL_PHASES: Record<
     label: 'Goal-Setting',
     description: 'Turn loose intentions into concrete SMART goals tailored to the current chemistry focus.',
     icon: Target,
-    accent: 'text-amber-300'
+    accent: 'text-amber-600'
   },
   plan: {
     label: 'Planning',
     description: 'Break goals into adaptive pathways that weave in MolView, NMR viewer, and practice loops.',
     icon: Route,
-    accent: 'text-emerald-300'
+    accent: 'text-emerald-600'
   },
   monitor: {
     label: 'Self-Monitoring',
     description: 'Check in on confidence and progress with quick ratings and AI nudges that track growth.',
     icon: Activity,
-    accent: 'text-sky-300'
+    accent: 'text-sky-600'
   },
   reflect: {
     label: 'Reflection',
     description: 'Capture takeaways and translate insights into the next chemistry sprint.',
     icon: PenLine,
-    accent: 'text-purple-300'
+    accent: 'text-purple-600'
   },
   help: {
     label: 'Help-Seeking',
     description: 'Request scaffolds or hints at the right level so autonomy stays intact.',
     icon: LifeBuoy,
-    accent: 'text-rose-300'
+    accent: 'text-rose-600'
   }
 };
 
@@ -1950,7 +1950,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
     );
   };
   return (
-    <div className="h-full w-full overflow-y-auto rounded-3xl border border-slate-800/60 bg-gray-900/95 p-4 md:p-6 shadow-2xl">
+    <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
       {documentName && (
         <div className="mb-4 rounded-xl border border-blue-700/40 bg-blue-900/30 px-4 py-3 text-sm text-blue-200">
           <div className="flex items-center justify-between gap-3">
@@ -1975,8 +1975,11 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <div className="flex flex-col gap-4">
+            {/* Left Sidebar - Momentum & Stats */}
+            <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
+                <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                    {/* Momentum Score Display */}
+                    <div>
           <div
             className={`relative rounded-2xl border border-blue-700/40 p-5 md:p-6 text-white shadow-lg bg-gradient-to-br ${
               ([...SRL_MOMENTUM_LEVELS].reverse().find((level) => momentumScore >= level.min) ?? SRL_MOMENTUM_LEVELS[0]).gradient
@@ -2087,14 +2090,18 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                 </button>
               </div>
             </div>
-            {insightBulletin && (
-              <div className="mt-4 rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/80">
-                {insightBulletin}
-              </div>
-            )}
-          </div>
+                    {insightBulletin && (
+                        <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/80">
+                            {insightBulletin}
+                        </div>
+                    )}
+                </div>
+            </div>
 
-          <div className="bg-gray-800/70 border border-blue-700/40 rounded-xl p-4 md:p-5 space-y-5">
+            {/* Right Panel - Main Content */}
+            <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+                <div className="flex-1 w-full h-full min-h-0 overflow-auto p-6">
+                    <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">SRL Coach Phases</p>
@@ -2143,7 +2150,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                               value={goalTopic}
                               onChange={(event) => setGoalTopic(event.target.value)}
                               placeholder="e.g., Alkane reaction mechanisms or NMR peak assignments"
-                              className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                              className="mt-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#3b5b8a] focus:outline-none focus:ring-2 focus:ring-[#3b5b8a]/40"
                             />
                           </label>
                           <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
@@ -2151,7 +2158,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                             <select
                               value={goalTimeframe}
                               onChange={(event) => setGoalTimeframe(event.target.value)}
-                              className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                              className="mt-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#3b5b8a] focus:outline-none focus:ring-2 focus:ring-[#3b5b8a]/40"
                             >
                               <option value="today">Today</option>
                               <option value="this week">This week</option>
@@ -2188,7 +2195,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           type="button"
                           onClick={handleGenerateGoal}
                           disabled={isLoading || !goalTopic.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:from-blue-500 hover:to-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Target size={16} />
                           Draft SMART Goal with AI
@@ -2264,7 +2271,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                               <button
                                 type="button"
                                 onClick={handleAssessmentSubmit}
-                                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:from-amber-400 hover:to-orange-400"
+                                className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c]"
                               >
                                 {assessmentState.questionIndex >= currentAssessmentQuestions.length - 1
                                   ? 'Finish Assessment'
@@ -2373,7 +2380,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           type="button"
                           onClick={handleBuildPlan}
                           disabled={isLoading || (!planFocus.trim() && !goalTopic.trim())}
-                          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:from-emerald-500 hover:to-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Route size={16} />
                           Generate Adaptive Pathway
@@ -2458,7 +2465,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           type="button"
                           onClick={handleMonitoringFeedback}
                           disabled={isLoading || monitorRating === null || !monitorFocus.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:from-sky-500 hover:to-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Activity size={16} />
                           Generate Monitoring Feedback
@@ -2514,7 +2521,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           type="button"
                           onClick={handleReflectionSummary}
                           disabled={isLoading || !reflectionNotes.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:from-purple-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <PenLine size={16} />
                           Synthesize Reflection
@@ -2565,7 +2572,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           type="button"
                           onClick={handleHelpRequest}
                           disabled={isLoading || !helpTopic.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-rose-600 to-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:from-rose-500 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <LifeBuoy size={16} />
                           Request Tiered Support
@@ -2753,7 +2760,9 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
               ))}
             </div>
           </div>
+          </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -445,6 +445,13 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [audioGenerationError, setAudioGenerationError] = useState(false);
 
+    // Bring-your-own-notes support (for audio, mindmap, simulation)
+    const [standaloneNotes, setStandaloneNotes] = useState('');
+    const [standaloneNotesName, setStandaloneNotesName] = useState('');
+    const [standaloneTopic, setStandaloneTopic] = useState('');
+    const [isGeneratingStandaloneMindMap, setIsGeneratingStandaloneMindMap] = useState(false);
+    const notesFileInputRef = useRef<HTMLInputElement>(null);
+
     // Simulation State
     const [simulationBlueprint, setSimulationBlueprint] = useState<SimulationBlueprint | null>(null);
     const [simulationHTML, setSimulationHTML] = useState<string | null>(null);
@@ -1017,9 +1024,44 @@ Respond in JSON format only:
         viewer3dInteractionModeRef.current = viewer3dInteractionMode;
     }, [viewer3dInteractionMode]);
 
+    // Keep document text reference in sync when using standalone notes
+    useEffect(() => {
+        if (!immersiveContent) {
+            documentTextRef.current = standaloneNotes;
+        }
+    }, [immersiveContent, standaloneNotes]);
+
+    // Standalone notes upload (text/markdown preferred)
+    const handleStandaloneNotesUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = typeof e.target?.result === 'string' ? e.target.result : '';
+            setStandaloneNotes(text);
+            setStandaloneNotesName(file.name);
+            if (!standaloneTopic) {
+                setStandaloneTopic(file.name.replace(/\.[^/.]+$/, ''));
+            }
+            if (!immersiveContent) {
+                documentTextRef.current = text;
+            }
+        };
+
+        reader.readAsText(file);
+    };
+
     // Audio Lesson Logic
     const handleGeneratePodcast = async () => {
-        if (!immersiveContent) return;
+        const sourceText = immersiveContent
+            ? immersiveContent.sections.map(s => s.content).join('\n\n')
+            : standaloneNotes;
+
+        if (!sourceText.trim()) {
+            setAudioGenerationError(true);
+            return;
+        }
 
         // Skip if already generated or currently generating
         if (podcastScript || isGeneratingScript || isGeneratingAudio) {
@@ -1029,22 +1071,26 @@ Respond in JSON format only:
 
         let script = '';
 
-        // Derive a meaningful topic from the content
-        const topic = immersiveContent.title
-            || immersiveContent.sections[0]?.title
+        // Derive a meaningful topic from the content or notes
+        const topic = immersiveContent?.title
+            || immersiveContent?.sections[0]?.title
+            || standaloneTopic
+            || standaloneNotesName
             || 'Educational Discussion';
 
         // 1. Generate Script (use separate loading state, not global isLoading)
         setIsGeneratingScript(true);
+        setAudioGenerationError(false);
         try {
             script = await generatePodcastScript(
                 topic,
-                immersiveContent.sections.map(s => s.content).join('\n\n')
+                sourceText
             );
             setPodcastScript(script);
         } catch (error) {
             console.error('Failed to generate podcast script:', error);
             setIsGeneratingScript(false);
+            setAudioGenerationError(true);
             return;
         } finally {
             setIsGeneratingScript(false);
@@ -1176,8 +1222,10 @@ Respond in JSON format only:
 
     // Simulation Generation Logic
     const handleGenerateSimulation = async () => {
-        if (!immersiveContent || !documentTextRef.current) {
-            setSimulationError('Please upload a document first');
+        const sourceText = documentTextRef.current || standaloneNotes;
+
+        if (!sourceText || !sourceText.trim()) {
+            setSimulationError('Add notes or upload a document first');
             return;
         }
 
@@ -1203,10 +1251,11 @@ Respond in JSON format only:
         ]);
 
         try {
-            const topic = immersiveContent.title || 'Educational Simulation';
+            const topic = immersiveContent?.title || standaloneTopic || standaloneNotesName || 'Educational Simulation';
+            documentTextRef.current = sourceText;
 
             const result = await generateSimulation(
-                documentTextRef.current,
+                sourceText,
                 topic,
                 (stage) => {
                     setSimulationProgress(stage);
@@ -1287,6 +1336,94 @@ Respond in JSON format only:
 
     const toggleSimulationFullscreen = () => {
         setIsSimulationFullscreen(!isSimulationFullscreen);
+    };
+
+    const handleGenerateStandaloneMindMap = async () => {
+        const text = documentTextRef.current || standaloneNotes;
+        if (!text.trim()) {
+            return;
+        }
+
+        setIsGeneratingStandaloneMindMap(true);
+        try {
+            const data = await generateReactFlowData(text);
+            setReactFlowData(data);
+        } catch (error) {
+            console.error('Failed to generate mind map from notes:', error);
+        } finally {
+            setIsGeneratingStandaloneMindMap(false);
+        }
+    };
+
+    const renderStandaloneNotesPanel = (variant: 'light' | 'dark' = 'light') => {
+        const isDark = variant === 'dark';
+        const baseCard = 'rounded-xl p-4 bg-[#171717] border border-white/10 text-slate-100 shadow-lg';
+        const inputClass = 'rounded-lg px-3 py-2 text-sm bg-[#171717] border border-white/20 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#ff8b66]/40';
+        const labelClass = 'text-slate-200';
+        const helperClass = 'text-slate-400';
+
+        return (
+            <div className={`rounded-xl p-4 ${baseCard}`}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="text-sm font-semibold">Use your own notes</p>
+                        <p className={`text-xs ${helperClass}`}>
+                            Upload notes or paste text to generate audio lessons, mind maps, or simulations without a source document.
+                        </p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg cursor-pointer bg-white/10 text-slate-100 border border-white/20 hover:bg-white/15">
+                        <Upload className="w-4 h-4" />
+                        {standaloneNotesName ? 'Replace notes' : 'Upload notes'}
+                        <input
+                            ref={notesFileInputRef}
+                            type="file"
+                            accept=".txt,.md,.markdown,.doc,.docx,.pdf"
+                            className="hidden"
+                            onChange={handleStandaloneNotesUpload}
+                        />
+                    </label>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div className="flex flex-col gap-1">
+                        <label className={`text-xs font-semibold uppercase tracking-wide ${labelClass}`}>Topic or label</label>
+                        <input
+                            value={standaloneTopic}
+                            onChange={(event) => setStandaloneTopic(event.target.value)}
+                            placeholder="e.g., SN1 vs SN2 mechanisms"
+                            className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff8b66]/40 ${inputClass}`}
+                        />
+                        <p className={`text-[11px] ${helperClass}`}>
+                            {standaloneNotesName ? `Loaded: ${standaloneNotesName}` : 'Optional, used for titles and prompts.'}
+                        </p>
+                    </div>
+                    <div className="md:col-span-2 flex flex-col gap-1">
+                        <label className={`text-xs font-semibold uppercase tracking-wide ${labelClass}`}>Notes</label>
+                        <textarea
+                            value={standaloneNotes}
+                            onChange={(event) => setStandaloneNotes(event.target.value)}
+                            rows={4}
+                            placeholder="Paste notes, key steps, or a lesson outline..."
+                            className={`rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#ff8b66]/40 ${inputClass}`}
+                        />
+                        <div className={`flex items-center justify-between text-[11px] ${helperClass}`}>
+                            <span>{standaloneNotes ? `${standaloneNotes.length} characters` : 'Plain text/markdown recommended.'}</span>
+                            {standaloneNotes && (
+                                <button
+                                    type="button"
+                                    className={`${isDark ? 'text-slate-200' : 'text-slate-700'} underline`}
+                                    onClick={() => {
+                                        setStandaloneNotes('');
+                                        setStandaloneNotesName('');
+                                    }}
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     // ========== ROBOTICS VISION HANDLERS ==========
@@ -4103,7 +4240,7 @@ sys.stderr = StringIO()
         // Only show "Start Learning" fallback when NOT streaming
         // During streaming, let case 'immersive-text' handle the streaming UI
         // Robotics, 3D Viewer, Code Lab, and Image Activity work independently without needing uploaded content
-        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && activeMode !== 'image-activity' && !isStreaming) {
+        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && activeMode !== 'image-activity' && activeMode !== 'audio-lesson' && activeMode !== 'mindmap' && activeMode !== 'simulation' && !isStreaming) {
             return (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 p-8">
                     <div className="text-center space-y-3 max-w-md">
@@ -5422,38 +5559,80 @@ sys.stderr = StringIO()
 
             case 'audio-lesson':
                 return (
-                    <div className="flex h-full bg-[#eef2f7]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
-                        <div className="flex-1 flex flex-col items-center p-8 overflow-y-auto">
-                            <div className="w-full max-w-3xl space-y-6">
-                                {/* Header Card */}
-                                <div className="bg-[#1F1F1F] p-8 text-center">
-                                    <div className="w-16 h-16 mx-auto mb-4 bg-[#1F1F1F] flex items-center justify-center">
-                                        <Volume2 className="w-8 h-8 text-slate-300" />
-                                    </div>
-                                    <h2 className="text-[24px] font-medium text-slate-200 mb-2">Audio Lesson Podcast</h2>
-                                    <p className="text-slate-400 mb-6">
-                                        Generate an AI-hosted podcast about this topic. Listen to a conversation between an expert and a host.
-                                    </p>
-
-                                    {!podcastScript && !isGeneratingAudio && !isGeneratingScript && (
-                                        <button
-                                            onClick={handleGeneratePodcast}
-                                            disabled={isGeneratingScript}
-                                            className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto disabled:opacity-50"
-                                        >
-                                            <Sparkles className="w-5 h-5" />
-                                            Generate Podcast
-                                        </button>
-                                    )}
-
-                                    {/* Script Generation Loading State */}
-                                    {isGeneratingScript && (
-                                        <div className="flex items-center justify-center gap-2 text-slate-300">
-                                            <Loader2 className="w-5 h-5 animate-spin" />
-                                            <span>Generating podcast script...</span>
-                                        </div>
+                    <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900" style={{ fontFamily: '"Google Sans", sans-serif' }}>
+                        {/* Left Sidebar - mimic assignment layout */}
+                        <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#171717' }}>
+                            <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                <div className="space-y-3">
+                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
+                                    {renderStandaloneNotesPanel('dark')}
+                                </div>
+                                <div className="space-y-3">
+                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Actions</p>
+                                    <button
+                                        onClick={handleGeneratePodcast}
+                                        disabled={isGeneratingScript || isGeneratingAudio || (!standaloneNotes.trim() && !immersiveContent)}
+                                        className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isGeneratingScript || isGeneratingAudio ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Sparkles className="w-4 h-4" />
+                                        )}
+                                        {isGeneratingScript || isGeneratingAudio ? 'Working...' : 'Generate Podcast'}
+                                    </button>
+                                    {audioGenerationError && (
+                                        <p className="text-xs text-rose-300">Add notes and try again.</p>
                                     )}
                                 </div>
+                                <div className="space-y-2">
+                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Status</p>
+                                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
+                                        {podcastAudio
+                                            ? 'Audio ready.'
+                                            : isGeneratingScript
+                                                ? 'Generating script...'
+                                                : isGeneratingAudio
+                                                    ? 'Rendering audio...'
+                                                    : 'Awaiting notes.'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Main Content */}
+                        <div className="flex-1 bg-[#eef2f7] flex flex-col">
+                            <div className="flex-1 flex flex-col items-center p-8 overflow-y-auto">
+                                <div className="w-full max-w-3xl space-y-6">
+                                    {/* Header Card */}
+                                    <div className="bg-[#1F1F1F] p-8 text-center">
+                                        <div className="w-16 h-16 mx-auto mb-4 bg-[#1F1F1F] flex items-center justify-center">
+                                            <Volume2 className="w-8 h-8 text-slate-300" />
+                                        </div>
+                                        <h2 className="text-[24px] font-medium text-slate-200 mb-2">Audio Lesson Podcast</h2>
+                                        <p className="text-slate-400 mb-6">
+                                            Generate an AI-hosted podcast about this topic. Listen to a conversation between an expert and a host.
+                                        </p>
+
+                                        {!podcastScript && !isGeneratingAudio && !isGeneratingScript && (
+                                            <button
+                                                onClick={handleGeneratePodcast}
+                                                disabled={isGeneratingScript || isGeneratingAudio || (!standaloneNotes.trim() && !immersiveContent)}
+                                                className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <Sparkles className="w-5 h-5" />
+                                                Generate Podcast
+                                            </button>
+                                        )}
+
+                                        {/* Script Generation Loading State */}
+                                        {isGeneratingScript && (
+                                            <div className="flex items-center justify-center gap-2 text-slate-300">
+                                                <Loader2 className="w-5 h-5 animate-spin" />
+                                                <span>Generating podcast script...</span>
+                                            </div>
+                                        )}
+                                    </div>
 
                                 {/* Audio Player */}
                                 {podcastAudio && (
@@ -5553,7 +5732,8 @@ sys.stderr = StringIO()
                             </div>
                         </div>
                     </div>
-                );
+                </div>
+            );
 
 
 
@@ -6160,26 +6340,66 @@ sys.stderr = StringIO()
 
             case 'mindmap':
                 return (
-                    <div className="flex flex-col h-full bg-[#eef2f7]">
-                        {/* Mind Map Container */}
-                        <div
-                            className="flex-1 relative bg-[#eef2f7] overflow-hidden"
-                            style={{ minHeight: '400px' }}
-                        >
-                            {reactFlowData ? (
-                                <ReactFlowMindMap data={reactFlowData} />
-                            ) : (
-                                <div className="flex items-center justify-center h-full">
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 mx-auto mb-4 bg-[#1F1F1F] flex items-center justify-center">
-                                            <MindmapIcon active />
-                                        </div>
-                                        <p className="text-[15px] text-slate-600">
-                                            {processingStage === 'idle' ? 'Upload a document to generate a mind map' : 'Generating mind map...'}
-                                        </p>
-                                    </div>
+                    <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
+                        {/* Left Sidebar - mimic assignment layout */}
+                        <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#171717' }}>
+                            <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                <div className="space-y-3">
+                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
+                                    {renderStandaloneNotesPanel('dark')}
                                 </div>
-                            )}
+                                <div className="space-y-3">
+                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Actions</p>
+                                    <button
+                                        onClick={handleGenerateStandaloneMindMap}
+                                        disabled={isGeneratingStandaloneMindMap || (!standaloneNotes.trim() && !documentTextRef.current)}
+                                        className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isGeneratingStandaloneMindMap ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Sparkles className="w-4 h-4" />
+                                        )}
+                                        {isGeneratingStandaloneMindMap ? 'Building...' : 'Generate Mind Map'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Main Content */}
+                        <div className="flex-1 flex flex-col bg-[#eef2f7]">
+                            <div className="flex-1 relative bg-[#eef2f7] overflow-hidden" style={{ minHeight: '400px' }}>
+                                {reactFlowData ? (
+                                    <ReactFlowMindMap data={reactFlowData} />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full">
+                                        <div className="text-center space-y-4">
+                                            <div className="w-16 h-16 mx-auto mb-4 bg-[#1F1F1F] flex items-center justify-center">
+                                                <MindmapIcon active />
+                                            </div>
+                                            <p className="text-[15px] text-slate-600">
+                                                {processingStage === 'idle'
+                                                    ? 'Upload a document or drop in your own notes to generate a mind map.'
+                                                    : 'Generating mind map...'}
+                                            </p>
+                                            <div className="flex justify-center">
+                                                <button
+                                                    onClick={handleGenerateStandaloneMindMap}
+                                                    disabled={isGeneratingStandaloneMindMap || (!standaloneNotes.trim() && !documentTextRef.current)}
+                                                    className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:opacity-50"
+                                                >
+                                                    {isGeneratingStandaloneMindMap ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    ) : (
+                                                        <Sparkles className="w-4 h-4" />
+                                                    )}
+                                                    {isGeneratingStandaloneMindMap ? 'Building...' : 'Generate Mind Map'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );
@@ -6206,6 +6426,8 @@ sys.stderr = StringIO()
                                         </div>
                                     </div>
 
+                                    {renderStandaloneNotesPanel('dark')}
+
                                     {/* Controls */}
                                     {simulationHTML && (
                                         <div className="space-y-3">
@@ -6230,12 +6452,13 @@ sys.stderr = StringIO()
                                     )}
 
                                     {/* Generate Button */}
-                                    {!simulationHTML && !isGeneratingSimulation && immersiveContent && (
+                                    {!simulationHTML && !isGeneratingSimulation && (
                                         <div className="space-y-3">
                                             <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Generate Simulation</label>
                                             <button
                                                 onClick={handleGenerateSimulation}
-                                                className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2"
+                                                disabled={!immersiveContent && !standaloneNotes.trim()}
+                                                className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 <Sparkles className="w-4 h-4" />
                                                 Generate Simulation

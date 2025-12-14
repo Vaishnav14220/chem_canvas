@@ -23,29 +23,29 @@ const SrlCoachWorkspace: React.FC<SrlCoachWorkspaceProps> = ({
   user
 }) => {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-slate-900 border-b border-slate-800 px-4 md:px-6 py-3 shadow-lg">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#eef2f7]">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-white border-b border-slate-200 px-4 md:px-6 py-3 shadow-sm">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-            <Target className="h-4 w-4 text-blue-300" />
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Target className="h-4 w-4 text-[#2c4066]" />
             SRL Coach Workspace
           </h2>
-          <p className="flex items-center gap-1 text-xs text-slate-400">
-            <Sparkles className="h-3 w-3 text-blue-300" />
+          <p className="flex items-center gap-1 text-xs text-slate-500">
+            <Sparkles className="h-3 w-3 text-[#2c4066]" />
             Guided goal-setting, planning, monitoring, reflection, and help-seeking flows.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={onClose}
-            className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 transition-colors"
+            className="inline-flex items-center gap-2 rounded bg-[#2c4066] px-3 py-2 text-xs font-medium text-white hover:bg-[#34507c] transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Exit SRL Coach
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4 py-4 md:px-6 md:py-6">
+      <div className="flex-1 overflow-auto px-4 py-4 md:px-6 md:py-6 text-slate-900">
         <SrlCoach
           onSendMessage={onSendMessage}
           interactions={interactions}
