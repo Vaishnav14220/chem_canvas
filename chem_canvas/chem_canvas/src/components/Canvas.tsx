@@ -7120,7 +7120,7 @@ export default function Canvas({
 
       {/* Chemistry Toolbar */}
       {showChemistryToolbar && (
-        <div className="absolute top-4 left-8 z-10">
+        <div className="absolute top-4 left-8 z-50">
           <ChemistryToolbar
             onToolSelect={setChemistryTool}
             currentTool={chemistryTool}
@@ -7216,7 +7216,7 @@ export default function Canvas({
 
       {/* Right-side Controls - Consolidated */}
       <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
-        <div className="bg-gradient-to-br from-slate-800/95 via-slate-900/95 to-slate-800/95 backdrop-blur-sm border border-cyan-500/20 rounded-xl p-3 shadow-lg shadow-cyan-500/10 space-y-3">
+        <div className="backdrop-blur-sm border border-cyan-500/20 rounded-xl p-3 shadow-lg shadow-cyan-500/10 space-y-3" style={{ backgroundColor: 'rgb(23, 23, 23)' }}>
 
           {/* Grid Toggle */}
           <button
@@ -7286,49 +7286,6 @@ export default function Canvas({
             title="Clear Canvas"
           >
             <Trash2 size={14} />
-          </button>
-
-        </div>
-
-        {/* Chemistry Controls */}
-        <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-2 shadow-lg space-y-2">
-
-          {/* Chemistry Conversion Button */}
-          <button
-            onClick={convertToChemistry}
-            disabled={isConverting}
-            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center gap-2 ${isConverting
-              ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
-              : 'bg-primary text-primary-foreground hover:bg-primary/90'
-              }`}
-            title={isConverting ? "Converting..." : "Convert to Chemistry Structure"}
-          >
-            {isConverting ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Beaker size={14} />
-            )}
-          </button>
-
-          {/* Correction Button */}
-          <button
-            onClick={showCorrections ? clearCorrections : analyzeCanvas}
-            disabled={isAnalyzing}
-            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center gap-2 ${isAnalyzing
-              ? 'bg-primary/50 text-primary-foreground cursor-not-allowed'
-              : showCorrections
-                ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90'
-              }`}
-            title={isAnalyzing ? "Analyzing..." : showCorrections ? "Clear Corrections" : "Check My Work"}
-          >
-            {isAnalyzing ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : showCorrections ? (
-              <CheckCircle size={14} />
-            ) : (
-              <AlertCircle size={14} />
-            )}
           </button>
 
         </div>
