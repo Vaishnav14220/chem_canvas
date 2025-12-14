@@ -1,6 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { User, GraduationCap, Calendar, BookOpen, Building, ChevronDown, X, Save, RefreshCw, Key, Copy, Eye, EyeOff } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { User, GraduationCap, Calendar, BookOpen, Building, X, Save, RefreshCw, Key, Copy, Eye, EyeOff } from 'lucide-react';
 import { updateUserProfile, UserProfile } from '../firebase/auth';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from './ui/field';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 interface ProfileUpdateProps {
   userProfile: UserProfile;
@@ -8,64 +28,121 @@ interface ProfileUpdateProps {
   onUpdate: (updatedProfile: UserProfile) => void;
 }
 
+// Zod schema for form validation
+const profileSchema = z.object({
+  username: z
+    .string()
+    .min(3, 'Username must be at least 3 characters')
+    .max(30, 'Username must be at most 30 characters')
+    .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
+  gender: z.enum(['Prefer not to say', 'Male', 'Female', 'Other']),
+  course: z.enum(['B.Sc', 'M.Sc', 'B.Tech', 'M.Tech', 'B.Pharm', 'M.Pharm', 'BDS', 'MBBS', 'Other']),
+  semester: z.string().min(1, 'Please select a semester'),
+  majorSubject: z
+    .string()
+    .min(2, 'Major subject must be at least 2 characters')
+    .max(100, 'Major subject must be at most 100 characters'),
+  university: z
+    .string()
+    .min(2, 'University name must be at least 2 characters')
+    .max(200, 'University name must be at most 200 characters'),
+});
+
+type ProfileFormData = z.infer<typeof profileSchema>;
+
+const genderOptions = [
+  { value: 'Prefer not to say', label: 'Prefer not to say' },
+  { value: 'Male', label: 'Male' },
+  { value: 'Female', label: 'Female' },
+  { value: 'Other', label: 'Other' },
+] as const;
+
+const courseOptions = [
+  { value: 'B.Sc', label: 'B.Sc' },
+  { value: 'M.Sc', label: 'M.Sc' },
+  { value: 'B.Tech', label: 'B.Tech' },
+  { value: 'M.Tech', label: 'M.Tech' },
+  { value: 'B.Pharm', label: 'B.Pharm' },
+  { value: 'M.Pharm', label: 'M.Pharm' },
+  { value: 'BDS', label: 'BDS' },
+  { value: 'MBBS', label: 'MBBS' },
+  { value: 'Other', label: 'Other' },
+] as const;
+
+const semesterOptions = [
+  'Semester 1',
+  'Semester 2',
+  'Semester 3',
+  'Semester 4',
+  'Semester 5',
+  'Semester 6',
+  'Semester 7',
+  'Semester 8',
+  'Graduate',
+  'Post Graduate',
+  'Research',
+] as const;
+
 export default function ProfileUpdate({ userProfile, onClose, onUpdate }: ProfileUpdateProps) {
-  const [username, setUsername] = useState(userProfile.username || '');
-  const [gender, setGender] = useState(userProfile.gender || 'Prefer not to say');
-  const [course, setCourse] = useState(userProfile.course || 'B.Sc');
-  const [semester, setSemester] = useState(userProfile.semester || 'Semester 1');
-  const [majorSubject, setMajorSubject] = useState(userProfile.majorSubject || '');
-  const [university, setUniversity] = useState(userProfile.university || '');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
 
-  // Check if form has changes
-  const hasChanges = 
-    username !== userProfile.username ||
-    gender !== userProfile.gender ||
-    course !== userProfile.course ||
-    semester !== userProfile.semester ||
-    majorSubject !== userProfile.majorSubject ||
-    university !== userProfile.university;
+  const initialValues = useMemo<ProfileFormData>(
+    () => ({
+      username: userProfile.username || '',
+      gender: (userProfile.gender as ProfileFormData['gender']) || 'Prefer not to say',
+      course: (userProfile.course as ProfileFormData['course']) || 'B.Sc',
+      semester: userProfile.semester || 'Semester 1',
+      majorSubject: userProfile.majorSubject || '',
+      university: userProfile.university || '',
+    }),
+    [userProfile]
+  );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!username || !majorSubject || !university) {
-      setError('Please fill in all required fields');
-      return;
-    }
+  const form = useForm<ProfileFormData>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: initialValues,
+    mode: 'onChange',
+  });
 
+  // Watch form values to detect changes
+  const watchedValues = form.watch();
+  const hasChanges = (Object.keys(initialValues) as Array<keyof ProfileFormData>).some(
+    (key) => watchedValues[key] !== initialValues[key]
+  );
+
+  const onSubmit = async (data: ProfileFormData) => {
     setIsLoading(true);
     setError('');
     setSuccess('');
 
     try {
       const updatedProfile = await updateUserProfile({
-        username,
-        gender,
-        course,
-        semester,
-        majorSubject,
-        university
+        username: data.username,
+        gender: data.gender,
+        course: data.course,
+        semester: data.semester,
+        majorSubject: data.majorSubject,
+        university: data.university,
       });
 
       const completeProfile: UserProfile = {
         ...userProfile,
-        username,
-        gender,
-        course,
-        semester,
-        majorSubject,
-        university,
-        updatedAt: new Date()
+        username: data.username,
+        gender: data.gender,
+        course: data.course,
+        semester: data.semester,
+        majorSubject: data.majorSubject,
+        university: data.university,
+        updatedAt: new Date(),
       };
 
       setSuccess('Profile updated successfully!');
       onUpdate(completeProfile);
-      
+
       // Close modal after a short delay
       setTimeout(() => {
         onClose();
@@ -79,12 +156,7 @@ export default function ProfileUpdate({ userProfile, onClose, onUpdate }: Profil
   };
 
   const handleReset = () => {
-    setUsername(userProfile.username || '');
-    setGender(userProfile.gender || 'Prefer not to say');
-    setCourse(userProfile.course || 'B.Sc');
-    setSemester(userProfile.semester || 'Semester 1');
-    setMajorSubject(userProfile.majorSubject || '');
-    setUniversity(userProfile.university || '');
+    form.reset(initialValues);
     setError('');
     setSuccess('');
   };
@@ -105,7 +177,7 @@ export default function ProfileUpdate({ userProfile, onClose, onUpdate }: Profil
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+        <div className="flex items-center justify-between p-6 border-b border-gray-700" style={{ backgroundColor: '#171717' }}>
           <div>
             <h2 className="text-2xl font-bold text-white">Update Profile</h2>
             <p className="text-gray-400 text-sm mt-1">Modify your academic information</p>
@@ -119,257 +191,335 @@ export default function ProfileUpdate({ userProfile, onClose, onUpdate }: Profil
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4">
-              <p className="text-red-200 text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Success Message */}
-          {success && (
-            <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
-              <p className="text-green-200 text-sm">{success}</p>
-            </div>
-          )}
-
-          {/* Username Field */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Username <span className="text-red-400">*</span>
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User className="h-5 w-5 text-gray-400" />
+        <form onSubmit={form.handleSubmit(onSubmit)} className="p-6" style={{ backgroundColor: '#171717' }}>
+          <FieldGroup className="space-y-6">
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4">
+                <p className="text-red-200 text-sm">{error}</p>
               </div>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="block w-full pl-10 pr-3 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter your username"
-              />
-            </div>
-          </div>
+            )}
 
-          {/* Gender Dropdown */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Gender
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User className="h-5 w-5 text-gray-400" />
+            {/* Success Message */}
+            {success && (
+              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
+                <p className="text-green-200 text-sm">{success}</p>
               </div>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="block w-full pl-10 pr-10 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none"
-              >
-                <option value="Prefer not to say">Prefer not to say</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
+            )}
 
-          {/* Course Dropdown */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Course
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <GraduationCap className="h-5 w-5 text-gray-400" />
-              </div>
-              <select
-                value={course}
-                onChange={(e) => setCourse(e.target.value)}
-                className="block w-full pl-10 pr-10 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none"
-              >
-                <option value="B.Sc">B.Sc</option>
-                <option value="M.Sc">M.Sc</option>
-                <option value="B.Tech">B.Tech</option>
-                <option value="M.Tech">M.Tech</option>
-                <option value="B.Pharm">B.Pharm</option>
-                <option value="M.Pharm">M.Pharm</option>
-                <option value="BDS">BDS</option>
-                <option value="MBBS">MBBS</option>
-                <option value="Other">Other</option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
-
-          {/* Semester Dropdown */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Semester
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Calendar className="h-5 w-5 text-gray-400" />
-              </div>
-              <select
-                value={semester}
-                onChange={(e) => setSemester(e.target.value)}
-                className="block w-full pl-10 pr-10 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none"
-              >
-                <option value="Semester 1">Semester 1</option>
-                <option value="Semester 2">Semester 2</option>
-                <option value="Semester 3">Semester 3</option>
-                <option value="Semester 4">Semester 4</option>
-                <option value="Semester 5">Semester 5</option>
-                <option value="Semester 6">Semester 6</option>
-                <option value="Semester 7">Semester 7</option>
-                <option value="Semester 8">Semester 8</option>
-                <option value="Graduate">Graduate</option>
-                <option value="Post Graduate">Post Graduate</option>
-                <option value="Research">Research</option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
-
-          {/* Major Subject */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Major Subject <span className="text-red-400">*</span>
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <BookOpen className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                id="majorSubject"
-                name="majorSubject"
-                type="text"
-                required
-                value={majorSubject}
-                onChange={(e) => setMajorSubject(e.target.value)}
-                className="block w-full pl-10 pr-3 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="e.g., Chemistry, Physics, Biology"
-              />
-            </div>
-          </div>
-
-          {/* University */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              University <span className="text-red-400">*</span>
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Building className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                id="university"
-                name="university"
-                type="text"
-                required
-                value={university}
-                onChange={(e) => setUniversity(e.target.value)}
-                className="block w-full pl-10 pr-3 py-4 border border-gray-600 rounded-lg bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="e.g., Harvard University, MIT, Stanford"
-              />
-            </div>
-          </div>
-
-          {/* Gemini API Key */}
-          {userProfile.geminiApiKey && (
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Gemini API Key
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Key className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={userProfile.geminiApiKey}
-                  readOnly
-                  className="block w-full pl-10 pr-20 py-4 border border-gray-600 rounded-lg bg-gray-800/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
-                />
-                <div className="absolute inset-y-0 right-0 flex items-center space-x-1 pr-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="p-2 hover:bg-gray-700 rounded transition-colors"
-                    title={showApiKey ? 'Hide API key' : 'Show API key'}
-                  >
-                    {showApiKey ? (
-                      <EyeOff className="h-4 w-4 text-gray-400 hover:text-white" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-gray-400 hover:text-white" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCopyApiKey}
-                    className="p-2 hover:bg-gray-700 rounded transition-colors"
-                    title="Copy API key"
-                  >
-                    <Copy className="h-4 w-4 text-gray-400 hover:text-white" />
-                  </button>
-                </div>
-              </div>
-              {apiKeyCopied && (
-                <p className="text-green-400 text-xs mt-1">API key copied to clipboard!</p>
+            {/* Username Field */}
+            <Controller
+              name="username"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={field.name} className="text-gray-300">
+                    Username <span className="text-red-400">*</span>
+                  </FieldLabel>
+                  <FieldDescription className="text-gray-400">
+                    This name will appear across the app.
+                  </FieldDescription>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <User className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <Input
+                      {...field}
+                      id={field.name}
+                      aria-invalid={fieldState.invalid}
+                      className={`pl-10 text-white placeholder:text-gray-400 ${
+                        fieldState.invalid ? 'border-red-500' : 'border-gray-600'
+                      }`}
+                      style={{ backgroundColor: '#212121' }}
+                      placeholder="Enter your username"
+                    />
+                  </div>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} className="text-red-400" />}
+                </Field>
               )}
-              <p className="text-gray-400 text-xs mt-1">
-                This API key is automatically assigned to you from our secure pool and stored in Firebase.
-              </p>
-            </div>
-          )}
+            />
 
-          {/* Action Buttons */}
-          <div className="flex space-x-4 pt-6 border-t border-gray-700">
-            <button
-              type="button"
-              onClick={handleReset}
-              disabled={isLoading || !hasChanges}
-              className="flex items-center px-4 py-2 border border-gray-600 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Reset
-            </button>
-            
-            <div className="flex-1"></div>
-            
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isLoading}
-              className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            
-            <button
-              type="submit"
-              disabled={isLoading || !hasChanges}
-              className="flex items-center px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Changes
-                </>
+            {/* Gender Field */}
+            <Controller
+              name="gender"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field orientation="responsive" data-invalid={fieldState.invalid}>
+                  <FieldContent>
+                    <FieldLabel htmlFor="profile-gender" className="text-gray-300">
+                      Gender
+                    </FieldLabel>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} className="text-red-400" />}
+                  </FieldContent>
+                  <Select
+                    name={field.name}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger
+                      id="profile-gender"
+                      aria-invalid={fieldState.invalid}
+                      className="relative pl-10 border-gray-600 text-white min-w-[220px]"
+                      style={{ backgroundColor: '#212121' }}
+                    >
+                      <User className="absolute left-3 h-4 w-4 text-gray-400" />
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent position="item-aligned" className="bg-gray-800 border-gray-600">
+                      {genderOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value} className="text-white">
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
               )}
-            </button>
-          </div>
+            />
+
+            {/* Course Field */}
+            <Controller
+              name="course"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field orientation="responsive" data-invalid={fieldState.invalid}>
+                  <FieldContent>
+                    <FieldLabel htmlFor="profile-course" className="text-gray-300">
+                      Course
+                    </FieldLabel>
+                    <FieldDescription className="text-gray-400">
+                      Helps us tailor examples and content.
+                    </FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} className="text-red-400" />}
+                  </FieldContent>
+                  <Select
+                    name={field.name}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger
+                      id="profile-course"
+                      aria-invalid={fieldState.invalid}
+                      className="relative pl-10 border-gray-600 text-white min-w-[220px]"
+                      style={{ backgroundColor: '#212121' }}
+                    >
+                      <GraduationCap className="absolute left-3 h-4 w-4 text-gray-400" />
+                      <SelectValue placeholder="Select course" />
+                    </SelectTrigger>
+                    <SelectContent position="item-aligned" className="bg-gray-800 border-gray-600">
+                      {courseOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value} className="text-white">
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+
+            {/* Semester Field */}
+            <Controller
+              name="semester"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field orientation="responsive" data-invalid={fieldState.invalid}>
+                  <FieldContent>
+                    <FieldLabel htmlFor="profile-semester" className="text-gray-300">
+                      Semester
+                    </FieldLabel>
+                    <FieldDescription className="text-gray-400">
+                      Used to personalize study plans and difficulty.
+                    </FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} className="text-red-400" />}
+                  </FieldContent>
+                  <Select
+                    name={field.name}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger
+                      id="profile-semester"
+                      aria-invalid={fieldState.invalid}
+                      className="relative pl-10 border-gray-600 text-white min-w-[220px]"
+                      style={{ backgroundColor: '#212121' }}
+                    >
+                      <Calendar className="absolute left-3 h-4 w-4 text-gray-400" />
+                      <SelectValue placeholder="Select semester" />
+                    </SelectTrigger>
+                    <SelectContent position="item-aligned" className="bg-gray-800 border-gray-600">
+                      {semesterOptions.map((option) => (
+                        <SelectItem key={option} value={option} className="text-white">
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+
+            {/* Major Subject Field */}
+            <Controller
+              name="majorSubject"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={field.name} className="text-gray-300">
+                    Major Subject <span className="text-red-400">*</span>
+                  </FieldLabel>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <BookOpen className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <Input
+                      {...field}
+                      id={field.name}
+                      aria-invalid={fieldState.invalid}
+                      className={`pl-10 text-white placeholder:text-gray-400 ${
+                        fieldState.invalid ? 'border-red-500' : 'border-gray-600'
+                      }`}
+                      style={{ backgroundColor: '#212121' }}
+                      placeholder="e.g., Chemistry, Physics, Biology"
+                    />
+                  </div>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} className="text-red-400" />}
+                </Field>
+              )}
+            />
+
+            {/* University Field */}
+            <Controller
+              name="university"
+              control={form.control}
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor={field.name} className="text-gray-300">
+                    University <span className="text-red-400">*</span>
+                  </FieldLabel>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Building className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <Input
+                      {...field}
+                      id={field.name}
+                      aria-invalid={fieldState.invalid}
+                      className={`pl-10 text-white placeholder:text-gray-400 ${
+                        fieldState.invalid ? 'border-red-500' : 'border-gray-600'
+                      }`}
+                      style={{ backgroundColor: '#212121' }}
+                      placeholder="e.g., Harvard University, MIT, Stanford"
+                    />
+                  </div>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} className="text-red-400" />}
+                </Field>
+              )}
+            />
+
+            {/* Gemini API Key */}
+            {userProfile.geminiApiKey && (
+              <Field>
+                <FieldLabel className="text-gray-300">Gemini API Key</FieldLabel>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Key className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <Input
+                    type={showApiKey ? 'text' : 'password'}
+                    value={userProfile.geminiApiKey}
+                    readOnly
+                    className="pl-10 pr-20 py-4 border border-gray-600 rounded-lg bg-gray-800/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center space-x-1 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="p-2 hover:bg-gray-700 rounded transition-colors"
+                      title={showApiKey ? 'Hide API key' : 'Show API key'}
+                    >
+                      {showApiKey ? (
+                        <EyeOff className="h-4 w-4 text-gray-400 hover:text-white" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-gray-400 hover:text-white" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyApiKey}
+                      className="p-2 hover:bg-gray-700 rounded transition-colors"
+                      title="Copy API key"
+                    >
+                      <Copy className="h-4 w-4 text-gray-400 hover:text-white" />
+                    </button>
+                  </div>
+                </div>
+                {apiKeyCopied && (
+                  <FieldDescription className="text-green-400 text-xs mt-1">
+                    API key copied to clipboard!
+                  </FieldDescription>
+                )}
+                <FieldDescription className="text-gray-400 text-xs mt-1">
+                  This API key is automatically assigned to you from our secure pool and stored in Firebase.
+                </FieldDescription>
+              </Field>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex space-x-4 pt-6 border-t" style={{ borderColor: '#e5e5e5' }}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleReset}
+                disabled={isLoading || !hasChanges}
+                className="flex items-center border-gray-600 bg-[#212121] text-white hover:bg-[#2d2d2d] hover:border-gray-500"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Reset
+              </Button>
+
+              <div className="flex-1"></div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={isLoading}
+                className="border-gray-600 bg-[#212121] text-white hover:bg-[#2d2d2d] hover:border-gray-500"
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="submit"
+                disabled={isLoading || !hasChanges}
+                className="flex items-center font-medium"
+                style={{ 
+                  backgroundColor: '#e5e5e5',
+                  color: '#000000',
+                  borderColor: '#e5e5e5'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#d4d4d4';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#e5e5e5';
+                }}
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          </FieldGroup>
         </form>
       </div>
     </div>

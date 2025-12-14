@@ -122,6 +122,7 @@ interface AgentConfig {
   color: string;
   enabled: boolean;
   category: 'research' | 'chemistry' | 'writing' | 'utility' | 'advanced';
+  emoji?: React.ReactNode;
 }
 
 // Document Editor URL
@@ -132,84 +133,92 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
   // =========== PROMPT & QUALITY CONTROL (Gemini 3 Pro) ===========
   {
     id: 'prompt-enhancer',
-    name: '✨ Prompt Enhancer',
+    name: 'Prompt Enhancer',
     description: 'Improves user prompts before research - makes requests clearer and more actionable',
     skills: ['Prompt Analysis', 'Clarification', 'Scope Definition', 'Question Refinement'],
     icon: <Wand2 className="h-5 w-5" />,
     color: 'emerald',
     enabled: true,
-    category: 'utility'
+    category: 'utility',
+    emoji: <Sparkles className="h-5 w-5" />
   },
   {
     id: 'document-synthesizer',
-    name: '📄 Document Synthesizer',
+    name: 'Document Synthesizer',
     description: 'Gemini 3 Pro - Collects ALL research findings and creates ONE comprehensive final document',
     skills: ['Content Collection', 'Synthesis', 'Deduplication', 'Final Formatting'],
     icon: <FileText className="h-5 w-5" />,
     color: 'emerald',
     enabled: true,
-    category: 'utility'
+    category: 'utility',
+    emoji: <FileText className="h-5 w-5" />
   },
   {
     id: 'output-validator',
-    name: '🛡️ Output Validator',
+    name: 'Output Validator',
     description: 'Gemini 3 Pro - Validates final document is complete, clean, and ready for display',
     skills: ['Validation', 'Quality Check', 'Artifact Removal', 'Format Verify'],
     icon: <CheckCircle2 className="h-5 w-5" />,
     color: 'emerald',
     enabled: true,
-    category: 'utility'
+    category: 'utility',
+    emoji: <CheckCircle2 className="h-5 w-5" />
   },
   {
     id: 'quality-reviewer',
-    name: '✅ Quality Reviewer',
+    name: 'Quality Reviewer',
     description: 'Reviews final documents for completeness, accuracy, and formatting',
     skills: ['Quality Check', 'Completeness', 'Citation Verify', 'Format Review'],
     icon: <CheckCircle2 className="h-5 w-5" />,
     color: 'emerald',
     enabled: true,
-    category: 'utility'
+    category: 'utility',
+    emoji: <CheckCircle2 className="h-5 w-5" />
   },
   // =========== ADVANCED REASONING AGENTS (Gemini 3 Pro / 2.5 Pro) ===========
   {
     id: 'advanced-reasoner',
-    name: '🧠 Advanced Reasoner',
+    name: 'Advanced Reasoner',
     description: 'Gemini 3 Pro with HIGH thinking for complex reasoning',
     skills: ['Deep Logic', 'Math Proofs', 'Code Analysis', 'Scientific Analysis'],
     icon: <Brain className="h-5 w-5" />,
     color: 'violet',
     enabled: true,
-    category: 'advanced'
+    category: 'advanced',
+    emoji: <Brain className="h-5 w-5" />
   },
   {
     id: 'deep-researcher',
-    name: '📚 Deep Researcher',
+    name: 'Deep Researcher',
     description: 'Gemini 2.5 Pro for thorough research analysis',
     skills: ['Literature Review', 'Multi-perspective Analysis', 'Fact-checking', 'Synthesis'],
     icon: <BookOpen className="h-5 w-5" />,
     color: 'violet',
     enabled: true,
-    category: 'advanced'
+    category: 'advanced',
+    emoji: <BookOpen className="h-5 w-5" />
   },
   {
     id: 'complex-problem-solver',
-    name: '🎯 Complex Problem Solver',
+    name: 'Complex Problem Solver',
     description: 'Gemini 3 Pro for multi-variable optimization & strategy',
     skills: ['Systems Analysis', 'Optimization', 'Strategic Planning', 'Root Cause Analysis'],
     icon: <Target className="h-5 w-5" />,
     color: 'violet',
     enabled: true,
-    category: 'advanced'
+    category: 'advanced',
+    emoji: <Target className="h-5 w-5" />
   },
   {
     id: 'scientific-analyst',
-    name: '🔬 Scientific Analyst',
+    name: 'Scientific Analyst',
     description: 'Gemini 2.5 Pro for rigorous scientific analysis',
     skills: ['Methodology Eval', 'Statistical Analysis', 'Paper Review', 'Evidence Hierarchy'],
     icon: <Activity className="h-5 w-5" />,
     color: 'violet',
     enabled: true,
-    category: 'advanced'
+    category: 'advanced',
+    emoji: <Activity className="h-5 w-5" />
   },
   // =========== RESEARCH AGENTS ===========
   {
@@ -220,7 +229,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <Search className="h-5 w-5" />,
     color: 'blue',
     enabled: true,
-    category: 'research'
+    category: 'research',
+    emoji: <Search className="h-5 w-5" />
   },
   {
     id: 'academic-researcher',
@@ -230,7 +240,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <BookOpen className="h-5 w-5" />,
     color: 'indigo',
     enabled: true,
-    category: 'research'
+    category: 'research',
+    emoji: <BookOpen className="h-5 w-5" />
   },
   // =========== CHEMISTRY AGENTS ===========
   {
@@ -241,7 +252,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <Sparkles className="h-5 w-5" />,
     color: 'green',
     enabled: true,
-    category: 'chemistry'
+    category: 'chemistry',
+    emoji: <Sparkles className="h-5 w-5" />
   },
   {
     id: 'chemistry-tutor',
@@ -251,7 +263,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <BookOpen className="h-5 w-5" />,
     color: 'yellow',
     enabled: true,
-    category: 'chemistry'
+    category: 'chemistry',
+    emoji: <BookOpen className="h-5 w-5" />
   },
   {
     id: 'chemistry-problem-solver',
@@ -261,7 +274,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <Target className="h-5 w-5" />,
     color: 'orange',
     enabled: true,
-    category: 'chemistry'
+    category: 'chemistry',
+    emoji: <Target className="h-5 w-5" />
   },
   // =========== WRITING AGENTS ===========
   {
@@ -272,7 +286,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <FileCode className="h-5 w-5" />,
     color: 'purple',
     enabled: true,
-    category: 'writing'
+    category: 'writing',
+    emoji: <FileCode className="h-5 w-5" />
   },
   {
     id: 'documentation-agent',
@@ -282,7 +297,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <FileText className="h-5 w-5" />,
     color: 'pink',
     enabled: true,
-    category: 'writing'
+    category: 'writing',
+    emoji: <FileText className="h-5 w-5" />
   },
   // =========== UTILITY AGENTS ===========
   {
@@ -293,7 +309,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <Presentation className="h-5 w-5" />,
     color: 'cyan',
     enabled: true,
-    category: 'utility'
+    category: 'utility',
+    emoji: <Presentation className="h-5 w-5" />
   },
   {
     id: 'google-docs-agent',
@@ -303,7 +320,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <Globe className="h-5 w-5" />,
     color: 'red',
     enabled: true,
-    category: 'utility'
+    category: 'utility',
+    emoji: <Globe className="h-5 w-5" />
   },
   {
     id: 'general-purpose',
@@ -313,7 +331,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <Zap className="h-5 w-5" />,
     color: 'gray',
     enabled: true,
-    category: 'utility'
+    category: 'utility',
+    emoji: <Zap className="h-5 w-5" />
   },
   {
     id: 'image-generation-agent',
@@ -323,7 +342,8 @@ const AVAILABLE_AGENTS: AgentConfig[] = [
     icon: <Image className="h-5 w-5" />,
     color: 'orange',
     enabled: true,
-    category: 'utility'
+    category: 'utility',
+    emoji: <Image className="h-5 w-5" />
   }
 ];
 
@@ -1740,7 +1760,7 @@ ${docTextBlock}${userDirective}`,
           <button
             onClick={() => setActiveView('chat')}
             className={`px-4 py-1.5  text-sm transition-colors ${activeView === 'chat'
-              ? 'bg-purple-500 text-white'
+              ? 'bg-[#e5e5e5] text-black'
               : 'text-gray-400 hover:text-white'
               }`}
           >
@@ -1749,7 +1769,7 @@ ${docTextBlock}${userDirective}`,
           <button
             onClick={() => setActiveView('editor')}
             className={`px-4 py-1.5  text-sm transition-colors ${activeView === 'editor'
-              ? 'bg-purple-500 text-white'
+              ? 'bg-[#e5e5e5] text-black'
               : 'text-gray-400 hover:text-white'
               }`}
           >
@@ -1759,7 +1779,7 @@ ${docTextBlock}${userDirective}`,
             <button
               onClick={() => setShowGoogleDocsModal(true)}
               className={`px-4 py-1.5  text-sm transition-colors ${activeView === 'googledoc'
-                ? 'bg-purple-500 text-white'
+                ? 'bg-[#e5e5e5] text-black'
                 : 'text-gray-400 hover:text-white'
                 }`}
             >
@@ -1808,7 +1828,7 @@ ${docTextBlock}${userDirective}`,
             <button
               onClick={handleGoogleSignIn}
               disabled={isGoogleLoading}
-              className="px-3 py-1.5  bg-blue-500 hover:bg-blue-600 text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+              className="px-3 py-1.5  bg-[#4285F4] hover:bg-[#357ABD] text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
             >
               {isGoogleLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -2044,7 +2064,7 @@ ${docTextBlock}${userDirective}`,
                       <button
                         onClick={handleGoogleSignIn}
                         disabled={isGoogleLoading}
-                        className="px-6 py-2.5 bg-blue-500 text-white text-sm hover:bg-blue-600 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-blue-400/30 hover:border-blue-300/50 active:scale-[0.98] flex items-center gap-2 mx-auto"
+                        className="px-6 py-2.5 bg-[#4285F4] text-white text-sm hover:bg-[#357ABD] transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.98] flex items-center gap-2 mx-auto"
                       >
                         <svg className="h-4 w-4" viewBox="0 0 24 24">
                           <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -2115,7 +2135,7 @@ ${docTextBlock}${userDirective}`,
                       <button
                         onClick={handleGoogleSignIn}
                         disabled={isGoogleLoading}
-                        className="px-6 py-2.5 bg-green-500 text-white text-sm hover:bg-green-600 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-green-400/30 hover:border-green-300/50 active:scale-[0.98]"
+                        className="px-6 py-2.5 bg-[#4285F4] text-white text-sm hover:bg-[#357ABD] transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.98]"
                       >
                         Sign in with Google
                       </button>
@@ -2549,7 +2569,7 @@ ${docTextBlock}${userDirective}`,
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setActiveView('chat')}
-                    className="px-3 py-1.5  bg-purple-500/20 text-purple-400 text-sm hover:bg-purple-500/30 transition-colors"
+                    className="px-3 py-1.5  bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors"
                   >
                     <Sparkles className="h-4 w-4 inline mr-1" />
                     AI Tools
@@ -2631,7 +2651,7 @@ ${docTextBlock}${userDirective}`,
                       setActiveView('chat');
                       setSelectedGoogleDoc(null);
                     }}
-                    className="px-3 py-1.5  bg-purple-500/20 text-purple-400 text-xs hover:bg-purple-500/30 transition-colors"
+                    className="px-3 py-1.5  bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors"
                   >
                     <Sparkles className="h-3 w-3 inline mr-1" />
                     AI Tools
@@ -2708,14 +2728,13 @@ ${docTextBlock}${userDirective}`,
 
               {/* Document Title Area */}
               <div className="p-6 border-b border-white/5">
-                <h1 className="text-2xl font-semibold mb-2">Doc Studio Assistant</h1>
                 <p className="text-sm text-gray-400">{sources.filter(s => s.selected).length} source{sources.filter(s => s.selected).length !== 1 ? 's' : ''} selected</p>
 
                 {/* Quick Action Buttons */}
                 <div className="flex gap-2 mt-4">
                   <button
                     onClick={() => setActiveView('editor')}
-                    className="px-4 py-2  bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors"
+                    className="px-4 py-2  bg-[#e5e5e5] hover:bg-white text-black text-sm flex items-center gap-2 transition-colors"
                   >
                     <Eye className="h-4 w-4" />
                     Open Editor
@@ -2780,7 +2799,7 @@ ${docTextBlock}${userDirective}`,
                       <button
                         onClick={handleSubmit}
                         disabled={isProcessing || isDeepAgentActive}
-                        className="px-4 py-2  bg-purple-500 hover:bg-purple-600 text-white text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+                        className="px-4 py-2 bg-[#e5e5e5] hover:bg-white text-black text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
                       >
                         {isProcessing || isDeepAgentActive ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -2799,9 +2818,28 @@ ${docTextBlock}${userDirective}`,
                 {/* Header with Config Toggle */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-purple-400" />
-                    <p className="text-sm font-medium">AI Agents</p>
-                    <span className="text-xs text-gray-500">({enabledAgents.size} active)</span>
+                    <span className="text-xs text-gray-500">
+                      {enabledAgents.size} of {AVAILABLE_AGENTS.length} agents active
+                    </span>
+                    <div className="flex gap-1">
+                      {Array.from(enabledAgents).slice(0, 5).map(id => {
+                        const agent = AVAILABLE_AGENTS.find(a => a.id === id);
+                        if (!agent) return null;
+                        return (
+                          <div
+                            key={agent.id}
+                            className="flex items-center justify-center p-1 rounded bg-gray-700 text-white shadow-md text-[10px] w-6 h-6"
+                          >
+                            {agent.emoji}
+                          </div>
+                        );
+                      })}
+                      {enabledAgents.size > 5 && (
+                        <div className="flex items-center justify-center p-1 rounded bg-gray-700 text-white shadow-md text-[10px] w-6 h-6">
+                          +{enabledAgents.size - 5}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {/* Selection Mode Toggle */}
@@ -2809,7 +2847,7 @@ ${docTextBlock}${userDirective}`,
                       <button
                         onClick={() => setAgentSelectionMode('auto')}
                         className={`px-2 py-1 rounded text-xs transition-colors ${agentSelectionMode === 'auto'
-                          ? 'bg-purple-500/30 text-purple-300'
+                          ? 'bg-zinc-700 text-white'
                           : 'text-gray-400 hover:text-white'
                           }`}
                       >
@@ -2818,7 +2856,7 @@ ${docTextBlock}${userDirective}`,
                       <button
                         onClick={() => setAgentSelectionMode('manual')}
                         className={`px-2 py-1 rounded text-xs transition-colors ${agentSelectionMode === 'manual'
-                          ? 'bg-purple-500/30 text-purple-300'
+                          ? 'bg-zinc-700 text-white'
                           : 'text-gray-400 hover:text-white'
                           }`}
                       >
@@ -2827,7 +2865,7 @@ ${docTextBlock}${userDirective}`,
                     </div>
                     <button
                       onClick={() => setShowAgentConfig(!showAgentConfig)}
-                      className={`p-1.5  transition-colors ${showAgentConfig ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-[#2d2d2d] text-gray-400'
+                      className={`p-1.5  transition-colors ${showAgentConfig ? 'bg-zinc-700 text-white' : 'hover:bg-[#2d2d2d] text-gray-400'
                         }`}
                       title={showAgentConfig ? 'Collapse agents' : 'Expand agents'}
                     >
@@ -2836,38 +2874,18 @@ ${docTextBlock}${userDirective}`,
                   </div>
                 </div>
 
-                {/* Mode Description */}
-                <p className="text-xs text-gray-500 mb-2">
-                  {agentSelectionMode === 'auto'
-                    ? '🤖 AI will automatically select the best agents for your query'
-                    : '👆 Click agents to enable/disable them'}
-                </p>
-
                 {/* Compact Agent Grid - Collapsible */}
                 {showAgentConfig ? (
                   /* Expanded View - Show all agents in compact cards */
-                  <div className="grid grid-cols-3 lg:grid-cols-4 gap-1.5 max-h-[280px] overflow-y-auto pr-1">
+                  <div className="grid grid-cols-3 lg:grid-cols-4 gap-1.5 max-h-[280px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
                     {AVAILABLE_AGENTS.map((agent) => {
                       const isEnabled = enabledAgents.has(agent.id);
                       const isRunning = activeSubagent === agent.id ||
                         activeSubagent === agent.name.toLowerCase().replace(/\s+/g, '-') ||
                         (activeSubagent && agent.id.includes(activeSubagent)) ||
                         (activeSubagent && activeSubagent.includes(agent.id));
-                      const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
-                        blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
-                        indigo: { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' },
-                        green: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
-                        yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-400' },
-                        orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
-                        purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
-                        pink: { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-400' },
-                        cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-400' },
-                        red: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
-                        gray: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-400' },
-                        violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/30', text: 'text-violet-400' },
-                        emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400' },
-                      };
-                      const colors = colorClasses[agent.color] || colorClasses.gray;
+                      
+                      const colors = { bg: 'bg-zinc-700', border: 'border-zinc-600', text: 'text-zinc-300' };
 
                       return (
                         <div
@@ -2889,7 +2907,7 @@ ${docTextBlock}${userDirective}`,
                           className={`relative p-2  border transition-all cursor-pointer ${isRunning
                             ? `${colors.bg} ${colors.border} ring-1 ring-offset-1 ring-offset-[#1a1a1a] ${colors.border.replace('border-', 'ring-')}`
                             : isEnabled
-                              ? `${colors.bg} ${colors.border}`
+                              ? `bg-zinc-800 ${colors.border}`
                               : 'bg-[#2d2d2d] border-white/5 opacity-50'
                             } ${agentSelectionMode === 'manual' ? 'hover:opacity-100' : ''}`}
                         >
@@ -2917,33 +2935,7 @@ ${docTextBlock}${userDirective}`,
                   </div>
                 ) : (
                   /* Collapsed View - Just show count and quick info */
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-gray-500">
-                      {enabledAgents.size} of {AVAILABLE_AGENTS.length} agents active
-                    </span>
-                    <div className="flex gap-1">
-                      {Array.from(enabledAgents).slice(0, 5).map(id => {
-                        const agent = AVAILABLE_AGENTS.find(a => a.id === id);
-                        if (!agent) return null;
-                        const colorClasses: Record<string, string> = {
-                          blue: 'bg-blue-500/30', indigo: 'bg-indigo-500/30', green: 'bg-green-500/30',
-                          yellow: 'bg-yellow-500/30', orange: 'bg-orange-500/30', purple: 'bg-purple-500/30',
-                          pink: 'bg-pink-500/30', cyan: 'bg-cyan-500/30', red: 'bg-red-500/30',
-                          gray: 'bg-gray-500/30', violet: 'bg-violet-500/30', emerald: 'bg-emerald-500/30',
-                        };
-                        return (
-                          <div key={id} className={`w-5 h-5 rounded flex items-center justify-center ${colorClasses[agent.color] || 'bg-gray-500/30'}`} title={agent.name}>
-                            {React.cloneElement(agent.icon as React.ReactElement, { className: 'h-3 w-3' })}
-                          </div>
-                        );
-                      })}
-                      {enabledAgents.size > 5 && (
-                        <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center text-[10px] text-gray-400">
-                          +{enabledAgents.size - 5}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  null
                 )}
 
                 {/* Quick Select Buttons - Always visible but compact */}
@@ -3000,17 +2992,16 @@ ${docTextBlock}${userDirective}`,
                     }
                   }}
                   disabled={isProcessing || isDeepAgentActive || !inputText.trim()}
-                  className="w-full mt-3 p-2.5  bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-cyan-500/20 hover:from-purple-500/30 hover:via-blue-500/30 hover:to-cyan-500/30 border border-purple-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                  className="w-full mt-3 p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed group shadow-sm"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-purple-400" />
                       <span className="text-sm font-medium text-white">Start Deep Research</span>
                     </div>
                     {isDeepAgentActive ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+                      <Loader2 className="h-4 w-4 animate-spin text-white" />
                     ) : (
-                      <ChevronRight className="h-4 w-4 text-purple-400 group-hover:translate-x-1 transition-transform" />
+                      <ChevronRight className="h-4 w-4 text-white group-hover:translate-x-1 transition-transform" />
                     )}
                   </div>
                 </button>
@@ -3100,7 +3091,7 @@ ${docTextBlock}${userDirective}`,
               )}
 
               {/* Chat Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
                 {messages.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                   </div>
@@ -3213,13 +3204,14 @@ ${docTextBlock}${userDirective}`,
                     <button
                       key={tool.id}
                       onClick={tool.action}
-                      className="p-3  bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-purple-500/30 text-left transition-all group"
+                      className="group flex items-center gap-3 p-3 bg-[#2d2d2d] hover:bg-[#3d3d3d] border border-white/5 hover:border-blue-500/30 text-left transition-all rounded-lg"
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-purple-400 group-hover:text-purple-300">{tool.icon}</span>
-                        <PenLine className="h-3 w-3 text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                      <p className="text-xs text-gray-400 mt-2">{tool.label}</p>
+                      <span className="text-blue-400 group-hover:text-blue-300 transition-colors">
+                        {tool.icon}
+                      </span>
+                      <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">
+                        {tool.label}
+                      </span>
                     </button>
                   ))}
                 </div>

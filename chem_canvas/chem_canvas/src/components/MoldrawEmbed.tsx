@@ -54,15 +54,11 @@ const MoldrawEmbed: React.FC<MoldrawEmbedProps> = ({ onClose }) => {
   return (
     <div className={`relative ${isFullscreen ? 'fixed inset-0 z-50' : 'w-full h-full'} bg-slate-900`}>
       {/* Toolbar */}
-      <div className="absolute top-0 left-0 right-0 z-10 bg-slate-800/95 backdrop-blur-sm border-b border-slate-700/50 p-3">
+      <div className="absolute top-0 left-0 right-0 z-10 backdrop-blur-sm border-b border-white/10 p-3" style={{ backgroundColor: '#212121' }}>
         <div className="flex items-center justify-between">
           {/* Left - Title */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <h3 className="text-white font-semibold">Moldraw Molecular Editor</h3>
-            </div>
-            <span className="text-xs text-slate-400">Professional Chemistry Drawing Tool</span>
+            <h3 className="text-white font-semibold">Molecule Sketcher</h3>
           </div>
 
           {/* Right - Controls */}
@@ -163,20 +159,6 @@ const MoldrawEmbed: React.FC<MoldrawEmbedProps> = ({ onClose }) => {
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads"
           allow="clipboard-read; clipboard-write"
         />
-      </div>
-
-      {/* Info Banner */}
-      <div className="absolute bottom-0 left-0 right-0 z-10 bg-slate-800/95 backdrop-blur-sm border-t border-slate-700/50 p-2">
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <div className="flex items-center gap-4">
-            <span>Powered by Moldraw.com</span>
-            <span>•</span>
-            <span>Professional Molecular Drawing</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span>Draw molecules, reactions, and chemical structures</span>
-          </div>
-        </div>
       </div>
     </div>
   );
