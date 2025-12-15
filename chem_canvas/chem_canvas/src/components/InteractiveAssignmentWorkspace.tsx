@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight, X } from 'lucide-react';
+import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight, X, FileText } from 'lucide-react';
 import { streamTextContent } from '../services/geminiService';
 
 export const InteractiveAssignmentWorkspace: React.FC = () => {
@@ -17,6 +17,8 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
     const [isStreamingThoughts, setIsStreamingThoughts] = useState(false);
     const [showCursor, setShowCursor] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [formulaHtml, setFormulaHtml] = useState<string | null>(null);
+    const [isExtractingFormulas, setIsExtractingFormulas] = useState(false);
     const terminalRef = useRef<HTMLDivElement>(null);
     // Remove any external polyfill.io scripts the model might inject so previews don't fail on blocked domains
     const stripPolyfillScripts = (html: string) =>
@@ -79,6 +81,203 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
             };
             reader.readAsText(file);
         }
+    };
+
+    const handleExtractFormulas = async () => {
+        if (!fileData) {
+            alert('Please upload a PDF file first');
+            return;
+        }
+
+        if (fileData.mimeType !== 'application/pdf') {
+            alert('Please upload a PDF file to extract formulas');
+            return;
+        }
+
+        setIsExtractingFormulas(true);
+        setExtractFormulaSheet(true);
+        setFormulaHtml(null);
+        setPreviewHtml(''); // Clear preview during extraction
+        setLoadingStep('Initializing Gemini 3 Pro...');
+        setThoughtLog([]);
+        setIsStreamingThoughts(true);
+
+        try {
+            const prompt = `You are a formula extraction expert. Analyze the provided PDF document and extract ALL mathematical formulas, equations, and scientific expressions.
+
+CRITICAL REQUIREMENTS:
+1. Extract EVERY formula, equation, and mathematical expression found in the document
+2. Format each formula using proper LaTeX syntax
+3. Organize formulas by topic/category if applicable
+4. Include formula names/descriptions where available
+5. Preserve the context and meaning of each formula
+6. For EACH formula, create an ANIMATED, INTERACTIVE Canvas visualization that visually explains the formula
+
+OUTPUT FORMAT:
+Generate a complete, self-contained HTML document with:
+- Professional styling using Tailwind CSS (via CDN)
+- MathJax for rendering LaTeX formulas (via CDN)
+- Clean, organized layout with proper sections
+- Each formula should be clearly labeled and formatted
+
+VISUALIZATION REQUIREMENTS FOR EACH FORMULA:
+1. Create an HTML5 Canvas element (width: 600-800px, height: 300-500px) next to or below each formula
+2. Use requestAnimationFrame for smooth, high-frame-rate animations (60fps)
+3. Make the visualization INTERACTIVE with controls (sliders, buttons, inputs) to modify formula parameters
+4. Animate the formula's variables/parameters in real-time based on the actual formula context
+5. Show visual representations of what the formula calculates (e.g., if it's velocity, show moving objects; if it's force, show arrows; if it's rotation, show rotating elements)
+6. Include labels, axes, and visual guides that help understand the formula
+7. Use colors and animations that match the formula's meaning
+8. Add hover effects and tooltips for better interactivity
+
+CANVAS ANIMATION EXAMPLES:
+- For velocity/speed formulas: Animate objects moving with changing speeds
+- For rotation formulas: Show rotating elements with angular velocity visualization
+- For force formulas: Show force vectors with animated arrows
+- For wave formulas: Show animated wave patterns
+- For electrical formulas: Show animated circuits with current flow
+- For geometric formulas: Show animated shapes transforming
+
+The HTML should:
+- Start with <!DOCTYPE html>
+- Include proper <head> with MathJax and Tailwind CSS CDN links
+- Use <body> with well-structured sections
+- Render formulas using MathJax: \\(formula\\) for inline or \\[formula\\] for display
+- Include interactive Canvas elements with smooth animations for each formula
+- Use requestAnimationFrame for all animations
+- Include interactive controls (sliders, buttons) to modify formula parameters
+- Be printable and exportable to PDF (canvas can be hidden in print mode)
+
+STRUCTURE FOR EACH FORMULA:
+1. Formula name/title
+2. LaTeX-rendered formula (using MathJax)
+3. Description/explanation
+4. Interactive animated Canvas visualization
+5. Controls to modify parameters and see formula behavior
+
+Return ONLY the complete HTML code, nothing else.`;
+
+            let accumulatedHtml = '';
+            let hasStartedOutput = false;
+            
+            await streamTextContent(
+                prompt,
+                (chunk) => {
+                    // Only accumulate actual HTML content, not thinking
+                    // The streamTextContent function already filters out thoughts
+                    if (chunk && chunk.trim() && !chunk.includes('thinking') && !chunk.includes('thought')) {
+                        accumulatedHtml += chunk;
+                        hasStartedOutput = true;
+                        setLoadingStep('Generating formula sheet...');
+                        // Update preview in real-time as content streams
+                        if (accumulatedHtml.length > 100) {
+                            const partialHtml = accumulatedHtml.replace(/^\s*```html\s*/i, '').replace(/```$/, '').trim();
+                            if (partialHtml.includes('<') || partialHtml.includes('DOCTYPE')) {
+                                setPreviewHtml(partialHtml);
+                            }
+                        }
+                    }
+                },
+                {
+                    model: 'gemini-3-pro-preview',
+                    thinking: 'high',
+                    inlineData: fileData,
+                    onThought: (thought) => {
+                        // Show thinking only in sidebar terminal - never in preview
+                        setThoughtLog(prev => [...prev, thought]);
+                        if (thought.toLowerCase().includes('analyzing') || thought.toLowerCase().includes('extracting')) {
+                            setLoadingStep('Analyzing PDF structure...');
+                        } else if (thought.toLowerCase().includes('formatting') || thought.toLowerCase().includes('generating')) {
+                            setLoadingStep('Formatting formulas...');
+                        } else {
+                            setLoadingStep('Processing...');
+                        }
+                        setIsStreamingThoughts(true);
+                    }
+                }
+            );
+
+            // Clean up response - remove any markdown code blocks
+            const cleanHtml = accumulatedHtml
+                .replace(/^\s*```html\s*/i, '')
+                .replace(/```$/, '')
+                .replace(/^\s*```\s*/g, '')
+                .trim();
+
+            // Ensure it's valid HTML
+            let finalHtml = cleanHtml;
+            if (!finalHtml.includes('<!DOCTYPE') && !finalHtml.includes('<html')) {
+                // Wrap in HTML structure if needed
+                finalHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extracted Formula Sheet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['\\\\(', '\\\\)']],
+                displayMath: [['\\\\[', '\\\\]']]
+            }
+        };
+    </script>
+    <style>
+        @media print {
+            body { margin: 0; padding: 20px; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body class="bg-white p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Extracted Formula Sheet</h1>
+        ${finalHtml}
+    </div>
+</body>
+</html>`;
+            }
+
+            setThoughtLog(prev => [...prev, '✅ Formula extraction complete']);
+            setLoadingStep('Complete!');
+            
+            // Short delay to show completion before switching to preview
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            setFormulaHtml(finalHtml);
+            setPreviewHtml(finalHtml);
+            setIsStreamingThoughts(false);
+        } catch (error) {
+            console.error('Formula extraction failed:', error);
+            setLoadingStep('Error extracting formulas. Please try again.');
+            setThoughtLog(prev => [...prev, `❌ Error: ${error}`]);
+            setIsStreamingThoughts(false);
+            alert('Failed to extract formulas. Please ensure the PDF contains formulas and try again.');
+        } finally {
+            setIsExtractingFormulas(false);
+        }
+    };
+
+    const handleDownloadFormulaPDF = () => {
+        if (!formulaHtml) return;
+        
+        // Create a new window with the HTML content
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert('Please allow popups to download PDF');
+            return;
+        }
+        
+        printWindow.document.write(formulaHtml);
+        printWindow.document.close();
+        
+        // Wait for content to load, then trigger print
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
     };
 
     const handleGenerate = async () => {
@@ -179,7 +378,7 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
-    const previewDoc = previewHtml || generatedHtml || '';
+    const previewDoc = previewHtml || formulaHtml || generatedHtml || '';
     const canGenerate = Boolean(fileContent || fileData || topic);
     const disableGenerate = isGenerating || !canGenerate;
 
@@ -238,14 +437,25 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                             <div className="flex flex-col gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setExtractFormulaSheet(!extractFormulaSheet)}
-                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all ${
+                                    onClick={handleExtractFormulas}
+                                    disabled={!fileData || isExtractingFormulas}
+                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                                         extractFormulaSheet
                                             ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md'
                                             : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
-                                    }`}
+                                    } ${!fileData ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
-                                    Extract Formula Sheet
+                                    {isExtractingFormulas ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <span>Extracting...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FileText className="w-4 h-4" />
+                                            <span>Extract Formula Sheet</span>
+                                        </>
+                                    )}
                                 </button>
                                 <button
                                     type="button"
@@ -286,6 +496,55 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                         </button>
 
                         <div className="h-px bg-slate-700"></div>
+
+                        {/* Thinking Terminal - Show only thinking/thoughts */}
+                        {(isGenerating || isExtractingFormulas || thoughtLog.length > 0) && (
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                                    <Sparkles className="w-3 h-3" />
+                                    Model Thinking Process
+                                </label>
+                                <div 
+                                    ref={terminalRef}
+                                    className="bg-black/40 border border-slate-700 rounded p-3 h-64 overflow-y-auto font-mono text-xs text-green-400"
+                                    style={{ 
+                                        scrollbarWidth: 'thin',
+                                        scrollbarColor: '#475569 #1e293b'
+                                    }}
+                                >
+                                    {thoughtLog.length === 0 ? (
+                                        <div className="text-slate-500">
+                                            {isGenerating || isExtractingFormulas ? (
+                                                <div className="flex items-center gap-2">
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                    <span>Waiting for model thoughts...</span>
+                                                </div>
+                                            ) : (
+                                                <span>Thinking process will appear here...</span>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        thoughtLog.map((thought, idx) => (
+                                            <div key={idx} className="mb-1">
+                                                <span className="text-slate-500">[{new Date().toLocaleTimeString()}]</span>{' '}
+                                                <span className={thought.startsWith('✅') ? 'text-green-400' : thought.startsWith('❌') ? 'text-red-400' : 'text-green-300'}>
+                                                    {thought}
+                                                </span>
+                                                {showCursor && idx === thoughtLog.length - 1 && (
+                                                    <span className="inline-block w-2 h-4 bg-green-400 ml-1 animate-pulse">|</span>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                {loadingStep && (isGenerating || isExtractingFormulas) && (
+                                    <div className="text-xs text-slate-400 flex items-center gap-2">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        <span>{loadingStep}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Collapse Button */}
@@ -315,7 +574,7 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
 
                 {/* HTML Preview - FULL HEIGHT */}
                 <div className="flex-1 w-full h-full min-h-0 overflow-auto">
-                    {previewDoc ? (
+                    {previewDoc && !isGenerating && !isExtractingFormulas ? (
                         <iframe
                             srcDoc={previewDoc}
                             className="w-full h-full min-h-screen border-0 block"
@@ -324,18 +583,20 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                         />
                     ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-[#f6f8fc] text-slate-500 px-8 overflow-auto">
-                            {isGenerating ? (
+                            {(isGenerating || isExtractingFormulas) ? (
                                 <div className="flex flex-col items-center gap-6 text-center max-w-md">
                                     <div className="relative w-16 h-16">
                                         <div className="absolute inset-0 bg-slate-300 opacity-40 blur-xl"></div>
                                         <Loader2 className="w-16 h-16 animate-spin text-[#2c4066] relative" />
                                     </div>
                                     <div>
-                                        <p className="text-lg font-bold text-slate-700 mb-2">Generating Interactive Content</p>
+                                        <p className="text-lg font-bold text-slate-700 mb-2">
+                                            {isExtractingFormulas ? 'Extracting Formulas from PDF' : 'Generating Interactive Content'}
+                                        </p>
                                         <p className="text-sm text-slate-500 mb-4">Watch the thinking stream on the left for live reasoning process</p>
                                         <div className="flex items-center justify-center gap-2 text-xs text-[#2c4066]">
                                             <span className="inline-block w-2 h-2 bg-[#2c4066] animate-pulse"></span>
-                                            <span>Gemini 3 Pro is thinking...</span>
+                                            <span>{loadingStep || 'Gemini 3 Pro is thinking...'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -373,28 +634,36 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                 </div>
 
                 {/* Toolbar - Bottom when content is ready */}
-                {generatedHtml && (
+                {(generatedHtml || formulaHtml) && (
                     <div className="h-16 border-t border-slate-200 bg-white flex items-center justify-between px-6 flex-shrink-0">
                         <div className="flex items-center gap-3">
                             <span className="w-2.5 h-2.5 bg-green-500 animate-pulse"></span>
-                            <span className="text-sm font-medium text-slate-600">Preview Active</span>
-                            <span className="text-xs text-slate-400">• Self-contained HTML file</span>
+                            <span className="text-sm font-medium text-slate-600">
+                                {formulaHtml ? 'Formula Sheet' : 'Preview Active'}
+                            </span>
+                            <span className="text-xs text-slate-400">
+                                {formulaHtml ? '• LaTeX formatted formulas' : '• Self-contained HTML file'}
+                            </span>
                         </div>
                         <div className="flex items-center gap-4">
+                            {!formulaHtml && (
+                                <>
+                                    <button
+                                        onClick={handleGenerate}
+                                        className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                        title="Regenerate"
+                                    >
+                                        <RefreshCw className="w-5 h-5" />
+                                    </button>
+                                    <div className="h-6 w-px bg-slate-200"></div>
+                                </>
+                            )}
                             <button
-                                onClick={handleGenerate}
-                                className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                                title="Regenerate"
-                            >
-                                <RefreshCw className="w-5 h-5" />
-                            </button>
-                            <div className="h-6 w-px bg-slate-200"></div>
-                            <button
-                                onClick={handleDownload}
+                                onClick={formulaHtml ? handleDownloadFormulaPDF : handleDownload}
                                 className="flex items-center gap-2 px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm"
                             >
                                 <Download className="w-4 h-4" />
-                                Download HTML
+                                {formulaHtml ? 'Download PDF' : 'Download HTML'}
                             </button>
                         </div>
                     </div>
