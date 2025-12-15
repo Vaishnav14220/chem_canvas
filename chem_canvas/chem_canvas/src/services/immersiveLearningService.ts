@@ -186,7 +186,17 @@ export interface MindMapNode {
 
 export const analyzeDocumentForImmersive = async (text: string): Promise<ImmersiveContent> => {
   const prompt = `
+    CRITICAL: You MUST analyze ONLY the provided text below. Do NOT add any external information, examples, or content that is not present in the provided text. Base your analysis STRICTLY on what is written in the document.
+    
     Analyze the following educational text and structure it for an immersive learning experience (Target Audience: High School/Undergraduate).
+    
+    MANDATORY REQUIREMENTS:
+    1. Extract and use ONLY the information present in the provided text
+    2. Do NOT invent or add examples that are not in the original document
+    3. Do NOT add generic explanations - use only what the document says
+    4. Preserve the exact terminology, concepts, and structure from the original document
+    5. If the document is in German or another language, maintain that language in your analysis
+    6. Focus ONLY on the specific topics, experiments, and concepts described in the provided text
     
     CRITICAL MARKDOWN FORMATTING REQUIREMENTS:
     - Use **double asterisks** around KEY TERMS and IMPORTANT WORDS that should be highlighted (e.g., **chemical kinetics**, **rate of reaction**)
@@ -344,8 +354,20 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     9. Focus on rich, detailed text content and engaging interactive activities instead of images.
     10. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration.
 
-    Text to Analyze:
-    ${text.slice(0, 10000)}
+    CRITICAL INSTRUCTIONS FOR ANALYSIS:
+    - Read the ENTIRE provided text carefully
+    - Extract ONLY the concepts, facts, and information that are explicitly stated in the text
+    - Do NOT add supplementary information, examples, or explanations that are not found in the text
+    - Maintain the original language if the document is not in English (e.g., if it's German, keep it in German)
+    - Preserve technical terms, formulas, and specific details exactly as they appear in the original document
+    - Structure the content based on the logical flow and organization of the original document
+    - If the document discusses specific experiments, sensors, or technical concepts, focus ONLY on what is described in the text
+    - Do NOT invent examples or add generic educational content that is not in the original document
+    
+    Text to Analyze (EXTRACT AND USE ONLY THIS CONTENT - DO NOT ADD EXTERNAL INFORMATION):
+    ${text.slice(0, 50000)}
+    
+    REMEMBER: Your response must be based STRICTLY on the text above. Do not add any information, examples, or explanations that are not present in the provided text. If the document is about a specific topic (like rotary encoders, sensors, etc.), focus ONLY on what is written about that topic in the provided text.
   `;
 
   const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
@@ -374,8 +396,40 @@ export const streamAnalyzeDocumentForImmersive = async (
   text: string,
   onStreamUpdate: (streamedText: string, isComplete: boolean) => void
 ): Promise<ImmersiveContent> => {
+  // Extract main topic from text to help guide the model
+  const mainTopic = text.slice(0, 200).toLowerCase();
+  const isGerman = /[äöüßÄÖÜ]/.test(text.slice(0, 500));
+  const topicKeywords = [];
+  if (mainTopic.includes('drehgeber') || mainTopic.includes('rotary encoder')) topicKeywords.push('rotary encoder/Drehgeber');
+  if (mainTopic.includes('oszilloskop') || mainTopic.includes('oscilloscope')) topicKeywords.push('oscilloscope/Oszilloskop');
+  if (mainTopic.includes('sensor')) topicKeywords.push('sensors');
+  if (mainTopic.includes('funktionsgenerator') || mainTopic.includes('function generator')) topicKeywords.push('function generator');
+  
   const prompt = `
+    🚨🚨🚨 ABSOLUTE REQUIREMENT - READ THIS FIRST 🚨🚨🚨
+    
+    You are analyzing a SPECIFIC document. Your ONLY job is to extract and present information from the text provided below.
+    
+    CRITICAL RULES - VIOLATION WILL RESULT IN INCORRECT OUTPUT:
+    1. Use ONLY information that appears in the provided text below
+    2. Do NOT add ANY examples, explanations, or content that is not explicitly stated in the document
+    3. Do NOT add generic educational content or common knowledge
+    4. Do NOT invent scenarios, examples, or analogies
+    5. ${topicKeywords.length > 0 ? `This document is about: ${topicKeywords.join(', ')}. Write ONLY about these topics as described in the text.` : 'Identify the main topic from the text and write ONLY about that topic.'}
+    6. ${isGerman ? 'The document is in German. Keep your analysis in German.' : 'Maintain the original language of the document.'}
+    7. Do NOT add information about topics NOT mentioned (e.g., if text is about electronics, do NOT add biology, chemistry, or unrelated content)
+    8. Use the exact technical terms and terminology from the document
+    9. If the document discusses specific experiments or equipment, discuss ONLY those specific items
+    
     Analyze the following educational text and structure it for an immersive learning experience (Target Audience: High School/Undergraduate).
+    
+    MANDATORY REQUIREMENTS:
+    1. Extract and use ONLY the information present in the provided text
+    2. Do NOT invent or add examples that are not in the original document
+    3. Do NOT add generic explanations - use only what the document says
+    4. Preserve the exact terminology, concepts, and structure from the original document
+    5. If the document is in German or another language, maintain that language in your analysis
+    6. Focus ONLY on the specific topics mentioned in the document - do NOT add unrelated topics
     
     CRITICAL MARKDOWN FORMATTING REQUIREMENTS:
     - Use **double asterisks** around KEY TERMS and IMPORTANT WORDS that should be highlighted (e.g., **chemical kinetics**, **rate of reaction**)
@@ -424,9 +478,14 @@ export const streamAnalyzeDocumentForImmersive = async (
       The code above demonstrates..."
     
     Return a VALID JSON object.
-    IMPORTANT: Escape all double quotes inside content strings with backslashes (e.g., \\"). 
-    IMPORTANT: Escape all backslashes in LaTeX with another backslash (e.g., \\\\frac).
-    Do not use unescaped newlines in strings; use \\n.
+    CRITICAL JSON FORMATTING RULES:
+    1. Escape all double quotes inside content strings with backslashes (e.g., \\")
+    2. Escape all backslashes in LaTeX with DOUBLE backslashes (e.g., \\\\frac, \\\\sqrt, \\\\alpha)
+    3. Do not use unescaped newlines in strings; use \\n
+    4. Do not use unescaped tabs; use \\t
+    5. Ensure all strings are properly closed with quotes
+    6. Ensure all brackets and braces are properly closed
+    7. Test your JSON before returning - it must be valid JSON that can be parsed
 
     Return a JSON object with the following structure:
     {
@@ -434,7 +493,7 @@ export const streamAnalyzeDocumentForImmersive = async (
         { 
           "id": "unique_id", 
           "title": "Section Title", 
-          "content": "Full markdown text. Escape quotes! **bold terms**. At least 3 detailed paragraphs per section. Insert {{INTERACTIVE_WIDGET}} marker.",
+          "content": "Full markdown text. Escape quotes! **bold terms**. At least 4 detailed paragraphs per section. Insert {{INTERACTIVE_WIDGET}} marker.",
           "imagePrompt": null,
           "widget": {
             "type": "reveal" | "fill-blank" | "matching" | "ordering" | "labeling" | "true-false" | "quiz" | "reflection" | "code-playground" | "code-explanation",
@@ -515,7 +574,7 @@ export const streamAnalyzeDocumentForImmersive = async (
 
     Rules:
     1. Split text into AT LEAST 4 distinct logical sections (e.g., Introduction, Key Concepts, Application, Advanced Analysis, Conclusion).
-    2. IMPORTANT: Each section's content MUST have AT LEAST 3 substantial paragraphs (reduced from 4 to ensure valid JSON generation) with detailed explanations.
+    2. IMPORTANT: Each section's content MUST have AT LEAST 4 substantial paragraphs with detailed explanations. Do NOT reduce the number of paragraphs - ensure each section has a minimum of 4 well-developed paragraphs.
     3. CRITICAL: Use markdown formatting throughout:
        - Wrap key terms in **double asterisks** for highlighting (minimum 3 per paragraph)
        - Wrap important phrases/sentences in *single asterisks* for underlining (minimum 1 per paragraph)
@@ -542,8 +601,37 @@ export const streamAnalyzeDocumentForImmersive = async (
     9. Focus on rich, detailed text content and engaging interactive activities instead of images.
     10. CRITICAL FOR imagePrompt: When providing an imagePrompt for the first section, it MUST be a detailed SCIENTIFIC and ACADEMIC description that would generate a textbook-quality illustration.
 
-    Text to Analyze:
-    ${text.slice(0, 10000)}
+    🚨🚨🚨 FINAL VALIDATION CHECKPOINT 🚨🚨🚨
+    
+    BEFORE YOU START WRITING, ANSWER THESE QUESTIONS:
+    1. What is the MAIN TOPIC of the text below? (Write it down - e.g., oscilloscope, rotary encoder, sensors, etc.)
+    2. What language is the text in? (Keep that same language - German stays German, English stays English)
+    3. What specific experiments or equipment are mentioned?
+    
+    NOW READ THE TEXT BELOW CAREFULLY:
+    
+    Text to Analyze (THIS IS YOUR ONLY SOURCE - USE NOTHING ELSE):
+    ${text.slice(0, 50000)}
+    
+    ⚠️⚠️⚠️ CRITICAL VALIDATION - CHECK BEFORE RESPONDING ⚠️⚠️⚠️
+    
+    For EVERY sentence you write, ask yourself:
+    - Can I find this exact information in the text above? YES/NO
+    - Is this example mentioned in the text above? YES/NO
+    - Is this topic discussed in the text above? YES/NO
+    
+    If ANY answer is NO, DO NOT WRITE IT.
+    
+    REMEMBER:
+    - Identify the main topic from the text above and write ONLY about that topic
+    - If the text is about oscilloscopes, write ONLY about oscilloscopes as described
+    - If the text is about rotary encoders (Drehgeber), write ONLY about rotary encoders
+    - If the text is in German, write in German
+    - Do NOT add cell biology, chemistry reactions, or any topic NOT in the text
+    - Do NOT add generic examples or explanations not in the text
+    - Every concept must come from the text above
+    
+    Your response must be 100% based on the text above. Nothing else.
   `;
 
   const fallbackContent: ImmersiveContent = {
@@ -1066,7 +1154,79 @@ export const extendMindMapNode = async (nodeLabel: string, context: string = '')
 };
 
 /**
- * Generates immersive learning images using Nano Banana Pro (Gemini 3 Pro Image Preview).
+ * Generates academic images using Google's Imagen API (imagen-4.0-generate-001).
+ * Based on documentation: https://ai.google.dev/gemini-api/docs/imagen
+ * 
+ * @param prompt - The image prompt describing what to generate (max 480 tokens)
+ * @param aspectRatio - Optional aspect ratio (defaults to 16:9 for widescreen)
+ * @param numberOfImages - Number of images to generate (1-4, default: 1)
+ * @returns Base64 data URL of the generated image(s)
+ */
+export const generateImagenImage = async (
+  prompt: string,
+  aspectRatio: AspectRatio = AspectRatio.LANDSCAPE_16_9,
+  numberOfImages: number = 1
+): Promise<string> => {
+  try {
+    const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+    const apiKey = await getSharedGeminiApiKey();
+
+    if (!apiKey) {
+      throw new Error('API key not available');
+    }
+
+    // Map aspect ratio to Imagen format
+    const imagenAspectRatio = aspectRatio === AspectRatio.LANDSCAPE_16_9 ? '16:9' :
+                             aspectRatio === AspectRatio.PORTRAIT_9_16 ? '9:16' :
+                             aspectRatio === AspectRatio.SQUARE_1_1 ? '1:1' :
+                             aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
+                             aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' : '16:9';
+
+    // Imagen API endpoint
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        instances: [
+          {
+            prompt: prompt
+          }
+        ],
+        parameters: {
+          sampleCount: Math.min(Math.max(numberOfImages, 1), 4), // Clamp between 1-4
+          aspectRatio: imagenAspectRatio,
+          imageSize: '1K', // 1K resolution (1024px)
+          personGeneration: 'allow_adult' // Default: allow adults, not children
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Imagen API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    // Extract the first generated image
+    if (data.predictions && data.predictions.length > 0 && data.predictions[0].bytesBase64Encoded) {
+      const imageBase64 = data.predictions[0].bytesBase64Encoded;
+      return `data:image/png;base64,${imageBase64}`;
+    }
+
+    throw new Error('No image data in Imagen API response');
+  } catch (error) {
+    console.error('Failed to generate image with Imagen API:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generates immersive learning images using Imagen API (primary) with fallback to Nano Banana Pro.
  * Uses 1K resolution (1024x1024) for fast, high-quality educational illustrations.
  * 
  * @param prompt - The image prompt describing what to generate
@@ -1078,21 +1238,25 @@ export const generateImmersiveImage = async (
   aspectRatio: AspectRatio = AspectRatio.LANDSCAPE_16_9
 ): Promise<string> => {
   try {
-    // Use Nano Banana Pro for high-quality 1K educational images
-    const imageDataUrl = await generateEducationalImage(
-      prompt,
-      aspectRatio,
-      ImageSize.K1 // 1024px resolution - fast and high quality
-    );
-
-    return imageDataUrl;
+    // Try Imagen API first (preferred for academic images)
+    return await generateImagenImage(prompt, aspectRatio, 1);
   } catch (error) {
-    console.error('Failed to generate immersive image with Nano Banana Pro:', error);
-
-    // Fallback to Pollinations AI if Gemini fails
-    console.warn('Falling back to Pollinations AI for image generation');
-    const encodedPrompt = encodeURIComponent(prompt);
-    return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&nologo=true`;
+    console.warn('Imagen API failed, falling back to Nano Banana Pro:', error);
+    try {
+      // Fallback to Nano Banana Pro for high-quality 1K educational images
+      const imageDataUrl = await generateEducationalImage(
+        prompt,
+        aspectRatio,
+        ImageSize.K1 // 1024px resolution - fast and high quality
+      );
+      return imageDataUrl;
+    } catch (fallbackError) {
+      console.error('All image generation methods failed:', fallbackError);
+      // Final fallback to Pollinations AI
+      console.warn('Falling back to Pollinations AI for image generation');
+      const encodedPrompt = encodeURIComponent(prompt);
+      return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&nologo=true`;
+    }
   }
 };
 

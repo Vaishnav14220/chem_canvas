@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { X, Upload, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon, Lightbulb, Zap, Target, Award, Eye, EyeOff, Code2, Terminal as TerminalIcon, Save, RotateCcw, Download } from 'lucide-react';
+import { X, Upload, FileUp, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon, Lightbulb, Zap, Target, Award, Eye, EyeOff, Code2, Terminal as TerminalIcon, Save, RotateCcw, Download, Check } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
 import { python } from '@codemirror/lang-python';
@@ -72,6 +72,9 @@ import { generateStreamingContent } from '../services/geminiStreaming';
 import { fetchGroundingSources } from '../services/geminiService';
 import ReactFlowMindMap from './ReactFlowMindMap';
 import { LessonGeneratorActivity } from './LessonGeneratorActivity';
+import { Badge } from './ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
 
 interface ImmersiveLearningProps {
     onClose: () => void;
@@ -390,6 +393,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
     // Brainstorm Activity State
     const [brainstormActivity, setBrainstormActivity] = useState<BrainstormActivity | null>(null);
+    const [brainstormActivities, setBrainstormActivities] = useState<{ [sectionId: string]: BrainstormActivity }>({});
     const [isLoadingBrainstorm, setIsLoadingBrainstorm] = useState(false);
     const [showBrainstormHints, setShowBrainstormHints] = useState<boolean[]>([]);
     const [showBrainstormApproaches, setShowBrainstormApproaches] = useState(false);
@@ -459,7 +463,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [simulationProgress, setSimulationProgress] = useState<string>('');
     const [simulationProgressSteps, setSimulationProgressSteps] = useState<{ step: string, status: 'pending' | 'active' | 'done' }[]>([]);
     const [simulationError, setSimulationError] = useState<string | null>(null);
-    const [isSimulationFullscreen, setIsSimulationFullscreen] = useState(true);
+    const [isSimulationFullscreen, setIsSimulationFullscreen] = useState(false);
     const simulationIframeRef = useRef<HTMLIFrameElement>(null);
     const documentTextRef = useRef<string>(''); // Store document text for simulation generation
 
@@ -708,6 +712,7 @@ Respond in JSON format only:
                 audioScript: null,
                 reactFlowData: null,
                 relevantVideos: [],
+                brainstormActivities: {},
                 pdfUrl: null,
                 activeSectionId: content.sections?.[0]?.id || null
             };
@@ -744,6 +749,7 @@ Respond in JSON format only:
                     audioScript: audioScript || null,
                     reactFlowData,
                     relevantVideos,
+                    brainstormActivities,
                     pdfUrl,
                     activeSectionId: activeSectionId || null
                 };
@@ -767,9 +773,16 @@ Respond in JSON format only:
         setAudioScript(workspace.audioScript || '');
         setReactFlowData(workspace.reactFlowData);
         setRelevantVideos(workspace.relevantVideos || []);
+        setBrainstormActivities(workspace.brainstormActivities || {});
+        // Load brainstorm activity for the active section if available
+        const activeId = workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || '';
+        if (activeId && workspace.brainstormActivities?.[activeId]) {
+            setBrainstormActivity(workspace.brainstormActivities[activeId]);
+            setShowBrainstormHints(new Array(workspace.brainstormActivities[activeId].hints.length).fill(false));
+        }
         setPdfUrl(workspace.pdfUrl);
         setUploadedFileName(workspace.documentFileName);
-        setActiveSectionId(workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || '');
+        setActiveSectionId(activeId);
 
         setActiveWorkspaceId(workspace.id);
         localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
@@ -888,35 +901,52 @@ Respond in JSON format only:
 
         console.log(`🔄 Continuing generation of missing components: ${missingComponents.join(', ')}`);
 
-        // Generate missing images
+        // Generate missing images for ALL sections using Imagen API (PARALLEL)
         const generateMissingImages = async () => {
             if (!needsImages) return;
 
-            const MAX_IMAGES_PER_PAGE = 1;
-            let imagesGenerated = 0;
-            const sectionsWithImages = immersiveContent.sections.filter(s => s.imagePrompt);
+            // Find all sections with imagePrompts that don't have images yet
+            const sectionsNeedingImages = immersiveContent.sections.filter(
+                s => s.imagePrompt && !sectionImages[s.id]
+            );
 
-            if (sectionsWithImages.length > 0) {
-                const loadingState: { [key: string]: boolean } = {};
-                loadingState[sectionsWithImages[0].id] = true;
-                setLoadingImages(loadingState);
+            if (sectionsNeedingImages.length === 0) {
+                console.log('✅ All images already generated.');
+                return;
             }
 
-            for (const section of immersiveContent.sections) {
-                if (imagesGenerated >= MAX_IMAGES_PER_PAGE) break;
-                if (section.imagePrompt && !sectionImages[section.id]) {
-                    try {
-                        console.log(`🖼️ Generating missing image for section: ${section.id}`);
-                        const imageUrl = await generateImmersiveImage(section.imagePrompt);
-                        setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
-                        setLoadingImages(prev => ({ ...prev, [section.id]: false }));
-                        imagesGenerated++;
-                    } catch (e) {
-                        console.error("Failed to generate image for section", section.id, e);
-                        setLoadingImages(prev => ({ ...prev, [section.id]: false }));
-                    }
+            console.log(`🖼️ Generating missing academic images for ${sectionsNeedingImages.length} section(s) using Imagen API...`);
+
+            // Mark all sections as loading
+            const loadingState: { [key: string]: boolean } = {};
+            sectionsNeedingImages.forEach(section => {
+                loadingState[section.id] = true;
+            });
+            setLoadingImages(loadingState);
+
+            // Generate ALL missing images in parallel
+            const imagePromises = sectionsNeedingImages.map(async (section, index) => {
+                try {
+                    console.log(`🖼️ [${index + 1}/${sectionsNeedingImages.length}] Generating missing image for "${section.title}"`);
+                    console.log(`   Using Imagen API with prompt: ${section.imagePrompt?.substring(0, 100)}...`);
+                    
+                    const imageUrl = await generateImmersiveImage(section.imagePrompt!);
+                    setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
+                    setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                    
+                    console.log(`✅ Successfully generated image for "${section.title}"`);
+                    return { sectionId: section.id, success: true };
+                } catch (e) {
+                    console.error(`❌ Failed to generate image for "${section.title}" (${section.id}):`, e);
+                    setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                    return { sectionId: section.id, success: false };
                 }
-            }
+            });
+
+            // Wait for all images to complete (in parallel)
+            const results = await Promise.allSettled(imagePromises);
+            const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+            console.log(`✅ Missing image generation complete. Generated ${successful}/${sectionsNeedingImages.length} image(s) using Imagen API.`);
         };
 
         // Generate missing quiz
@@ -986,6 +1016,25 @@ Respond in JSON format only:
 
     }, [needsContinueGeneration, immersiveContent, sectionImages, quiz, audioScript, reactFlowData, relevantVideos]);
 
+    // Auto-load brainstorm activity when active section changes (if pre-generated)
+    useEffect(() => {
+        if (activeSectionId && brainstormActivities[activeSectionId] && !brainstormActivity) {
+            // Only auto-load if no activity is currently shown
+            const activity = brainstormActivities[activeSectionId];
+            setBrainstormActivity(activity);
+            setShowBrainstormHints(new Array(activity.hints.length).fill(false));
+            setShowBrainstormApproaches(false);
+            setShowBrainstormInsight(false);
+        } else if (activeSectionId && brainstormActivities[activeSectionId] && brainstormActivity) {
+            // Switch to the new section's activity
+            const activity = brainstormActivities[activeSectionId];
+            setBrainstormActivity(activity);
+            setShowBrainstormHints(new Array(activity.hints.length).fill(false));
+            setShowBrainstormApproaches(false);
+            setShowBrainstormInsight(false);
+        }
+    }, [activeSectionId, brainstormActivities]);
+
     // Save content to localStorage whenever it changes
     useEffect(() => {
         // Only save if we have actual content
@@ -1004,6 +1053,7 @@ Respond in JSON format only:
                     audioScript,
                     reactFlowData,
                     relevantVideos,
+                    brainstormActivities,
                     savedAt: new Date().toISOString()
                 };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
@@ -1357,68 +1407,84 @@ Respond in JSON format only:
 
     const renderStandaloneNotesPanel = (variant: 'light' | 'dark' = 'light') => {
         const isDark = variant === 'dark';
-        const baseCard = 'rounded-xl p-4 bg-[#171717] border border-white/10 text-slate-100 shadow-lg';
-        const inputClass = 'rounded-lg px-3 py-2 text-sm bg-[#171717] border border-white/20 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#ff8b66]/40';
-        const labelClass = 'text-slate-200';
-        const helperClass = 'text-slate-400';
 
         return (
-            <div className={`rounded-xl p-4 ${baseCard}`}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <p className="text-sm font-semibold">Use your own notes</p>
-                        <p className={`text-xs ${helperClass}`}>
-                            Upload notes or paste text to generate audio lessons, mind maps, or simulations without a source document.
-                        </p>
+            <div className="rounded-xl p-6 bg-[#171717] border border-white/10 text-slate-100 shadow-lg relative overflow-hidden">
+                {/* Subtle gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-white/[0.02] pointer-events-none" />
+                
+                <div className="relative z-10 space-y-6">
+                    {/* Header Section */}
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex-1 space-y-1.5">
+                            <h3 className="text-sm font-semibold text-slate-100 leading-tight">Use your own notes</h3>
+                            <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
+                                Upload notes or paste text to generate audio lessons, mind maps, or simulations without a source document.
+                            </p>
+                        </div>
+                        <label className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg cursor-pointer bg-white/10 text-slate-100 border border-white/20 hover:bg-white/15 transition-colors whitespace-nowrap flex-shrink-0">
+                            <Upload className="w-4 h-4 flex-shrink-0" />
+                            <span>{standaloneNotesName ? 'Replace notes' : 'Upload notes'}</span>
+                            <input
+                                ref={notesFileInputRef}
+                                type="file"
+                                accept=".txt,.md,.markdown,.doc,.docx,.pdf"
+                                className="hidden"
+                                onChange={handleStandaloneNotesUpload}
+                            />
+                        </label>
                     </div>
-                    <label className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg cursor-pointer bg-white/10 text-slate-100 border border-white/20 hover:bg-white/15">
-                        <Upload className="w-4 h-4" />
-                        {standaloneNotesName ? 'Replace notes' : 'Upload notes'}
-                        <input
-                            ref={notesFileInputRef}
-                            type="file"
-                            accept=".txt,.md,.markdown,.doc,.docx,.pdf"
-                            className="hidden"
-                            onChange={handleStandaloneNotesUpload}
-                        />
-                    </label>
-                </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
-                    <div className="flex flex-col gap-1">
-                        <label className={`text-xs font-semibold uppercase tracking-wide ${labelClass}`}>Topic or label</label>
-                        <input
-                            value={standaloneTopic}
-                            onChange={(event) => setStandaloneTopic(event.target.value)}
-                            placeholder="e.g., SN1 vs SN2 mechanisms"
-                            className={`rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff8b66]/40 ${inputClass}`}
-                        />
-                        <p className={`text-[11px] ${helperClass}`}>
-                            {standaloneNotesName ? `Loaded: ${standaloneNotesName}` : 'Optional, used for titles and prompts.'}
-                        </p>
-                    </div>
-                    <div className="md:col-span-2 flex flex-col gap-1">
-                        <label className={`text-xs font-semibold uppercase tracking-wide ${labelClass}`}>Notes</label>
-                        <textarea
-                            value={standaloneNotes}
-                            onChange={(event) => setStandaloneNotes(event.target.value)}
-                            rows={4}
-                            placeholder="Paste notes, key steps, or a lesson outline..."
-                            className={`rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#ff8b66]/40 ${inputClass}`}
-                        />
-                        <div className={`flex items-center justify-between text-[11px] ${helperClass}`}>
-                            <span>{standaloneNotes ? `${standaloneNotes.length} characters` : 'Plain text/markdown recommended.'}</span>
-                            {standaloneNotes && (
-                                <button
-                                    type="button"
-                                    className={`${isDark ? 'text-slate-200' : 'text-slate-700'} underline`}
-                                    onClick={() => {
-                                        setStandaloneNotes('');
-                                        setStandaloneNotesName('');
-                                    }}
-                                >
-                                    Clear
-                                </button>
-                            )}
+
+                    {/* Divider */}
+                    <div className="h-px bg-white/10" />
+
+                    {/* Form Fields */}
+                    <div className="flex flex-col gap-6">
+                        {/* Topic Input */}
+                        <div className="flex flex-col gap-2.5">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-0.5">
+                                Topic or label
+                            </label>
+                            <input
+                                value={standaloneTopic}
+                                onChange={(event) => setStandaloneTopic(event.target.value)}
+                                placeholder="e.g., SN1 vs SN2 mechanisms"
+                                className="w-full h-10 px-4 py-2 text-sm bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all rounded-lg"
+                            />
+                            <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                                {standaloneNotesName ? `Loaded: ${standaloneNotesName}` : 'Optional, used for titles and prompts.'}
+                            </p>
+                        </div>
+
+                        {/* Notes Textarea */}
+                        <div className="flex flex-col gap-2.5">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-0.5">
+                                Notes
+                            </label>
+                            <textarea
+                                value={standaloneNotes}
+                                onChange={(event) => setStandaloneNotes(event.target.value)}
+                                rows={4}
+                                placeholder="Paste notes, key steps, or a lesson outline..."
+                                className="w-full min-h-[100px] px-4 py-3 text-sm resize-none bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all rounded-lg"
+                            />
+                            <div className="flex items-center justify-between text-[11px] text-slate-400 mt-0.5">
+                                <span className="leading-relaxed">
+                                    {standaloneNotes ? `${standaloneNotes.length} characters` : 'Plain text/markdown recommended.'}
+                                </span>
+                                {standaloneNotes && (
+                                    <button
+                                        type="button"
+                                        className="text-slate-300 hover:text-slate-100 underline transition-colors ml-4"
+                                        onClick={() => {
+                                            setStandaloneNotes('');
+                                            setStandaloneNotesName('');
+                                        }}
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2229,53 +2295,51 @@ Respond in JSON format only:
             // 2. Start all background tasks IN PARALLEL (non-blocking)
             // These will update state as they complete
 
-            // Background task: Generate images - LIMITED TO 1 IMAGE PER PAGE to reduce costs
+            // Background task: Generate academic images for ALL sections using Imagen API (PARALLEL)
             const generateImagesAsync = async () => {
-                // COST OPTIMIZATION: Only generate 1 image for the first section with an imagePrompt
-                // This dramatically reduces API costs while still providing visual context
-                const MAX_IMAGES_PER_PAGE = 1;
-                let imagesGenerated = 0;
-
-                // Find sections with imagePrompts (should only be first section based on new prompt)
+                // Generate images for ALL sections with imagePrompts in parallel
                 const sectionsWithImages = analysis.sections.filter(s => s.imagePrompt);
-
-                // Mark only the first section as loading
-                const loadingState: { [key: string]: boolean } = {};
-                if (sectionsWithImages.length > 0 && imagesGenerated < MAX_IMAGES_PER_PAGE) {
-                    loadingState[sectionsWithImages[0].id] = true;
+                
+                if (sectionsWithImages.length === 0) {
+                    console.log('⚠️ No sections with imagePrompts found. Skipping image generation.');
+                    return;
                 }
+
+                console.log(`🖼️ Generating academic images for ${sectionsWithImages.length} section(s) using Imagen API...`);
+
+                // Mark all sections as loading
+                const loadingState: { [key: string]: boolean } = {};
+                sectionsWithImages.forEach(section => {
+                    loadingState[section.id] = true;
+                });
                 setLoadingImages(loadingState);
 
-                // Generate image ONLY for the first section with an imagePrompt
-                for (const section of analysis.sections) {
-                    if (imagesGenerated >= MAX_IMAGES_PER_PAGE) {
-                        console.log(`🛑 Image limit reached (${MAX_IMAGES_PER_PAGE}). Skipping remaining image generation to save costs.`);
-                        break;
+                // Generate ALL images in parallel using Promise.allSettled for better error handling
+                const imagePromises = sectionsWithImages.map(async (section, index) => {
+                    try {
+                        console.log(`🖼️ [${index + 1}/${sectionsWithImages.length}] Generating academic image for "${section.title}"`);
+                        console.log(`   Using Imagen API with prompt: ${section.imagePrompt?.substring(0, 100)}...`);
+                        
+                        // Use generateImmersiveImage which now uses Imagen API first
+                        const imageUrl = await generateImmersiveImage(section.imagePrompt!);
+                        
+                        // Update state progressively as each image loads
+                        setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
+                        setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                        
+                        console.log(`✅ Successfully generated image for "${section.title}"`);
+                        return { sectionId: section.id, success: true };
+                    } catch (e) {
+                        console.error(`❌ Failed to generate image for "${section.title}" (${section.id}):`, e);
+                        setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                        return { sectionId: section.id, success: false };
                     }
+                });
 
-                    if (section.imagePrompt) {
-                        try {
-                            console.log(`🖼️ Generating image ${imagesGenerated + 1}/${MAX_IMAGES_PER_PAGE} for section: ${section.id}`);
-                            const imageUrl = await generateImmersiveImage(section.imagePrompt);
-                            // Update state progressively as each image loads
-                            setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
-                            setLoadingImages(prev => ({ ...prev, [section.id]: false }));
-                            imagesGenerated++;
-                        } catch (e) {
-                            console.error("Failed to generate image for section", section.id, e);
-                            setLoadingImages(prev => ({ ...prev, [section.id]: false }));
-                        }
-                    }
-
-                    // DISABLED: comparison widget images to save costs
-                    // Interactive activities are preferred over image-based comparisons
-                    // If comparison widget has image prompts, skip them
-                    if (section.widget?.type === 'comparison' && section.widget.data.beforeImagePrompt && section.widget.data.afterImagePrompt) {
-                        console.log(`⏭️ Skipping comparison widget images for section ${section.id} to save costs. Use interactive activities instead.`);
-                    }
-                }
-
-                console.log(`✅ Image generation complete. Generated ${imagesGenerated} image(s).`);
+                // Wait for all images to complete (in parallel)
+                const results = await Promise.allSettled(imagePromises);
+                const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+                console.log(`✅ Academic image generation complete. Generated ${successful}/${sectionsWithImages.length} image(s) using Imagen API.`);
             };
 
             // Background task: Generate quiz
@@ -2322,20 +2386,64 @@ Respond in JSON format only:
                 }
             };
 
-            // Run ALL background tasks in parallel - don't block the UI!
-            Promise.all([
-                generateImagesAsync(),
-                generateQuizAsync(),
-                generateAudioAsync(),
-                generateMindMapAsync(),
-                fetchVideosAsync()
-            ]).then(async () => {
-                console.log('✅ All background content generation complete!');
+            // Background task: Generate brainstorm activities for ALL sections (PARALLEL)
+            const generateBrainstormActivitiesAsync = async () => {
+                try {
+                    console.log(`🧠 Generating brainstorm activities for ${analysis.sections.length} section(s) in parallel...`);
+                    
+                    // Generate brainstorm activities for all sections in parallel
+                    const brainstormPromises = analysis.sections.map(async (section, index) => {
+                        try {
+                            console.log(`🧠 [${index + 1}/${analysis.sections.length}] Generating brainstorm activity for "${section.title}"`);
+                            const activity = await generateBrainstormActivity(section.content, section.title);
+                            
+                            // Store brainstorm activity by section ID
+                            setBrainstormActivities(prev => ({
+                                ...prev,
+                                [section.id]: activity
+                            }));
+                            
+                            // Set the first section's activity as the active one
+                            if (index === 0) {
+                                setBrainstormActivity(activity);
+                                setShowBrainstormHints(new Array(activity.hints.length).fill(false));
+                            }
+                            
+                            console.log(`✅ Successfully generated brainstorm activity for "${section.title}"`);
+                            return { sectionId: section.id, activity, success: true };
+                        } catch (e) {
+                            console.error(`❌ Failed to generate brainstorm activity for "${section.title}":`, e);
+                            return { sectionId: section.id, success: false };
+                        }
+                    });
+
+                    const results = await Promise.allSettled(brainstormPromises);
+                    const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+                    console.log(`✅ Brainstorm activity generation complete. Generated ${successful}/${analysis.sections.length} activity/activities.`);
+                } catch (e) {
+                    console.error('Failed to generate brainstorm activities:', e);
+                }
+            };
+
+            // Run ALL background tasks in PARALLEL using Promise.allSettled for better error handling
+            // This ensures all tasks run simultaneously and don't block each other
+            Promise.allSettled([
+                generateImagesAsync(),           // Generate images for ALL sections in parallel
+                generateQuizAsync(),             // Generate quiz
+                generateAudioAsync(),            // Generate audio script
+                generateMindMapAsync(),          // Generate mind map
+                fetchVideosAsync(),              // Fetch YouTube videos
+                generateBrainstormActivitiesAsync() // Generate brainstorm activities for all sections
+            ]).then(async (results) => {
+                const successful = results.filter(r => r.status === 'fulfilled').length;
+                const failed = results.filter(r => r.status === 'rejected').length;
+                console.log(`✅ Background content generation complete! ${successful} succeeded, ${failed} failed.`);
+                
                 // Save as new workspace using the analysis content directly
                 // This ensures we have the content even if state hasn't updated yet
                 await saveWorkspaceWithContent(analysis, fileName, text);
             }).catch(e => {
-                console.error('Some background tasks failed:', e);
+                console.error('Unexpected error in background tasks:', e);
             });
 
         } catch (error) {
@@ -2548,11 +2656,22 @@ Respond in JSON format only:
         setEnhancedQuizAnswer(null);
     };
 
-    // Generate brainstorm activity for current section
+    // Generate brainstorm activity for current section (or use pre-generated one)
     const handleGenerateBrainstorm = async () => {
         const activeSection = immersiveContent?.sections.find(s => s.id === activeSectionId);
         if (!activeSection) return;
 
+        // Check if we already have a brainstorm activity for this section
+        if (brainstormActivities[activeSection.id]) {
+            console.log(`✅ Using pre-generated brainstorm activity for "${activeSection.title}"`);
+            setBrainstormActivity(brainstormActivities[activeSection.id]);
+            setShowBrainstormHints(new Array(brainstormActivities[activeSection.id].hints.length).fill(false));
+            setShowBrainstormApproaches(false);
+            setShowBrainstormInsight(false);
+            return;
+        }
+
+        // Otherwise generate on-demand
         setIsLoadingBrainstorm(true);
         setBrainstormActivity(null);
         setShowBrainstormHints([]);
@@ -2563,6 +2682,10 @@ Respond in JSON format only:
         try {
             const activity = await generateBrainstormActivity(activeSection.content, activeSection.title);
             setBrainstormActivity(activity);
+            setBrainstormActivities(prev => ({
+                ...prev,
+                [activeSection.id]: activity
+            }));
             setShowBrainstormHints(new Array(activity.hints.length).fill(false));
         } catch (error) {
             console.error('Failed to generate brainstorm activity:', error);
@@ -4242,20 +4365,127 @@ sys.stderr = StringIO()
         // Robotics, 3D Viewer, Code Lab, and Image Activity work independently without needing uploaded content
         if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && activeMode !== 'image-activity' && activeMode !== 'audio-lesson' && activeMode !== 'mindmap' && activeMode !== 'simulation' && !isStreaming) {
             return (
-                <div className="flex flex-col items-center justify-center h-full space-y-6 p-8">
-                    <div className="text-center space-y-3 max-w-md">
-                        <div className="w-16 h-16 bg-[#fff0e0] rounded-2xl flex items-center justify-center mx-auto mb-4">
-                            <FileText className="w-8 h-8 text-[#ff8b66]" />
+                <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
+                    {/* Left Sidebar - Input & Controls */}
+                    {sidebarOpen && (
+                        <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen rounded-none" style={{ backgroundColor: '#1F1F1F' }}>
+                            {/* Main Content Area */}
+                            <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6 rounded-none">
+                                {/* File Upload */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Source Material</label>
+                                    <div
+                                        onClick={() => notesFileInputRef.current?.click()}
+                                        className="border border-white/10 bg-white/5 hover:bg-white/10 p-5 flex flex-col items-center justify-center cursor-pointer transition-all group rounded-none"
+                                    >
+                                        <input
+                                            ref={notesFileInputRef}
+                                            type="file"
+                                            accept=".txt,.md,.pdf,.html"
+                                            className="hidden"
+                                            onChange={handleStandaloneNotesUpload}
+                                        />
+                                        {standaloneNotesName ? (
+                                            <div className="flex flex-col items-center text-slate-100">
+                                                <Check className="w-7 h-7 mb-2" />
+                                                <span className="text-xs font-medium text-center break-all">{standaloneNotesName}</span>
+                                                <span className="text-[11px] text-slate-400 mt-1">Click to replace</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center text-slate-400 group-hover:text-white transition-colors">
+                                                <FileUp className="w-6 h-6 mb-2" />
+                                                <span className="text-xs font-medium">Upload / Paste Notes</span>
+                                                <span className="text-[11px] mt-1">PDF, Text, or Markdown</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Topic Input */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Topic / Concept</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Projectile Motion..."
+                                        value={standaloneTopic}
+                                        onChange={(e) => setStandaloneTopic(e.target.value)}
+                                        className="w-full px-4 py-2 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all rounded-none"
+                                    />
+                                </div>
+
+                                {/* Generate Button */}
+                                <button
+                                    onClick={() => setActiveMode('source')}
+                                    disabled={!standaloneNotes.trim() && !standaloneTopic.trim()}
+                                    className={
+                                        !standaloneNotes.trim() && !standaloneTopic.trim()
+                                            ? 'w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-slate-700 text-slate-400 cursor-not-allowed rounded-none'
+                                            : 'w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95 rounded-none'
+                                    }
+                                >
+                                    <Sparkles className="w-4 h-4" />
+                                    <span>Start Learning</span>
+                                </button>
+
+                                <div className="h-px bg-slate-700"></div>
+                            </div>
+
+                            {/* Collapse Button */}
+                            <div className="border-t border-slate-700 p-3 rounded-none">
+                                <button
+                                    onClick={() => setSidebarOpen(false)}
+                                    className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 rounded-none"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                    <span>Collapse Panel</span>
+                                </button>
+                            </div>
                         </div>
-                        <h2 className="text-2xl font-google-sans text-slate-100">Start Learning</h2>
-                        <p className="text-slate-400">Upload a document to generate your immersive lesson.</p>
+                    )}
+
+                    {/* Sidebar Toggle Button */}
+                    {!sidebarOpen && (
+                        <button
+                            onClick={() => setSidebarOpen(true)}
+                            className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 transition-colors z-10 shadow-lg"
+                            title="Open sidebar"
+                        >
+                            <ChevronRight className="w-5 h-5 transform rotate-180" />
+                        </button>
+                    )}
+
+                    {/* Main Content Area */}
+                    <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-[#f6f8fc] text-slate-500 px-8 overflow-auto">
+                            <div className="flex flex-col items-center gap-6 text-center max-w-xl">
+                                <div className="w-24 h-24 bg-[#e4e9f2] flex items-center justify-center rounded-xl">
+                                    <FileText className="w-12 h-12 text-[#2c4066]" />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-bold text-slate-700 mb-2">Start Learning</h3>
+                                    <p className="text-slate-500 mb-6">
+                                        Upload a file or enter a topic, then generate your immersive learning experience powered by AI.
+                                    </p>
+                                    <div className="flex items-center justify-center gap-4 text-sm text-slate-500">
+                                        <div className="flex items-center gap-2">
+                                            <FileUp className="w-4 h-4" />
+                                            <span>Upload or paste</span>
+                                        </div>
+                                        <div className="w-1 h-1 bg-slate-300"></div>
+                                        <div className="flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4" />
+                                            <span>Generate</span>
+                                        </div>
+                                        <div className="w-1 h-1 bg-slate-300"></div>
+                                        <div className="flex items-center gap-2">
+                                            <BookOpen className="w-4 h-4" />
+                                            <span>Learn</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <button
-                        onClick={() => setActiveMode('source')}
-                        className="px-6 py-3 bg-[#ff8b66] hover:bg-[#ff8b66]/90 text-white rounded-full font-medium transition-all shadow-sm hover:shadow-md"
-                    >
-                        Go to Source Upload
-                    </button>
                 </div>
             );
         }
@@ -4521,9 +4751,9 @@ sys.stderr = StringIO()
                     const progressPercent = Math.min(95, Math.round(streamedText.length / 50));
 
                     return (
-                        <div className="flex w-full h-full min-h-[calc(100vh-120px)]">
+                        <div className="flex w-full h-full min-h-[calc(100vh-120px)] bg-white">
                             <WarpBackground
-                                className="flex-1 flex items-center justify-center border-0 p-0 bg-slate-950"
+                                className="flex-1 flex items-center justify-center border-0 p-0 bg-white"
                                 perspective={150}
                                 beamsPerSide={4}
                                 beamSize={4}
@@ -4535,79 +4765,79 @@ sys.stderr = StringIO()
                                 <div className="relative z-10 w-full max-w-3xl mx-auto px-8">
                                     <Terminal className="w-full max-w-none shadow-2xl backdrop-blur-sm">
                                         {/* Command line with typing */}
-                                        <div className="flex items-center gap-2 text-slate-400 mb-3">
-                                            <span className="text-green-400">➜</span>
-                                            <span className="text-cyan-400">~/learning</span>
-                                            <span className="text-slate-500">$</span>
-                                            <TypingAnimation className="text-slate-300" duration={25} delay={0}>
+                                        <div className="flex items-center gap-2 text-gray-600 mb-3">
+                                            <span className="text-green-600">➜</span>
+                                            <span className="text-blue-600">~/learning</span>
+                                            <span className="text-gray-500">$</span>
+                                            <TypingAnimation className="text-gray-700" duration={25} delay={0}>
                                                 gemini analyze --mode immersive
                                             </TypingAnimation>
                                         </div>
 
                                         {/* Step 1 */}
-                                        <AnimatedSpan delay={1200} className="text-slate-300">
-                                            <span className="text-green-400">✔</span> Connected to Gemini AI
+                                        <AnimatedSpan delay={1200} className="text-gray-700">
+                                            <span className="text-green-600">✔</span> Connected to Gemini AI
                                         </AnimatedSpan>
 
                                         {/* Step 2 */}
-                                        <AnimatedSpan delay={1800} className="text-slate-300">
-                                            <span className="text-green-400">✔</span> Document parsed successfully
+                                        <AnimatedSpan delay={1800} className="text-gray-700">
+                                            <span className="text-green-600">✔</span> Document parsed successfully
                                         </AnimatedSpan>
 
                                         {/* Step 3 */}
-                                        <AnimatedSpan delay={2400} className="text-slate-300">
-                                            <span className="text-green-400">✔</span> Extracting key concepts
+                                        <AnimatedSpan delay={2400} className="text-gray-700">
+                                            <span className="text-green-600">✔</span> Extracting key concepts
                                         </AnimatedSpan>
 
                                         {/* Step 4 - Shows when content starts streaming */}
-                                        <AnimatedSpan delay={3000} className="text-slate-300">
+                                        <AnimatedSpan delay={3000} className="text-gray-700">
                                             {hasStarted ? (
-                                                <><span className="text-green-400">✔</span> Building section structure</>
+                                                <><span className="text-green-600">✔</span> Building section structure</>
                                             ) : (
-                                                <><span className="text-yellow-400 animate-pulse">●</span> Analyzing document structure...</>
+                                                <><span className="text-yellow-600 animate-pulse">●</span> Analyzing document structure...</>
                                             )}
                                         </AnimatedSpan>
 
                                         {hasStarted && (
                                             <>
                                                 {/* Step 5 */}
-                                                <AnimatedSpan delay={3600} className="text-slate-300">
-                                                    <span className="text-blue-400 animate-pulse">●</span> Generating immersive content...
+                                                <AnimatedSpan delay={3600} className="text-gray-700">
+                                                    <span className="text-blue-600 animate-pulse">●</span> Generating immersive content...
                                                 </AnimatedSpan>
 
                                                 {/* Step 6 */}
-                                                <AnimatedSpan delay={4200} className="text-slate-300">
-                                                    <span className="text-blue-400 animate-pulse">●</span> Creating interactive widgets
+                                                <AnimatedSpan delay={4200} className="text-gray-700">
+                                                    <span className="text-blue-600 animate-pulse">●</span> Creating interactive widgets
                                                 </AnimatedSpan>
 
                                                 {/* Step 7 */}
-                                                <AnimatedSpan delay={4800} className="text-slate-300">
-                                                    <span className="text-yellow-400 animate-spin inline-block">⟳</span> Preparing visual elements
+                                                <AnimatedSpan delay={4800} className="text-gray-700">
+                                                    <span className="text-yellow-600 animate-spin inline-block">⟳</span> Preparing visual elements
                                                 </AnimatedSpan>
 
                                                 {/* Progress bar */}
-                                                <AnimatedSpan delay={5400} className="mt-4 pt-3 border-t border-slate-800">
+                                                <AnimatedSpan delay={5400} className="mt-4 pt-3 border-t border-gray-300">
                                                     <div className="flex items-center gap-3">
-                                                        <span className="text-slate-500 text-xs">Progress:</span>
-                                                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[200px]">
+                                                        <span className="text-gray-600 text-xs">Progress:</span>
+                                                        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden max-w-[200px]">
                                                             <div
                                                                 className="h-full bg-gradient-to-r from-green-500 to-cyan-400 transition-all duration-500"
                                                                 style={{ width: `${progressPercent}%` }}
                                                             />
                                                         </div>
-                                                        <span className="text-cyan-400 text-xs font-mono">{progressPercent}%</span>
+                                                        <span className="text-blue-600 text-xs font-mono">{progressPercent}%</span>
                                                     </div>
                                                 </AnimatedSpan>
 
                                                 {/* Character count - live updating */}
-                                                <AnimatedSpan delay={5600} className="text-slate-500 text-xs">
-                                                    <span className="text-slate-600">ℹ</span> Streaming: {streamedText.length.toLocaleString()} characters received
+                                                <AnimatedSpan delay={5600} className="text-gray-600 text-xs">
+                                                    <span className="text-gray-700">ℹ</span> Streaming: {streamedText.length.toLocaleString()} characters received
                                                 </AnimatedSpan>
                                             </>
                                         )}
 
                                         {!hasStarted && (
-                                            <AnimatedSpan delay={3600} className="text-blue-400 flex items-center gap-2">
+                                            <AnimatedSpan delay={3600} className="text-blue-600 flex items-center gap-2">
                                                 <Loader2 className="w-3 h-3 animate-spin" />
                                                 <span>Initializing content stream...</span>
                                             </AnimatedSpan>
@@ -4629,9 +4859,9 @@ sys.stderr = StringIO()
                 const contentParts = activeSection?.content.split('{{INTERACTIVE_WIDGET}}') || [];
 
                 return (
-                    <div className="flex w-full min-h-full">
+                    <div className="flex w-full min-h-full bg-white">
                         {/* Main Content - Single scrollable area */}
-                        <div className={`flex-1 py-10 px-12 relative overflow-y-auto transition-all duration-300`}>
+                        <div className={`flex-1 py-10 px-12 relative overflow-y-auto transition-all duration-300 bg-white`}>
                             {/* Section Title Header */}
                             <div className="text-[13px] text-[#5f6368] mb-1 font-medium">
                                 {activeSection?.title}
@@ -5587,15 +5817,38 @@ sys.stderr = StringIO()
                                 </div>
                                 <div className="space-y-2">
                                     <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Status</p>
-                                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
-                                        {podcastAudio
-                                            ? 'Audio ready.'
-                                            : isGeneratingScript
-                                                ? 'Generating script...'
-                                                : isGeneratingAudio
-                                                    ? 'Rendering audio...'
-                                                    : 'Awaiting notes.'}
-                                    </div>
+                                    <Badge
+                                        variant={
+                                            podcastAudio
+                                                ? 'success'
+                                                : isGeneratingScript || isGeneratingAudio
+                                                    ? 'warning'
+                                                    : 'outline'
+                                        }
+                                        className="w-full justify-center py-2 text-xs normal-case tracking-normal bg-white/5 text-slate-200 border-white/10"
+                                    >
+                                        {podcastAudio ? (
+                                            <>
+                                                <CheckCircle2 className="w-3 h-3" />
+                                                Audio ready.
+                                            </>
+                                        ) : isGeneratingScript ? (
+                                            <>
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                Generating script...
+                                            </>
+                                        ) : isGeneratingAudio ? (
+                                            <>
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                Rendering audio...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Info className="w-3 h-3" />
+                                                Awaiting notes.
+                                            </>
+                                        )}
+                                    </Badge>
                                 </div>
                             </div>
                         </div>
@@ -5605,38 +5858,42 @@ sys.stderr = StringIO()
                             <div className="flex-1 flex flex-col items-center p-8 overflow-y-auto">
                                 <div className="w-full max-w-3xl space-y-6">
                                     {/* Header Card */}
-                                    <div className="bg-[#1F1F1F] p-8 text-center">
-                                        <div className="w-16 h-16 mx-auto mb-4 bg-[#1F1F1F] flex items-center justify-center">
-                                            <Volume2 className="w-8 h-8 text-slate-300" />
+                                    <div className="p-6 space-y-4" style={{ backgroundColor: '#1F1F1F' }}>
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-12 h-12 flex items-center justify-center">
+                                                <Volume2 className="w-6 h-6 text-slate-300" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-semibold text-slate-200">Audio Lesson Podcast</h2>
+                                                <p className="text-xs text-slate-400">
+                                                    Generate an AI-hosted podcast about this topic. Listen to a conversation between an expert and a host.
+                                                </p>
+                                            </div>
                                         </div>
-                                        <h2 className="text-[24px] font-medium text-slate-200 mb-2">Audio Lesson Podcast</h2>
-                                        <p className="text-slate-400 mb-6">
-                                            Generate an AI-hosted podcast about this topic. Listen to a conversation between an expert and a host.
-                                        </p>
 
                                         {!podcastScript && !isGeneratingAudio && !isGeneratingScript && (
                                             <button
                                                 onClick={handleGeneratePodcast}
                                                 disabled={isGeneratingScript || isGeneratingAudio || (!standaloneNotes.trim() && !immersiveContent)}
-                                                className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#2c4066]"
                                             >
-                                                <Sparkles className="w-5 h-5" />
-                                                Generate Podcast
+                                                <Sparkles className="w-4 h-4" />
+                                                <span>Generate Podcast</span>
                                             </button>
                                         )}
 
                                         {/* Script Generation Loading State */}
                                         {isGeneratingScript && (
-                                            <div className="flex items-center justify-center gap-2 text-slate-300">
-                                                <Loader2 className="w-5 h-5 animate-spin" />
-                                                <span>Generating podcast script...</span>
+                                            <div className="flex items-center justify-center gap-2 text-slate-300 py-2">
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <span className="text-sm">Generating podcast script...</span>
                                             </div>
                                         )}
                                     </div>
 
                                 {/* Audio Player */}
                                 {podcastAudio && (
-                                    <div className="bg-[#1F1F1F] p-6 border border-slate-700 sticky top-0 z-10">
+                                    <div className="p-6 border border-white/10 sticky top-0 z-10" style={{ backgroundColor: '#1F1F1F' }}>
                                         <div className="flex items-center gap-4">
                                             <button
                                                 onClick={toggleAudioPlayback}
@@ -5676,7 +5933,7 @@ sys.stderr = StringIO()
 
                                 {/* Loading State for Audio */}
                                 {isGeneratingAudio && (
-                                    <div className="bg-[#1F1F1F] p-8 text-center">
+                                    <div className="p-6 text-center" style={{ backgroundColor: '#1F1F1F' }}>
                                         <Loader2 className="w-8 h-8 animate-spin text-slate-300 mx-auto mb-3" />
                                         <p className="text-slate-200 font-medium">Generating audio...</p>
                                         <p className="text-[13px] text-slate-400">This may take a minute</p>
@@ -5685,16 +5942,16 @@ sys.stderr = StringIO()
 
                                 {/* Error State for Audio */}
                                 {audioGenerationError && (
-                                    <div className="bg-red-900/20 p-8 text-center border border-red-500/30">
-                                        <div className="w-12 h-12 mx-auto mb-3 bg-red-100 rounded-full flex items-center justify-center">
-                                            <Volume2 className="w-6 h-6 text-red-600" />
+                                    <div className="p-6 text-center border border-red-500/30" style={{ backgroundColor: '#1F1F1F' }}>
+                                        <div className="w-12 h-12 mx-auto mb-3 bg-red-900/30 rounded-full flex items-center justify-center">
+                                            <Volume2 className="w-6 h-6 text-red-400" />
                                         </div>
-                                        <p className="text-red-800 font-medium mb-1">Failed to generate audio</p>
-                                        <p className="text-[13px] text-red-600 mb-4">Something went wrong while creating the podcast audio.</p>
+                                        <p className="text-red-300 font-medium mb-1">Failed to generate audio</p>
+                                        <p className="text-[13px] text-red-400 mb-4">Something went wrong while creating the podcast audio.</p>
                                         <button
                                             onClick={handleGeneratePodcast}
                                             disabled={isGeneratingScript || isGeneratingAudio}
-                                            className="px-5 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-700 rounded-full font-medium transition-colors text-sm disabled:opacity-50"
+                                            className="px-5 py-2 bg-[#2c4066] border border-red-500/30 hover:bg-[#34507c] text-white rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
                                         >
                                             Try Again
                                         </button>
@@ -5703,7 +5960,7 @@ sys.stderr = StringIO()
 
                                 {/* Script Display */}
                                 {podcastScript && (
-                                    <div className="bg-[#1F1F1F] p-8 space-y-6">
+                                    <div className="p-6 space-y-6" style={{ backgroundColor: '#1F1F1F' }}>
                                         <h3 className="text-[18px] font-medium text-slate-200 border-b border-slate-700 pb-4">Transcript</h3>
                                         <div className="space-y-4">
                                             {podcastScript.split('\n').map((line, idx) => {
@@ -6406,84 +6663,149 @@ sys.stderr = StringIO()
 
             case 'simulation':
                 return (
-                    <div className={`flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden ${isSimulationFullscreen ? 'fixed inset-0 z-[100]' : ''}`} style={{ height: isSimulationFullscreen ? '100vh' : '100%' }}>
-                        {/* Left Sidebar - Controls */}
-                        {!isSimulationFullscreen && (
+                    <div className={`flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900 ${isSimulationFullscreen ? 'fixed inset-0 z-[100]' : ''}`} style={{ height: isSimulationFullscreen ? '100vh' : '100%' }}>
+                        {/* Left Sidebar - Input & Controls */}
+                        {!isSimulationFullscreen && sidebarOpen && (
                             <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
+                                {/* Main Content Area */}
                                 <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
-                                    {/* Header */}
+                                    {/* File Upload */}
                                     <div className="space-y-2">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-white/5 flex items-center justify-center border border-white/10">
-                                                <SimulationIcon active />
-                                            </div>
-                                            <div>
-                                                <h2 className="text-lg font-semibold text-slate-200">Interactive 3D Simulation</h2>
-                                                <p className="text-xs text-slate-400">
-                                                    {simulationBlueprint ? simulationBlueprint.meta.topic : 'AI-generated educational simulation'}
-                                                </p>
-                                            </div>
+                                        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Source Material</label>
+                                        <div
+                                            onClick={() => notesFileInputRef.current?.click()}
+                                            className="border border-white/10 bg-white/5 hover:bg-white/10 p-5 flex flex-col items-center justify-center cursor-pointer transition-all group rounded-none"
+                                        >
+                                            <input
+                                                ref={notesFileInputRef}
+                                                type="file"
+                                                accept=".txt,.md,.pdf,.html"
+                                                className="hidden"
+                                                onChange={handleStandaloneNotesUpload}
+                                            />
+                                            {standaloneNotesName ? (
+                                                <div className="flex flex-col items-center text-slate-100">
+                                                    <Check className="w-7 h-7 mb-2" />
+                                                    <span className="text-xs font-medium text-center break-all">{standaloneNotesName}</span>
+                                                    <span className="text-[11px] text-slate-400 mt-1">Click to replace</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center text-slate-400 group-hover:text-white transition-colors">
+                                                    <FileUp className="w-6 h-6 mb-2" />
+                                                    <span className="text-xs font-medium">Upload / Paste Notes</span>
+                                                    <span className="text-[11px] mt-1">PDF, Text, or Markdown</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
-                                    {renderStandaloneNotesPanel('dark')}
-
-                                    {/* Controls */}
-                                    {simulationHTML && (
-                                        <div className="space-y-3">
-                                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Controls</label>
-                                            <div className="flex flex-col gap-2">
-                                                <button
-                                                    onClick={handleRegenerateSimulation}
-                                                    className="w-full px-4 py-2.5 text-sm text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
-                                                >
-                                                    <RefreshCw className="w-4 h-4" />
-                                                    Regenerate
-                                                </button>
-                                                <button
-                                                    onClick={toggleSimulationFullscreen}
-                                                    className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2"
-                                                >
-                                                    <Maximize2 className="w-4 h-4" />
-                                                    Fullscreen
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* Topic Input */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Topic / Concept</label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. Projectile Motion..."
+                                            value={standaloneTopic}
+                                            onChange={(e) => setStandaloneTopic(e.target.value)}
+                                            className="w-full px-4 py-2 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all rounded-none"
+                                        />
+                                    </div>
 
                                     {/* Generate Button */}
-                                    {!simulationHTML && !isGeneratingSimulation && (
-                                        <div className="space-y-3">
-                                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Generate Simulation</label>
-                                            <button
-                                                onClick={handleGenerateSimulation}
-                                                disabled={!immersiveContent && !standaloneNotes.trim()}
-                                                className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
+                                    <button
+                                        onClick={handleGenerateSimulation}
+                                        disabled={isGeneratingSimulation || (!immersiveContent && !standaloneNotes.trim() && !standaloneTopic.trim())}
+                                        className={`
+                                            w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all rounded-none
+                                            ${isGeneratingSimulation || (!immersiveContent && !standaloneNotes.trim() && !standaloneTopic.trim())
+                                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                                : 'bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95'}
+                                        `}
+                                    >
+                                        {isGeneratingSimulation ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <span className="text-xs">Generating...</span>
+                                            </>
+                                        ) : (
+                                            <>
                                                 <Sparkles className="w-4 h-4" />
-                                                Generate Simulation
-                                            </button>
-                                        </div>
+                                                <span>Generate</span>
+                                            </>
+                                        )}
+                                    </button>
+
+                                    {/* Progress Steps - Show during generation */}
+                                    {isGeneratingSimulation && simulationProgressSteps.length > 0 && (
+                                        <>
+                                            <div className="h-px bg-slate-700"></div>
+                                            <div className="space-y-3">
+                                                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Progress</label>
+                                                <div className="space-y-2">
+                                                    {simulationProgressSteps.map((step, idx) => (
+                                                        <div key={idx} className="flex items-center gap-2 text-xs text-slate-300">
+                                                            {step.status === 'done' && <CheckCircle2 className="w-4 h-4 text-green-400" />}
+                                                            {step.status === 'active' && <Loader2 className="w-4 h-4 text-[#2c4066] animate-spin" />}
+                                                            {step.status === 'pending' && <div className="w-4 h-4 rounded-full border-2 border-slate-600" />}
+                                                            <span className={step.status === 'pending' ? 'text-slate-500' : 'text-slate-300'}>{step.step}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </>
                                     )}
 
-                                    {/* Progress Steps */}
-                                    {isGeneratingSimulation && simulationProgressSteps.length > 0 && (
-                                        <div className="space-y-3">
-                                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Progress</label>
-                                            <div className="space-y-2">
-                                                {simulationProgressSteps.map((step, idx) => (
-                                                    <div key={idx} className="flex items-center gap-2 text-xs text-slate-300">
-                                                        {step.status === 'done' && <span className="text-green-400">✔</span>}
-                                                        {step.status === 'active' && <span className="text-orange-400 animate-pulse">●</span>}
-                                                        {step.status === 'pending' && <span className="text-slate-600">○</span>}
-                                                        <span className={step.status === 'pending' ? 'text-slate-500' : ''}>{step.step}</span>
-                                                    </div>
-                                                ))}
+                                    {/* Controls - Show when simulation is ready */}
+                                    {simulationHTML && !isGeneratingSimulation && (
+                                        <>
+                                            <div className="h-px bg-slate-700"></div>
+                                            <div className="space-y-3">
+                                                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Controls</label>
+                                                <div className="flex flex-col gap-2">
+                                                    <button
+                                                        onClick={handleRegenerateSimulation}
+                                                        className="w-full px-4 py-2.5 text-sm text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
+                                                    >
+                                                        <RefreshCw className="w-4 h-4" />
+                                                        Regenerate
+                                                    </button>
+                                                    <button
+                                                        onClick={toggleSimulationFullscreen}
+                                                        className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2"
+                                                    >
+                                                        <Maximize2 className="w-4 h-4" />
+                                                        Fullscreen
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
+                                        </>
                                     )}
+
+                                    <div className="h-px bg-slate-700"></div>
+                                </div>
+
+                                {/* Collapse Button */}
+                                <div className="border-t border-slate-700 p-3 rounded-none">
+                                    <button
+                                        onClick={() => setSidebarOpen(false)}
+                                        className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 rounded-none"
+                                    >
+                                        <ChevronRight className="w-4 h-4" />
+                                        <span>Collapse Panel</span>
+                                    </button>
                                 </div>
                             </div>
+                        )}
+
+                        {/* Sidebar Toggle Button */}
+                        {!isSimulationFullscreen && !sidebarOpen && (
+                            <button
+                                onClick={() => setSidebarOpen(true)}
+                                className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 transition-colors z-10 shadow-lg"
+                                title="Open sidebar"
+                            >
+                                <ChevronRight className="w-5 h-5 transform rotate-180" />
+                            </button>
                         )}
 
                         {/* Fullscreen Header */}
@@ -6509,64 +6831,92 @@ sys.stderr = StringIO()
                         )}
 
                         {/* Main Content Area */}
-                        <div className="flex-1 overflow-hidden flex flex-col">
+                        <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
                             {/* Simulation Content */}
                             <div className={`flex-1 ${isSimulationFullscreen ? 'h-full' : 'overflow-hidden'}`} style={{ height: isSimulationFullscreen ? 'calc(100vh - 60px)' : undefined }}>
                                 {/* Initial State - No Simulation */}
                                 {!simulationHTML && !isGeneratingSimulation && !simulationError && (
-                                    <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
-                                        <div className="text-center max-w-md px-6">
-                                            <div className="w-20 h-20 mx-auto mb-6 bg-white/5 border border-white/10 flex items-center justify-center">
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-[#f6f8fc] text-slate-500 px-8 overflow-auto">
+                                        <div className="flex flex-col items-center gap-6 text-center max-w-xl">
+                                            <div className="w-24 h-24 bg-[#e4e9f2] flex items-center justify-center rounded-xl">
                                                 <SimulationIcon active />
                                             </div>
-                                            <h3 className="text-xl font-medium text-slate-200 mb-3">Generate Interactive Simulation</h3>
-                                            <p className="text-sm text-slate-400 mb-6">
-                                                Create an AI-powered 3D simulation to visualize and interact with concepts from your document.
-                                            </p>
-
-                                            {immersiveContent ? (
-                                                <button
-                                                    onClick={handleGenerateSimulation}
-                                                    className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto"
-                                                >
-                                                    <Sparkles className="w-5 h-5" />
-                                                    Generate Simulation
-                                                </button>
-                                            ) : (
-                                                <p className="text-sm text-slate-400 font-medium">
-                                                    Please upload a document first to generate a simulation
+                                            <div>
+                                                <h3 className="text-2xl font-bold text-slate-700 mb-2">Ready to Create</h3>
+                                                <p className="text-slate-500 mb-6">
+                                                    Upload a file or enter a topic, then generate an interactive 3D simulation powered by AI.
                                                 </p>
-                                            )}
+                                                <div className="flex items-center justify-center gap-4 text-sm text-slate-500">
+                                                    <div className="flex items-center gap-2">
+                                                        <FileUp className="w-4 h-4" />
+                                                        <span>Upload or paste</span>
+                                                    </div>
+                                                    <div className="w-1 h-1 bg-slate-300"></div>
+                                                    <div className="flex items-center gap-2">
+                                                        <Sparkles className="w-4 h-4" />
+                                                        <span>Generate</span>
+                                                    </div>
+                                                    <div className="w-1 h-1 bg-slate-300"></div>
+                                                    <div className="flex items-center gap-2">
+                                                        <SimulationIcon active />
+                                                        <span>Explore</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
 
                                 {/* Loading State */}
                                 {isGeneratingSimulation && (
-                                    <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
-                                        <div className="text-center max-w-md px-6">
-                                            <Loader2 className="w-12 h-12 mx-auto mb-4 text-[#2c4066] animate-spin" />
-                                            <p className="text-sm text-slate-300 mb-4">Generating simulation...</p>
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-[#f6f8fc] text-slate-500 px-8 overflow-auto">
+                                        <div className="flex flex-col items-center gap-6 text-center max-w-md">
+                                            <div className="relative w-16 h-16">
+                                                <div className="absolute inset-0 bg-slate-300 opacity-40 blur-xl"></div>
+                                                <Loader2 className="w-16 h-16 animate-spin text-[#2c4066] relative" />
+                                            </div>
+                                            <div>
+                                                <p className="text-lg font-bold text-slate-700 mb-2">Generating Interactive Simulation</p>
+                                                <p className="text-sm text-slate-500 mb-4">Creating your 3D visualization...</p>
+                                                {simulationProgressSteps.length > 0 && (
+                                                    <div className="mt-4 space-y-2 text-left">
+                                                        {simulationProgressSteps.map((step, idx) => (
+                                                            <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
+                                                                {step.status === 'done' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                                                                {step.status === 'active' && <Loader2 className="w-4 h-4 text-[#2c4066] animate-spin" />}
+                                                                {step.status === 'pending' && <div className="w-4 h-4 rounded-full border-2 border-slate-300" />}
+                                                                <span>{step.step}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <div className="flex items-center justify-center gap-2 text-xs text-[#2c4066] mt-4">
+                                                    <span className="inline-block w-2 h-2 bg-[#2c4066] animate-pulse"></span>
+                                                    <span>AI is working...</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
 
                                 {/* Error State */}
-                                {/* Error State */}
                                 {simulationError && !isGeneratingSimulation && (
-                                    <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
-                                        <div className="text-center max-w-md px-6">
-                                            <div className="w-16 h-16 mx-auto mb-4 bg-red-500/20 border border-red-500/50 flex items-center justify-center">
-                                                <X className="w-8 h-8 text-red-400" />
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-[#f6f8fc] text-slate-500 px-8 overflow-auto">
+                                        <div className="flex flex-col items-center gap-6 text-center max-w-md">
+                                            <div className="w-16 h-16 bg-red-100 border border-red-200 rounded-xl flex items-center justify-center">
+                                                <X className="w-8 h-8 text-red-600" />
                                             </div>
-                                            <h3 className="text-lg font-medium text-slate-200 mb-2">Error</h3>
-                                            <p className="text-sm text-slate-400 mb-4">{simulationError}</p>
-                                            <button
-                                                onClick={handleGenerateSimulation}
-                                                className="px-4 py-2 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors"
-                                            >
-                                                Try Again
-                                            </button>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-slate-700 mb-2">Generation Failed</h3>
+                                                <p className="text-sm text-slate-500 mb-6">{simulationError}</p>
+                                                <Button
+                                                    onClick={handleGenerateSimulation}
+                                                    className="bg-[#2c4066] hover:bg-[#34507c] text-white"
+                                                >
+                                                    <RefreshCw className="w-4 h-4 mr-2" />
+                                                    Try Again
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -7182,10 +7532,10 @@ sys.stderr = StringIO()
                                 </div>
 
                                 {/* Collapse Button */}
-                                <div className="border-t border-slate-700 p-3">
+                                <div className="border-t border-slate-700 p-3 rounded-none">
                                     <button
                                         onClick={() => setSidebarOpen(false)}
-                                        className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                                        className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 rounded-none"
                                     >
                                         <ChevronRight className="w-4 h-4" />
                                         <span>Collapse Panel</span>
@@ -7992,9 +8342,10 @@ sys.stderr = StringIO()
                                     <span
                                         className={`text-[13px] font-semibold whitespace-nowrap transition-colors duration-300 ${
                                             isActive 
-                                                ? 'text-white drop-shadow-lg' 
+                                                ? 'drop-shadow-lg' 
                                                 : 'text-slate-400 group-hover:text-slate-200'
                                         }`}
+                                        style={isActive ? { color: mode.activeColor } : {}}
                                     >
                                         {mode.label}
                                     </span>
