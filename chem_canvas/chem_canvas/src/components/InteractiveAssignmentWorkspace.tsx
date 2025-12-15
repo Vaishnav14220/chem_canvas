@@ -19,6 +19,8 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [formulaHtml, setFormulaHtml] = useState<string | null>(null);
     const [isExtractingFormulas, setIsExtractingFormulas] = useState(false);
+    const [qaHtml, setQaHtml] = useState<string | null>(null);
+    const [isExtractingQA, setIsExtractingQA] = useState(false);
     const terminalRef = useRef<HTMLDivElement>(null);
     // Remove any external polyfill.io scripts the model might inject so previews don't fail on blocked domains
     const stripPolyfillScripts = (html: string) =>
@@ -80,6 +82,185 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                 setLoadingStep('Ready to generate');
             };
             reader.readAsText(file);
+        }
+    };
+
+    const handleExtractQA = async () => {
+        if (!fileData) {
+            alert('Please upload a PDF file first');
+            return;
+        }
+
+        if (fileData.mimeType !== 'application/pdf') {
+            alert('Please upload a PDF file to extract questions and answers');
+            return;
+        }
+
+        setIsExtractingQA(true);
+        setQuestionAndAnswer(true);
+        setQaHtml(null);
+        setPreviewHtml(''); // Clear preview during extraction
+        setLoadingStep('Initializing Gemini 3 Pro...');
+        setThoughtLog([]);
+        setIsStreamingThoughts(true);
+
+        try {
+            const prompt = `You are an expert at extracting and explaining questions and answers from educational documents. Analyze the provided PDF document and extract ALL questions and their corresponding answers/explanations.
+
+CRITICAL REQUIREMENTS:
+1. Extract EVERY question found in the document
+2. For each question, provide a detailed, step-by-step answer/explanation
+3. Organize questions by topic/category if applicable
+4. Preserve the context and meaning of each question
+5. For EACH question-answer pair, create an ANIMATED, INTERACTIVE Canvas visualization that visually explains the concept
+
+OUTPUT FORMAT:
+Generate a complete, self-contained HTML document with:
+- Professional styling using Tailwind CSS (via CDN)
+- MathJax for rendering LaTeX formulas (via CDN)
+- Clean, organized layout with proper sections
+- Each Q&A pair should be clearly formatted
+
+VISUALIZATION REQUIREMENTS FOR EACH Q&A:
+1. Create an HTML5 Canvas element (width: 600-800px, height: 300-500px) for each question-answer pair
+2. Use requestAnimationFrame for smooth, high-frame-rate animations (60fps)
+3. Make the visualization INTERACTIVE with controls (sliders, buttons, inputs) to modify parameters
+4. Animate the concepts being explained (e.g., if it's about motion, show animated objects; if it's about forces, show animated vectors)
+5. Show visual step-by-step solutions when applicable
+6. Include labels, diagrams, and visual guides that help understand the answer
+7. Use colors and animations that match the concept being explained
+8. Add hover effects and tooltips for better interactivity
+
+CANVAS ANIMATION EXAMPLES:
+- For physics problems: Animate the physical scenario (projectiles, forces, motion)
+- For math problems: Show animated graphs, geometric transformations
+- For chemistry problems: Show animated molecular interactions, reactions
+- For engineering problems: Show animated systems, mechanisms, circuits
+- For conceptual questions: Show animated diagrams explaining the concept
+
+The HTML should:
+- Start with <!DOCTYPE html>
+- Include proper <head> with MathJax and Tailwind CSS CDN links
+- Use <body> with well-structured sections
+- Render formulas using MathJax: \\(formula\\) for inline or \\[formula\\] for display
+- Include interactive Canvas elements with smooth animations for each Q&A pair
+- Use requestAnimationFrame for all animations
+- Include interactive controls (sliders, buttons) to modify parameters and see different scenarios
+- Be printable and exportable to PDF (canvas can be hidden in print mode)
+
+STRUCTURE FOR EACH Q&A PAIR:
+1. Question number/title
+2. The question text (formatted clearly)
+3. Step-by-step answer/explanation
+4. Interactive animated Canvas visualization showing the solution/concept
+5. Controls to modify parameters and see different scenarios
+6. Key takeaways/formulas used
+
+Return ONLY the complete HTML code, nothing else.`;
+
+            let accumulatedHtml = '';
+            let hasStartedOutput = false;
+            
+            await streamTextContent(
+                prompt,
+                (chunk) => {
+                    // Only accumulate actual HTML content, not thinking
+                    if (chunk && chunk.trim() && !chunk.includes('thinking') && !chunk.includes('thought')) {
+                        accumulatedHtml += chunk;
+                        hasStartedOutput = true;
+                        setLoadingStep('Generating Q&A document...');
+                        // Update preview in real-time as content streams
+                        if (accumulatedHtml.length > 100) {
+                            const partialHtml = accumulatedHtml.replace(/^\s*```html\s*/i, '').replace(/```$/, '').trim();
+                            if (partialHtml.includes('<') || partialHtml.includes('DOCTYPE')) {
+                                setPreviewHtml(partialHtml);
+                            }
+                        }
+                    }
+                },
+                {
+                    model: 'gemini-3-pro-preview',
+                    thinking: 'high',
+                    inlineData: fileData,
+                    onThought: (thought) => {
+                        // Show thinking only in sidebar terminal - never in preview
+                        setThoughtLog(prev => [...prev, thought]);
+                        if (thought.toLowerCase().includes('analyzing') || thought.toLowerCase().includes('extracting')) {
+                            setLoadingStep('Analyzing PDF structure...');
+                        } else if (thought.toLowerCase().includes('formatting') || thought.toLowerCase().includes('generating')) {
+                            setLoadingStep('Formatting Q&A pairs...');
+                        } else if (thought.toLowerCase().includes('visualization') || thought.toLowerCase().includes('animation')) {
+                            setLoadingStep('Creating visualizations...');
+                        } else {
+                            setLoadingStep('Processing...');
+                        }
+                        setIsStreamingThoughts(true);
+                    }
+                }
+            );
+
+            // Clean up response - remove any markdown code blocks
+            const cleanHtml = accumulatedHtml
+                .replace(/^\s*```html\s*/i, '')
+                .replace(/```$/, '')
+                .replace(/^\s*```\s*/g, '')
+                .trim();
+
+            // Ensure it's valid HTML
+            let finalHtml = cleanHtml;
+            if (!finalHtml.includes('<!DOCTYPE') && !finalHtml.includes('<html')) {
+                // Wrap in HTML structure if needed
+                finalHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extracted Questions and Answers</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['\\\\(', '\\\\)']],
+                displayMath: [['\\\\[', '\\\\]']]
+            }
+        };
+    </script>
+    <style>
+        @media print {
+            body { margin: 0; padding: 20px; }
+            .no-print { display: none; }
+            canvas { display: none; }
+        }
+    </style>
+</head>
+<body class="bg-white p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Extracted Questions and Answers</h1>
+        ${finalHtml}
+    </div>
+</body>
+</html>`;
+            }
+
+            setThoughtLog(prev => [...prev, '✅ Q&A extraction complete']);
+            setLoadingStep('Complete!');
+            
+            // Short delay to show completion before switching to preview
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            setQaHtml(finalHtml);
+            setPreviewHtml(finalHtml);
+            setIsStreamingThoughts(false);
+        } catch (error) {
+            console.error('Q&A extraction failed:', error);
+            setLoadingStep('Error extracting Q&A. Please try again.');
+            setThoughtLog(prev => [...prev, `❌ Error: ${error}`]);
+            setIsStreamingThoughts(false);
+            alert('Failed to extract questions and answers. Please ensure the PDF contains Q&A content and try again.');
+        } finally {
+            setIsExtractingQA(false);
         }
     };
 
@@ -280,6 +461,25 @@ Return ONLY the complete HTML code, nothing else.`;
         }, 500);
     };
 
+    const handleDownloadQAPDF = () => {
+        if (!qaHtml) return;
+        
+        // Create a new window with the HTML content
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert('Please allow popups to download PDF');
+            return;
+        }
+        
+        printWindow.document.write(qaHtml);
+        printWindow.document.close();
+        
+        // Wait for content to load, then trigger print
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+    };
+
     const handleGenerate = async () => {
         if (!fileContent && !fileData && !topic) return;
 
@@ -378,7 +578,7 @@ Return ONLY the complete HTML code, nothing else.`;
         URL.revokeObjectURL(url);
     };
 
-    const previewDoc = previewHtml || formulaHtml || generatedHtml || '';
+    const previewDoc = previewHtml || formulaHtml || qaHtml || generatedHtml || '';
     const canGenerate = Boolean(fileContent || fileData || topic);
     const disableGenerate = isGenerating || !canGenerate;
 
@@ -459,14 +659,25 @@ Return ONLY the complete HTML code, nothing else.`;
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setQuestionAndAnswer(!questionAndAnswer)}
-                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all ${
+                                    onClick={handleExtractQA}
+                                    disabled={!fileData || isExtractingQA}
+                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                                         questionAndAnswer
                                             ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md'
                                             : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
-                                    }`}
+                                    } ${!fileData ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
-                                    Question and Answer
+                                    {isExtractingQA ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <span>Extracting...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <BookOpen className="w-4 h-4" />
+                                            <span>Question and Answer</span>
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </div>
@@ -498,7 +709,7 @@ Return ONLY the complete HTML code, nothing else.`;
                         <div className="h-px bg-slate-700"></div>
 
                         {/* Thinking Terminal - Show only thinking/thoughts */}
-                        {(isGenerating || isExtractingFormulas || thoughtLog.length > 0) && (
+                        {(isGenerating || isExtractingFormulas || isExtractingQA || thoughtLog.length > 0) && (
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                                     <Sparkles className="w-3 h-3" />
@@ -574,7 +785,7 @@ Return ONLY the complete HTML code, nothing else.`;
 
                 {/* HTML Preview - FULL HEIGHT */}
                 <div className="flex-1 w-full h-full min-h-0 overflow-auto">
-                    {previewDoc && !isGenerating && !isExtractingFormulas ? (
+                    {previewDoc && !isGenerating && !isExtractingFormulas && !isExtractingQA ? (
                         <iframe
                             srcDoc={previewDoc}
                             className="w-full h-full min-h-screen border-0 block"
@@ -634,19 +845,19 @@ Return ONLY the complete HTML code, nothing else.`;
                 </div>
 
                 {/* Toolbar - Bottom when content is ready */}
-                {(generatedHtml || formulaHtml) && (
+                {(generatedHtml || formulaHtml || qaHtml) && (
                     <div className="h-16 border-t border-slate-200 bg-white flex items-center justify-between px-6 flex-shrink-0">
                         <div className="flex items-center gap-3">
                             <span className="w-2.5 h-2.5 bg-green-500 animate-pulse"></span>
                             <span className="text-sm font-medium text-slate-600">
-                                {formulaHtml ? 'Formula Sheet' : 'Preview Active'}
+                                {formulaHtml ? 'Formula Sheet' : qaHtml ? 'Questions & Answers' : 'Preview Active'}
                             </span>
                             <span className="text-xs text-slate-400">
-                                {formulaHtml ? '• LaTeX formatted formulas' : '• Self-contained HTML file'}
+                                {formulaHtml ? '• LaTeX formatted formulas' : qaHtml ? '• Interactive Q&A with visualizations' : '• Self-contained HTML file'}
                             </span>
                         </div>
                         <div className="flex items-center gap-4">
-                            {!formulaHtml && (
+                            {!formulaHtml && !qaHtml && (
                                 <>
                                     <button
                                         onClick={handleGenerate}
@@ -659,11 +870,11 @@ Return ONLY the complete HTML code, nothing else.`;
                                 </>
                             )}
                             <button
-                                onClick={formulaHtml ? handleDownloadFormulaPDF : handleDownload}
+                                onClick={formulaHtml ? handleDownloadFormulaPDF : qaHtml ? handleDownloadQAPDF : handleDownload}
                                 className="flex items-center gap-2 px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm"
                             >
                                 <Download className="w-4 h-4" />
-                                {formulaHtml ? 'Download PDF' : 'Download HTML'}
+                                {(formulaHtml || qaHtml) ? 'Download PDF' : 'Download HTML'}
                             </button>
                         </div>
                     </div>
