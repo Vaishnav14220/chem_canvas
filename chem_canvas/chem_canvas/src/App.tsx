@@ -8,8 +8,7 @@ import Canvas, {
   type CanvasReactionInsertionHandler
 } from './components/Canvas';
 
-import AIChat from './components/AIChat';
-import LobeChat from './components/LobeChat';
+import AIElementsChat from './components/AIElementsChat';
 import CommandPalette from './components/CommandPalette';
 
 import MoldrawEmbed from './components/MoldrawEmbed';
@@ -1895,9 +1894,9 @@ Here is the learner's question: ${message}`;
                 >
                   {/* Shimmer effect */}
                   <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  
+
                   <span className="relative z-10 flex items-center gap-2.5 text-left">
-                    <div 
+                    <div
                       className="flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110"
                       style={{
                         background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(34, 211, 238, 0.3) 100%)',
@@ -1912,7 +1911,7 @@ Here is the learner's question: ${message}`;
                       <span className="hidden sm:inline text-[10px] text-slate-400 font-normal leading-tight">docs, tools, AI</span>
                     </div>
                   </span>
-                  <kbd 
+                  <kbd
                     className="relative z-10 pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded-lg px-3 font-mono text-[11px] uppercase tracking-wide transition-all duration-300 group-hover:scale-105"
                     style={{
                       background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
@@ -1931,7 +1930,7 @@ Here is the learner's question: ${message}`;
                   const sessionStatus = getSessionStatus();
                   if (sessionStatus.isValid && sessionStatus.remainingHours) {
                     return (
-                      <div 
+                      <div
                         className="hidden sm:flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-amber-400 relative overflow-hidden group cursor-default"
                         style={{
                           background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.2) 100%)',
@@ -1940,7 +1939,7 @@ Here is the learner's question: ${message}`;
                         }}
                       >
                         {/* Continuous shimmer effect */}
-                        <div 
+                        <div
                           className="absolute inset-0 animate-shimmer"
                           style={{
                             background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.15) 50%, transparent 100%)',
@@ -2005,8 +2004,8 @@ Here is the learner's question: ${message}`;
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
-                  className={`${pillButtonClasses} ${documentViewerOpen 
-                    ? 'border-blue-400/60 bg-gradient-to-br from-blue-500/20 via-blue-500/15 to-cyan-500/15 text-blue-100 shadow-[0_4px_12px_rgba(59,130,246,0.3)]' 
+                  className={`${pillButtonClasses} ${documentViewerOpen
+                    ? 'border-blue-400/60 bg-gradient-to-br from-blue-500/20 via-blue-500/15 to-cyan-500/15 text-blue-100 shadow-[0_4px_12px_rgba(59,130,246,0.3)]'
                     : ''}`}
                 >
                   <FileText className="h-5 w-5 relative z-10" />
@@ -2118,10 +2117,9 @@ Here is the learner's question: ${message}`;
                     onClick={() => {
                       setIsMolecularMode(false);
                     }}
-                    className={`group relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm transition-all duration-300 overflow-hidden ${
-                      !isMolecularMode 
-                        ? 'text-white' 
-                        : 'text-slate-400 hover:text-slate-200'
+                    className={`group relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm transition-all duration-300 overflow-hidden ${!isMolecularMode
+                      ? 'text-white'
+                      : 'text-slate-400 hover:text-slate-200'
                       }`}
                     style={!isMolecularMode ? {
                       background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 25%, #f97316 50%, #fb923c 75%, #fdba74 100%)',
@@ -2148,10 +2146,9 @@ Here is the learner's question: ${message}`;
                     onClick={() => {
                       setIsMolecularMode(true);
                     }}
-                    className={`group relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm transition-all duration-300 overflow-hidden ${
-                      isMolecularMode 
-                        ? 'text-white' 
-                        : 'text-slate-400 hover:text-slate-200'
+                    className={`group relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm transition-all duration-300 overflow-hidden ${isMolecularMode
+                      ? 'text-white'
+                      : 'text-slate-400 hover:text-slate-200'
                       }`}
                     style={isMolecularMode ? {
                       background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
@@ -2257,8 +2254,8 @@ Here is the learner's question: ${message}`;
                 />
               </div>
               {showNmrAssistant && (
-                <aside className="flex w-full max-w-md flex-col border-l border-slate-800 bg-slate-900">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-slate-800">
+                <aside className="flex w-full max-w-md flex-col border-l border-border" style={{ backgroundColor: '#000000' }}>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-border bg-muted/70" style={{ backgroundColor: '#171717' }}>
                     <div>
                       <h3 className="text-sm font-semibold text-white">NMR Assistant</h3>
                       <p className="text-xs text-slate-400">Guide, SMILES suggestions, and spectrum tips</p>
@@ -2274,13 +2271,11 @@ Here is the learner's question: ${message}`;
                       Close Chat
                     </button>
                   </div>
-                  <div className="flex-1 overflow-hidden bg-slate-900">
-                    <AIChat
-                      onSendMessage={handleSendMessage}
-                      interactions={interactions}
-                      isLoading={chatLoading}
-                      documentName="NMRium Workspace"
+                  <div className="flex-1 overflow-hidden" style={{ backgroundColor: '#212121' }}>
+                    <AIElementsChat
+                      onRequireApiKey={() => setShowSettings(true)}
                       onRequestVideoSearch={handleVideoSearchFromChatResponse}
+                      showHeader={false}
                     />
                   </div>
                 </aside>
@@ -2320,12 +2315,11 @@ Here is the learner's question: ${message}`;
                     <button
                       onClick={handleSummarizeAllVideos}
                       disabled={summarizingAll || youtubeSources.length === 0}
-                      className={`w-full inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
-                        summarizingAll || youtubeSources.length === 0
-                          ? 'cursor-not-allowed'
-                          : 'hover:opacity-90'
+                      className={`w-full inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors ${summarizingAll || youtubeSources.length === 0
+                        ? 'cursor-not-allowed'
+                        : 'hover:opacity-90'
                         }`}
-                      style={{ 
+                      style={{
                         backgroundColor: '#e5e5e5',
                         color: summarizingAll || youtubeSources.length === 0 ? '#6b7280' : '#171717'
                       }}
@@ -2678,9 +2672,9 @@ Here is the learner's question: ${message}`;
                         setIsNmrAssistantActive(false);
                         setShowChatPanel(true);
                       }}
-                      className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                      className="hover:bg-primary/90 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 transform hover:scale-105 active:scale-95 bg-gradient-to-r from-primary/80 to-primary/60 border-primary/40 text-white font-medium"
                     >
-                      <span className='mr-[10px]'>
+                      <span className='mr-2'>
                         <MessageSquare className="h-5 w-5" />
                       </span>
                       Start Chat
@@ -2692,36 +2686,27 @@ Here is the learner's question: ${message}`;
                 {showChatPanel && (
                   <>
                     <div
-                      className="border-l-2 border-border bg-card flex flex-col shadow-lg"
-                      style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: chatWidth, zIndex: 10 }}
+                      className="border-l-2 border-border flex flex-col shadow-lg"
+                      style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: chatWidth, zIndex: 10, backgroundColor: '#000000' }}
                     >
                       {/* Chat Header */}
-                      <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between">
+                      <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between" style={{ backgroundColor: '#171717' }}>
                         <div className="flex items-center space-x-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                            <MessageSquare className="h-4 w-4 text-primary-foreground" />
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-semibold">AI Chat</h3>
-                            <p className="text-xs text-muted-foreground">Reference answers while you work</p>
-                          </div>
+                          <h3 className="text-sm font-semibold">AI Chat</h3>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="hidden sm:inline text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded">
-                            {Math.round(chatWidth)}px
-                          </span>
-                          <button
-                            onClick={() => setShowChatPanel(false)}
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
-                            aria-label="Close chat"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => setShowChatPanel(false)}
+                          className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
+                          aria-label="Close chat"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
                       {/* Chat Content */}
-                      <div className="flex-1 min-h-[240px]">
-                        <LobeChat onRequireApiKey={() => setShowSettings(true)} showHeader={false} />
+                      <div className="flex-1 min-h-[240px] overflow-hidden">
+                        <AIElementsChat onRequireApiKey={() => setShowSettings(true)} onRequestVideoSearch={(query) => {
+                          // Handle video search if needed
+                        }} showHeader={false} />
                       </div>
                     </div>
 
@@ -2733,7 +2718,7 @@ Here is the learner's question: ${message}`;
                       title="Drag to resize chat panel"
                     >
                       <div className="h-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="text-primary/70 text-xs font-semibold">⋮⋮</div>
+                        <div className="text-zinc-400 text-xs font-semibold">⋮⋮</div>
                       </div>
                     </div>
                   </>

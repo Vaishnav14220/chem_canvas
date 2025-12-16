@@ -1,0 +1,71 @@
+"use client";
+
+import { Button } from "../ui/button";
+import { Separator } from "../ui/separator";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+    TooltipProvider
+} from "../ui/tooltip";
+import { cn } from "../../lib/utils";
+import { BookmarkIcon, type LucideProps } from "lucide-react";
+import type { ComponentProps, HTMLAttributes } from "react";
+
+export type CheckpointProps = HTMLAttributes<HTMLDivElement>;
+
+export const Checkpoint = ({
+    className,
+    children,
+    ...props
+}: CheckpointProps) => (
+    <div
+        className={cn("flex items-center gap-0.5 text-muted-foreground overflow-hidden my-4", className)}
+        {...props}
+    >
+        {children}
+        <Separator className="flex-1" />
+    </div>
+);
+
+export type CheckpointIconProps = LucideProps;
+
+export const CheckpointIcon = ({
+    className,
+    children,
+    ...props
+}: CheckpointIconProps) =>
+    children ?? (
+        <BookmarkIcon className={cn("size-4 shrink-0", className)} {...props} />
+    );
+
+export type CheckpointTriggerProps = ComponentProps<typeof Button> & {
+    tooltip?: string;
+};
+
+export const CheckpointTrigger = ({
+    children,
+    className,
+    variant = "ghost",
+    size = "sm",
+    tooltip,
+    ...props
+}: CheckpointTriggerProps) =>
+    tooltip ? (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <Button size={size} type="button" variant={variant} {...props}>
+                        {children}
+                    </Button>
+                </TooltipTrigger>
+                <TooltipContent align="start" side="bottom">
+                    {tooltip}
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    ) : (
+        <Button size={size} type="button" variant={variant} {...props}>
+            {children}
+        </Button>
+    );

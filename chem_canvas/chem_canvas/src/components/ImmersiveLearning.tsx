@@ -72,6 +72,7 @@ import { generateStreamingContent } from '../services/geminiStreaming';
 import { fetchGroundingSources } from '../services/geminiService';
 import ReactFlowMindMap from './ReactFlowMindMap';
 import { LessonGeneratorActivity } from './LessonGeneratorActivity';
+import { Reasoning } from './ai-elements/reasoning';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -583,6 +584,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [codeLabAiResponse, setCodeLabAiResponse] = useState<string>('');
     const [codeLabAiLoading, setCodeLabAiLoading] = useState<boolean>(false);
     const [codeLabAiStreaming, setCodeLabAiStreaming] = useState<boolean>(false);
+    const [codeLabAiReasoning, setCodeLabAiReasoning] = useState<string>('');
     const [codeLabAiError, setCodeLabAiError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -815,7 +817,7 @@ Respond in JSON format only:
         const updatedWorkspaces = savedWorkspaces.filter(ws => ws.id !== workspaceId);
         localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
         setSavedWorkspaces(updatedWorkspaces);
-        
+
         // Also remove spaces linked to this workspace
         const updatedSpaces = userSpaces.filter(space => space.workspaceId !== workspaceId);
         setUserSpaces(updatedSpaces);
@@ -856,10 +858,10 @@ Respond in JSON format only:
         try {
             const existingSpaces = JSON.parse(localStorage.getItem(USER_SPACES_STORAGE_KEY) || '[]') as UserSpace[];
             const metadata = getSpaceMetadata(mode);
-            
+
             // Check if space already exists
             const existingSpaceIndex = existingSpaces.findIndex(space => space.mode === mode);
-            
+
             if (existingSpaceIndex >= 0) {
                 // Update existing space
                 existingSpaces[existingSpaceIndex] = {
@@ -925,7 +927,7 @@ Respond in JSON format only:
     const openSpace = (space: UserSpace) => {
         setActiveMode(space.mode);
         setShowUserSpaces(false);
-        
+
         // If space has a linked workspace, open it
         if (space.workspaceId) {
             const workspace = savedWorkspaces.find(ws => ws.id === space.workspaceId);
@@ -933,7 +935,7 @@ Respond in JSON format only:
                 openWorkspace(workspace);
             }
         }
-        
+
         // Update last used
         trackSpaceUsage(space.mode, space.workspaceId);
     };
@@ -946,7 +948,7 @@ Respond in JSON format only:
     };
 
     // Filter spaces by search query
-    const filteredSpaces = userSpaces.filter(space => 
+    const filteredSpaces = userSpaces.filter(space =>
         space.name.toLowerCase().includes(spaceSearchQuery.toLowerCase()) ||
         space.description.toLowerCase().includes(spaceSearchQuery.toLowerCase()) ||
         space.mode.toLowerCase().includes(spaceSearchQuery.toLowerCase())
@@ -1079,11 +1081,11 @@ Respond in JSON format only:
                 try {
                     console.log(`🖼️ [${index + 1}/${sectionsNeedingImages.length}] Generating missing image for "${section.title}"`);
                     console.log(`   Using Imagen API with prompt: ${section.imagePrompt?.substring(0, 100)}...`);
-                    
+
                     const imageUrl = await generateImmersiveImage(section.imagePrompt!);
                     setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
                     setLoadingImages(prev => ({ ...prev, [section.id]: false }));
-                    
+
                     console.log(`✅ Successfully generated image for "${section.title}"`);
                     return { sectionId: section.id, success: true };
                 } catch (e) {
@@ -1562,7 +1564,7 @@ Respond in JSON format only:
             <div className="rounded-xl p-6 bg-[#171717] border border-white/10 text-slate-100 shadow-lg relative overflow-hidden">
                 {/* Subtle gradient overlay */}
                 <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-white/[0.02] pointer-events-none" />
-                
+
                 <div className="relative z-10 space-y-6">
                     {/* Header Section */}
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -2482,7 +2484,7 @@ Respond in JSON format only:
             const generateImagesAsync = async () => {
                 // Generate images for ALL sections with imagePrompts in parallel
                 const sectionsWithImages = analysis.sections.filter(s => s.imagePrompt);
-                
+
                 if (sectionsWithImages.length === 0) {
                     console.log('⚠️ No sections with imagePrompts found. Skipping image generation.');
                     return;
@@ -2502,14 +2504,14 @@ Respond in JSON format only:
                     try {
                         console.log(`🖼️ [${index + 1}/${sectionsWithImages.length}] Generating academic image for "${section.title}"`);
                         console.log(`   Using Imagen API with prompt: ${section.imagePrompt?.substring(0, 100)}...`);
-                        
+
                         // Use generateImmersiveImage which now uses Imagen API first
                         const imageUrl = await generateImmersiveImage(section.imagePrompt!);
-                        
+
                         // Update state progressively as each image loads
                         setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
                         setLoadingImages(prev => ({ ...prev, [section.id]: false }));
-                        
+
                         console.log(`✅ Successfully generated image for "${section.title}"`);
                         return { sectionId: section.id, success: true };
                     } catch (e) {
@@ -2573,25 +2575,25 @@ Respond in JSON format only:
             const generateBrainstormActivitiesAsync = async () => {
                 try {
                     console.log(`🧠 Generating brainstorm activities for ${analysis.sections.length} section(s) in parallel...`);
-                    
+
                     // Generate brainstorm activities for all sections in parallel
                     const brainstormPromises = analysis.sections.map(async (section, index) => {
                         try {
                             console.log(`🧠 [${index + 1}/${analysis.sections.length}] Generating brainstorm activity for "${section.title}"`);
                             const activity = await generateBrainstormActivity(section.content, section.title);
-                            
+
                             // Store brainstorm activity by section ID
                             setBrainstormActivities(prev => ({
                                 ...prev,
                                 [section.id]: activity
                             }));
-                            
+
                             // Set the first section's activity as the active one
                             if (index === 0) {
                                 setBrainstormActivity(activity);
                                 setShowBrainstormHints(new Array(activity.hints.length).fill(false));
                             }
-                            
+
                             console.log(`✅ Successfully generated brainstorm activity for "${section.title}"`);
                             return { sectionId: section.id, activity, success: true };
                         } catch (e) {
@@ -2621,7 +2623,7 @@ Respond in JSON format only:
                 const successful = results.filter(r => r.status === 'fulfilled').length;
                 const failed = results.filter(r => r.status === 'rejected').length;
                 console.log(`✅ Background content generation complete! ${successful} succeeded, ${failed} failed.`);
-                
+
                 // Save as new workspace using the analysis content directly
                 // This ensures we have the content even if state hasn't updated yet
                 await saveWorkspaceWithContent(analysis, fileName, text);
@@ -2790,7 +2792,9 @@ Respond in JSON format only:
     // Handle loading video quiz
     const handleLoadVideoQuiz = async () => {
         const video = relevantVideos[selectedVideoIndex];
-        if (!video || isLoadingVideoQuiz) return;
+        if (!video || isLoadingVideoQuiz) {
+            return;
+        }
 
         setIsLoadingVideoQuiz(true);
         try {
@@ -4257,14 +4261,22 @@ sys.stderr = sys.__stderr__
     }), []);
 
     const extractCodeBlock = (text: string) => {
-        const match = text.match(/```[\w+-]*\n([\s\S]*?)```/);
-        return match ? match[1].trim() : text.trim();
+        // More robust regex: allows optional spaces after lang, handles \r\n, and matches content non-greedily
+        const match = text.match(/```[\w.+\-]*[ \t]*\r?\n([\s\S]*?)```/);
+        if (match) {
+            console.log('✅ extracted code block length:', match[1].length);
+            return match[1].trim();
+        }
+        // If we have an opening backtick but no closing one yet (streaming), or regex failed
+        console.log('⚠️ No complete code block match yet. Buffer length:', text.length);
+        return text.trim();
     };
 
     const sanitizeCode = (text: string) => {
         let cleaned = text || '';
-        cleaned = cleaned.replace(/```[\w+-]*\s*/g, '');
-        cleaned = cleaned.replace(/```/g, '');
+        cleaned = cleaned.replace(/```[\w.+\-]*[ \t]*\r?\n/g, ''); // Remove opening fences more reliably
+        cleaned = cleaned.replace(/```\s*$/g, ''); // Remove closing fence at end
+        cleaned = cleaned.replace(/```/g, ''); // Remove any other backticks
         cleaned = cleaned.replace(/^\s*(python|javascript|java|cpp)\s*/i, '');
         return cleaned.trimStart();
     };
@@ -4275,10 +4287,16 @@ sys.stderr = sys.__stderr__
         setCodeLabAiStreaming(true);
         setCodeLabAiError(null);
         setCodeLabAiResponse('');
+        setCodeLabAiReasoning('');
 
         const prompt = `You are a coding assistant using Gemini 2.5 Pro. Language: ${codeLabLanguage}.
 Current file: ${codeLabFiles.find(f => f.id === codeLabActiveFileId)?.name || 'main'}.
-Current code:\n${codeLabCode}\n\nUser request: ${codeLabAiPrompt}\n\nRespond with ONLY executable ${codeLabLanguage} code. Do NOT include markdown, fences, comments, or explanations—just the final code that can run as-is.`;
+Current code:
+${codeLabCode}
+
+User request: ${codeLabAiPrompt}
+
+Provide the executable ${codeLabLanguage} code in a standard markdown code block.`;
 
         let buffer = '';
         try {
@@ -4287,14 +4305,20 @@ Current code:\n${codeLabCode}\n\nUser request: ${codeLabAiPrompt}\n\nRespond wit
                 (chunk) => {
                     buffer += chunk;
                     setCodeLabAiResponse(buffer);
+
+                    // For the live code editor update, we only want the code block
                     const extracted = extractCodeBlock(buffer);
-                    const candidate = extracted || buffer;
-                    const nextCode = sanitizeCode(candidate);
-                    if (!nextCode) return;
-                    setCodeLabCode(nextCode);
-                    setCodeLabFiles(prev => prev.map(file => file.id === codeLabActiveFileId ? { ...file, content: nextCode } : file));
+                    if (extracted) {
+                        const nextCode = sanitizeCode(extracted);
+                        console.log('📝 Updating editor. extracted len:', extracted.length, 'sanitized len:', nextCode.length);
+                        if (nextCode) {
+                            setCodeLabCode(nextCode);
+                            setCodeLabFiles(prev => prev.map(file => file.id === codeLabActiveFileId ? { ...file, content: nextCode } : file));
+                        }
+                    }
                 },
                 () => {
+                    console.log('🏁 Stream finished in ImmersiveLearning.');
                     setCodeLabAiStreaming(false);
                     setCodeLabAiLoading(false);
                 },
@@ -4302,6 +4326,9 @@ Current code:\n${codeLabCode}\n\nUser request: ${codeLabAiPrompt}\n\nRespond wit
                     setCodeLabAiError(err?.message || 'AI request failed');
                     setCodeLabAiStreaming(false);
                     setCodeLabAiLoading(false);
+                },
+                (thoughtChunk) => {
+                    setCodeLabAiReasoning(prev => prev + thoughtChunk);
                 }
             );
         } catch (err: any) {
@@ -4322,6 +4349,57 @@ Current code:\n${codeLabCode}\n\nUser request: ${codeLabAiPrompt}\n\nRespond wit
 
     const CodeLabView = () => {
         const activeFile = codeLabFiles.find(file => file.id === codeLabActiveFileId) || codeLabFiles[0];
+        const aiInputRef = useRef<HTMLInputElement>(null);
+        const codeMirrorRef = useRef<any>(null);
+        const isInputFocusedRef = useRef(false);
+
+        // Monitor input focus state and prevent CodeMirror from stealing focus
+        useEffect(() => {
+            const input = aiInputRef.current;
+            if (!input) return;
+
+            const handleFocus = () => {
+                isInputFocusedRef.current = true;
+            };
+
+            const handleBlur = () => {
+                // Small delay to check if focus moved to CodeMirror
+                setTimeout(() => {
+                    const activeElement = document.activeElement;
+                    const cmEditor = activeElement?.closest('.cm-editor');
+                    if (cmEditor && isInputFocusedRef.current) {
+                        // Focus was stolen by CodeMirror, return it to input
+                        input.focus();
+                    } else {
+                        isInputFocusedRef.current = false;
+                    }
+                }, 10);
+            };
+
+            // Global listener to prevent CodeMirror focus stealing
+            const handleGlobalFocus = (e: FocusEvent) => {
+                if (isInputFocusedRef.current && input === document.activeElement) {
+                    const target = e.target as HTMLElement;
+                    if (target?.closest('.cm-editor') || target?.classList.contains('cm-content')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        requestAnimationFrame(() => {
+                            input.focus();
+                        });
+                    }
+                }
+            };
+
+            input.addEventListener('focus', handleFocus);
+            input.addEventListener('blur', handleBlur);
+            document.addEventListener('focusin', handleGlobalFocus, true);
+
+            return () => {
+                input.removeEventListener('focus', handleFocus);
+                input.removeEventListener('blur', handleBlur);
+                document.removeEventListener('focusin', handleGlobalFocus, true);
+            };
+        }, []);
 
         const handleFileSelect = (fileId: string) => {
             setCodeLabActiveFileId(fileId);
@@ -4408,143 +4486,225 @@ sys.stderr = StringIO()
         return (
             <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-y-auto text-slate-900">
                 <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-y-auto flex flex-col relative">
-                <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 flex-shrink-0">
-                    <div className="flex items-center gap-2">
-                        {codeLabFiles.map(file => {
-                            const isActive = file.id === activeFile.id;
-                            return (
-                                <button
-                                    key={file.id}
-                                    onClick={() => handleFileSelect(file.id)}
-                                    className={`px-3 py-1.5 text-sm transition-colors ${isActive ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md' : 'bg-white/5 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                                >
-                                    {file.name}
-                                </button>
-                            );
-                        })}
+                    <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 flex-shrink-0">
+                        <div className="flex items-center gap-2">
+                            {codeLabFiles.map(file => {
+                                const isActive = file.id === activeFile.id;
+                                return (
+                                    <button
+                                        key={file.id}
+                                        onClick={() => handleFileSelect(file.id)}
+                                        className={`px-3 py-1.5 text-sm transition-colors ${isActive ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md' : 'bg-white/5 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                                    >
+                                        {file.name}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="flex items-center gap-2 ml-auto">
+                            <select
+                                value={codeLabTheme}
+                                onChange={(e) => setCodeLabTheme(e.target.value as 'vscode' | 'dracula')}
+                                className="text-sm border border-slate-200 px-2 py-1 bg-white text-slate-900"
+                            >
+                                <option value="vscode">VS Code</option>
+                                <option value="dracula">Dracula</option>
+                            </select>
+                            <span className="text-xs text-slate-600 px-2 py-1 bg-slate-100 border border-slate-200">
+                                {activeFile.language === 'java' || activeFile.language === 'cpp' ? 'Run coming soon for Java/C++' : 'Python + JS runnable'}
+                            </span>
+                        </div>
                     </div>
 
-                    <div className="flex items-center gap-2 ml-auto">
-                        <select
-                            value={codeLabTheme}
-                            onChange={(e) => setCodeLabTheme(e.target.value as 'vscode' | 'dracula')}
-                            className="text-sm border border-slate-200 px-2 py-1 bg-white text-slate-900"
-                        >
-                            <option value="vscode">VS Code</option>
-                            <option value="dracula">Dracula</option>
-                        </select>
-                        <span className="text-xs text-slate-600 px-2 py-1 bg-slate-100 border border-slate-200">
-                            {activeFile.language === 'java' || activeFile.language === 'cpp' ? 'Run coming soon for Java/C++' : 'Python + JS runnable'}
-                        </span>
-                    </div>
-                </div>
+                    <div className="flex flex-col lg:flex-row gap-4 p-4 min-h-full overflow-y-auto">
+                        <div className="flex-1 min-h-[340px] h-full flex flex-col">
+                            <div className="flex-1 flex flex-col rounded-xl overflow-hidden border border-[#2b2b2b] shadow-2xl bg-[#1e1e1e]">
+                                {/* Mac-style Window Header */}
+                                <div className="flex items-center justify-between px-4 py-3 bg-[#1e1e1e] border-b border-[#2b2b2b] select-none">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex gap-1.5">
+                                            <div className="w-3 h-3 rounded-full bg-[#fa5e5b] opacity-80 hover:opacity-100 transition-opacity" />
+                                            <div className="w-3 h-3 rounded-full bg-[#fbbc05] opacity-80 hover:opacity-100 transition-opacity" />
+                                            <div className="w-3 h-3 rounded-full bg-[#27c93f] opacity-80 hover:opacity-100 transition-opacity" />
+                                        </div>
 
-                <div className="flex flex-col lg:flex-row gap-4 p-4 min-h-full overflow-y-auto">
-                    <div className="flex-1 min-h-[340px] h-full flex flex-col">
-                        <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-slate-600">Language</span>
-                                <select
-                                    value={codeLabLanguage}
-                                    onChange={(e) => {
-                                        const nextLang = e.target.value as CodeLabLanguage;
-                                        setCodeLabLanguage(nextLang);
-                                        setCodeLabFiles(prev => prev.map(file => file.id === activeFile.id ? { ...file, language: nextLang } : file));
+                                        {/* Language Selector */}
+                                        <div className="relative group">
+                                            <select
+                                                value={codeLabLanguage}
+                                                onChange={(e) => {
+                                                    const nextLang = e.target.value as CodeLabLanguage;
+                                                    setCodeLabLanguage(nextLang);
+                                                    setCodeLabFiles(prev => prev.map(file => file.id === activeFile.id ? { ...file, language: nextLang } : file));
+                                                }}
+                                                className="appearance-none bg-transparent text-xs font-medium text-zinc-400 hover:text-zinc-200 uppercase tracking-wider outline-none cursor-pointer pr-4"
+                                            >
+                                                <option value="python" className="bg-[#1e1e1e]">Python</option>
+                                                <option value="javascript" className="bg-[#1e1e1e]">JavaScript</option>
+                                                <option value="java" className="bg-[#1e1e1e]">Java</option>
+                                                <option value="cpp" className="bg-[#1e1e1e]">C++</option>
+                                            </select>
+                                            <ChevronDown className="w-3 h-3 text-zinc-500 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none group-hover:text-zinc-300" />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={clearOutput}
+                                            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-md transition-colors"
+                                            title="Clear Output"
+                                        >
+                                            <RotateCcw className="w-3.5 h-3.5" />
+                                        </button>
+                                        <div className="w-px h-4 bg-zinc-800" />
+                                        <button
+                                            onClick={runCode}
+                                            disabled={codeLabIsRunning}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${codeLabIsRunning
+                                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                                : 'bg-green-600/10 text-green-400 hover:bg-green-600/20 border border-green-600/20'
+                                                }`}
+                                        >
+                                            {codeLabIsRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                                            {codeLabIsRunning ? 'Running...' : 'Run Code'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* AI Assistant Input - Integrated */}
+                                <div className="bg-[#1e1e1e] border-b border-[#2b2b2b] p-2">
+                                    <div className="flex gap-2 bg-[#252526] rounded-lg border border-[#2b2b2b] p-1.5 focus-within:border-zinc-700 transition-colors">
+                                        <div className="flex-1 flex items-center gap-2 px-2">
+                                            <Sparkles className="w-3.5 h-3.5 text-zinc-500" />
+                                            <input
+                                                ref={aiInputRef}
+                                                value={codeLabAiPrompt}
+                                                onChange={(e) => setCodeLabAiPrompt(e.target.value)}
+                                                placeholder="Ask AI to edit code..."
+                                                className="flex-1 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        handleAskCodeLabAi();
+                                                    }
+                                                    // Prevent focus from moving to CodeMirror
+                                                    e.stopPropagation();
+                                                }}
+                                                onFocus={(e) => {
+                                                    // Ensure input maintains focus
+                                                    e.stopPropagation();
+                                                }}
+                                                onClick={(e) => {
+                                                    // Prevent click from bubbling to CodeMirror
+                                                    e.stopPropagation();
+                                                }}
+                                                autoFocus={false}
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={handleAskCodeLabAi}
+                                                disabled={codeLabAiLoading || !codeLabAiPrompt.trim()}
+                                                className="px-2 py-1 text-[10px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 rounded transition-colors disabled:opacity-50"
+                                            >
+                                                {codeLabAiLoading ? 'Thinking...' : 'Ask'}
+                                            </button>
+                                            {codeLabAiResponse && (
+                                                <button
+                                                    onClick={handleInsertAiCode}
+                                                    className="px-2 py-1 text-[10px] font-medium text-blue-400 hover:bg-blue-400/10 rounded transition-colors"
+                                                >
+                                                    Apply
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {/* AI Reasoning & Response */}
+                                    <div className="mt-2 text-sm text-zinc-300">
+                                        <Reasoning isStreaming={codeLabAiStreaming}>{codeLabAiReasoning}</Reasoning>
+                                    </div>
+
+                                    {codeLabAiResponse && !codeLabAiReasoning && ( // Only show raw response if no reasoning parsed yet, or we can improve this logic
+                                        // Actually, codeLabAiResponse contains everything. We might want to HIDE the <thought> part from the visible response if it's already shown in Reasoning.
+                                        // But simplistic approach: Show Reasoning component (which handles parsing internally? No, it takes content string).
+                                        // If we want to hide thought from the 'Suggested Change' block, we should clean it.
+                                        <div className="mt-2 mx-1 p-2 bg-[#252526] rounded border border-[#2b2b2b]">
+                                            <div className="flex items-center justify-between mb-1.5">
+                                                <span className="text-[10px] uppercase font-bold text-zinc-500">Suggested Change</span>
+                                                <button
+                                                    onClick={() => setCodeLabAiResponse('')}
+                                                    className="text-zinc-500 hover:text-zinc-300"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                            <pre className="text-xs text-zinc-400 font-mono whitespace-pre-wrap pl-2 border-l-2 border-zinc-700">{codeLabAiResponse}</pre>
+                                        </div>
+                                    )}
+                                    {codeLabAiError && (
+                                        <div className="mt-2 mx-1 px-2 py-1 text-xs text-red-400 bg-red-400/10 rounded border border-red-400/20">
+                                            {codeLabAiError}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* CodeMirror Instance */}
+                                <div
+                                    className="flex-1 overflow-hidden relative"
+                                    onMouseDown={(e) => {
+                                        // Prevent CodeMirror from stealing focus when input is focused
+                                        if (isInputFocusedRef.current && aiInputRef.current) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            // Keep focus on input
+                                            requestAnimationFrame(() => {
+                                                aiInputRef.current?.focus();
+                                            });
+                                        }
                                     }}
-                                    className="text-sm border border-slate-200 px-2 py-1 bg-white text-slate-900"
+                                    onClick={(e) => {
+                                        // Prevent clicks from stealing focus from input
+                                        if (isInputFocusedRef.current && aiInputRef.current) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            aiInputRef.current?.focus();
+                                        }
+                                    }}
                                 >
-                                    <option value="python">Python</option>
-                                    <option value="javascript">JavaScript</option>
-                                    <option value="java">Java</option>
-                                    <option value="cpp">C++</option>
-                                </select>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={clearOutput}
-                                    className="px-3 py-1.5 text-sm border border-slate-200 text-slate-600 hover:bg-slate-100"
-                                >
-                                    Clear Output
-                                </button>
-                                <button
-                                    onClick={runCode}
-                                    disabled={codeLabIsRunning}
-                                    className={`px-4 py-1.5 text-sm text-white flex items-center gap-2 ${codeLabIsRunning ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#2c4066] hover:bg-[#34507c]'}`}
-                                >
-                                    {codeLabIsRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                                    {codeLabIsRunning ? 'Running' : 'Run'}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col gap-2 mb-3">
-                            <div className="flex flex-col lg:flex-row gap-2">
-                                <input
-                                    value={codeLabAiPrompt}
-                                    onChange={(e) => setCodeLabAiPrompt(e.target.value)}
-                                    placeholder="Ask AI to refactor, explain, or add a feature..."
-                                    className="flex-1 text-sm border border-slate-200 px-3 py-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#3b5b8a]"
-                                />
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={handleAskCodeLabAi}
-                                        disabled={codeLabAiLoading}
-                                        className={`px-4 py-2 text-sm text-white flex items-center gap-2 ${codeLabAiLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#2c4066] hover:bg-[#34507c]'}`}
-                                    >
-                                        {codeLabAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                                        {codeLabAiStreaming ? 'Streaming…' : 'Ask AI'}
-                                    </button>
-                                    <button
-                                        onClick={handleInsertAiCode}
-                                        disabled={!codeLabAiResponse}
-                                        className={`px-4 py-2 text-sm border ${codeLabAiResponse ? 'border-[#3b5b8a] text-[#3b5b8a] hover:bg-slate-50' : 'border-slate-200 text-slate-400 cursor-not-allowed'}`}
-                                    >
-                                        Insert
-                                    </button>
+                                    <CodeMirror
+                                        ref={codeMirrorRef}
+                                        value={codeLabCode}
+                                        height="100%"
+                                        editable
+                                        theme={codeLabTheme === 'vscode' ? vscodeDark : dracula}
+                                        basicSetup={{
+                                            ...codeLabBasicSetup,
+                                            autofocus: false, // Prevent auto-focus
+                                        }}
+                                        className="h-full text-sm"
+                                        extensions={codeLabExtensions}
+                                        onChange={handleCodeChange}
+                                    />
                                 </div>
                             </div>
-                            {codeLabAiError && (
-                                <div className="text-sm text-red-600">{codeLabAiError}</div>
-                            )}
-                            {codeLabAiResponse && (
-                                <div className="border border-slate-200 bg-white p-3 text-sm text-slate-900 max-h-48 overflow-auto">
-                                    <div className="font-medium text-slate-600 mb-1">AI Suggestion</div>
-                                    <pre className="whitespace-pre-wrap text-xs text-slate-800">{codeLabAiResponse}</pre>
+                        </div>
+
+                        <div className="w-full lg:w-80 flex-shrink-0 h-full flex flex-col">
+                            <div className="bg-white border border-slate-200 h-full flex flex-col">
+                                <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                                    <span className="text-sm font-medium text-slate-900">Output</span>
+                                    <button onClick={clearOutput} className="text-xs text-slate-600 hover:text-slate-900">Clear</button>
                                 </div>
-                            )}
-                        </div>
-
-                        <div className="flex-1 border border-slate-200 overflow-hidden flex flex-col min-h-0">
-                            <CodeMirror
-                                value={codeLabCode}
-                                height="100%"
-                                editable
-                                theme={codeLabTheme === 'vscode' ? vscodeDark : dracula}
-                                basicSetup={codeLabBasicSetup}
-                                className="flex-1"
-                                style={{ height: '100%', backgroundColor: '#0b1220' }}
-                                extensions={codeLabExtensions}
-                                onChange={handleCodeChange}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="w-full lg:w-80 flex-shrink-0 h-full flex flex-col">
-                        <div className="bg-white border border-slate-200 h-full flex flex-col">
-                            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
-                                <span className="text-sm font-medium text-slate-900">Output</span>
-                                <button onClick={clearOutput} className="text-xs text-slate-600 hover:text-slate-900">Clear</button>
-                            </div>
-                            <div className="flex-1 px-4 py-3 overflow-auto font-mono text-sm min-h-0" style={{ backgroundColor: '#1F1F1F' }}>
-                                {codeLabOutput ? codeLabOutput.split('\n').map((line, idx) => (
-                                    <div key={idx} className="whitespace-pre-wrap leading-6 text-slate-200">{line || ' '}</div>
-                                )) : (
-                                    <div className="text-slate-400">Run code to see output here.</div>
-                                )}
+                                <div className="flex-1 px-4 py-3 overflow-auto font-mono text-sm min-h-0" style={{ backgroundColor: '#1F1F1F' }}>
+                                    {codeLabOutput ? codeLabOutput.split('\n').map((line, idx) => (
+                                        <div key={idx} className="whitespace-pre-wrap leading-6 text-slate-200">{line || ' '}</div>
+                                    )) : (
+                                        <div className="text-slate-400">Run code to see output here.</div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
                 </div>
             </div>
         );
@@ -4831,21 +4991,19 @@ sys.stderr = StringIO()
                                             <div className="flex items-center gap-2 border border-[#3c4043] rounded-lg p-1 bg-[#202124]">
                                                 <button
                                                     onClick={() => setShowUserSpaces(false)}
-                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                                        !showUserSpaces
-                                                            ? 'bg-[#8ab4f8] text-[#202124]'
-                                                            : 'text-[#9aa0a6] hover:text-white'
-                                                    }`}
+                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${!showUserSpaces
+                                                        ? 'bg-[#8ab4f8] text-[#202124]'
+                                                        : 'text-[#9aa0a6] hover:text-white'
+                                                        }`}
                                                 >
                                                     Notebooks
                                                 </button>
                                                 <button
                                                     onClick={() => setShowUserSpaces(true)}
-                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                                        showUserSpaces
-                                                            ? 'bg-[#8ab4f8] text-[#202124]'
-                                                            : 'text-[#9aa0a6] hover:text-white'
-                                                    }`}
+                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${showUserSpaces
+                                                        ? 'bg-[#8ab4f8] text-[#202124]'
+                                                        : 'text-[#9aa0a6] hover:text-white'
+                                                        }`}
                                                 >
                                                     Spaces
                                                 </button>
@@ -4872,7 +5030,7 @@ sys.stderr = StringIO()
                                             <div className="flex flex-col items-center justify-center h-64">
                                                 <span className="text-4xl mb-4">🚀</span>
                                                 <p className="text-[#9aa0a6]">
-                                                    {spaceSearchQuery 
+                                                    {spaceSearchQuery
                                                         ? `No spaces found matching "${spaceSearchQuery}"`
                                                         : 'No spaces yet. Start using different learning modes to see them here!'}
                                                 </p>
@@ -4970,93 +5128,93 @@ sys.stderr = StringIO()
                                             ) : (
                                                 /* Notebooks Grid - Full Width */
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
-                                            {/* Create New Card */}
-                                            <button
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="group h-[220px] rounded-2xl border-2 border-dashed border-[#3c4043] hover:border-[#8ab4f8] bg-[#202124]/50 hover:bg-[#202124] transition-all flex flex-col items-center justify-center gap-3"
-                                            >
-                                                <div className="w-14 h-14 rounded-2xl bg-[#3c4043] group-hover:bg-[#8ab4f8] transition-colors flex items-center justify-center">
-                                                    <svg className="w-7 h-7 text-[#9aa0a6] group-hover:text-[#202124] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                                    </svg>
-                                                </div>
-                                                <span className="text-sm font-medium text-[#8ab4f8]">New notebook</span>
-                                                <input
-                                                    ref={fileInputRef}
-                                                    type="file"
-                                                    accept=".txt,.md,.pdf,.docx"
-                                                    onChange={handleFileUpload}
-                                                    className="hidden"
-                                                />
-                                            </button>
-
-                                            {/* Notebook Cards */}
-                                            {filteredWorkspaces.map((workspace, index) => {
-                                                // Different gradient colors for each card
-                                                const gradients = [
-                                                    'from-[#f28b82] to-[#fdd663]', // Red to Yellow
-                                                    'from-[#8ab4f8] to-[#c58af9]', // Blue to Purple
-                                                    'from-[#81c995] to-[#34a853]', // Green
-                                                    'from-[#fdd663] to-[#fbbc04]', // Yellow
-                                                    'from-[#c58af9] to-[#f28b82]', // Purple to Red
-                                                    'from-[#78d9ec] to-[#8ab4f8]', // Cyan to Blue
-                                                ];
-                                                const gradient = gradients[index % gradients.length];
-
-                                                return (
-                                                    <div
-                                                        key={workspace.id}
-                                                        className="group relative h-[220px] rounded-2xl bg-[#202124] border border-[#3c4043] hover:border-[#5f6368] hover:shadow-xl hover:shadow-black/20 transition-all cursor-pointer overflow-hidden"
-                                                        onClick={() => openWorkspace(workspace)}
+                                                    {/* Create New Card */}
+                                                    <button
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                        className="group h-[220px] rounded-2xl border-2 border-dashed border-[#3c4043] hover:border-[#8ab4f8] bg-[#202124]/50 hover:bg-[#202124] transition-all flex flex-col items-center justify-center gap-3"
                                                     >
-                                                        {/* Gradient Header - Takes up ~60% of card */}
-                                                        <div className={`h-[130px] bg-gradient-to-br ${gradient} relative`}>
-                                                            {/* Decorative Pattern */}
-                                                            <div className="absolute inset-0 opacity-20">
-                                                                <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                                                    <circle cx="80" cy="20" r="35" fill="white" opacity="0.3" />
-                                                                    <circle cx="20" cy="80" r="25" fill="white" opacity="0.2" />
-                                                                </svg>
-                                                            </div>
-                                                            {/* Large Emoji */}
-                                                            <div className="absolute bottom-3 left-4">
-                                                                <span className="text-5xl drop-shadow-lg">{workspace.thumbnailEmoji}</span>
-                                                            </div>
+                                                        <div className="w-14 h-14 rounded-2xl bg-[#3c4043] group-hover:bg-[#8ab4f8] transition-colors flex items-center justify-center">
+                                                            <svg className="w-7 h-7 text-[#9aa0a6] group-hover:text-[#202124] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                            </svg>
                                                         </div>
+                                                        <span className="text-sm font-medium text-[#8ab4f8]">New notebook</span>
+                                                        <input
+                                                            ref={fileInputRef}
+                                                            type="file"
+                                                            accept=".txt,.md,.pdf,.docx"
+                                                            onChange={handleFileUpload}
+                                                            className="hidden"
+                                                        />
+                                                    </button>
 
-                                                        {/* Content */}
-                                                        <div className="p-4">
-                                                            <h3 className="font-medium text-white text-sm truncate mb-1">{workspace.name}</h3>
-                                                            <p className="text-xs text-[#9aa0a6] line-clamp-1">{workspace.description}</p>
+                                                    {/* Notebook Cards */}
+                                                    {filteredWorkspaces.map((workspace, index) => {
+                                                        // Different gradient colors for each card
+                                                        const gradients = [
+                                                            'from-[#f28b82] to-[#fdd663]', // Red to Yellow
+                                                            'from-[#8ab4f8] to-[#c58af9]', // Blue to Purple
+                                                            'from-[#81c995] to-[#34a853]', // Green
+                                                            'from-[#fdd663] to-[#fbbc04]', // Yellow
+                                                            'from-[#c58af9] to-[#f28b82]', // Purple to Red
+                                                            'from-[#78d9ec] to-[#8ab4f8]', // Cyan to Blue
+                                                        ];
+                                                        const gradient = gradients[index % gradients.length];
 
-                                                            {/* Footer */}
-                                                            <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
-                                                                <span className="text-xs text-[#5f6368]">
-                                                                    {new Date(workspace.updatedAt).toLocaleDateString('en-US', {
-                                                                        month: 'short',
-                                                                        day: 'numeric'
-                                                                    })}
-                                                                </span>
+                                                        return (
+                                                            <div
+                                                                key={workspace.id}
+                                                                className="group relative h-[220px] rounded-2xl bg-[#202124] border border-[#3c4043] hover:border-[#5f6368] hover:shadow-xl hover:shadow-black/20 transition-all cursor-pointer overflow-hidden"
+                                                                onClick={() => openWorkspace(workspace)}
+                                                            >
+                                                                {/* Gradient Header - Takes up ~60% of card */}
+                                                                <div className={`h-[130px] bg-gradient-to-br ${gradient} relative`}>
+                                                                    {/* Decorative Pattern */}
+                                                                    <div className="absolute inset-0 opacity-20">
+                                                                        <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                                            <circle cx="80" cy="20" r="35" fill="white" opacity="0.3" />
+                                                                            <circle cx="20" cy="80" r="25" fill="white" opacity="0.2" />
+                                                                        </svg>
+                                                                    </div>
+                                                                    {/* Large Emoji */}
+                                                                    <div className="absolute bottom-3 left-4">
+                                                                        <span className="text-5xl drop-shadow-lg">{workspace.thumbnailEmoji}</span>
+                                                                    </div>
+                                                                </div>
 
-                                                                {/* Menu Button */}
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        if (confirm('Delete this notebook?')) {
-                                                                            deleteWorkspace(workspace.id);
-                                                                        }
-                                                                    }}
-                                                                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white transition-all"
-                                                                >
-                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                                    </svg>
-                                                                </button>
+                                                                {/* Content */}
+                                                                <div className="p-4">
+                                                                    <h3 className="font-medium text-white text-sm truncate mb-1">{workspace.name}</h3>
+                                                                    <p className="text-xs text-[#9aa0a6] line-clamp-1">{workspace.description}</p>
+
+                                                                    {/* Footer */}
+                                                                    <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
+                                                                        <span className="text-xs text-[#5f6368]">
+                                                                            {new Date(workspace.updatedAt).toLocaleDateString('en-US', {
+                                                                                month: 'short',
+                                                                                day: 'numeric'
+                                                                            })}
+                                                                        </span>
+
+                                                                        {/* Menu Button */}
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (confirm('Delete this notebook?')) {
+                                                                                    deleteWorkspace(workspace.id);
+                                                                                }
+                                                                            }}
+                                                                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white transition-all"
+                                                                        >
+                                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                            </svg>
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                                })}
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
                                         </>
@@ -6215,106 +6373,106 @@ sys.stderr = StringIO()
                                         )}
                                     </div>
 
-                                {/* Audio Player */}
-                                {podcastAudio && (
-                                    <div className="p-6 border border-white/10 sticky top-0 z-10" style={{ backgroundColor: '#1F1F1F' }}>
-                                        <div className="flex items-center gap-4">
-                                            <button
-                                                onClick={toggleAudioPlayback}
-                                                className="w-12 h-12 bg-[#2c4066] hover:bg-[#34507c] flex items-center justify-center text-white transition-colors flex-shrink-0"
-                                            >
-                                                {isPlayingAudio ? (
-                                                    <div className="w-4 h-4 bg-white rounded-[2px]" />
-                                                ) : (
-                                                    <Play className="w-6 h-6 ml-1" />
-                                                )}
-                                            </button>
-                                            <div className="flex-1">
-                                                {/* Waveform Canvas */}
-                                                <div className="h-12 mb-2 bg-[#f8f9fa] rounded-lg overflow-hidden relative">
-                                                    <canvas
-                                                        ref={canvasRef}
-                                                        width={600}
-                                                        height={48}
-                                                        className="w-full h-full"
-                                                    />
-                                                </div>
+                                    {/* Audio Player */}
+                                    {podcastAudio && (
+                                        <div className="p-6 border border-white/10 sticky top-0 z-10" style={{ backgroundColor: '#1F1F1F' }}>
+                                            <div className="flex items-center gap-4">
+                                                <button
+                                                    onClick={toggleAudioPlayback}
+                                                    className="w-12 h-12 bg-[#2c4066] hover:bg-[#34507c] flex items-center justify-center text-white transition-colors flex-shrink-0"
+                                                >
+                                                    {isPlayingAudio ? (
+                                                        <div className="w-4 h-4 bg-white rounded-[2px]" />
+                                                    ) : (
+                                                        <Play className="w-6 h-6 ml-1" />
+                                                    )}
+                                                </button>
+                                                <div className="flex-1">
+                                                    {/* Waveform Canvas */}
+                                                    <div className="h-12 mb-2 bg-[#f8f9fa] rounded-lg overflow-hidden relative">
+                                                        <canvas
+                                                            ref={canvasRef}
+                                                            width={600}
+                                                            height={48}
+                                                            className="w-full h-full"
+                                                        />
+                                                    </div>
 
-                                                <div className="h-1.5 bg-[#e8eaed] rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-[#1e8e3e] transition-all duration-100"
-                                                        style={{ width: `${(audioProgress / audioDuration) * 100}%` }}
-                                                    />
-                                                </div>
-                                                <div className="flex justify-between mt-1.5 text-[12px] text-[#5f6368] font-medium">
-                                                    <span>{formatTime(audioProgress)}</span>
-                                                    <span>{formatTime(audioDuration)}</span>
+                                                    <div className="h-1.5 bg-[#e8eaed] rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-[#1e8e3e] transition-all duration-100"
+                                                            style={{ width: `${(audioProgress / audioDuration) * 100}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-between mt-1.5 text-[12px] text-[#5f6368] font-medium">
+                                                        <span>{formatTime(audioProgress)}</span>
+                                                        <span>{formatTime(audioDuration)}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
 
-                                {/* Loading State for Audio */}
-                                {isGeneratingAudio && (
-                                    <div className="p-6 text-center" style={{ backgroundColor: '#1F1F1F' }}>
-                                        <Loader2 className="w-8 h-8 animate-spin text-slate-300 mx-auto mb-3" />
-                                        <p className="text-slate-200 font-medium">Generating audio...</p>
-                                        <p className="text-[13px] text-slate-400">This may take a minute</p>
-                                    </div>
-                                )}
-
-                                {/* Error State for Audio */}
-                                {audioGenerationError && (
-                                    <div className="p-6 text-center border border-red-500/30" style={{ backgroundColor: '#1F1F1F' }}>
-                                        <div className="w-12 h-12 mx-auto mb-3 bg-red-900/30 rounded-full flex items-center justify-center">
-                                            <Volume2 className="w-6 h-6 text-red-400" />
+                                    {/* Loading State for Audio */}
+                                    {isGeneratingAudio && (
+                                        <div className="p-6 text-center" style={{ backgroundColor: '#1F1F1F' }}>
+                                            <Loader2 className="w-8 h-8 animate-spin text-slate-300 mx-auto mb-3" />
+                                            <p className="text-slate-200 font-medium">Generating audio...</p>
+                                            <p className="text-[13px] text-slate-400">This may take a minute</p>
                                         </div>
-                                        <p className="text-red-300 font-medium mb-1">Failed to generate audio</p>
-                                        <p className="text-[13px] text-red-400 mb-4">Something went wrong while creating the podcast audio.</p>
-                                        <button
-                                            onClick={handleGeneratePodcast}
-                                            disabled={isGeneratingScript || isGeneratingAudio}
-                                            className="px-5 py-2 bg-[#2c4066] border border-red-500/30 hover:bg-[#34507c] text-white rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
-                                        >
-                                            Try Again
-                                        </button>
-                                    </div>
-                                )}
+                                    )}
 
-                                {/* Script Display */}
-                                {podcastScript && (
-                                    <div className="p-6 space-y-6" style={{ backgroundColor: '#1F1F1F' }}>
-                                        <h3 className="text-[18px] font-medium text-slate-200 border-b border-slate-700 pb-4">Transcript</h3>
-                                        <div className="space-y-4">
-                                            {podcastScript.split('\n').map((line, idx) => {
-                                                const isHost = line.startsWith('Host:');
-                                                const isExpert = line.startsWith('Expert:');
-
-                                                if (!isHost && !isExpert) return null;
-
-                                                const text = line.replace(/^(Host|Expert):/, '').trim();
-
-                                                return (
-                                                    <div key={idx} className={`flex gap-4 ${isHost ? 'flex-row' : 'flex-row-reverse'}`}>
-                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isHost ? 'bg-[#e6f4ea] text-[#1e8e3e]' : 'bg-[#e8f0fe] text-[#1967d2]'}`}>
-                                                            {isHost ? 'H' : 'E'}
-                                                        </div>
-                                                        <div className={`flex-1 p-4 rounded-2xl ${isHost ? 'bg-[#f8f9fa] rounded-tl-none' : 'bg-[#f8f9fa] rounded-tr-none'}`}>
-                                                            <p className="text-[12px] font-medium text-[#5f6368] mb-1">{isHost ? 'Host' : 'Expert'}</p>
-                                                            <p className="text-[15px] text-[#1f1f1f] leading-relaxed">{text}</p>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
+                                    {/* Error State for Audio */}
+                                    {audioGenerationError && (
+                                        <div className="p-6 text-center border border-red-500/30" style={{ backgroundColor: '#1F1F1F' }}>
+                                            <div className="w-12 h-12 mx-auto mb-3 bg-red-900/30 rounded-full flex items-center justify-center">
+                                                <Volume2 className="w-6 h-6 text-red-400" />
+                                            </div>
+                                            <p className="text-red-300 font-medium mb-1">Failed to generate audio</p>
+                                            <p className="text-[13px] text-red-400 mb-4">Something went wrong while creating the podcast audio.</p>
+                                            <button
+                                                onClick={handleGeneratePodcast}
+                                                disabled={isGeneratingScript || isGeneratingAudio}
+                                                className="px-5 py-2 bg-[#2c4066] border border-red-500/30 hover:bg-[#34507c] text-white rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
+                                            >
+                                                Try Again
+                                            </button>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
+
+                                    {/* Script Display */}
+                                    {podcastScript && (
+                                        <div className="p-6 space-y-6" style={{ backgroundColor: '#1F1F1F' }}>
+                                            <h3 className="text-[18px] font-medium text-slate-200 border-b border-slate-700 pb-4">Transcript</h3>
+                                            <div className="space-y-4">
+                                                {podcastScript.split('\n').map((line, idx) => {
+                                                    const isHost = line.startsWith('Host:');
+                                                    const isExpert = line.startsWith('Expert:');
+
+                                                    if (!isHost && !isExpert) return null;
+
+                                                    const text = line.replace(/^(Host|Expert):/, '').trim();
+
+                                                    return (
+                                                        <div key={idx} className={`flex gap-4 ${isHost ? 'flex-row' : 'flex-row-reverse'}`}>
+                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isHost ? 'bg-[#e6f4ea] text-[#1e8e3e]' : 'bg-[#e8f0fe] text-[#1967d2]'}`}>
+                                                                {isHost ? 'H' : 'E'}
+                                                            </div>
+                                                            <div className={`flex-1 p-4 rounded-2xl ${isHost ? 'bg-[#f8f9fa] rounded-tl-none' : 'bg-[#f8f9fa] rounded-tr-none'}`}>
+                                                                <p className="text-[12px] font-medium text-[#5f6368] mb-1">{isHost ? 'Host' : 'Expert'}</p>
+                                                                <p className="text-[15px] text-[#1f1f1f] leading-relaxed">{text}</p>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            );
+                );
 
 
 
@@ -8392,8 +8550,8 @@ sys.stderr = StringIO()
                                     <h3 className="text-sm font-semibold text-slate-200 mb-4 uppercase tracking-wide">Gesture Controls</h3>
                                     <div className="space-y-2.5">
                                         <div
-                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'drag' 
-                                                ? 'border-cyan-400 bg-cyan-500/10 shadow-md shadow-cyan-500/20' 
+                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'drag'
+                                                ? 'border-cyan-400 bg-cyan-500/10 shadow-md shadow-cyan-500/20'
                                                 : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
                                             onClick={() => setViewer3dInteractionMode('drag')}
                                         >
@@ -8408,8 +8566,8 @@ sys.stderr = StringIO()
                                             </div>
                                         </div>
                                         <div
-                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'rotate' 
-                                                ? 'border-purple-400 bg-purple-500/10 shadow-md shadow-purple-500/20' 
+                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'rotate'
+                                                ? 'border-purple-400 bg-purple-500/10 shadow-md shadow-purple-500/20'
                                                 : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
                                             onClick={() => setViewer3dInteractionMode('rotate')}
                                         >
@@ -8424,8 +8582,8 @@ sys.stderr = StringIO()
                                             </div>
                                         </div>
                                         <div
-                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'scale' 
-                                                ? 'border-yellow-400 bg-yellow-500/10 shadow-md shadow-yellow-500/20' 
+                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'scale'
+                                                ? 'border-yellow-400 bg-yellow-500/10 shadow-md shadow-yellow-500/20'
                                                 : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
                                             onClick={() => setViewer3dInteractionMode('scale')}
                                         >
@@ -8440,8 +8598,8 @@ sys.stderr = StringIO()
                                             </div>
                                         </div>
                                         <div
-                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'animate' 
-                                                ? 'border-orange-400 bg-orange-500/10 shadow-md shadow-orange-500/20' 
+                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'animate'
+                                                ? 'border-orange-400 bg-orange-500/10 shadow-md shadow-orange-500/20'
                                                 : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
                                             onClick={() => setViewer3dInteractionMode('animate')}
                                         >
@@ -8488,16 +8646,14 @@ sys.stderr = StringIO()
                                         <div className="flex items-center justify-between">
                                             <span className="text-sm text-slate-300">Pinching</span>
                                             <div className="flex gap-2">
-                                                <span className={`px-3 py-1 text-xs font-semibold transition-all ${
-                                                    viewer3dIsPinching[0] 
-                                                        ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20' 
-                                                        : 'bg-white/5 text-slate-400 border border-slate-600'
-                                                }`}>L</span>
-                                                <span className={`px-3 py-1 text-xs font-semibold transition-all ${
-                                                    viewer3dIsPinching[1] 
-                                                        ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20' 
-                                                        : 'bg-white/5 text-slate-400 border border-slate-600'
-                                                }`}>R</span>
+                                                <span className={`px-3 py-1 text-xs font-semibold transition-all ${viewer3dIsPinching[0]
+                                                    ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20'
+                                                    : 'bg-white/5 text-slate-400 border border-slate-600'
+                                                    }`}>L</span>
+                                                <span className={`px-3 py-1 text-xs font-semibold transition-all ${viewer3dIsPinching[1]
+                                                    ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20'
+                                                    : 'bg-white/5 text-slate-400 border border-slate-600'
+                                                    }`}>R</span>
                                             </div>
                                         </div>
                                     </div>
@@ -8649,7 +8805,7 @@ sys.stderr = StringIO()
                                         <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent rounded-[24px]" />
                                     </>
                                 )}
-                                
+
                                 {/* Hover glow effect - more visible */}
                                 {!isActive && (
                                     <>
@@ -8657,24 +8813,23 @@ sys.stderr = StringIO()
                                         <div className="absolute inset-0 border border-slate-600/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[24px]" />
                                     </>
                                 )}
-                                
+
                                 {/* Content */}
                                 <div className="relative z-10 flex flex-col items-center gap-1.5">
                                     <div className={`w-6 h-6 flex items-center justify-center transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
                                         {mode.icon}
                                     </div>
                                     <span
-                                        className={`text-[13px] font-semibold whitespace-nowrap transition-colors duration-300 ${
-                                            isActive 
-                                                ? 'drop-shadow-lg' 
-                                                : 'text-slate-400 group-hover:text-slate-200'
-                                        }`}
+                                        className={`text-[13px] font-semibold whitespace-nowrap transition-colors duration-300 ${isActive
+                                            ? 'drop-shadow-lg'
+                                            : 'text-slate-400 group-hover:text-slate-200'
+                                            }`}
                                         style={isActive ? { color: mode.activeColor } : {}}
                                     >
                                         {mode.label}
                                     </span>
                                 </div>
-                                
+
                                 {/* Active indicator bar - more prominent */}
                                 {isActive && (
                                     <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-gradient-to-r from-cyan-400 via-purple-400 to-cyan-400 rounded-full shadow-lg shadow-cyan-400/50" />
@@ -8703,21 +8858,21 @@ sys.stderr = StringIO()
                                             className={`
                                                 w-full flex items-center gap-3 pl-6 pr-4 py-3 text-left transition-all duration-150
                                                  ${isActive
-                                                     ? 'bg-[#1a1e27]'
-                                                     : 'hover:bg-[#151924]'
-                                                 }
+                                                    ? 'bg-[#1a1e27]'
+                                                    : 'hover:bg-[#151924]'
+                                                }
                                              `}
-                                         >
+                                        >
                                             {/* Checkbox indicator */}
                                             <div className={`
                                                  w-4 h-4 rounded-[4px] flex items-center justify-center flex-shrink-0 border transition-colors
                                                  ${isActive
-                                                     ? 'border-slate-400 bg-transparent'
-                                                     : 'border-slate-600 hover:border-slate-400'
-                                                 }
+                                                    ? 'border-slate-400 bg-transparent'
+                                                    : 'border-slate-600 hover:border-slate-400'
+                                                }
                                              `}>
-                                                 {/* Hidden checkmark for now, just the box style to match reference */}
-                                             </div>
+                                                {/* Hidden checkmark for now, just the box style to match reference */}
+                                            </div>
                                             <span className={`text-[14px] leading-snug ${isActive ? 'text-slate-100 font-medium' : 'text-slate-400'}`}>
                                                 {section.title}
                                             </span>
@@ -8726,18 +8881,18 @@ sys.stderr = StringIO()
                                         {/* "Take quiz" dropdown under active section */}
                                         {isActive && (
                                             <div className="ml-[52px] mt-1 mb-2">
-                                                 <button
-                                                     onClick={scrollToQuiz}
+                                                <button
+                                                    onClick={scrollToQuiz}
                                                     className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-400 rounded-full text-[13px] font-medium text-slate-100 hover:bg-[#151924] transition-colors"
-                                                 >
-                                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                                >
+                                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                                                         <rect x="3" y="4" width="10" height="8" rx="1" stroke="#e2e8f0" strokeWidth="1.5" />
                                                         <path d="M5 7h6M5 9h4" stroke="#e2e8f0" strokeWidth="1.2" strokeLinecap="round" />
-                                                     </svg>
-                                                     Take quiz
-                                                     <ChevronDown className="w-3 h-3 ml-0.5" />
-                                                 </button>
-                                             </div>
+                                                    </svg>
+                                                    Take quiz
+                                                    <ChevronDown className="w-3 h-3 ml-0.5" />
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 );
@@ -8777,7 +8932,7 @@ sys.stderr = StringIO()
                     ? 'bg-[#131314] overflow-hidden p-0'
                     : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity' || activeMode === 'viewer3d' || activeMode === 'audio-lesson' || activeMode === 'slides-narration' || activeMode === 'simulation'
                         ? 'bg-[#eef2f7] overflow-hidden p-0'
-                            : 'bg-[#0b0d12] overflow-y-auto p-4'
+                        : 'bg-[#0b0d12] overflow-y-auto p-4'
                     }`}>
                     <div className={`${activeMode === 'source'
                         ? 'h-full'
