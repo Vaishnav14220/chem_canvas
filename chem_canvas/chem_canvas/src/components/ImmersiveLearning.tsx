@@ -27,6 +27,21 @@ import GeminiLiveOverlay from './GeminiLive/GeminiLiveOverlay';
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { ConnectionState, LearningCanvasImage } from './GeminiLive/types';
 import {
+    getImmersiveLearningWorkspaces,
+    getImmersiveLearningWorkspace,
+    createImmersiveLearningWorkspace,
+    updateImmersiveLearningWorkspace,
+    deleteImmersiveLearningWorkspace,
+    getUserSpaces,
+    saveUserSpace,
+    updateUserSpace,
+    deleteUserSpace,
+    uploadImmersiveLearningFile,
+    deleteImmersiveLearningFile,
+    type ImmersiveLearningWorkspace as ILWorkspace,
+    type UserSpace,
+} from '../services/database/immersiveLearningService';
+import {
     analyzeDocumentForImmersive,
     streamAnalyzeDocumentForImmersive,
     generateImmersiveQuiz,
@@ -266,29 +281,10 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     // ========== WORKSPACE MANAGEMENT TYPES (moved outside for hoisting) ==========
     // Note: Actual workspace state and functions are defined after all other state declarations
 
-    const WORKSPACES_STORAGE_KEY = 'immersive_learning_workspaces';
-    const ACTIVE_WORKSPACE_KEY = 'immersive_learning_active_workspace';
-    const USER_SPACES_STORAGE_KEY = 'immersive_learning_user_spaces'; // Track different spaces/modes used
+    // Removed - now using Firebase
+    // Removed localStorage keys - now using Firebase
 
-    const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{
-        id: string;
-        name: string;
-        description: string;
-        createdAt: number;
-        updatedAt: number;
-        thumbnailEmoji: string;
-        documentFileName: string;
-        documentText: string;
-        immersiveContent: ImmersiveContent | null;
-        sectionImages: { [key: string]: string };
-        widgetImages: { [key: string]: { before: string; after: string } };
-        quiz: QuizQuestion[];
-        audioScript: string | null;
-        reactFlowData: ReactFlowData | null;
-        relevantVideos: RankedYouTubeVideo[];
-        pdfUrl: string | null;
-        activeSectionId: string | null;
-    }>>([]);
+    const [savedWorkspaces, setSavedWorkspaces] = useState<ILWorkspace[]>([]);
     const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
     const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
     const [showWorkspaceManager, setShowWorkspaceManager] = useState(false);
@@ -296,19 +292,6 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState('');
     const [showUserSpaces, setShowUserSpaces] = useState(false); // Show user spaces view
     const [spaceSearchQuery, setSpaceSearchQuery] = useState('');
-
-    // User Spaces State - Track different modes/spaces used by the user
-    interface UserSpace {
-        id: string;
-        mode: LearningMode;
-        name: string;
-        description: string;
-        emoji: string;
-        workspaceId: string | null; // Link to workspace if exists
-        lastUsed: number;
-        usageCount: number;
-        thumbnailUrl?: string; // Optional thumbnail/preview
-    }
 
     const [userSpaces, setUserSpaces] = useState<UserSpace[]>([]);
 
@@ -604,7 +587,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
     // LocalStorage key for persisting immersive learning content
-    const STORAGE_KEY = 'immersive_learning_content';
+    // Removed - now using Firebase
 
     // Track if we need to continue generating missing content after restore
     const [needsContinueGeneration, setNeedsContinueGeneration] = useState(false);
@@ -666,12 +649,9 @@ Respond in JSON format only:
         try {
             const { name, description, emoji } = await generateWorkspaceName(immersiveContent, uploadedFileName);
 
-            const workspace = {
-                id: `workspace_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            const workspaceData = {
                 name,
                 description,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
                 thumbnailEmoji: emoji,
                 documentFileName: uploadedFileName,
                 documentText: documentTextRef.current,
@@ -683,19 +663,20 @@ Respond in JSON format only:
                 reactFlowData,
                 relevantVideos,
                 pdfUrl,
-                activeSectionId: activeSectionId || null
+                activeSectionId: activeSectionId || null,
+                documentFileUrl: pdfUrl || null,
+                documentFileStoragePath: null, // Will be set if file is uploaded
             };
 
-            const existingWorkspaces = JSON.parse(localStorage.getItem(WORKSPACES_STORAGE_KEY) || '[]');
-            const updatedWorkspaces = [workspace, ...existingWorkspaces];
-            localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
-            localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
-
+            const workspace = await createImmersiveLearningWorkspace(workspaceData);
+            
+            // Update local state
+            const updatedWorkspaces = [workspace, ...savedWorkspaces];
             setSavedWorkspaces(updatedWorkspaces);
             setActiveWorkspaceId(workspace.id);
             setShowWorkspaceManager(false);
 
-            console.log('💾 Saved new workspace:', workspace.name);
+            console.log('💾 Saved new workspace to Firebase:', workspace.name);
             return workspace;
         } catch (e) {
             console.error('Failed to save workspace:', e);
@@ -716,12 +697,9 @@ Respond in JSON format only:
         try {
             const { name, description, emoji } = await generateWorkspaceName(content, fileName);
 
-            const workspace = {
-                id: `workspace_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            const workspaceData = {
                 name,
                 description,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
                 thumbnailEmoji: emoji,
                 documentFileName: fileName,
                 documentText: docText,
@@ -732,22 +710,20 @@ Respond in JSON format only:
                 audioScript: null,
                 reactFlowData: null,
                 relevantVideos: [],
-                brainstormActivities: {},
                 pdfUrl: null,
-                activeSectionId: content.sections?.[0]?.id || null
+                activeSectionId: content.sections?.[0]?.id || null,
+                documentFileUrl: null,
+                documentFileStoragePath: null,
             };
 
-            // Space tracking will happen automatically via useEffect when activeMode changes
-
-            const existingWorkspaces = JSON.parse(localStorage.getItem(WORKSPACES_STORAGE_KEY) || '[]');
-            const updatedWorkspaces = [workspace, ...existingWorkspaces];
-            localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
-            localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
-
+            const workspace = await createImmersiveLearningWorkspace(workspaceData);
+            
+            // Update local state
+            const updatedWorkspaces = [workspace, ...savedWorkspaces];
             setSavedWorkspaces(updatedWorkspaces);
             setActiveWorkspaceId(workspace.id);
 
-            console.log('💾 Saved new workspace with content:', workspace.name);
+            console.log('💾 Saved new workspace with content to Firebase:', workspace.name);
             return workspace;
         } catch (e) {
             console.error('Failed to save workspace with content:', e);
@@ -758,32 +734,48 @@ Respond in JSON format only:
     };
 
     // Update existing workspace with current state
-    const updateWorkspace = (workspaceId: string) => {
-        const updatedWorkspaces = savedWorkspaces.map(ws => {
-            if (ws.id === workspaceId) {
-                return {
-                    ...ws,
-                    updatedAt: Date.now(),
-                    immersiveContent,
-                    sectionImages,
-                    widgetImages,
-                    quiz,
-                    audioScript: audioScript || null,
-                    reactFlowData,
-                    relevantVideos,
-                    brainstormActivities,
-                    pdfUrl,
-                    activeSectionId: activeSectionId || null
-                };
-            }
-            return ws;
-        });
-        localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
-        setSavedWorkspaces(updatedWorkspaces);
+    const updateWorkspace = async (workspaceId: string) => {
+        try {
+            await updateImmersiveLearningWorkspace(workspaceId, {
+                immersiveContent,
+                sectionImages,
+                widgetImages,
+                quiz,
+                audioScript: audioScript || null,
+                reactFlowData,
+                relevantVideos,
+                pdfUrl,
+                activeSectionId: activeSectionId || null,
+            });
+
+            // Update local state
+            const updatedWorkspaces = savedWorkspaces.map(ws => {
+                if (ws.id === workspaceId) {
+                    return {
+                        ...ws,
+                        updatedAt: Date.now(),
+                        immersiveContent,
+                        sectionImages,
+                        widgetImages,
+                        quiz,
+                        audioScript: audioScript || null,
+                        reactFlowData,
+                        relevantVideos,
+                        pdfUrl,
+                        activeSectionId: activeSectionId || null
+                    };
+                }
+                return ws;
+            });
+            setSavedWorkspaces(updatedWorkspaces);
+            console.log('💾 Updated workspace in Firebase:', workspaceId);
+        } catch (error) {
+            console.error('Failed to update workspace:', error);
+        }
     };
 
     // Open an existing workspace
-    const openWorkspace = (workspace: typeof savedWorkspaces[0]) => {
+    const openWorkspace = async (workspace: ILWorkspace) => {
         console.log('📂 Opening workspace:', workspace.name);
 
         // Restore all state from workspace
@@ -795,37 +787,48 @@ Respond in JSON format only:
         setAudioScript(workspace.audioScript || '');
         setReactFlowData(workspace.reactFlowData);
         setRelevantVideos(workspace.relevantVideos || []);
-        setBrainstormActivities(workspace.brainstormActivities || {});
-        // Load brainstorm activity for the active section if available
-        const activeId = workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || '';
-        if (activeId && workspace.brainstormActivities?.[activeId]) {
-            setBrainstormActivity(workspace.brainstormActivities[activeId]);
-            setShowBrainstormHints(new Array(workspace.brainstormActivities[activeId].hints.length).fill(false));
+        // Load PDF URL if available
+        if (workspace.pdfUrl) {
+            setPdfUrl(workspace.pdfUrl);
+        } else if (workspace.documentFileUrl) {
+            setPdfUrl(workspace.documentFileUrl);
         }
-        setPdfUrl(workspace.pdfUrl);
         setUploadedFileName(workspace.documentFileName);
+        const activeId = workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || '';
         setActiveSectionId(activeId);
 
         setActiveWorkspaceId(workspace.id);
-        localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspace.id);
         setShowWorkspaceManager(false);
         setActiveMode('immersive-text'); // Switch to content view
     };
 
     // Delete a workspace
-    const deleteWorkspace = (workspaceId: string) => {
-        const updatedWorkspaces = savedWorkspaces.filter(ws => ws.id !== workspaceId);
-        localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
-        setSavedWorkspaces(updatedWorkspaces);
+    const deleteWorkspace = async (workspaceId: string) => {
+        try {
+            await deleteImmersiveLearningWorkspace(workspaceId);
+            
+            // Update local state
+            const updatedWorkspaces = savedWorkspaces.filter(ws => ws.id !== workspaceId);
+            setSavedWorkspaces(updatedWorkspaces);
 
-        // Also remove spaces linked to this workspace
-        const updatedSpaces = userSpaces.filter(space => space.workspaceId !== workspaceId);
-        setUserSpaces(updatedSpaces);
-        localStorage.setItem(USER_SPACES_STORAGE_KEY, JSON.stringify(updatedSpaces));
+            // Also remove spaces linked to this workspace
+            const spacesToUpdate = userSpaces.filter(space => space.workspaceId === workspaceId);
+            for (const space of spacesToUpdate) {
+                try {
+                    await deleteUserSpace(space.id);
+                } catch (error) {
+                    console.error('Failed to delete user space:', error);
+                }
+            }
+            const updatedSpaces = userSpaces.filter(space => space.workspaceId !== workspaceId);
+            setUserSpaces(updatedSpaces);
 
-        if (activeWorkspaceId === workspaceId) {
-            setActiveWorkspaceId(null);
-            localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+            if (activeWorkspaceId === workspaceId) {
+                setActiveWorkspaceId(null);
+            }
+            console.log('🗑️ Deleted workspace from Firebase:', workspaceId);
+        } catch (error) {
+            console.error('Failed to delete workspace:', error);
         }
     };
 
@@ -852,87 +855,99 @@ Respond in JSON format only:
     };
 
     // Track space usage when user switches modes
-    const trackSpaceUsage = useCallback((mode: LearningMode, workspaceId: string | null = null) => {
+    const trackSpaceUsage = useCallback(async (mode: LearningMode, workspaceId: string | null = null) => {
         if (mode === 'source') return; // Don't track source mode
 
         try {
-            const existingSpaces = JSON.parse(localStorage.getItem(USER_SPACES_STORAGE_KEY) || '[]') as UserSpace[];
             const metadata = getSpaceMetadata(mode);
 
-            // Check if space already exists
-            const existingSpaceIndex = existingSpaces.findIndex(space => space.mode === mode);
+            // Check if space already exists in Firebase
+            const existingSpaces = await getUserSpaces();
+            const existingSpace = existingSpaces.find(space => space.mode === mode);
 
-            if (existingSpaceIndex >= 0) {
+            if (existingSpace) {
                 // Update existing space
-                existingSpaces[existingSpaceIndex] = {
-                    ...existingSpaces[existingSpaceIndex],
+                await updateUserSpace(existingSpace.id, {
                     lastUsed: Date.now(),
-                    usageCount: existingSpaces[existingSpaceIndex].usageCount + 1,
-                    workspaceId: workspaceId || existingSpaces[existingSpaceIndex].workspaceId
-                };
+                    usageCount: existingSpace.usageCount + 1,
+                    workspaceId: workspaceId || existingSpace.workspaceId || null,
+                });
+                
+                // Update local state
+                const updatedSpaces = userSpaces.map(space => 
+                    space.id === existingSpace.id 
+                        ? { ...space, lastUsed: Date.now(), usageCount: space.usageCount + 1, workspaceId: workspaceId || space.workspaceId }
+                        : space
+                );
+                updatedSpaces.sort((a, b) => b.lastUsed - a.lastUsed);
+                setUserSpaces(updatedSpaces);
             } else {
                 // Create new space
-                const newSpace: UserSpace = {
-                    id: `space_${mode}_${Date.now()}`,
+                const newSpace = await saveUserSpace({
                     mode,
                     name: metadata.name,
                     description: metadata.description,
                     emoji: metadata.emoji,
                     workspaceId,
                     lastUsed: Date.now(),
-                    usageCount: 1
-                };
-                existingSpaces.push(newSpace);
+                    usageCount: 1,
+                });
+                
+                // Update local state
+                const updatedSpaces = [newSpace, ...userSpaces];
+                updatedSpaces.sort((a, b) => b.lastUsed - a.lastUsed);
+                setUserSpaces(updatedSpaces);
             }
-
-            // Sort by last used (most recent first)
-            existingSpaces.sort((a, b) => b.lastUsed - a.lastUsed);
-
-            // Save to localStorage
-            localStorage.setItem(USER_SPACES_STORAGE_KEY, JSON.stringify(existingSpaces));
-            setUserSpaces(existingSpaces);
         } catch (e) {
             console.error('Failed to track space usage:', e);
         }
-    }, []);
+    }, [userSpaces]);
 
-    // Load user spaces from localStorage
+    // Load user spaces from Firebase
     useEffect(() => {
-        try {
-            const saved = localStorage.getItem(USER_SPACES_STORAGE_KEY);
-            if (saved) {
-                const spaces = JSON.parse(saved) as UserSpace[];
+        const loadUserSpaces = async () => {
+            try {
+                const spaces = await getUserSpaces();
                 // Sort by last used (most recent first)
                 spaces.sort((a, b) => b.lastUsed - a.lastUsed);
                 setUserSpaces(spaces);
+            } catch (e) {
+                console.error('Failed to load user spaces:', e);
             }
-        } catch (e) {
-            console.error('Failed to load user spaces:', e);
-        }
+        };
+        loadUserSpaces();
     }, []);
 
     // Track space usage when mode changes
     useEffect(() => {
         if (activeMode && activeMode !== 'source') {
-            try {
-                trackSpaceUsage(activeMode, activeWorkspaceId);
-            } catch (error) {
+            trackSpaceUsage(activeMode, activeWorkspaceId).catch((error) => {
                 console.error('Error tracking space usage:', error);
                 // Don't throw - this is non-critical
-            }
+            });
         }
     }, [activeMode, activeWorkspaceId, trackSpaceUsage]);
 
     // Open a space (switch to that mode and optionally load workspace)
-    const openSpace = (space: UserSpace) => {
+    const openSpace = async (space: UserSpace) => {
         setActiveMode(space.mode);
         setShowUserSpaces(false);
 
-        // If space has a linked workspace, open it
+        // If space has a linked workspace, load and open it
         if (space.workspaceId) {
-            const workspace = savedWorkspaces.find(ws => ws.id === space.workspaceId);
-            if (workspace) {
-                openWorkspace(workspace);
+            try {
+                const workspace = await getImmersiveLearningWorkspace(space.workspaceId);
+                if (workspace) {
+                    await openWorkspace(workspace);
+                } else {
+                    // Workspace not found, try to find in local state
+                    const localWorkspace = savedWorkspaces.find(ws => ws.id === space.workspaceId);
+                    if (localWorkspace) {
+                        await openWorkspace(localWorkspace);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load workspace:', error);
             }
         }
 
@@ -941,10 +956,15 @@ Respond in JSON format only:
     };
 
     // Delete a space
-    const deleteSpace = (spaceId: string) => {
-        const updatedSpaces = userSpaces.filter(space => space.id !== spaceId);
-        setUserSpaces(updatedSpaces);
-        localStorage.setItem(USER_SPACES_STORAGE_KEY, JSON.stringify(updatedSpaces));
+    const deleteSpace = async (spaceId: string) => {
+        try {
+            await deleteUserSpace(spaceId);
+            const updatedSpaces = userSpaces.filter(space => space.id !== spaceId);
+            setUserSpaces(updatedSpaces);
+            console.log('🗑️ Deleted user space from Firebase:', spaceId);
+        } catch (error) {
+            console.error('Failed to delete user space:', error);
+        }
     };
 
     // Filter spaces by search query
@@ -968,7 +988,6 @@ Respond in JSON format only:
         setActiveSectionId('');
         documentTextRef.current = '';
         setActiveWorkspaceId(null);
-        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
         // Don't hide workspace manager - stay on source page and trigger file upload
         // setShowWorkspaceManager(false);
         // Trigger file upload dialog
@@ -977,26 +996,21 @@ Respond in JSON format only:
         }, 100);
     };
 
-    // Load workspaces on mount - DISABLED per user request
-    /*
+    // Load workspaces from Firebase on mount
     useEffect(() => {
-        try {
-            const saved = localStorage.getItem(WORKSPACES_STORAGE_KEY);
-            if (saved) {
-                const workspaces = JSON.parse(saved);
+        const loadWorkspaces = async () => {
+            setIsLoadingWorkspaces(true);
+            try {
+                const workspaces = await getImmersiveLearningWorkspaces();
                 setSavedWorkspaces(workspaces);
-                setIsLoadingWorkspaces(false);
-            } else {
+            } catch (e) {
+                console.error('Failed to load workspaces:', e);
+            } finally {
                 setIsLoadingWorkspaces(false);
             }
-        } catch (e) {
-            console.error('Failed to load workspaces:', e);
-            setIsLoadingWorkspaces(false);
-        } finally {
-            setIsLoadingWorkspaces(false);
-        }
+        };
+        loadWorkspaces();
     }, []);
-    */
 
     // Auto-save to active workspace when content changes - DISABLED per user request (no storage)
     /*
@@ -1187,39 +1201,32 @@ Respond in JSON format only:
         }
     }, [activeSectionId, brainstormActivities]);
 
-    // Save content to localStorage whenever it changes
+    // Auto-save workspace to Firebase when content changes (debounced)
     useEffect(() => {
-        // Only save if we have actual content
-        if (immersiveContent && immersiveContent.sections?.length > 0) {
-            try {
-                const dataToSave = {
-                    immersiveContent,
-                    documentText: documentTextRef.current,
-                    sectionImages,
-                    widgetImages,
-                    activeSectionId,
-                    uploadedFileName,
-                    pdfUrl,
-                    // Also save generated content
-                    quiz,
-                    audioScript,
-                    reactFlowData,
-                    relevantVideos,
-                    brainstormActivities,
-                    savedAt: new Date().toISOString()
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-                console.log('💾 Content saved to localStorage');
-            } catch (error) {
-                console.error('Failed to save content:', error);
-                // If storage is full, try to clear old data
-                if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-                    console.warn('Storage quota exceeded, clearing old data...');
-                    localStorage.removeItem(STORAGE_KEY);
+        // Only save if we have actual content and an active workspace
+        if (immersiveContent && immersiveContent.sections?.length > 0 && activeWorkspaceId) {
+            const timeoutId = setTimeout(async () => {
+                try {
+                    await updateImmersiveLearningWorkspace(activeWorkspaceId, {
+                        immersiveContent,
+                        sectionImages,
+                        widgetImages,
+                        quiz,
+                        audioScript: audioScript || null,
+                        reactFlowData,
+                        relevantVideos,
+                        pdfUrl,
+                        activeSectionId: activeSectionId || null,
+                    });
+                    console.log('💾 Auto-saved workspace to Firebase');
+                } catch (error) {
+                    console.error('Failed to auto-save workspace:', error);
                 }
-            }
+            }, 2000); // 2 second debounce
+
+            return () => clearTimeout(timeoutId);
         }
-    }, [immersiveContent, sectionImages, widgetImages, activeSectionId, uploadedFileName, pdfUrl, quiz, audioScript, reactFlowData, relevantVideos]);
+    }, [immersiveContent, sectionImages, widgetImages, activeSectionId, uploadedFileName, pdfUrl, quiz, audioScript, reactFlowData, relevantVideos, activeWorkspaceId]);
 
     // Keep refs in sync with state
     useEffect(() => {
@@ -2371,8 +2378,6 @@ Respond in JSON format only:
         setWidgetImages({});
         setActiveSectionId('');
         documentTextRef.current = '';
-        // Clear localStorage when uploading new file
-        localStorage.removeItem(STORAGE_KEY);
 
         setIsLoading(true);
         setUploadedFileName(fileName);
@@ -2380,11 +2385,74 @@ Respond in JSON format only:
         setLoadingMessage('Uploading document...');
         setTerminalSubSteps(['Initializing upload...']);
 
-        // Create PDF URL for sidebar viewer if it's a PDF file
-        if (file.type === 'application/pdf') {
-            const url = URL.createObjectURL(file);
-            setPdfUrl(url);
-            setTerminalSubSteps(prev => [...prev, 'PDF detected, preparing viewer...']);
+        // Upload file to Firebase Storage
+        let fileUrl: string | null = null;
+        let fileStoragePath: string | null = null;
+        let isFallbackUpload = false;
+        
+        try {
+            setTerminalSubSteps(prev => [...prev, 'Uploading file to Firebase Storage...']);
+            const uploadResult = await uploadImmersiveLearningFile(file);
+            fileUrl = uploadResult.url;
+            fileStoragePath = uploadResult.storagePath;
+            isFallbackUpload = uploadResult.isFallback || false;
+            
+            if (isFallbackUpload) {
+                console.warn('⚠️ Using fallback blob URL due to certificate error');
+                console.warn('💡 File will work locally but may not persist. Check browser extensions.');
+            } else {
+                console.log('✅ File uploaded to Firebase Storage:', fileUrl);
+            }
+            
+            // Create PDF URL for sidebar viewer if it's a PDF file
+            if (file.type === 'application/pdf') {
+                setPdfUrl(fileUrl);
+                setTerminalSubSteps(prev => [...prev, 'PDF detected, preparing viewer...']);
+            }
+        } catch (uploadError: any) {
+            console.error('Failed to upload file to Firebase Storage:', uploadError);
+            
+            // More comprehensive certificate error detection
+            const errorMessage = uploadError?.message || uploadError?.toString() || '';
+            const errorCode = uploadError?.code || '';
+            const errorName = uploadError?.name || '';
+            
+            const isCertError = 
+                errorCode === 'storage/unknown' ||
+                errorCode === 'storage/network-request-failed' ||
+                errorName === 'NetworkError' ||
+                errorName === 'TypeError' ||
+                errorMessage.includes('CERT') ||
+                errorMessage.includes('certificate') ||
+                errorMessage.includes('ERR_CERT') ||
+                errorMessage.includes('common name') ||
+                errorMessage.includes('Failed to fetch');
+            
+            if (isCertError) {
+                console.warn('⚠️ Certificate/network error detected. Using local blob URL as fallback.');
+                console.warn('💡 Troubleshooting tips:');
+                console.warn('   1. Disable browser extensions (especially ad blockers) - injectScriptAdjust.js detected');
+                console.warn('   2. Clear browser cache and cookies');
+                console.warn('   3. Try incognito/private mode');
+                console.warn('   4. Try a different browser');
+                console.warn('   5. Check Firebase Storage bucket configuration');
+            }
+            
+            // Fallback to local blob URL
+            const blobUrl = URL.createObjectURL(file);
+            fileUrl = blobUrl;
+            fileStoragePath = `fallback/${Date.now()}_${file.name}`;
+            isFallbackUpload = true;
+            
+            // Set PDF URL for viewer
+            if (file.type === 'application/pdf') {
+                setPdfUrl(blobUrl);
+            }
+            
+            // Show user-friendly message
+            if (isCertError) {
+                setTerminalSubSteps(prev => [...prev, '⚠️ Using local storage (certificate error detected)']);
+            }
         }
 
         try {

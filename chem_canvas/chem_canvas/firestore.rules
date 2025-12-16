@@ -1,0 +1,201 @@
+// Firestore security rules
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ============================================
+    // USER DATA - All user-specific data
+    // ============================================
+    
+    // User profiles
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Workspaces (Canvas projects)
+      match /workspaces/{workspaceId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        
+        // Nodes within workspaces
+        match /nodes/{nodeId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+        
+        // Edges within workspaces
+        match /edges/{edgeId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+      
+      // Immersive Learning Workspaces
+      match /immersiveLearningWorkspaces/{workspaceId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Immersive Learning User Spaces (tracks different learning modes)
+      match /immersiveLearningSpaces/{spaceId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // AI Chat History
+      match /chats/{chatId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        
+        // Messages within chats
+        match /messages/{messageId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+      
+      // Documents (AIWord)
+      match /documents/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Spreadsheets (AISheet)
+      match /spreadsheets/{sheetId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        
+        match /sheets/{sheetIndex} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+      
+      // Saved Molecules
+      match /molecules/{moleculeId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Simulations
+      match /simulations/{simId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Study Materials (flashcards, notes, quizzes)
+      match /studyMaterials/{materialId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // File uploads metadata
+      match /files/{fileId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Activity log
+      match /activity/{activityId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // User settings/preferences
+      match /settings/{settingId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // ============================================
+    // SHARED / PUBLIC CONTENT
+    // ============================================
+    
+    // Public templates (anyone can read, owners can modify)
+    match /templates/{templateId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+                              resource.data.createdBy == request.auth.uid;
+    }
+    
+    // Shared workspaces (for collaboration)
+    match /sharedWorkspaces/{shareId} {
+      // Owner can do anything
+      allow read, write: if request.auth != null && 
+                            resource.data.ownerId == request.auth.uid;
+      // Shared users can read (and edit if allowed)
+      allow read: if request.auth != null && 
+                     (request.auth.uid in resource.data.sharedWith ||
+                      resource.data.shareType == "public");
+      allow update: if request.auth != null && 
+                       request.auth.uid in resource.data.sharedWith &&
+                       resource.data.shareType == "edit";
+    }
+
+    // ============================================
+    // ADMIN / API KEYS
+    // ============================================
+    
+    // Admin API keys (metadata only)
+    match /admin/apiKeys/keys/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Shared Gemini API key (read-only)
+    match /apikey/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ============================================
+    // LOGGING COLLECTIONS (write-only for users)
+    // ============================================
+    
+    // Error logs
+    match /errorLogs/{docId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
+    }
+
+    // Tool usage logs
+    match /toolUsage/{docId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
+    }
+
+    // Feature logs (general + per-feature)
+    match /featureLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /srlCoachLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /docsAiLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /docCanvasLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /subjectExplorerLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /nmrLabLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /explorer3dLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /studyToolsLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /sessionDurationLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+
+    // Search logs
+    match /moleculeSearchLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /reactionSearchLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /proteinSearchLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+    match /mineralSearchLogs/{docId} { allow create: if request.auth != null; allow read, update, delete: if false; }
+
+    // API logs and key logs
+    match /apiLogs/{docId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
+    }
+    match /geminiApiKeys/{docId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
+    }
+
+    // ============================================
+    // EXISTING USER STATE COLLECTIONS
+    // ============================================
+    
+    // SRL / Subject Explorer state
+    match /srlCoachData/{userId}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /learningPreferences/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /subjectExplorerSessions/{userId}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ============================================
+    // DENY ALL OTHER ACCESS
+    // ============================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
