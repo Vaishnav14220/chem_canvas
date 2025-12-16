@@ -2763,24 +2763,25 @@ export default function Canvas({
   }, [selectedShape]);
 
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    // Adjust grid color based on canvas background
-    ctx.strokeStyle = canvasBackground === 'dark' ? '#1e293b' : '#e5e7eb';
-    ctx.lineWidth = 0.5;
+    // Professional dot grid pattern like tldraw and other drawing apps
+    const gridSize = 20; // Spacing between dots
+    const dotRadius = 1; // Size of each dot
+    
+    // Adjust dot color based on canvas background - subtle but visible
+    const dotColor = canvasBackground === 'dark' 
+      ? 'rgba(148, 163, 184, 0.3)' // Slate-400 with opacity for dark mode
+      : 'rgba(148, 163, 184, 0.4)'; // Slightly more visible for light mode
 
-    const gridSize = 20;
-
-    for (let x = 0; x <= width; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-
-    for (let y = 0; y <= height; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
+    ctx.fillStyle = dotColor;
+    
+    // Draw dots in a grid pattern
+    // Start from gridSize to avoid dots at the very edge
+    for (let x = gridSize; x < width; x += gridSize) {
+      for (let y = gridSize; y < height; y += gridSize) {
+        ctx.beginPath();
+        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   };
 

@@ -38,7 +38,6 @@ import { detectToolCalls, executeToolCalls } from './services/aiToolOrchestrator
 import ChemistryWidgetPanel from './components/ChemistryWidgetPanel';
 import DarkButtonWithIcon from './components/DarkButtonWithIcon';
 import ArMobileView from './components/ArMobileView';
-import SrlCoachWorkspace from './components/SrlCoachWorkspace';
 
 import AdaptivePlan from './components/AdaptivePlan';
 import FlippingInfo from './components/FlippingInfo';
@@ -246,7 +245,6 @@ const App: React.FC = () => {
   const [selectedWorkspaceTool, setSelectedWorkspaceTool] = useState<StudyToolType>('mindmap');
   const [interactions, setInteractions] = useState<AIInteraction[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
-  const [coachLoading, setCoachLoading] = useState(false);
   const [docChatLoading, setDocChatLoading] = useState(false);
 
   const [showDocumentAssistant, setShowDocumentAssistant] = useState(true);
@@ -266,7 +264,6 @@ const App: React.FC = () => {
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
   const [showNmrFullscreen, setShowNmrFullscreen] = useState(false);
-  const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
 
   const [showAdaptivePlan, setShowAdaptivePlan] = useState(false);
 
@@ -441,7 +438,6 @@ const App: React.FC = () => {
 
   const isMainCanvasSurfaceActive =
     !isMolecularMode &&
-    !showSrlCoachWorkspace &&
     !showNmrFullscreen &&
     !showGeminiLiveWorkspace;
 
@@ -1019,7 +1015,6 @@ const App: React.FC = () => {
 
   const openChemistryPanel = () => {
     setShowChemistryPanel(true);
-    setShowSrlCoachWorkspace(false);
 
     setShowNmrFullscreen(false);
     setShowChatPanel(false);
@@ -1522,11 +1517,9 @@ const App: React.FC = () => {
   ) => {
     const mode: InteractionMode = options?.mode ?? 'chat';
     const setLoading =
-      mode === 'coach'
-        ? setCoachLoading
-        : mode === 'document'
-          ? setDocChatLoading
-          : setChatLoading;
+      mode === 'document'
+        ? setDocChatLoading
+        : setChatLoading;
     setLoading(true);
 
     // Add user message immediately
@@ -1775,7 +1768,6 @@ Here is the learner's question: ${message}`;
       case 'voice-chat':
       case 'interactive-tutor':
         setShowGeminiLiveWorkspace(true);
-        setShowSrlCoachWorkspace(false);
 
         setShowNmrFullscreen(false);
         setShowChemistryPanel(false);
@@ -1788,7 +1780,6 @@ Here is the learner's question: ${message}`;
         break;
       case 'immersive-learning':
         setShowImmersiveLearning(true);
-        setShowSrlCoachWorkspace(false);
 
         setShowNmrFullscreen(false);
         setShowChemistryPanel(false);
@@ -1804,7 +1795,6 @@ Here is the learner's question: ${message}`;
       case 'word-processor':
       case 'smart-document':
         setShowAIWord(true);
-        setShowSrlCoachWorkspace(false);
 
         setShowNmrFullscreen(false);
         setShowChemistryPanel(false);
@@ -2034,25 +2024,6 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
-                    setShowSrlCoachWorkspace(true);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowRdkitWorkspace(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                    startFeature('srl_coach');
-                  }}
-                  className={pillButtonClasses}
-                >
-                  <Target className="h-5 w-5 relative z-10" />
-                  <span className="relative z-10">SRL Coach</span>
-                </button>
-
-                <button
-                  onClick={() => {
                     startFeature('3d_explorer');
                     openChemistryPanel();
                   }}
@@ -2065,7 +2036,6 @@ Here is the learner's question: ${message}`;
                 <button
                   onClick={() => {
                     setShowNmrFullscreen(true);
-                    setShowSrlCoachWorkspace(false);
                     setIsNmrAssistantActive(false);
                     setShowChatPanel(false);
                     startFeature('nmr_lab');
@@ -2079,7 +2049,6 @@ Here is the learner's question: ${message}`;
                 <button
                   onClick={() => {
                     setShowAIWord(true);
-                    setShowSrlCoachWorkspace(false);
                     setShowNmrFullscreen(false);
                     setShowChemistryPanel(false);
                     setShowChatPanel(false);
@@ -2114,7 +2083,6 @@ Here is the learner's question: ${message}`;
                   onClick={() => {
                     setShowImmersiveLearning(true);
                     setShowAIWord(false);
-                    setShowSrlCoachWorkspace(false);
                     setShowNmrFullscreen(false);
                     setShowChemistryPanel(false);
                     setShowChatPanel(false);
@@ -2235,25 +2203,7 @@ Here is the learner's question: ${message}`;
 
       {/* Fullscreen NMR viewer */}
       {
-        showSrlCoachWorkspace ? (
-          <SrlCoachWorkspace
-            interactions={interactions}
-            onSendMessage={handleSendMessage}
-            isLoading={coachLoading}
-            documentName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
-            onOpenDocument={() => setDocumentViewerOpen(true)}
-            user={user}
-            onClose={() => {
-              setShowSrlCoachWorkspace(false);
-              setShowChatPanel(false);
-              setIsNmrAssistantActive(false);
-              setShowNmrAssistant(false);
-              setIsRdkitAssistantActive(false);
-              setShowRdkitAssistant(false);
-            }}
-          />
-
-        ) : showNmrFullscreen ? (
+        showNmrFullscreen ? (
           <div className="flex h-[calc(100vh-5rem)] flex-col">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-slate-800 px-4 md:px-6 py-3" style={{ backgroundColor: '#212121' }}>
               <div>
@@ -2707,7 +2657,7 @@ Here is the learner's question: ${message}`;
                 {/* Study Tools Panel handled via full-screen workspace */}
 
                 {/* Chat Start Button - Floating */}
-                {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
+                {!showChatPanel && !showNmrFullscreen && !showGeminiLiveWorkspace && (
                   <div className="absolute top-16 right-8 z-10 flex flex-col gap-3 items-end">
                     {/* Gemini Live Share Canvas Button */}
                     {geminiLiveState.connectionState === ConnectionState.CONNECTED && (
@@ -2866,7 +2816,7 @@ Here is the learner's question: ${message}`;
 
       {/* Chemistry Widget Panel */}
       {
-        showChemistryPanel && !showNmrFullscreen && !showSrlCoachWorkspace && (
+        showChemistryPanel && !showNmrFullscreen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden">
               <ChemistryWidgetPanel
@@ -2912,7 +2862,6 @@ Here is the learner's question: ${message}`;
           // Ensure canvas is visible when Gemini Live connects for handwriting responses
           // Close any fullscreen panels that might hide the canvas
           setShowNmrFullscreen(false);
-          setShowSrlCoachWorkspace(false);
           setShowGeminiLiveWorkspace(false);
 
           setShowAIWord(false);
@@ -2934,7 +2883,7 @@ Here is the learner's question: ${message}`;
         onStartScreenShare={() => geminiLiveState.startScreenShare()}
         onStopScreenShare={() => geminiLiveState.stopScreenShare()}
         onShareCanvas={() => geminiLiveState.captureAndSendSnapshot()}
-        showShareCanvas={!showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace}
+        showShareCanvas={!showNmrFullscreen && !showGeminiLiveWorkspace}
 
         // Webcam Sharing
         isWebcamSharing={isWebcamSharing}

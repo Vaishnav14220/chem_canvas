@@ -267,6 +267,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
     const WORKSPACES_STORAGE_KEY = 'immersive_learning_workspaces';
     const ACTIVE_WORKSPACE_KEY = 'immersive_learning_active_workspace';
+    const USER_SPACES_STORAGE_KEY = 'immersive_learning_user_spaces'; // Track different spaces/modes used
 
     const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{
         id: string;
@@ -292,6 +293,23 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [showWorkspaceManager, setShowWorkspaceManager] = useState(false);
     const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
     const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState('');
+    const [showUserSpaces, setShowUserSpaces] = useState(false); // Show user spaces view
+    const [spaceSearchQuery, setSpaceSearchQuery] = useState('');
+
+    // User Spaces State - Track different modes/spaces used by the user
+    interface UserSpace {
+        id: string;
+        mode: LearningMode;
+        name: string;
+        description: string;
+        emoji: string;
+        workspaceId: string | null; // Link to workspace if exists
+        lastUsed: number;
+        usageCount: number;
+        thumbnailUrl?: string; // Optional thumbnail/preview
+    }
+
+    const [userSpaces, setUserSpaces] = useState<UserSpace[]>([]);
 
     const [activeMode, setActiveMode] = useState<LearningMode>('source'); // Start with workspace manager
     const [isLoading, setIsLoading] = useState(false);
@@ -717,6 +735,8 @@ Respond in JSON format only:
                 activeSectionId: content.sections?.[0]?.id || null
             };
 
+            // Space tracking will happen automatically via useEffect when activeMode changes
+
             const existingWorkspaces = JSON.parse(localStorage.getItem(WORKSPACES_STORAGE_KEY) || '[]');
             const updatedWorkspaces = [workspace, ...existingWorkspaces];
             localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
@@ -795,12 +815,142 @@ Respond in JSON format only:
         const updatedWorkspaces = savedWorkspaces.filter(ws => ws.id !== workspaceId);
         localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(updatedWorkspaces));
         setSavedWorkspaces(updatedWorkspaces);
+        
+        // Also remove spaces linked to this workspace
+        const updatedSpaces = userSpaces.filter(space => space.workspaceId !== workspaceId);
+        setUserSpaces(updatedSpaces);
+        localStorage.setItem(USER_SPACES_STORAGE_KEY, JSON.stringify(updatedSpaces));
 
         if (activeWorkspaceId === workspaceId) {
             setActiveWorkspaceId(null);
             localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
         }
     };
+
+    // ========== USER SPACES TRACKING SYSTEM ==========
+    // Track when users use different modes/spaces (similar to Hugging Face Spaces)
+
+    // Space metadata mapping
+    const getSpaceMetadata = (mode: LearningMode): { name: string; description: string; emoji: string } => {
+        const metadata: Record<LearningMode, { name: string; description: string; emoji: string }> = {
+            'source': { name: 'Source', description: 'Document sources and notebooks', emoji: '📚' },
+            'immersive-text': { name: 'Immersive Text', description: 'Interactive text learning with AI insights', emoji: '📖' },
+            'slides-narration': { name: 'Slides & Narration', description: 'Presentation slides with audio narration', emoji: '🎤' },
+            'audio-lesson': { name: 'Audio Lesson', description: 'Audio-based learning experience', emoji: '🎧' },
+            'mindmap': { name: 'Mind Map', description: 'Visual mind mapping and concept connections', emoji: '🧠' },
+            'simulation': { name: 'Simulation', description: 'Interactive simulations and experiments', emoji: '🔬' },
+            'robotics': { name: 'Robotics Vision', description: 'Robotics and computer vision tools', emoji: '🤖' },
+            'viewer3d': { name: '3D Viewer', description: '3D molecular visualization and models', emoji: '🔮' },
+            'image-activity': { name: 'Image Activity', description: 'Interactive image labeling and activities', emoji: '🖼️' },
+            'code-lab': { name: 'Code Lab', description: 'Interactive coding environment', emoji: '💻' },
+            'assignment': { name: 'Assignment', description: 'Interactive assignments and exercises', emoji: '📝' },
+            'latex-assignment': { name: 'LaTeX', description: 'LaTeX document preparation and editing', emoji: '📄' }
+        };
+        return metadata[mode] || { name: 'Unknown', description: 'Unknown space type', emoji: '❓' };
+    };
+
+    // Track space usage when user switches modes
+    const trackSpaceUsage = useCallback((mode: LearningMode, workspaceId: string | null = null) => {
+        if (mode === 'source') return; // Don't track source mode
+
+        try {
+            const existingSpaces = JSON.parse(localStorage.getItem(USER_SPACES_STORAGE_KEY) || '[]') as UserSpace[];
+            const metadata = getSpaceMetadata(mode);
+            
+            // Check if space already exists
+            const existingSpaceIndex = existingSpaces.findIndex(space => space.mode === mode);
+            
+            if (existingSpaceIndex >= 0) {
+                // Update existing space
+                existingSpaces[existingSpaceIndex] = {
+                    ...existingSpaces[existingSpaceIndex],
+                    lastUsed: Date.now(),
+                    usageCount: existingSpaces[existingSpaceIndex].usageCount + 1,
+                    workspaceId: workspaceId || existingSpaces[existingSpaceIndex].workspaceId
+                };
+            } else {
+                // Create new space
+                const newSpace: UserSpace = {
+                    id: `space_${mode}_${Date.now()}`,
+                    mode,
+                    name: metadata.name,
+                    description: metadata.description,
+                    emoji: metadata.emoji,
+                    workspaceId,
+                    lastUsed: Date.now(),
+                    usageCount: 1
+                };
+                existingSpaces.push(newSpace);
+            }
+
+            // Sort by last used (most recent first)
+            existingSpaces.sort((a, b) => b.lastUsed - a.lastUsed);
+
+            // Save to localStorage
+            localStorage.setItem(USER_SPACES_STORAGE_KEY, JSON.stringify(existingSpaces));
+            setUserSpaces(existingSpaces);
+        } catch (e) {
+            console.error('Failed to track space usage:', e);
+        }
+    }, []);
+
+    // Load user spaces from localStorage
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(USER_SPACES_STORAGE_KEY);
+            if (saved) {
+                const spaces = JSON.parse(saved) as UserSpace[];
+                // Sort by last used (most recent first)
+                spaces.sort((a, b) => b.lastUsed - a.lastUsed);
+                setUserSpaces(spaces);
+            }
+        } catch (e) {
+            console.error('Failed to load user spaces:', e);
+        }
+    }, []);
+
+    // Track space usage when mode changes
+    useEffect(() => {
+        if (activeMode && activeMode !== 'source') {
+            try {
+                trackSpaceUsage(activeMode, activeWorkspaceId);
+            } catch (error) {
+                console.error('Error tracking space usage:', error);
+                // Don't throw - this is non-critical
+            }
+        }
+    }, [activeMode, activeWorkspaceId, trackSpaceUsage]);
+
+    // Open a space (switch to that mode and optionally load workspace)
+    const openSpace = (space: UserSpace) => {
+        setActiveMode(space.mode);
+        setShowUserSpaces(false);
+        
+        // If space has a linked workspace, open it
+        if (space.workspaceId) {
+            const workspace = savedWorkspaces.find(ws => ws.id === space.workspaceId);
+            if (workspace) {
+                openWorkspace(workspace);
+            }
+        }
+        
+        // Update last used
+        trackSpaceUsage(space.mode, space.workspaceId);
+    };
+
+    // Delete a space
+    const deleteSpace = (spaceId: string) => {
+        const updatedSpaces = userSpaces.filter(space => space.id !== spaceId);
+        setUserSpaces(updatedSpaces);
+        localStorage.setItem(USER_SPACES_STORAGE_KEY, JSON.stringify(updatedSpaces));
+    };
+
+    // Filter spaces by search query
+    const filteredSpaces = userSpaces.filter(space => 
+        space.name.toLowerCase().includes(spaceSearchQuery.toLowerCase()) ||
+        space.description.toLowerCase().includes(spaceSearchQuery.toLowerCase()) ||
+        space.mode.toLowerCase().includes(spaceSearchQuery.toLowerCase())
+    );
 
     // Create new workspace (reset state and trigger file upload)
     const createNewWorkspace = () => {
@@ -2193,7 +2343,21 @@ Respond in JSON format only:
 
     const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (!file) return;
+        if (!file) {
+            console.warn('No file selected');
+            return;
+        }
+
+        // Validate file
+        if (file.size === 0) {
+            alert('The selected file is empty. Please choose a different file.');
+            return;
+        }
+
+        if (file.size > 100 * 1024 * 1024) { // 100MB limit
+            alert('File is too large. Please choose a file smaller than 100MB.');
+            return;
+        }
 
         // Capture file name for use in async callbacks
         const fileName = file.name;
@@ -2264,20 +2428,39 @@ Respond in JSON format only:
             console.log('🚀 Starting streaming...');
 
             // Stream content from Gemini using callback pattern
-            const analysis = await streamAnalyzeDocumentForImmersive(
-                text,
-                (currentStreamedText, isComplete) => {
-                    // Use flushSync to force immediate DOM update for streaming effect
-                    flushSync(() => {
-                        setStreamedText(currentStreamedText);
-                    });
-                    if (isComplete) {
-                        flushSync(() => {
-                            setShowCursor(false);
-                        });
+            let analysis;
+            try {
+                analysis = await streamAnalyzeDocumentForImmersive(
+                    text,
+                    (currentStreamedText, isComplete) => {
+                        try {
+                            // Use flushSync to force immediate DOM update for streaming effect
+                            flushSync(() => {
+                                setStreamedText(currentStreamedText);
+                            });
+                            if (isComplete) {
+                                flushSync(() => {
+                                    setShowCursor(false);
+                                });
+                            }
+                        } catch (flushError) {
+                            console.error('Error in flushSync during streaming:', flushError);
+                            // Fallback to regular state update if flushSync fails
+                            setStreamedText(currentStreamedText);
+                            if (isComplete) {
+                                setShowCursor(false);
+                            }
+                        }
                     }
-                }
-            );
+                );
+            } catch (streamError) {
+                console.error('Error during streaming:', streamError);
+                throw new Error(`Failed to stream document analysis: ${streamError instanceof Error ? streamError.message : String(streamError)}`);
+            }
+
+            if (!analysis || !analysis.sections || analysis.sections.length === 0) {
+                throw new Error('No content sections generated from document analysis');
+            }
 
             console.log('✅ Streaming complete, got analysis:', analysis?.sections?.length, 'sections');
 
@@ -2444,15 +2627,32 @@ Respond in JSON format only:
                 await saveWorkspaceWithContent(analysis, fileName, text);
             }).catch(e => {
                 console.error('Unexpected error in background tasks:', e);
+                const errorMessage = e instanceof Error ? e.message : String(e);
+                console.error('Background task error details:', {
+                    message: errorMessage,
+                    stack: e instanceof Error ? e.stack : undefined
+                });
             });
 
         } catch (error) {
             console.error('Error processing file:', error);
-            alert('Failed to process document. Please try again.');
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : undefined;
+            console.error('Error details:', {
+                message: errorMessage,
+                stack: errorStack,
+                fileName: fileName,
+                fileType: file?.type,
+                fileSize: file?.size
+            });
+            alert(`Failed to process document: ${errorMessage || 'Unknown error'}. Please try again.`);
             setIsLoading(false);
+            setIsStreaming(false);
+            setShowCursor(false);
             setLoadingMessage('');
             setProcessingStage('idle');
             setUploadedFileName('');
+            setTerminalSubSteps([]);
         } finally {
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
@@ -4621,16 +4821,43 @@ sys.stderr = StringIO()
                                 </div>
                             ) : (
                                 <>
-                                    {/* Section Header */}
+                                    {/* Section Header with Tabs */}
                                     <div className="flex items-center justify-between mb-6">
-                                        <h2 className="text-base font-medium text-[#e8eaed]">My notebooks</h2>
+                                        <div className="flex items-center gap-4">
+                                            <h2 className="text-base font-medium text-[#e8eaed]">
+                                                {showUserSpaces ? 'My Spaces' : 'My notebooks'}
+                                            </h2>
+                                            {/* Tabs */}
+                                            <div className="flex items-center gap-2 border border-[#3c4043] rounded-lg p-1 bg-[#202124]">
+                                                <button
+                                                    onClick={() => setShowUserSpaces(false)}
+                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                                        !showUserSpaces
+                                                            ? 'bg-[#8ab4f8] text-[#202124]'
+                                                            : 'text-[#9aa0a6] hover:text-white'
+                                                    }`}
+                                                >
+                                                    Notebooks
+                                                </button>
+                                                <button
+                                                    onClick={() => setShowUserSpaces(true)}
+                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                                        showUserSpaces
+                                                            ? 'bg-[#8ab4f8] text-[#202124]'
+                                                            : 'text-[#9aa0a6] hover:text-white'
+                                                    }`}
+                                                >
+                                                    Spaces
+                                                </button>
+                                            </div>
+                                        </div>
                                         {/* Search */}
                                         <div className="relative">
                                             <input
                                                 type="text"
-                                                value={workspaceSearchQuery}
-                                                onChange={(e) => setWorkspaceSearchQuery(e.target.value)}
-                                                placeholder="Search notebooks..."
+                                                value={showUserSpaces ? spaceSearchQuery : workspaceSearchQuery}
+                                                onChange={(e) => showUserSpaces ? setSpaceSearchQuery(e.target.value) : setWorkspaceSearchQuery(e.target.value)}
+                                                placeholder={showUserSpaces ? "Search spaces..." : "Search notebooks..."}
                                                 className="w-64 px-4 py-2 pl-10 bg-[#202124] border border-[#3c4043] rounded-full text-sm text-white placeholder-[#9aa0a6] focus:outline-none focus:border-[#8ab4f8] transition-all"
                                             />
                                             <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9aa0a6]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4639,15 +4866,110 @@ sys.stderr = StringIO()
                                         </div>
                                     </div>
 
-                                    {filteredWorkspaces.length === 0 && workspaceSearchQuery ? (
-                                        /* No Search Results */
-                                        <div className="flex flex-col items-center justify-center h-64">
-                                            <span className="text-4xl mb-4">🔍</span>
-                                            <p className="text-[#9aa0a6]">No notebooks found matching "{workspaceSearchQuery}"</p>
-                                        </div>
+                                    {/* Show Spaces View */}
+                                    {showUserSpaces ? (
+                                        filteredSpaces.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center h-64">
+                                                <span className="text-4xl mb-4">🚀</span>
+                                                <p className="text-[#9aa0a6]">
+                                                    {spaceSearchQuery 
+                                                        ? `No spaces found matching "${spaceSearchQuery}"`
+                                                        : 'No spaces yet. Start using different learning modes to see them here!'}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+                                                {filteredSpaces.map((space, index) => {
+                                                    // Different gradient colors for each card (similar to Hugging Face)
+                                                    const gradients = [
+                                                        'from-[#f28b82] to-[#fdd663]', // Red to Yellow
+                                                        'from-[#8ab4f8] to-[#c58af9]', // Blue to Purple
+                                                        'from-[#81c995] to-[#34a853]', // Green
+                                                        'from-[#fdd663] to-[#fbbc04]', // Yellow
+                                                        'from-[#c58af9] to-[#f28b82]', // Purple to Red
+                                                        'from-[#78d9ec] to-[#8ab4f8]', // Cyan to Blue
+                                                    ];
+                                                    const gradient = gradients[index % gradients.length];
+                                                    const modeInfo = learningModes.find(m => m.id === space.mode);
+
+                                                    return (
+                                                        <div
+                                                            key={space.id}
+                                                            className="group relative h-[220px] rounded-2xl bg-[#202124] border border-[#3c4043] hover:border-[#5f6368] hover:shadow-xl hover:shadow-black/20 transition-all cursor-pointer overflow-hidden"
+                                                            onClick={() => openSpace(space)}
+                                                        >
+                                                            {/* Gradient Header - Takes up ~60% of card */}
+                                                            <div className={`h-[130px] bg-gradient-to-br ${gradient} relative`}>
+                                                                {/* Decorative Pattern */}
+                                                                <div className="absolute inset-0 opacity-20">
+                                                                    <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                                        <circle cx="80" cy="20" r="35" fill="white" opacity="0.3" />
+                                                                        <circle cx="20" cy="80" r="25" fill="white" opacity="0.2" />
+                                                                    </svg>
+                                                                </div>
+                                                                {/* Large Emoji */}
+                                                                <div className="absolute bottom-3 left-4">
+                                                                    <span className="text-5xl drop-shadow-lg">{space.emoji}</span>
+                                                                </div>
+                                                                {/* Status Badge */}
+                                                                <div className="absolute top-2 right-2 flex items-center gap-1">
+                                                                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                                                                    <span className="text-xs text-white/90 font-medium">Used</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Content */}
+                                                            <div className="p-4">
+                                                                <h3 className="font-medium text-white text-sm truncate mb-1">{space.name}</h3>
+                                                                <p className="text-xs text-[#9aa0a6] line-clamp-1 mb-2">{space.description}</p>
+
+                                                                {/* Footer */}
+                                                                <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-xs text-[#5f6368]">
+                                                                            {new Date(space.lastUsed).toLocaleDateString('en-US', {
+                                                                                month: 'short',
+                                                                                day: 'numeric'
+                                                                            })}
+                                                                        </span>
+                                                                        <span className="text-[10px] text-[#5f6368]">
+                                                                            {space.usageCount} {space.usageCount === 1 ? 'use' : 'uses'}
+                                                                        </span>
+                                                                    </div>
+
+                                                                    {/* Menu Button */}
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (confirm('Delete this space?')) {
+                                                                                deleteSpace(space.id);
+                                                                            }
+                                                                        }}
+                                                                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white transition-all"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                        </svg>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )
                                     ) : (
-                                        /* Notebooks Grid - Full Width */
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+                                        /* Original Notebooks Grid */
+                                        <>
+                                            {filteredWorkspaces.length === 0 && workspaceSearchQuery ? (
+                                                /* No Search Results */
+                                                <div className="flex flex-col items-center justify-center h-64">
+                                                    <span className="text-4xl mb-4">🔍</span>
+                                                    <p className="text-[#9aa0a6]">No notebooks found matching "{workspaceSearchQuery}"</p>
+                                                </div>
+                                            ) : (
+                                                /* Notebooks Grid - Full Width */
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
                                             {/* Create New Card */}
                                             <button
                                                 onClick={() => fileInputRef.current?.click()}
@@ -4734,8 +5056,10 @@ sys.stderr = StringIO()
                                                         </div>
                                                     </div>
                                                 );
-                                            })}
-                                        </div>
+                                                })}
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </>
                             )}

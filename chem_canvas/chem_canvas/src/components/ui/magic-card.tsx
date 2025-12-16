@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect } from "react"
 import { motion, useMotionTemplate, useMotionValue } from "framer-motion"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface MagicCardProps {
   children?: React.ReactNode
@@ -87,7 +87,7 @@ export function MagicCard({
           `,
         }}
       />
-      <div className="absolute inset-px rounded-[inherit] bg-slate-900" />
+      <div className="absolute inset-px rounded-[inherit] bg-background" />
       <motion.div
         className="pointer-events-none absolute inset-px rounded-[inherit] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
         style={{

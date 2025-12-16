@@ -30,6 +30,8 @@ import ReflectionTimeline from './ReflectionTimeline';
 import HelpHub from './HelpHub';
 import ArMoleculePreview from './ArMoleculePreview';
 import FlashCardDeck from './FlashCardDeck';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { MagicCard } from './ui/magic-card';
 import { db } from '../firebase/config';
 import { captureError } from '../utils/errorLogger';
 import { generateFlashcardDeck } from '../services/geminiService';
@@ -1951,33 +1953,9 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
   };
   return (
     <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
-      {documentName && (
-        <div className="mb-4 rounded-xl border border-blue-700/40 bg-blue-900/30 px-4 py-3 text-sm text-blue-200">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <FileText size={16} className="text-blue-300" />
-              <span>
-                Reference: <strong>{documentName}</strong>
-              </span>
-            </div>
-            {onOpenDocument && (
-              <button
-                onClick={onOpenDocument}
-                className="rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-blue-500"
-              >
-                Open
-              </button>
-            )}
-          </div>
-          <p className="mt-2 text-xs text-blue-100/80">
-            Coach outputs will include citations when document context is used.
-          </p>
-        </div>
-      )}
-
             {/* Left Sidebar - Momentum & Stats */}
             <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
-                <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                <div className="flex-1 overflow-y-auto flex flex-col p-6 md:p-8 gap-6 md:gap-8">
                     {/* Momentum Score Display */}
                     <div>
           <div
@@ -2100,18 +2078,47 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
 
             {/* Right Panel - Main Content */}
             <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
-                <div className="flex-1 w-full h-full min-h-0 overflow-auto p-6">
-                    <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">SRL Coach Phases</p>
-                <p className="text-sm text-gray-300">Choose your focus lane and launch a fresh interaction.</p>
+                <div className="flex-1 w-full h-full min-h-0 overflow-auto p-6 md:p-8 lg:p-10">
+                    <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto">
+            {documentName && (
+              <MagicCard className="relative overflow-hidden border border-blue-200 bg-blue-50/50 backdrop-blur-sm rounded-xl" gradientFrom="#3b82f6" gradientTo="#8b5cf6">
+                <CardContent className="p-4 md:p-6 relative z-10">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-blue-100">
+                        <FileText size={18} className="text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          Reference: <span className="text-blue-700">{documentName}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Coach outputs will include citations when document context is used.
+                        </p>
+                      </div>
+                    </div>
+                    {onOpenDocument && (
+                      <button
+                        onClick={onOpenDocument}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-blue-700 hover:shadow-md"
+                      >
+                        Open
+                      </button>
+                    )}
+                  </div>
+                </CardContent>
+              </MagicCard>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-4 md:gap-6">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">SRL Coach Phases</p>
+                <p className="text-sm text-slate-600">Choose your focus lane and launch a fresh interaction.</p>
               </div>
-              <div className="text-xs text-blue-200 bg-blue-900/40 px-3 py-1 rounded-full border border-blue-700/40 uppercase tracking-wide">
+              <div className="text-xs text-blue-700 bg-blue-100 px-4 py-2 rounded-full border border-blue-200 uppercase tracking-wide font-semibold shadow-sm">
                 Current vibe: {SRL_PHASES[activePhase].label}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {(Object.keys(SRL_PHASES) as SrlPhase[]).map((phase) => {
                 const meta = SRL_PHASES[phase];
                 const Icon = meta.icon;
@@ -2121,44 +2128,51 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                     key={phase}
                     type="button"
                     onClick={() => setActivePhase(phase)}
-                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                    className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-semibold transition-all ${
                       isActivePhase
-                        ? 'border-blue-500 bg-blue-600/30 text-blue-100 shadow'
-                        : 'border-blue-500/40 bg-blue-900/20 text-blue-200 hover:border-blue-500/60 hover:text-blue-100'
+                        ? 'border-blue-600 bg-blue-600 text-white shadow-md scale-105'
+                        : 'border-blue-200 bg-blue-50 text-slate-700 hover:border-blue-400 hover:bg-blue-100 hover:shadow-sm'
                     }`}
                   >
-                    <Icon size={16} className={isActivePhase ? 'text-blue-100' : meta.accent} />
+                    <Icon size={16} className={isActivePhase ? 'text-white' : meta.accent} />
                     <span>{meta.label}</span>
                   </button>
                 );
               })}
             </div>
-            <div className="rounded-lg border border-blue-700/30 bg-blue-900/20 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">Hype Tip</p>
-              <p className="mt-1 text-sm text-blue-100">{hypeTip}</p>
-            </div>
-            <div className="space-y-4">
+            <MagicCard className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50/50 p-4 md:p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-blue-100">
+                  <Sparkle size={16} className="text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-2">Hype Tip</p>
+                  <p className="text-sm md:text-base text-slate-700 leading-relaxed">{hypeTip}</p>
+                </div>
+              </div>
+            </MagicCard>
+            <div className="space-y-6 md:space-y-8">
               {(() => {
                 switch (activePhase) {
                   case 'goal':
                     return (
-                      <div className="space-y-4">
-                        <div className="grid md:grid-cols-2 gap-3">
-                          <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                      <div className="space-y-6 md:space-y-8">
+                        <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+                          <label className="flex flex-col gap-2 text-xs text-slate-600 uppercase tracking-wide font-semibold">
                             Focus Area
                             <input
                               value={goalTopic}
                               onChange={(event) => setGoalTopic(event.target.value)}
                               placeholder="e.g., Alkane reaction mechanisms or NMR peak assignments"
-                              className="mt-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#3b5b8a] focus:outline-none focus:ring-2 focus:ring-[#3b5b8a]/40"
+                              className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                             />
                           </label>
-                          <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                          <label className="flex flex-col gap-2 text-xs text-slate-600 uppercase tracking-wide font-semibold">
                             Timeframe
                             <select
                               value={goalTimeframe}
                               onChange={(event) => setGoalTimeframe(event.target.value)}
-                              className="mt-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#3b5b8a] focus:outline-none focus:ring-2 focus:ring-[#3b5b8a]/40"
+                              className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                             >
                               <option value="today">Today</option>
                               <option value="this week">This week</option>
@@ -2167,11 +2181,11 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                             </select>
                           </label>
                         </div>
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-300">
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                             ChemCanvas Tools to Highlight
                           </p>
-                          <div className="mt-2 flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-3">
                             {SRL_TOOL_OPTIONS.map((option) => {
                               const isActive = preferredTools.includes(option.id);
                               return (
@@ -2181,8 +2195,8 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                                   onClick={() => togglePreferredTool(option.id)}
                                   className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                                     isActive
-                                      ? 'border-blue-500 bg-blue-600/30 text-blue-100'
-                                      : 'border-gray-700 bg-gray-900/60 text-gray-300 hover:border-blue-500/40 hover:text-blue-100'
+                                      ? 'border-blue-600 bg-blue-600 text-white'
+                                      : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50'
                                   }`}
                                 >
                                   {option.label}
@@ -2195,9 +2209,9 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           type="button"
                           onClick={handleGenerateGoal}
                           disabled={isLoading || !goalTopic.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-6 py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-[#34507c] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-md"
                         >
-                          <Target size={16} />
+                          <Target size={18} />
                           Draft SMART Goal with AI
                         </button>
                         <PriorKnowledgePanel
@@ -2225,16 +2239,16 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           <div className="rounded-2xl border border-amber-500/30 bg-amber-900/15 p-4 space-y-4">
                             <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">Baseline Assessment</p>
-                                <h4 className="text-sm font-semibold text-amber-100">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Baseline Assessment</p>
+                                <h4 className="text-sm font-semibold text-slate-800">
                                   {ASSESSMENT_MODE_LABEL[assessmentState.mode]}
                                 </h4>
                               </div>
-                              <span className="text-[11px] uppercase tracking-wide text-amber-200/70">
+                              <span className="text-[11px] uppercase tracking-wide text-amber-600">
                                 Question {assessmentState.questionIndex + 1} of {currentAssessmentQuestions.length}
                               </span>
                             </div>
-                            <div className="text-sm text-amber-50">
+                            <div className="text-sm text-slate-700">
                               {currentAssessmentQuestion.prompt}
                             </div>
                             <div className="grid gap-2">
@@ -2247,24 +2261,24 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                                     onClick={() => handleAssessmentOptionSelect(index)}
                                     className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${
                                       isSelected
-                                        ? 'border-amber-400 bg-amber-500/20 text-amber-100 shadow-sm'
-                                        : 'border-amber-500/20 bg-transparent text-amber-100/80 hover:border-amber-400/40 hover:bg-amber-500/10'
+                                        ? 'border-amber-500 bg-amber-100 text-amber-900 shadow-sm'
+                                        : 'border-amber-200 bg-white text-slate-700 hover:border-amber-400 hover:bg-amber-50'
                                     }`}
                                   >
-                                    <span className="mt-[3px] inline-flex h-2.5 w-2.5 rounded-full bg-amber-300" />
+                                    <span className="mt-[3px] inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
                                     <span>{option}</span>
                                   </button>
                                 );
                               })}
                             </div>
                             {assessmentError ? (
-                              <p className="text-xs text-rose-300">{assessmentError}</p>
+                              <p className="text-xs text-rose-600">{assessmentError}</p>
                             ) : null}
                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                               <button
                                 type="button"
                                 onClick={handleAssessmentCancel}
-                                className="inline-flex items-center gap-2 rounded-lg border border-amber-400/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-100 transition hover:border-amber-300 hover:bg-amber-400/10"
+                                className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 transition hover:border-amber-400 hover:bg-amber-50"
                               >
                                 Cancel
                               </button>
@@ -2281,17 +2295,17 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           </div>
                         ) : null}
                         {assessmentFeedback && assessmentState?.completed && assessmentReview ? (
-                          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">Assessment Summary</p>
-                                <h4 className="text-sm font-semibold text-amber-100">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Assessment Summary</p>
+                                <h4 className="text-sm font-semibold text-slate-800">
                                   {ASSESSMENT_MODE_LABEL[assessmentState.mode]}
                                 </h4>
                               </div>
                               <div className="text-right">
-                                <p className="text-2xl font-bold text-amber-50">{assessmentFeedback.score}%</p>
-                                <p className="text-[11px] uppercase tracking-wide text-amber-200/80">
+                                <p className="text-2xl font-bold text-amber-700">{assessmentFeedback.score}%</p>
+                                <p className="text-[11px] uppercase tracking-wide text-amber-600">
                                   {assessmentFeedback.correct} / {assessmentFeedback.total} correct
                                 </p>
                               </div>
@@ -2300,22 +2314,22 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                               {assessmentReview.map((item) => (
                                 <div
                                   key={item.id}
-                                  className="rounded-xl border border-amber-400/30 bg-amber-900/15 p-3 text-xs text-amber-100"
+                                  className="rounded-xl border border-amber-200 bg-white p-3 text-xs text-slate-700"
                                 >
-                                  <p className="font-semibold text-amber-50">{item.prompt}</p>
+                                  <p className="font-semibold text-slate-900">{item.prompt}</p>
                                   <p
                                     className={`mt-2 font-semibold ${
-                                      item.isCorrect ? 'text-emerald-200' : 'text-rose-200'
+                                      item.isCorrect ? 'text-emerald-700' : 'text-rose-700'
                                     }`}
                                   >
                                     {item.isCorrect ? 'Correct' : 'Needs Review'}
                                   </p>
-                                  <p className="text-amber-100/80">You chose: {item.chosenOption}</p>
+                                  <p className="text-slate-600">You chose: {item.chosenOption}</p>
                                   {!item.isCorrect ? (
-                                    <p className="text-amber-100/80">Correct answer: {item.correctOption}</p>
+                                    <p className="text-slate-600">Correct answer: {item.correctOption}</p>
                                   ) : null}
                                   {item.explanation ? (
-                                    <p className="mt-1 text-amber-100/60">Why: {item.explanation}</p>
+                                    <p className="mt-1 text-slate-500">Why: {item.explanation}</p>
                                   ) : null}
                                 </div>
                               ))}
@@ -2323,15 +2337,15 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           </div>
                         ) : null}
                         {assessmentGoalHint ? (
-                          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-                            <p className="font-semibold uppercase tracking-wide text-amber-200">Goal Guidance</p>
-                            <p className="mt-1 text-amber-100/80">{assessmentGoalHint}</p>
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                            <p className="font-semibold uppercase tracking-wide text-amber-700">Goal Guidance</p>
+                            <p className="mt-1 text-amber-800">{assessmentGoalHint}</p>
                           </div>
                         ) : null}
                         {goalBuddySummary ? (
-                          <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-100">
-                            <p className="font-semibold uppercase tracking-wide text-blue-200">Goal Buddy Insight</p>
-                            <p className="mt-1 text-blue-100/80">{goalBuddySummary}</p>
+                          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                            <p className="font-semibold uppercase tracking-wide text-blue-700">Goal Buddy Insight</p>
+                            <p className="mt-1 text-blue-800">{goalBuddySummary}</p>
                           </div>
                         ) : null}
                       </div>
@@ -2431,7 +2445,7 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                           />
                         </label>
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-300">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                             Confidence Rating
                           </p>
                           <div className="mt-2 flex gap-2">
@@ -2442,8 +2456,8 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                                 onClick={() => setMonitorRating(rating)}
                                 className={`h-9 w-9 rounded-lg border text-xs font-semibold transition ${
                                   monitorRating === rating
-                                    ? 'border-sky-500 bg-sky-600/40 text-sky-100'
-                                    : 'border-gray-700 bg-gray-900/60 text-gray-400 hover:border-sky-500/40 hover:text-sky-100'
+                                    ? 'border-sky-600 bg-sky-600 text-white'
+                                    : 'border-slate-300 bg-white text-slate-700 hover:border-sky-400 hover:bg-sky-50'
                                 }`}
                               >
                                 {rating}
@@ -2594,9 +2608,9 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
           </div>
 
           {coachLog.length > 0 && (
-            <div className="bg-gray-800/70 border border-indigo-700/40 rounded-xl p-4 md:p-5">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-300">
-                <Clock size={14} className="text-indigo-300" />
+            <div className="bg-slate-50 border border-indigo-200 rounded-xl p-4 md:p-5">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                <Clock size={14} className="text-indigo-600" />
                 Coach Activity Log
               </div>
               <div className="mt-3 space-y-3">
@@ -2606,15 +2620,15 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                   return (
                     <div
                       key={entry.id}
-                      className="flex items-start gap-3 rounded-lg border border-indigo-700/30 bg-indigo-900/10 p-3 text-xs text-gray-200"
+                      className="flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-slate-700"
                     >
                       <Icon size={16} className={`${meta.accent} mt-[2px]`} />
                       <div className="flex-1">
                         <div className="flex items-center justify-between gap-3">
                           <span className="font-semibold">{meta.label}</span>
-                          <span className="text-[11px] text-gray-400">{formatCoachTimestamp(entry.timestamp)}</span>
+                          <span className="text-[11px] text-slate-500">{formatCoachTimestamp(entry.timestamp)}</span>
                         </div>
-                        <p className="text-[11px] text-gray-300">{entry.note}</p>
+                        <p className="text-[11px] text-slate-600">{entry.note}</p>
                       </div>
                     </div>
                   );
@@ -2716,28 +2730,28 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
             )}
           </div>
 
-          <div className="rounded-2xl border border-blue-500/40 bg-blue-900/15 p-4 space-y-3">
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">AR Molecule Preview</p>
-                <h4 className="text-sm font-semibold text-blue-100">Bring MolView into your space</h4>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">AR Molecule Preview</p>
+                <h4 className="text-sm font-semibold text-slate-800">Bring MolView into your space</h4>
               </div>
               <button
                 type="button"
                 onClick={() => setIsArPreviewActive((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded-lg border border-blue-400/60 bg-blue-500/20 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-50 transition hover:bg-blue-500/30"
+                className="inline-flex items-center gap-1 rounded-lg border border-blue-400 bg-blue-600 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-blue-700"
               >
                 {isArPreviewActive ? 'Close' : 'Launch'}
               </button>
             </div>
-            <p className="text-xs text-blue-100">
+            <p className="text-xs text-slate-700">
               Use your mobile device to project molecules onto your desk for deeper spatial reasoning while you study.
             </p>
             {isArPreviewActive ? <ArMoleculePreview focusTopic={goalTopic || planFocus} /> : null}
           </div>
 
-          <div className="rounded-2xl border border-amber-500/40 bg-amber-900/10 p-4 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-200">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
               <Award size={16} />
               Badges
             </div>
@@ -2747,15 +2761,15 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
                   key={badge.id}
                   className={`rounded-lg border px-3 py-2 text-xs transition ${
                     unlockedBadgeIds.includes(badge.id)
-                      ? 'border-amber-400 bg-amber-500/20 text-amber-50 shadow-sm'
-                      : 'border-amber-500/20 bg-transparent text-amber-200/60'
+                      ? 'border-amber-400 bg-amber-100 text-amber-900 shadow-sm'
+                      : 'border-amber-200 bg-white text-amber-700'
                   }`}
                 >
                   <p className="font-semibold flex items-center gap-1">
                     {badge.label}
-                    {unlockedBadgeIds.includes(badge.id) && <Sparkle size={12} className="text-amber-100" />}
+                    {unlockedBadgeIds.includes(badge.id) && <Sparkle size={12} className="text-amber-600" />}
                   </p>
-                  <p className="mt-1 text-[11px] text-amber-100/80">{badge.description}</p>
+                  <p className="mt-1 text-[11px] text-amber-800">{badge.description}</p>
                 </div>
               ))}
             </div>

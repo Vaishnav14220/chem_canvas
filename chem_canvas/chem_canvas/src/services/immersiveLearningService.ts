@@ -370,7 +370,7 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     REMEMBER: Your response must be based STRICTLY on the text above. Do not add any information, examples, or explanations that are not present in the provided text. If the document is about a specific topic (like rotary encoders, sensors, etc.), focus ONLY on what is written about that topic in the provided text.
   `;
 
-  const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
+  const response = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
   const json = extractJsonBlock(response);
 
   const fallbackContent: ImmersiveContent = {
@@ -658,7 +658,7 @@ export const streamAnalyzeDocumentForImmersive = async (
         console.log(`📦 Chunk received: ${chunk.length} chars, total: ${accumulatedText.length}`);
         onStreamUpdate(accumulatedText, false);
       },
-      { model: 'gemini-2.5-flash', timeout: 180000 } // Extended timeout for long content
+      { model: 'gemini-3-pro-preview', timeout: 180000 } // Extended timeout for long content
     );
     console.log('🏁 Stream finished, total length:', finalText.length);
     // Signal completion with the final text
@@ -715,7 +715,7 @@ export const streamAnalyzeDocumentForImmersive = async (
 
     // Fallback to non-streaming if streaming fails AND we don't have enough partial content
     console.log('Not enough partial content to recover, trying non-streaming fallback...');
-    const fallbackResponse = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
+    const fallbackResponse = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
     onStreamUpdate(fallbackResponse, true);
 
     const json = extractJsonBlock(fallbackResponse);
@@ -1022,7 +1022,7 @@ export const generateAudioScript = async (text: string): Promise<string> => {
     ${text.slice(0, 10000)}
   `;
 
-  return await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
+  return await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
 };
 
 export const generateMindMapData = async (text: string): Promise<MindMapNode> => {
@@ -1091,7 +1091,7 @@ export const generateReactFlowData = async (text: string): Promise<ReactFlowData
     ${text.slice(0, 8000)}
   `;
 
-  const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
+  const response = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
   const json = extractJsonBlock(response);
 
   const fallback: ReactFlowData = {
@@ -1136,7 +1136,7 @@ export const extendMindMapNode = async (nodeLabel: string, context: string = '')
     - Focus on educational value and logical hierarchy.
   `;
 
-  const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
+  const response = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
   const json = extractJsonBlock(response);
 
   const fallback: ReactFlowData = {
@@ -1519,7 +1519,7 @@ export const generateVideoSummary = async (
   `;
 
   try {
-    const response = await generateTextContent(prompt, { model: 'gemini-2.5-flash' });
+    const response = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
     const json = extractJsonBlock(response);
 
     const fallback: VideoSummary = {
@@ -1792,7 +1792,7 @@ export const generatePodcastScript = async (
   `;
 
   try {
-    const response = await generateTextContent(prompt, { maxOutputTokens: 2000, model: 'gemini-2.5-flash' });
+    const response = await generateTextContent(prompt, { maxOutputTokens: 2000, model: 'gemini-3-pro-preview' });
     return response;
   } catch (error) {
     console.error('Failed to generate podcast script:', error);
@@ -2008,7 +2008,7 @@ Create a blueprint that a developer could use to build a complete educational si
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2103,8 +2103,8 @@ Generate the complete HTML now:`;
     if (!response.ok) {
       const errorText = await response.text();
       console.error('HTML generation error:', errorText);
-      // Fallback to gemini-2.5-flash if Gemini 3 fails
-      console.log('Falling back to gemini-2.5-flash...');
+      // Fallback to gemini-3-pro-preview if primary call fails
+      console.log('Falling back to gemini-3-pro-preview...');
       return await generateSimulationHTMLFallback(blueprint, apiKey);
     }
 
@@ -2190,13 +2190,13 @@ const cleanHtmlResponse = (html: string): string => {
 };
 
 /**
- * Fallback HTML generation using gemini-2.5-flash
+ * Fallback HTML generation using gemini-3-pro-preview
  */
 const generateSimulationHTMLFallback = async (
   blueprint: SimulationBlueprint,
   apiKey: string
 ): Promise<string> => {
-  console.log('🔄 Using fallback generation with gemini-2.5-flash...');
+  console.log('🔄 Using fallback generation with gemini-3-pro-preview...');
 
   const prompt = `Generate a simple but working HTML simulation for: "${blueprint.educational_content.title}"
 
@@ -2209,7 +2209,7 @@ Requirements:
 Output ONLY the HTML code starting with <!DOCTYPE html>:`;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

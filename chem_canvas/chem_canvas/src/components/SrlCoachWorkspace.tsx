@@ -45,7 +45,7 @@ const SrlCoachWorkspace: React.FC<SrlCoachWorkspaceProps> = ({
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto px-4 py-4 md:px-6 md:py-6 text-slate-900">
+      <div className="flex-1 overflow-hidden">
         <SrlCoach
           onSendMessage={onSendMessage}
           interactions={interactions}

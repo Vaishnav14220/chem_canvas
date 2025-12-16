@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { extractTextFromPdf } from './pdfTextExtractor';
+import { generateVisionContent } from '../services/geminiService';
 
 const TEXT_EXTENSIONS = new Set([
   'txt',
@@ -18,6 +19,7 @@ const LEGACY_WORD_EXTENSIONS = new Set(['doc', 'dot']);
 const SPREADSHEET_EXTENSIONS = new Set(['xlsx', 'xlsm', 'xltx', 'xltm', 'xls', 'xlsb', 'ods', 'numbers']);
 const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg']);
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v']);
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
 
 const getExtension = (file: File): string => {
   const match = /\.([^.]+)$/.exec(file.name.toLowerCase());
@@ -53,6 +55,7 @@ export const isSpreadsheetDocument = (file: File) =>
 
 export const isAudioFile = (file: File) => file.type.startsWith('audio/') || AUDIO_EXTENSIONS.has(getExtension(file));
 export const isVideoFile = (file: File) => file.type.startsWith('video/') || VIDEO_EXTENSIONS.has(getExtension(file));
+export const isImageFile = (file: File) => file.type.startsWith('image/') || IMAGE_EXTENSIONS.has(getExtension(file));
 
 export const isSupportedTextDocument = (file: File) =>
   isPlainTextDocument(file) || isWordDocument(file) || isLegacyWordDocument(file) || isSpreadsheetDocument(file);
@@ -141,6 +144,44 @@ export const extractTextFromDocument = async (file: File): Promise<ExtractedDocu
       text: `Unable to fully parse legacy Word file ${file.name}. Raw content preview:\n${binary.slice(0, 2000)}`,
       format: 'word-legacy'
     };
+  }
+
+  if (isImageFile(file)) {
+    // Use Gemini 3 Pro Preview to extract text and content from images
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const mimeType = file.type || 'image/png';
+      
+      const prompt = `Extract all text content and educational information from this image.
+      Include:
+      - All visible text (headings, paragraphs, captions, labels, annotations)
+      - Text from diagrams, charts, graphs, and tables
+      - Mathematical formulas and equations (in LaTeX format if possible)
+      - Descriptions of visual elements (diagrams, illustrations, photos)
+      - Any educational content, concepts, or explanations visible in the image
+      
+      Return the extracted content in a clear, structured format preserving the original organization and hierarchy.
+      If this is an educational document or diagram, provide detailed descriptions of visual elements.`;
+
+      const extractedText = await generateVisionContent(
+        prompt,
+        base64,
+        mimeType,
+        { model: 'gemini-3-pro-preview' }
+      );
+
+      return {
+        text: extractedText || `[Image file: ${file.name}. Text extraction completed.]`,
+        format: 'image'
+      };
+    } catch (error) {
+      console.error('Failed to extract text from image with Gemini:', error);
+      return {
+        text: `[Image file: ${file.name}. Unable to extract text content. Please ensure the image contains readable text or educational content.]`,
+        format: 'image'
+      };
+    }
   }
 
   throw new Error(`Unsupported document type: ${getExtension(file) || file.type || 'unknown'}`);
