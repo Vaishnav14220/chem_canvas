@@ -23,6 +23,7 @@ export interface GoogleUser {
 }
 
 export interface GoogleAuthState {
+  isConfigured: boolean;
   isSignedIn: boolean;
   user: GoogleUser | null;
   isLoading: boolean;
@@ -51,6 +52,7 @@ const STORAGE_KEY = 'google_auth_user';
 // ==========================================
 
 let authState: GoogleAuthState = {
+  isConfigured: false,
   isSignedIn: false,
   user: null,
   isLoading: false,
@@ -74,6 +76,7 @@ function updateAuthState(updates: Partial<GoogleAuthState>) {
 
 let tokenClient: google.accounts.oauth2.TokenClient | null = null;
 let isGisLoaded = false;
+let isGoogleConfigured = false;
 
 /**
  * Load Google Identity Services script
@@ -125,9 +128,15 @@ function initTokenClient(): Promise<void> {
     }
 
     if (!clientId) {
-      reject(new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your environment or add it to Firestore "apikey" collection.'));
+      // Treat missing Client ID as "feature disabled" rather than a hard error.
+      // This avoids noisy console errors in environments that don't use Google Auth.
+      isGoogleConfigured = false;
+      tokenClient = null;
+      resolve();
       return;
     }
+
+    isGoogleConfigured = true;
 
     try {
       tokenClient = google.accounts.oauth2.initTokenClient({
@@ -223,6 +232,7 @@ export async function initGoogleAuth(): Promise<void> {
 
     // Initialize token client
     await initTokenClient();
+    updateAuthState({ isConfigured: isGoogleConfigured });
 
     // Check for existing session
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -248,6 +258,7 @@ export async function initGoogleAuth(): Promise<void> {
     console.error('Failed to initialize Google Auth:', err);
     updateAuthState({
       isLoading: false,
+      isConfigured: false,
       error: err instanceof Error ? err.message : 'Failed to initialize'
     });
   }
@@ -257,6 +268,14 @@ export async function initGoogleAuth(): Promise<void> {
  * Sign in with Google
  */
 export function signInWithGoogle(): void {
+  if (!isGoogleConfigured) {
+    updateAuthState({
+      isLoading: false,
+      error: 'Google Client ID not configured. Set VITE_GOOGLE_CLIENT_ID or add google_client_id in Firestore collection "apikey".'
+    });
+    return;
+  }
+
   if (!tokenClient) {
     updateAuthState({ error: 'Auth not initialized. Please refresh the page.' });
     return;
@@ -373,7 +392,7 @@ export function subscribeToAuthState(listener: AuthStateListener): () => void {
  * Check if Google Auth is configured
  */
 export function isGoogleAuthConfigured(): boolean {
-  return !!GOOGLE_CLIENT_ID;
+  return isGoogleConfigured;
 }
 
 /**

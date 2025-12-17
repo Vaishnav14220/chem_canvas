@@ -1182,12 +1182,13 @@ export const generateImagenImage = async (
                              aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
                              aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' : '16:9';
 
-    // Imagen API endpoint
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+    // Imagen API endpoint - using header for API key as per documentation
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict';
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
+        'x-goog-api-key': apiKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -1207,21 +1208,97 @@ export const generateImagenImage = async (
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('Imagen API error response:', errorText);
       throw new Error(`Imagen API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('Imagen API response structure:', Object.keys(data));
     
-    // Extract the first generated image
-    if (data.predictions && data.predictions.length > 0 && data.predictions[0].bytesBase64Encoded) {
-      const imageBase64 = data.predictions[0].bytesBase64Encoded;
-      return `data:image/png;base64,${imageBase64}`;
+    // Handle different possible response structures
+    // Try predictions array first (REST API format)
+    if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
+      const prediction = data.predictions[0];
+      // Check for bytesBase64Encoded field
+      if (prediction.bytesBase64Encoded) {
+        const imageBase64 = prediction.bytesBase64Encoded;
+        return `data:image/png;base64,${imageBase64}`;
+      }
+      // Check for imageBytes field (SDK format)
+      if (prediction.imageBytes) {
+        const imageBase64 = prediction.imageBytes;
+        return `data:image/png;base64,${imageBase64}`;
+      }
+    }
+    
+    // Try generatedImages array (alternative SDK format)
+    if (data.generatedImages && Array.isArray(data.generatedImages) && data.generatedImages.length > 0) {
+      const generatedImage = data.generatedImages[0];
+      if (generatedImage.image?.imageBytes) {
+        const imageBase64 = generatedImage.image.imageBytes;
+        return `data:image/png;base64,${imageBase64}`;
+      }
+      if (generatedImage.imageBytes) {
+        const imageBase64 = generatedImage.imageBytes;
+        return `data:image/png;base64,${imageBase64}`;
+      }
     }
 
-    throw new Error('No image data in Imagen API response');
+    // Log the full response for debugging
+    console.error('Unexpected Imagen API response structure:', JSON.stringify(data, null, 2));
+    throw new Error('No image data in Imagen API response. Check console for response structure.');
   } catch (error) {
     console.error('Failed to generate image with Imagen API:', error);
     throw error;
+  }
+};
+
+/**
+ * Extracts relevant context from a document based on the user's image prompt.
+ * Uses Gemini to identify and extract the most relevant sections from the document.
+ * 
+ * @param userPrompt - The user's image generation prompt
+ * @param documentText - The full document text to search
+ * @returns Relevant document context to enhance the image prompt
+ */
+export const extractDocumentContextForImage = async (
+  userPrompt: string,
+  documentText: string
+): Promise<string> => {
+  try {
+    // Limit document text to avoid token limits (keep it reasonable)
+    const maxDocumentLength = 30000; // ~30k chars should be enough for context
+    const truncatedDocument = documentText.length > maxDocumentLength 
+      ? documentText.slice(0, maxDocumentLength) + '...'
+      : documentText;
+
+    const contextPrompt = `You are an expert at extracting relevant information from educational documents for image generation.
+
+TASK: Extract the most relevant information from the provided document that relates to the user's image generation request. Focus on:
+- Specific concepts, terms, and details mentioned in the document
+- Visual descriptions, structures, or processes described
+- Scientific or technical accuracy requirements
+- Any specific style or context mentioned
+
+User's Image Request: "${userPrompt}"
+
+Document Content:
+${truncatedDocument}
+
+Extract ONLY the relevant information from the document that would help create an accurate, educational image matching the user's request. Be concise but include all important details. If the document doesn't contain relevant information, return "No relevant context found."
+
+Return only the extracted relevant context, without additional commentary.`;
+
+    const { generateTextContent } = await import('./geminiService');
+    const context = await generateTextContent(contextPrompt, {
+      maxOutputTokens: 2000,
+      model: 'gemini-2.5-flash'
+    });
+
+    return context.trim();
+  } catch (error) {
+    console.error('Failed to extract document context:', error);
+    return '';
   }
 };
 
@@ -1231,15 +1308,24 @@ export const generateImagenImage = async (
  * 
  * @param prompt - The image prompt describing what to generate
  * @param aspectRatio - Optional aspect ratio (defaults to 16:9 for widescreen)
+ * @param documentContext - Optional document context to enhance the prompt
  * @returns Base64 data URL of the generated image
  */
 export const generateImmersiveImage = async (
   prompt: string,
-  aspectRatio: AspectRatio = AspectRatio.LANDSCAPE_16_9
+  aspectRatio: AspectRatio = AspectRatio.LANDSCAPE_16_9,
+  documentContext?: string
 ): Promise<string> => {
   try {
+    // Enhance prompt with document context if provided
+    let enhancedPrompt = prompt;
+    if (documentContext && documentContext.trim() && documentContext !== 'No relevant context found.') {
+      enhancedPrompt = `${prompt}\n\nContext from document: ${documentContext}`;
+      console.log('📄 Enhanced image prompt with document context');
+    }
+
     // Try Imagen API first (preferred for academic images)
-    return await generateImagenImage(prompt, aspectRatio, 1);
+    return await generateImagenImage(enhancedPrompt, aspectRatio, 1);
   } catch (error) {
     console.warn('Imagen API failed, falling back to Nano Banana Pro:', error);
     try {

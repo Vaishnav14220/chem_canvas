@@ -13,19 +13,19 @@ const getAvailableModel = async (): Promise<string> => {
     return cachedModelName;
   }
 
-  const models = ['gemini-2.5-flash', 'gemini-flash-latest'];
-  
+  const models = ['gemini-2.5-pro', 'gemini-2.0-pro-exp-02-05', 'gemini-2.0-flash-thinking-exp-01-21', 'gemini-2.0-flash-exp'];
+
   for (const modelName of models) {
     try {
       console.log(`Testing streaming model: ${modelName}`);
       if (!genAI) throw new Error('GenAI not initialized');
-      
+
       // Try a simple test
       const response = await genAI.models.generateContent({
         model: modelName,
         contents: [{ role: 'user', parts: [{ text: 'test' }] }],
       });
-      
+
       if (response) {
         console.log(`✅ Using streaming model: ${modelName}`);
         cachedModelName = modelName;
@@ -36,7 +36,7 @@ const getAvailableModel = async (): Promise<string> => {
       continue;
     }
   }
-  
+
   // Fallback to default if nothing works
   console.warn('⚠️ No model test succeeded, using fallback: gemini-flash-latest');
   cachedModelName = 'gemini-flash-latest';
@@ -48,7 +48,7 @@ export const initializeGeminiStreaming = async (): Promise<void> => {
   try {
     // Check if API keys are initialized in Firebase
     const keysInitialized = await checkApiKeysInitialized();
-    
+
     if (!keysInitialized) {
       console.log('Initializing API keys in Firebase...');
       await initializeApiKeys();
@@ -56,7 +56,7 @@ export const initializeGeminiStreaming = async (): Promise<void> => {
 
     // Get a random API key from Firebase
     const apiKey = await assignRandomApiKey();
-    
+
     if (!apiKey) {
       throw new Error('No API key available');
     }
@@ -85,12 +85,20 @@ export const generateStreamingContent = async (
   prompt: string,
   onChunk?: (chunk: string) => void,
   onComplete?: (fullResponse: string) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  onThought?: (thought: string) => void
 ): Promise<string> => {
   if (!genAI || !isInitialized) {
-    const error = new Error('Gemini Streaming API not initialized');
-    onError?.(error);
-    throw error;
+    try {
+      await initializeGeminiStreaming();
+    } catch (e: any) {
+      const error = new Error(
+        e?.message ||
+          'Gemini Streaming API not initialized. Please sign in and ensure an API key exists in Firestore.'
+      );
+      onError?.(error);
+      throw error;
+    }
   }
 
   try {
@@ -109,7 +117,8 @@ Please format your response using proper markdown:
 
     const config = {
       thinkingConfig: {
-        thinkingBudget: -1,
+        includeThoughts: true,
+        thinkingBudget: 2048,
       },
     };
 
@@ -125,6 +134,7 @@ Please format your response using proper markdown:
       },
     ];
 
+    console.log('🔮 Starting Gemini Stream Request...');
     const response = await genAI.models.generateContentStream({
       model,
       config,
@@ -132,12 +142,37 @@ Please format your response using proper markdown:
     });
 
     let fullResponse = '';
-    
+    let chunkCount = 0;
+
     for await (const chunk of response) {
-      const chunkText = chunk.text || '';
-      fullResponse += chunkText;
-      onChunk?.(chunkText);
+      chunkCount++;
+      // console.log(`📦 Chunk ${chunkCount} received`);
+      const candidates = chunk.candidates;
+      if (candidates && candidates[0] && candidates[0].content && candidates[0].content.parts) {
+        for (const part of candidates[0].content.parts) {
+          if (part.thought) {
+            console.log(`🧠 Thought chunk received: ${part.text?.substring(0, 20)}...`);
+            // In the SDK, thought parts have the text in the text field, but marked as thought
+            if (part.text) onThought?.(part.text);
+          } else if (part.text) {
+            console.log(`📝 Text chunk received: ${part.text?.substring(0, 20)}...`);
+            fullResponse += part.text;
+            onChunk?.(part.text);
+          }
+        }
+      } else {
+        // Fallback for standard text-only chunks if structure differs
+        // chunk.text is typically a function or accessor in some SDK versions, but property in others.
+        // Based on lint error 'Type String has no call signatures', it is a property.
+        const chunkText = chunk.text;
+        if (chunkText) {
+          console.log(`📝 Fallback chunk received: ${chunkText.substring(0, 20)}...`);
+          fullResponse += chunkText;
+          onChunk?.(chunkText);
+        }
+      }
     }
+    console.log(`✅ Stream completed. Total chunks: ${chunkCount}. Full response length: ${fullResponse.length}`);
 
     onComplete?.(fullResponse);
     return fullResponse;
@@ -224,9 +259,9 @@ Student's question: ${prompt}`;
 Provide a clear, educational response with proper markdown formatting that helps them understand the chemistry concepts. If they're asking about something drawn on the canvas, reference the visual elements in your explanation.`;
 
     const config = {
-      thinkingConfig: {
-        thinkingBudget: -1,
-      },
+      // thinkingConfig: {
+      //   thinkingBudget: -1,
+      // },
     };
 
     const model = await getAvailableModel();
@@ -258,7 +293,7 @@ Provide a clear, educational response with proper markdown formatting that helps
     });
 
     let fullResponse = '';
-    
+
     for await (const chunk of response) {
       const chunkText = chunk.text || '';
       fullResponse += chunkText;
@@ -279,8 +314,3 @@ Provide a clear, educational response with proper markdown formatting that helps
     throw aiError;
   }
 };
-
-// Initialize the service when the module loads
-void initializeGeminiStreaming().catch(error => {
-  console.error('Failed to auto-initialize Gemini Streaming:', error);
-});

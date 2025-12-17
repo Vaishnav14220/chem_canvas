@@ -44,6 +44,7 @@ import {
 
     generateReactFlowData,
     generateImmersiveImage,
+    extractDocumentContextForImage,
     fetchAndRankYouTubeVideos,
     generateVideoSummary,
     chatAboutVideo,
@@ -71,16 +72,19 @@ import {
     SimulationBlueprint,
     DetectedObject,
     BoundingBox,
-    ReactFlowData
+    ReactFlowData,
+    BrainstormActivity
 } from '../services/immersiveLearningService';
 import { extractJsonBlock, fetchGroundingSources, generateTextContent, sendStudiumChatMessage } from '../services/geminiService';
 import { generateStreamingContent } from '../services/geminiStreaming';
 import ReactFlowMindMap from './ReactFlowMindMap';
+import DrawIOWorkspace, { STORAGE_DIAGRAM_XML_KEY } from './DrawIOWorkspace';
 import { LessonGeneratorActivity } from './LessonGeneratorActivity';
 import { Reasoning } from './ai-elements/reasoning';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
+import { AspectRatio } from '../types/studium';
 
 interface ImmersiveLearningProps {
     onClose: () => void;
@@ -304,6 +308,37 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
         relevantVideos: RankedYouTubeVideo[];
         pdfUrl: string | null; // runtime blob URL (not persisted)
         activeSectionId: string | null;
+        // Mode-specific content storage
+        mindMapData: MindMapNode | null;
+        simulationData: {
+            blueprint: SimulationBlueprint | null;
+            html: string | null;
+        } | null;
+        codeLabData: {
+            files: CodeLabFile[];
+            activeFileId: string;
+            language: CodeLabLanguage;
+            theme: 'vscode' | 'dracula';
+        } | null;
+        imageActivityData: {
+            prompt: string;
+            generatedImageUrl: string | null;
+        } | null;
+        roboticsData: {
+            detectedObjects: DetectedObject[];
+            boundingBoxes: BoundingBox[];
+            sceneDescription: string | null;
+            analysisMode: 'detect' | 'boxes' | 'classify' | 'count' | 'question' | 'hand';
+        } | null;
+        viewer3dData: {
+            modelUrl: string | null;
+            modelName: string;
+            rotation: { x: number; y: number; z: number };
+            position: { x: number; y: number; z: number };
+            scale: number;
+            interactionMode: 'drag' | 'rotate' | 'scale' | 'animate';
+        } | null;
+        brainstormActivities: { [sectionId: string]: BrainstormActivity };
     }
 
     interface LocalUserSpace {
@@ -412,6 +447,8 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [audioScript, setAudioScript] = useState<string>('');
     const [mindMap, setMindMap] = useState<MindMapNode | null>(null);
     const [reactFlowData, setReactFlowData] = useState<ReactFlowData | null>(null);
+    const [showDrawIOWorkspace, setShowDrawIOWorkspace] = useState(false);
+
     const [activeSectionId, setActiveSectionId] = useState<string>('');
     const [activeDefinition, setActiveDefinition] = useState<{ term: string, definition: string } | null>(null);
     const [quizAnswers, setQuizAnswers] = useState<{ [key: number]: number }>({}); // questionIndex -> selectedOptionIndex
@@ -619,6 +656,9 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [imageActivityPrompt, setImageActivityPrompt] = useState('');
     const [generatedImageActivityUrl, setGeneratedImageActivityUrl] = useState<string | null>(null);
     const [isGeneratingImageActivity, setIsGeneratingImageActivity] = useState(false);
+    const [imageActivityError, setImageActivityError] = useState<string | null>(null);
+    const [useDocumentContext, setUseDocumentContext] = useState(true); // Default to true - use document if available
+    const [isExtractingContext, setIsExtractingContext] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
     // LocalStorage key for persisting immersive learning content
@@ -699,6 +739,37 @@ Respond in JSON format only:
                 activeSectionId: activeSectionId || null,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
+                // Save current mode-specific content
+                mindMapData: mindMap || null,
+                simulationData: simulationBlueprint || simulationHTML ? {
+                    blueprint: simulationBlueprint,
+                    html: simulationHTML,
+                } : null,
+                codeLabData: codeLabFiles.length > 0 ? {
+                    files: codeLabFiles,
+                    activeFileId: codeLabActiveFileId,
+                    language: codeLabLanguage,
+                    theme: codeLabTheme,
+                } : null,
+                imageActivityData: imageActivityPrompt || generatedImageActivityUrl ? {
+                    prompt: imageActivityPrompt,
+                    generatedImageUrl: generatedImageActivityUrl,
+                } : null,
+                roboticsData: detectedObjects.length > 0 || boundingBoxes.length > 0 || sceneDescription ? {
+                    detectedObjects,
+                    boundingBoxes,
+                    sceneDescription,
+                    analysisMode,
+                } : null,
+                viewer3dData: viewer3dModelUrl ? {
+                    modelUrl: viewer3dModelUrl,
+                    modelName: viewer3dModelName,
+                    rotation: viewer3dRotation,
+                    position: viewer3dPosition,
+                    scale: viewer3dScale,
+                    interactionMode: viewer3dInteractionMode,
+                } : null,
+                brainstormActivities: brainstormActivities || {},
             };
 
             const keys = getLocalStorageKeys();
@@ -752,6 +823,14 @@ Respond in JSON format only:
                 activeSectionId: content.sections?.[0]?.id || null,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
+                // Initialize mode-specific content fields
+                mindMapData: null,
+                simulationData: null,
+                codeLabData: null,
+                imageActivityData: null,
+                roboticsData: null,
+                viewer3dData: null,
+                brainstormActivities: {},
             };
 
             const keys = getLocalStorageKeys();
@@ -792,6 +871,37 @@ Respond in JSON format only:
                     documentMimeType,
                     documentFileId,
                     documentIsFallback,
+                    // Save mode-specific content
+                    mindMapData: mindMap || null,
+                    simulationData: simulationBlueprint || simulationHTML ? {
+                        blueprint: simulationBlueprint,
+                        html: simulationHTML,
+                    } : null,
+                    codeLabData: codeLabFiles.length > 0 ? {
+                        files: codeLabFiles,
+                        activeFileId: codeLabActiveFileId,
+                        language: codeLabLanguage,
+                        theme: codeLabTheme,
+                    } : null,
+                    imageActivityData: imageActivityPrompt || generatedImageActivityUrl ? {
+                        prompt: imageActivityPrompt,
+                        generatedImageUrl: generatedImageActivityUrl,
+                    } : null,
+                    roboticsData: detectedObjects.length > 0 || boundingBoxes.length > 0 || sceneDescription ? {
+                        detectedObjects,
+                        boundingBoxes,
+                        sceneDescription,
+                        analysisMode,
+                    } : null,
+                    viewer3dData: viewer3dModelUrl ? {
+                        modelUrl: viewer3dModelUrl,
+                        modelName: viewer3dModelName,
+                        rotation: viewer3dRotation,
+                        position: viewer3dPosition,
+                        scale: viewer3dScale,
+                        interactionMode: viewer3dInteractionMode,
+                    } : null,
+                    brainstormActivities: brainstormActivities || {},
                 };
             });
             localStorage.setItem(keys.WORKSPACES, JSON.stringify(updatedWorkspaces));
@@ -818,6 +928,46 @@ Respond in JSON format only:
         setDocumentMimeType(workspace.documentMimeType || null);
         setDocumentFileId(workspace.documentFileId || null);
         setDocumentIsFallback(Boolean(workspace.documentIsFallback));
+
+        // Restore mode-specific content
+        if (workspace.mindMapData) {
+            setMindMap(workspace.mindMapData);
+        }
+        if (workspace.simulationData) {
+            setSimulationBlueprint(workspace.simulationData.blueprint);
+            setSimulationHTML(workspace.simulationData.html);
+        }
+        if (workspace.codeLabData) {
+            setCodeLabFiles(workspace.codeLabData.files);
+            setCodeLabActiveFileId(workspace.codeLabData.activeFileId);
+            setCodeLabLanguage(workspace.codeLabData.language);
+            setCodeLabTheme(workspace.codeLabData.theme);
+            const activeFile = workspace.codeLabData.files.find(f => f.id === workspace.codeLabData.activeFileId);
+            if (activeFile) {
+                setCodeLabCode(activeFile.content);
+            }
+        }
+        if (workspace.imageActivityData) {
+            setImageActivityPrompt(workspace.imageActivityData.prompt);
+            setGeneratedImageActivityUrl(workspace.imageActivityData.generatedImageUrl);
+        }
+        if (workspace.roboticsData) {
+            setDetectedObjects(workspace.roboticsData.detectedObjects);
+            setBoundingBoxes(workspace.roboticsData.boundingBoxes);
+            setSceneDescription(workspace.roboticsData.sceneDescription);
+            setAnalysisMode(workspace.roboticsData.analysisMode);
+        }
+        if (workspace.viewer3dData) {
+            setViewer3dModelUrl(workspace.viewer3dData.modelUrl);
+            setViewer3dModelName(workspace.viewer3dData.modelName);
+            setViewer3dRotation(workspace.viewer3dData.rotation);
+            setViewer3dPosition(workspace.viewer3dData.position);
+            setViewer3dScale(workspace.viewer3dData.scale);
+            setViewer3dInteractionMode(workspace.viewer3dData.interactionMode);
+        }
+        if (workspace.brainstormActivities) {
+            setBrainstormActivities(workspace.brainstormActivities);
+        }
 
         // Restore PDF URL from IndexedDB if possible
         if (workspace.documentFileId && (workspace.documentMimeType === 'application/pdf' || workspace.documentFileName?.toLowerCase().endsWith('.pdf'))) {
@@ -966,13 +1116,22 @@ Respond in JSON format only:
 
     // Open a space (switch to that mode and optionally load workspace)
     const openSpace = async (space: LocalUserSpace) => {
-        setActiveMode(space.mode);
         setShowUserSpaces(false);
 
-        // If space has a linked workspace, open it locally
+        // If space has a linked workspace, open it locally (this will restore all content)
         if (space.workspaceId) {
             const localWorkspace = savedWorkspaces.find(ws => ws.id === space.workspaceId);
-            if (localWorkspace) await openWorkspace(localWorkspace);
+            if (localWorkspace) {
+                await openWorkspace(localWorkspace);
+                // After opening workspace, switch to the space's mode to show the correct view
+                setActiveMode(space.mode);
+            } else {
+                // Workspace not found, just switch to mode
+                setActiveMode(space.mode);
+            }
+        } else {
+            // No workspace linked, just switch to mode
+            setActiveMode(space.mode);
         }
 
         // Update last used
@@ -1049,9 +1208,10 @@ Respond in JSON format only:
     }, [getLocalStorageKeys]);
 
     // Auto-save to active workspace when content changes (local, debounced)
+    // Saves all mode-specific content so users can resume where they left off
     useEffect(() => {
         if (!activeWorkspaceId) return;
-        if (!immersiveContent) return;
+        // Don't require immersiveContent - some modes (code-lab, assignment, etc.) don't need it
 
         const t = setTimeout(() => {
             updateWorkspace(activeWorkspaceId);
@@ -1072,6 +1232,27 @@ Respond in JSON format only:
         documentMimeType,
         documentFileId,
         documentIsFallback,
+        // Mode-specific content dependencies
+        mindMap,
+        simulationBlueprint,
+        simulationHTML,
+        codeLabFiles,
+        codeLabActiveFileId,
+        codeLabLanguage,
+        codeLabTheme,
+        imageActivityPrompt,
+        generatedImageActivityUrl,
+        detectedObjects,
+        boundingBoxes,
+        sceneDescription,
+        analysisMode,
+        viewer3dModelUrl,
+        viewer3dModelName,
+        viewer3dRotation,
+        viewer3dPosition,
+        viewer3dScale,
+        viewer3dInteractionMode,
+        brainstormActivities,
     ]);
 
     // Load saved content from localStorage on mount - DISABLED per user request (always fresh start)
@@ -1591,6 +1772,63 @@ Respond in JSON format only:
             setIsGeneratingStandaloneMindMap(false);
         }
     };
+
+    const handleOpenDrawIOWorkspace = () => {
+        // Helper function to escape XML special characters
+        const escapeXML = (str: string): string => {
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        };
+
+        try {
+            // If we have a mind map, pre-load it into the Draw.io workspace via localStorage.
+            if (reactFlowData && reactFlowData.nodes.length > 0) {
+                const nodesXML = reactFlowData.nodes.map((node, index) => {
+                    const x = Math.max(0, node.position?.x || (index * 200));
+                    const y = Math.max(0, node.position?.y || (index * 100));
+                    const label = escapeXML(node.data.label || 'Node');
+                    const nodeId = escapeXML(node.id);
+                    return `        <mxCell id="${nodeId}" value="${label}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="${x}" y="${y}" width="160" height="60" as="geometry" />
+        </mxCell>`;
+                }).join('\n');
+
+                const edgesXML = reactFlowData.edges.map((edge, index) => {
+                    const sourceId = escapeXML(edge.source);
+                    const targetId = escapeXML(edge.target);
+                    return `        <mxCell id="edge-${index}" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="${sourceId}" target="${targetId}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>`;
+                }).join('\n');
+
+                const drawIOXML = `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net">
+  <diagram name="MindMap" id="mindmap">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+${nodesXML}
+${edgesXML}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+
+                localStorage.setItem(STORAGE_DIAGRAM_XML_KEY, drawIOXML);
+            }
+        } catch (error) {
+            console.error('Failed to prepare draw.io diagram for workspace:', error);
+        } finally {
+            setShowDrawIOWorkspace(true);
+        }
+    };
+
+
 
     const renderStandaloneNotesPanel = (variant: 'light' | 'dark' = 'light') => {
         const isDark = variant === 'dark';
@@ -4392,14 +4630,45 @@ sys.stderr = sys.__stderr__
         if (!imageActivityPrompt.trim()) return;
 
         setIsGeneratingImageActivity(true);
+        setImageActivityError(null);
+        setGeneratedImageActivityUrl(null);
+        setIsExtractingContext(false);
+
         try {
-            const imageUrl = await generateImmersiveImage(imageActivityPrompt);
+            let documentContext: string | undefined = undefined;
+
+            // Extract document context if enabled and document is available
+            if (useDocumentContext && documentTextRef.current && documentTextRef.current.trim()) {
+                setIsExtractingContext(true);
+                try {
+                    documentContext = await extractDocumentContextForImage(
+                        imageActivityPrompt,
+                        documentTextRef.current
+                    );
+                    console.log('📄 Extracted document context for image generation');
+                } catch (contextError) {
+                    console.warn('Failed to extract document context, proceeding without it:', contextError);
+                    // Continue without context if extraction fails
+                } finally {
+                    setIsExtractingContext(false);
+                }
+            }
+
+            const imageUrl = await generateImmersiveImage(
+                imageActivityPrompt,
+                AspectRatio.LANDSCAPE_16_9,
+                documentContext
+            );
             setGeneratedImageActivityUrl(imageUrl);
+            setImageActivityError(null);
         } catch (error) {
             console.error('Failed to generate image:', error);
-            // Optional: Add error handling UI state
+            const errorMessage = error instanceof Error ? error.message : 'Failed to generate image. Please try again.';
+            setImageActivityError(errorMessage);
+            setGeneratedImageActivityUrl(null);
         } finally {
             setIsGeneratingImageActivity(false);
+            setIsExtractingContext(false);
         }
     };
 
@@ -7251,11 +7520,24 @@ sys.stderr = StringIO()
                 );
 
             case 'mindmap':
+                // Show Draw.io workspace if toggled
+                if (showDrawIOWorkspace) {
+                    return (
+                        <DrawIOWorkspace
+                            onBack={() => setShowDrawIOWorkspace(false)}
+                        />
+                    );
+                }
+
+                // Default mindmap view
                 return (
-                    <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
+                    <div className="flex flex-1 w-full h-full min-h-0 bg-[#eef2f7] overflow-hidden text-slate-900">
                         {/* Left Sidebar - mimic assignment layout */}
-                        <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#171717' }}>
-                            <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                        <div
+                            className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-full min-h-0"
+                            style={{ backgroundColor: '#171717' }}
+                        >
+                            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-6 gap-6">
                                 <div className="space-y-3">
                                     <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
                                     {renderStandaloneNotesPanel('dark')}
@@ -7274,13 +7556,31 @@ sys.stderr = StringIO()
                                         )}
                                         {isGeneratingStandaloneMindMap ? 'Building...' : 'Generate Mind Map'}
                                     </button>
+                                    <button
+                                        onClick={handleOpenDrawIOWorkspace}
+                                        className="w-full px-4 py-2.5 text-sm text-white bg-[#8B5CF6] hover:bg-[#7C3AED] transition-colors flex items-center justify-center gap-2"
+                                        title="Open Draw.io workspace (loads the current mind map when available)"
+                                    >
+                                        <ExternalLink className="w-4 h-4" />
+                                        Open Draw.io Workspace
+                                    </button>
+                                    <div className="text-[10px] text-slate-400 mt-2 px-2">
+                                        <p className="mb-1 font-semibold text-slate-300">Next AI Draw.io Features:</p>
+                                        <ul className="list-disc list-inside space-y-0.5 text-slate-400">
+                                            <li>AI-powered diagram creation</li>
+                                            <li>Natural language editing</li>
+                                            <li>Image-based replication</li>
+                                            <li>Cloud architecture support</li>
+                                            <li>Animated connectors</li>
+                                        </ul>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
                         {/* Main Content */}
-                        <div className="flex-1 flex flex-col bg-[#eef2f7]">
-                            <div className="flex-1 relative bg-[#eef2f7] overflow-hidden" style={{ minHeight: '400px' }}>
+                        <div className="flex-1 min-h-0 flex flex-col bg-[#eef2f7]">
+                            <div className="flex-1 min-h-0 relative bg-[#eef2f7] overflow-hidden">
                                 {reactFlowData ? (
                                     <ReactFlowMindMap data={reactFlowData} />
                                 ) : (
@@ -8145,7 +8445,13 @@ sys.stderr = StringIO()
                                         <textarea
                                             id="image-prompt"
                                             value={imageActivityPrompt}
-                                            onChange={(e) => setImageActivityPrompt(e.target.value)}
+                                            onChange={(e) => {
+                                                setImageActivityPrompt(e.target.value);
+                                                // Clear error when user starts typing
+                                                if (imageActivityError) {
+                                                    setImageActivityError(null);
+                                                }
+                                            }}
                                             placeholder="e.g., A cross-section of a plant cell showing chloroplasts, mitochondria, and nucleus with detailed labels..."
                                             className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all min-h-[120px] resize-none"
                                             onKeyDown={(e) => {
@@ -8158,6 +8464,29 @@ sys.stderr = StringIO()
                                             Tip: Be specific about details, colors, and style for the best results. Press Ctrl+Enter to generate.
                                         </p>
                                     </div>
+
+                                    {/* Document Reference Option */}
+                                    {documentTextRef.current && documentTextRef.current.trim() && (
+                                        <div className="space-y-2">
+                                            <label className="flex items-center gap-3 cursor-pointer group">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={useDocumentContext}
+                                                    onChange={(e) => setUseDocumentContext(e.target.checked)}
+                                                    className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#2c4066] focus:ring-2 focus:ring-[#3b5b8a] cursor-pointer"
+                                                />
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <FileText className="w-4 h-4 text-slate-300" />
+                                                        <span className="text-sm font-medium text-slate-200">Use Document Context</span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-400 mt-1 ml-6">
+                                                        Enhance image generation with context from your current document
+                                                    </p>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    )}
 
                                     {/* Generate Button */}
                                     <button
@@ -8173,7 +8502,9 @@ sys.stderr = StringIO()
                                         {isGeneratingImageActivity ? (
                                             <>
                                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                                <span className="text-xs">Generating...</span>
+                                                <span className="text-xs">
+                                                    {isExtractingContext ? 'Analyzing document...' : 'Generating image...'}
+                                                </span>
                                             </>
                                         ) : (
                                             <>
@@ -8246,8 +8577,24 @@ sys.stderr = StringIO()
                                         </div>
                                         <div>
                                             <p className="text-lg font-bold text-slate-700 mb-2">Generating Image</p>
-                                            <p className="text-sm text-slate-500 mb-4">AI is crafting your image...</p>
+                                            <p className="text-sm text-slate-500 mb-4">AI is crafting your image using Imagen 4.0...</p>
                                             <p className="text-xs text-slate-400">This usually takes 5-10 seconds</p>
+                                        </div>
+                                    </div>
+                                ) : imageActivityError ? (
+                                    <div className="flex flex-col items-center gap-6 text-center max-w-xl">
+                                        <div className="w-24 h-24 bg-red-100 flex items-center justify-center rounded-full">
+                                            <X className="w-12 h-12 text-red-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-bold text-slate-700 mb-2">Generation Failed</h3>
+                                            <p className="text-red-600 mb-4">{imageActivityError}</p>
+                                            <button
+                                                onClick={handleGenerateImageActivity}
+                                                className="px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm rounded"
+                                            >
+                                                Try Again
+                                            </button>
                                         </div>
                                     </div>
                                 ) : (

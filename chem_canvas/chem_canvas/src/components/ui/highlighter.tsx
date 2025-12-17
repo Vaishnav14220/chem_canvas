@@ -38,6 +38,8 @@ export function Highlighter({
 }: HighlighterProps) {
   const elementRef = useRef<HTMLSpanElement>(null)
   const annotationRef = useRef<RoughAnnotation | null>(null)
+  const isAnnotatedRef = useRef(false)
+  const configRef = useRef<string>('')
 
   const isInView = useInView(elementRef, {
     once: true,
@@ -53,6 +55,7 @@ export function Highlighter({
     const element = elementRef.current
     if (!element) return
 
+    // Create a config string to check if config changed
     const annotationConfig = {
       type: action,
       color,
@@ -62,6 +65,13 @@ export function Highlighter({
       padding,
       multiline,
     }
+    
+    const configString = JSON.stringify(annotationConfig)
+    
+    // If annotation already exists and config hasn't changed, don't recreate
+    if (isAnnotatedRef.current && annotationRef.current && configRef.current === configString) {
+      return
+    }
 
     // Clean up any existing annotation first
     if (annotationRef.current) {
@@ -70,19 +80,34 @@ export function Highlighter({
       } catch (e) {
         // Ignore cleanup errors
       }
+      annotationRef.current = null
+      isAnnotatedRef.current = false
     }
 
-    const annotation = annotate(element, annotationConfig)
-    annotationRef.current = annotation
-    
-    // Use requestAnimationFrame to avoid blocking
-    requestAnimationFrame(() => {
-      if (annotationRef.current === annotation) {
-        annotation.show()
+    // Small delay to ensure DOM is ready
+    const timeoutId = setTimeout(() => {
+      const element = elementRef.current
+      if (!element) return
+
+      try {
+        const annotation = annotate(element, annotationConfig)
+        annotationRef.current = annotation
+        configRef.current = configString
+        
+        // Use requestAnimationFrame to avoid blocking
+        requestAnimationFrame(() => {
+          if (annotationRef.current === annotation && elementRef.current) {
+            annotation.show()
+            isAnnotatedRef.current = true
+          }
+        })
+      } catch (error) {
+        console.warn('Failed to create annotation:', error)
       }
-    })
+    }, 50) // Small delay to prevent flickering
 
     return () => {
+      clearTimeout(timeoutId)
       if (annotationRef.current) {
         try {
           annotationRef.current.remove()
@@ -90,6 +115,7 @@ export function Highlighter({
           // Ignore cleanup errors
         }
         annotationRef.current = null
+        isAnnotatedRef.current = false
       }
     }
   }, [

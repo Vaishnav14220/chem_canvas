@@ -12,7 +12,9 @@ interface ApiKeyStatus {
 
 const maskExternalKey = (key: string): string => {
   if (!key) return '';
-  return key.length <= 13 ? key : `${key.substring(0, 10)}...${key.substring(key.length - 3)}`;
+  const trimmed = key.trim();
+  if (trimmed.length <= 4) return '••••';
+  return `••••${trimmed.substring(trimmed.length - 4)}`;
 };
 
 class ApiKeyRotationService {
@@ -33,6 +35,11 @@ class ApiKeyRotationService {
    * Get the next available API key
    */
   getNextKey(): string | null {
+    if (this.apiKeys.length === 0) {
+      console.warn('⚠️ No API keys loaded yet.');
+      return null;
+    }
+
     const now = Date.now();
 
     // Reset keys that have passed their cooldown period
@@ -163,8 +170,9 @@ class ApiKeyRotationService {
    * Mask API key for logging (show first 10 and last 3 characters)
    */
   private maskKey(key: string): string {
-    if (key.length <= 13) return key;
-    return `${key.substring(0, 10)}...${key.substring(key.length - 3)}`;
+    const trimmed = key.trim();
+    if (trimmed.length <= 4) return '••••';
+    return `••••${trimmed.substring(trimmed.length - 4)}`;
   }
 
   /**
@@ -226,7 +234,7 @@ export const addApiKeyToRotation = (apiKey: string): void => {
 
   // Reinitialize with the new key if rotation is empty or doesn't have this key
   if (stats.total === 0) {
-    console.log(`🔑 Adding API key to rotation service: ${trimmedKey.substring(0, 10)}...`);
+    console.log(`🔑 Adding API key to rotation service: ${maskExternalKey(trimmedKey)}`);
     apiKeyRotation = new ApiKeyRotationService([trimmedKey]);
   }
 };

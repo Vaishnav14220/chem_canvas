@@ -211,16 +211,42 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
           config = { ...config, maxOutputTokens: options.maxOutputTokens };
         }
         if (options?.thinking) {
-          // Gemini Thinking experimental config
-          const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
+          // Gemini Thinking config - different for 2.5 vs 3 models
+          const isGemini3 = modelName.includes('gemini-3') || modelName.includes('gemini-3-pro');
+          const isGemini25 = modelName.includes('gemini-2.5') || modelName.includes('gemini-2.0');
 
-          config = {
-            ...config,
-            thinkingConfig: {
-              includeThoughts: true,
-              thinking_level: thinkingLevel,
-            }
-          };
+          if (isGemini3) {
+            // Gemini 3 supports thinking_level
+            const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
+            config = {
+              ...config,
+              thinkingConfig: {
+                includeThoughts: true,
+                thinking_level: thinkingLevel,
+              }
+            };
+          } else if (isGemini25) {
+            // Gemini 2.5 uses thinkingBudget (-1 = dynamic, 0 = off, >0 = token budget)
+            const thinkingBudget = typeof options.thinking === 'string'
+              ? (options.thinking === 'high' ? -1 : 1024)
+              : (options.thinking === true ? -1 : 1024);
+            config = {
+              ...config,
+              thinkingConfig: {
+                includeThoughts: true,
+                thinkingBudget: thinkingBudget,
+              }
+            };
+          } else {
+            // Default: try thinkingBudget
+            config = {
+              ...config,
+              thinkingConfig: {
+                includeThoughts: true,
+                thinkingBudget: -1, // Dynamic thinking
+              }
+            };
+          }
           // Increase token limit for thinking models if not explicitly set
           if (!config.maxOutputTokens) {
             config.maxOutputTokens = 65536;
@@ -475,15 +501,48 @@ export const streamTextContent = async (
 
       let config: any = undefined;
       if (options?.thinking) {
-        const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
-        config = {
-          ...config,
-          thinkingConfig: {
-            includeThoughts: true,
-            thinking_level: thinkingLevel,
-          },
-          maxOutputTokens: 65536
-        };
+        // For Gemini 2.5 models, use thinkingBudget instead of thinking_level
+        // thinkingBudget: -1 = dynamic, 0 = off, >0 = token budget
+        // For Gemini 3 models, use thinking_level: 'high' | 'low'
+        const isGemini3 = modelName.includes('gemini-3') || modelName.includes('gemini-3-pro');
+        const isGemini25 = modelName.includes('gemini-2.5') || modelName.includes('gemini-2.0');
+
+        if (isGemini3) {
+          // Gemini 3 supports thinking_level
+          const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
+          config = {
+            ...config,
+            thinkingConfig: {
+              includeThoughts: true,
+              thinking_level: thinkingLevel,
+            },
+            maxOutputTokens: 65536
+          };
+        } else if (isGemini25) {
+          // Gemini 2.5 uses thinkingBudget
+          // Use -1 for dynamic thinking (recommended), or a number like 1024, 2048, etc.
+          const thinkingBudget = typeof options.thinking === 'string'
+            ? (options.thinking === 'high' ? -1 : 1024)
+            : (options.thinking === true ? -1 : 1024);
+          config = {
+            ...config,
+            thinkingConfig: {
+              includeThoughts: true,
+              thinkingBudget: thinkingBudget,
+            },
+            maxOutputTokens: 65536
+          };
+        } else {
+          // Default: try thinkingBudget for other models
+          config = {
+            ...config,
+            thinkingConfig: {
+              includeThoughts: true,
+              thinkingBudget: -1, // Dynamic thinking
+            },
+            maxOutputTokens: 65536
+          };
+        }
       }
 
       // Construct content with inline data if present
@@ -523,14 +582,29 @@ export const streamTextContent = async (
           if (parts && parts.length > 0) {
             for (const part of parts) {
               // Check for thought in multiple formats (Gemini 3 Pro compatibility)
-              const thoughtContent = (part as any).thought ||
-                (part as any).thinking ||
-                ((part as any).type === 'thought' ? (part as any).text : null) ||
-                ((part as any).type === 'thinking' ? (part as any).text : null);
+              // Check for thought in multiple formats (Google GenAI SDK v0.x)
+              let thoughtText: string | null = null;
 
-              if (thoughtContent && typeof thoughtContent === 'string') {
+              // 1. Direct string property
+              if (typeof (part as any).thought === 'string') {
+                thoughtText = (part as any).thought;
+              }
+              // 2. Boolean flag with text property
+              else if ((part as any).thought === true && (part as any).text) {
+                thoughtText = (part as any).text;
+              }
+              // 3. 'thinking' property (string)
+              else if (typeof (part as any).thinking === 'string') {
+                thoughtText = (part as any).thinking;
+              }
+              // 4. Explicit type check
+              else if ((part as any).type === 'thought' || (part as any).type === 'thinking') {
+                thoughtText = (part as any).text || '';
+              }
+
+              if (thoughtText !== null) {
                 // Accumulate thoughts and emit them with batching
-                accumulatedThought += thoughtContent;
+                accumulatedThought += thoughtText;
 
                 if (thoughtTimeout) {
                   clearTimeout(thoughtTimeout);
@@ -683,17 +757,88 @@ export const generateContentWithCodeExecution = async (
 
 export const extractJsonBlock = (rawText: string): string => {
   const trimmed = rawText.trim();
-  const fenceMatch = trimmed.match(/```(?:json)?([\s\S]*?)```/i);
-  if (fenceMatch) {
-    return fenceMatch[1].trim();
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = (fenceMatch ? fenceMatch[1] : trimmed).trim();
+
+  const sliceBalanced = (startIdx: number): string | null => {
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+
+    for (let i = startIdx; i < candidate.length; i++) {
+      const char = candidate[i];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === '{' || char === '[') {
+        stack.push(char);
+        continue;
+      }
+
+      if (char === '}' || char === ']') {
+        const opener = stack.pop();
+        if (!opener) {
+          return null;
+        }
+        const expectedCloser = opener === '{' ? '}' : ']';
+        if (char !== expectedCloser) {
+          return null;
+        }
+        if (stack.length === 0) {
+          return candidate.slice(startIdx, i + 1);
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Prefer a parseable JSON payload (array or object) if we can find one.
+  const potentialStarts: number[] = [];
+  for (let i = 0; i < candidate.length; i++) {
+    const char = candidate[i];
+    if (char === '{' || char === '[') {
+      potentialStarts.push(i);
+    }
   }
 
-  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    return jsonMatch[0];
+  for (const startIdx of potentialStarts) {
+    const block = sliceBalanced(startIdx);
+    if (!block) continue;
+    try {
+      JSON.parse(block);
+      return block;
+    } catch {
+      // continue searching
+    }
   }
 
-  return trimmed;
+  // Fallback: return the first balanced block if present, even if malformed.
+  if (potentialStarts.length > 0) {
+    const block = sliceBalanced(potentialStarts[0]);
+    if (block) return block;
+    return candidate.slice(potentialStarts[0]).trim();
+  }
+
+  return candidate;
 };
 
 export interface MoleculeResolutionResult {
@@ -2296,5 +2441,4 @@ export const generateMultiSpeakerAudio = async (
     throw error;
   }
 };
-
 

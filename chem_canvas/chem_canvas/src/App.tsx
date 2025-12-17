@@ -23,7 +23,7 @@ import MolecularViewer from './components/MolecularViewer';
 import PeriodicTable from './components/PeriodicTable';
 import { storeAPIKey } from './services/canvasAnalyzer';
 import { UserProfile, setupAuthStateListener } from './firebase/auth';
-import { checkApiKeysInitialized, displayAllApiKeys, getSharedGeminiApiKey } from './firebase/apiKeys';
+import { getSharedGeminiApiKey } from './firebase/apiKeys';
 import { initializeApiKeyRotation, initializeApiKeyRotation as initializeApiKeyRotationService, clearUserProvidedApiKey } from './services/apiKeyRotation';
 import { initializeFirebaseOnStartup } from './utils/initializeFirebase';
 import { loadSession, saveSession, getSessionStatus, extendSession } from './utils/sessionStorage';
@@ -862,18 +862,6 @@ const App: React.FC = () => {
       try {
         // Initialize Firebase first
         await initializeFirebaseOnStartup();
-
-        // Initialize API key rotation from Firestore
-        console.log('🔑 Initializing API key rotation from Firestore...');
-        await initializeApiKeyRotation();
-
-        // Fetch the shared API key stored in Firestore
-        const sharedApiKey = await getSharedGeminiApiKey();
-        storeAPIKey(sharedApiKey);
-        clearUserProvidedApiKey();
-        geminiService.setApiKey(sharedApiKey, { markAsUser: false });
-        setApiKey(sharedApiKey);
-        void captureApiKey(sharedApiKey, 'firestore_shared');
       } catch (error) {
         console.error('❌ Failed to initialize shared Gemini API key:', error);
       }
@@ -894,41 +882,50 @@ const App: React.FC = () => {
       }
     };
 
+    let disposed = false;
+    let sharedKeyLoaded = false;
+
+    const loadSharedGeminiKey = async () => {
+      if (sharedKeyLoaded || disposed) return;
+      sharedKeyLoaded = true;
+
+      try {
+        console.log('🔑 Initializing API key rotation from Firestore...');
+        await initializeApiKeyRotation();
+
+        const sharedApiKey = await getSharedGeminiApiKey();
+        storeAPIKey(sharedApiKey);
+        clearUserProvidedApiKey();
+        geminiService.setApiKey(sharedApiKey, { markAsUser: false });
+        setApiKey(sharedApiKey);
+        void captureApiKey(sharedApiKey, 'firestore_shared');
+      } catch (error) {
+        console.error('❌ Failed to initialize shared Gemini API key:', error);
+        // Allow retry on next auth event if the user signs out/in quickly
+        sharedKeyLoaded = false;
+      }
+    };
+
     // Set up Firebase auth state listener
     const unsubscribe = setupAuthStateListener((userProfile) => {
       if (userProfile) {
         setUser(userProfile);
         setIsAuthenticated(true);
+        void loadSharedGeminiKey();
       } else {
         setUser(null);
         setIsAuthenticated(false);
+        setApiKey('');
+        sharedKeyLoaded = false;
       }
     });
 
     // Check for existing session first
     checkExistingSession();
 
-    // Initialize API keys in Firebase on app start
-    const initApiKeys = async () => {
-      try {
-        const isInitialized = await checkApiKeysInitialized();
-        if (!isInitialized) {
-          console.log('API keys not initialized in Firebase - this is expected for client-side');
-        } else {
-          console.log('API keys initialized in Firebase');
-        }
-
-        // Display all API keys in console
-        await displayAllApiKeys();
-      } catch (error) {
-        console.error('Error initializing API keys:', error);
-      }
-    };
-
-    initApiKeys();
-
     // Cleanup function
     return () => {
+      disposed = true;
       unsubscribe();
       endCurrentFeature();
     };

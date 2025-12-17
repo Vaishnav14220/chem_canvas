@@ -811,38 +811,72 @@ CRITICAL: Generate an image that shows the ORIGINAL handwritten paper with teach
         setIsStreamingThoughts(true);
 
         try {
-            const prompt = `
-        Content to process:
-        ${fileContent ? `Uploaded File Content:\n${fileContent.slice(0, 20000)}...` : ''}
-        ${fileData ? '[Attached File Processing Active]' : ''}
-        
-        Topic/Context: ${topic || 'General Science/Math'}
+            const prompt = `You are an expert educational content creator. Analyze the provided content and create a comprehensive, interactive learning experience.
 
-        Create a single, self-contained HTML file to explain [${topic || fileName || 'the provided concept'}]. 
-        
-        CRITICAL INSTRUCTION:
-        If an uploaded file (PDF/Image) is provided, you MUST solve EVERY SINGLE QUESTION or concept presented in it. 
-        Do not skip any questions. Be exhaustive.
-        
-        STRICT OUTPUT FORMAT:
-        The HTML must follow this exact structure sequentially:
-        
-        1. **The Question/Problem**: State the core problem(s) or concept(s) clearly at the top. If multiple questions, list them all.
-        2. **The Answer/Explanation**: Provide a detailed, step-by-step solution or explanation for EACH question found.
-        3. **Visual Diagrams (SVG)**: Include static or semi-static SVG diagrams to illustrate the concept next.
-        4. **Interactive Simulation (Canvas)**: AFTER the answer and diagrams, you MUST provide a fully animated, high-frame-rate Canvas simulation.
-           - REQUIREMENT: Use 'requestAnimationFrame' to create a smooth animation loop.
-           - REQUIREMENT: The canvas must NOT be static. It should animate parameters over time (e.g., a wave moving, a projectile flying, a graph drawing live).
-           - Include interactive controls (sliders, run/pause buttons).
-           - The simulation should visually demonstrate the physics/math concepts in motion.
-        
-        Tech Stack & Styling:
-        - Use Tailwind CSS for a clean, modern, responsive design via CDN.
-        - Use MathJax for professional LaTeX rendering of all formulas via CDN.
-        - Ensure all JavaScript is contained within the single HTML file.
-        
-        IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and ending with </html>.
-      `;
+Content to process:
+${fileContent ? `Uploaded File Content:\n${fileContent.slice(0, 20000)}...` : ''}
+${fileData ? '[Attached File Processing Active]' : ''}
+
+Topic/Context: ${topic || 'General Science/Math'}
+
+CRITICAL REQUIREMENTS:
+1. If an uploaded file (PDF/Image) is provided, you MUST solve EVERY SINGLE QUESTION or concept presented in it. Do not skip any questions. Be exhaustive.
+2. Extract ALL formulas, equations, and mathematical expressions found in the content
+3. For EACH concept, question, or formula, create an ANIMATED, INTERACTIVE Canvas visualization
+4. Format each formula using proper LaTeX syntax with MathJax rendering
+5. Organize content by topic/category if applicable
+6. Preserve the context and meaning of each concept
+
+OUTPUT FORMAT:
+Generate a complete, self-contained HTML document with:
+- Professional styling using Tailwind CSS (via CDN)
+- MathJax for rendering LaTeX formulas (via CDN)
+- Clean, organized layout with proper sections
+- Each concept/question should be clearly formatted
+
+VISUALIZATION REQUIREMENTS FOR EACH CONCEPT/FORMULA:
+1. Create an HTML5 Canvas element (width: 600-800px, height: 300-500px) for each concept, question, or formula
+2. Use requestAnimationFrame for smooth, high-frame-rate animations (60fps)
+3. Make the visualization INTERACTIVE with controls (sliders, buttons, inputs) to modify parameters
+4. Animate the concept's variables/parameters in real-time based on the actual context
+5. Show visual representations of what the concept/formula demonstrates (e.g., if it's velocity, show moving objects; if it's force, show arrows; if it's rotation, show rotating elements)
+6. Include labels, axes, and visual guides that help understand the concept
+7. Use colors and animations that match the concept's meaning
+8. Add hover effects and tooltips for better interactivity
+
+CANVAS ANIMATION EXAMPLES:
+- For velocity/speed formulas: Animate objects moving with changing speeds
+- For rotation formulas: Show rotating elements with angular velocity visualization
+- For force formulas: Show force vectors with animated arrows
+- For wave formulas: Show animated wave patterns
+- For electrical formulas: Show animated circuits with current flow
+- For geometric formulas: Show animated shapes transforming
+- For physics problems: Animate the physical scenario (projectiles, forces, motion)
+- For math problems: Show animated graphs, geometric transformations
+- For chemistry problems: Show animated molecular interactions, reactions
+- For engineering problems: Show animated systems, mechanisms, circuits
+- For conceptual questions: Show animated diagrams explaining the concept
+
+STRUCTURE FOR EACH CONCEPT/QUESTION:
+1. Concept/Question title/number
+2. The question text or concept description (formatted clearly)
+3. Step-by-step explanation or solution
+4. LaTeX-rendered formulas (using MathJax) if applicable
+5. Interactive animated Canvas visualization showing the solution/concept
+6. Controls to modify parameters and see different scenarios
+7. Key takeaways/formulas used
+
+The HTML should:
+- Start with <!DOCTYPE html>
+- Include proper <head> with MathJax and Tailwind CSS CDN links
+- Use <body> with well-structured sections
+- Render formulas using MathJax: \\(formula\\) for inline or \\[formula\\] for display
+- Include interactive Canvas elements with smooth animations for each concept/formula
+- Use requestAnimationFrame for all animations
+- Include interactive controls (sliders, buttons) to modify parameters
+- Be printable and exportable to PDF (canvas can be hidden in print mode)
+
+Return ONLY the complete HTML code, nothing else.`;
 
             let accumulatedHtml = '';
             const sanitizePartialHtml = (html: string) =>

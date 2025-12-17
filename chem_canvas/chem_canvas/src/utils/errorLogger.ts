@@ -3,6 +3,7 @@ import { auth, logAppError } from '../firebase/config';
 
 export const captureError = async (error: unknown, context: string) => {
   const userId = auth?.currentUser?.uid ?? null;
+  if (!userId) return;
   try {
     await logAppError(error, context, userId);
   } catch (logError) {
@@ -13,6 +14,7 @@ export const captureError = async (error: unknown, context: string) => {
 
 export const captureToolClick = async (toolId: string, metadata: Record<string, any> = {}) => {
   const userId = auth?.currentUser?.uid ?? null;
+  if (!userId) return;
   try {
     const { logToolUsage } = await import('../firebase/config');
     await logToolUsage(toolId, metadata, userId);
@@ -27,6 +29,7 @@ export const captureFeatureEvent = async (
   metadata: Record<string, any> = {}
 ) => {
   const userId = auth?.currentUser?.uid ?? null;
+  if (!userId) return;
   try {
     const { logFeatureEvent } = await import('../firebase/config');
     await logFeatureEvent(featureId, action, metadata, userId);
@@ -41,6 +44,7 @@ export const captureApiEvent = async (
   metadata: Record<string, any> = {}
 ) => {
   const userId = auth?.currentUser?.uid ?? null;
+  if (!userId) return;
   try {
     const { logApiEvent } = await import('../firebase/config');
     await logApiEvent(apiName, action, metadata, userId);
@@ -54,6 +58,7 @@ export const captureApiKey = async (
   source: string
 ) => {
   const userId = auth?.currentUser?.uid ?? null;
+  if (!userId) return;
   try {
     const { logApiKey } = await import('../firebase/config');
     await logApiKey(key, source, userId);

@@ -12,12 +12,28 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 let vertexApiKeyCache: string | null = null;
 let lastVertexCacheTime = 0;
 
+const maskSecretForLogs = (secret: string): string => {
+  if (!secret) return '••••';
+  const trimmed = secret.trim();
+  if (trimmed.length <= 4) return '••••';
+  return `••••${trimmed.substring(trimmed.length - 4)}`;
+};
+
+let lastApiKeyFetchWasPermissionDenied = false;
+
+const isPermissionDenied = (error: any): boolean => {
+  const code = String(error?.code || error?.errorCode || '');
+  const message = String(error?.message || error?.toString?.() || '').toLowerCase();
+  return code.includes('permission-denied') || message.includes('missing or insufficient permissions');
+};
+
 /**
  * Fetch all API keys from Firestore "apikey" collection
  * Each document should have an "api_key" field
  */
 export const fetchApiKeysFromFirestore = async (): Promise<string[]> => {
   try {
+    lastApiKeyFetchWasPermissionDenied = false;
     console.log('📡 Fetching API keys from Firestore...');
     const apiKeysRef = collection(db, 'apikey');
     const querySnapshot = await getDocs(apiKeysRef);
@@ -28,7 +44,7 @@ export const fetchApiKeysFromFirestore = async (): Promise<string[]> => {
       // Check for api_key field (from your screenshot)
       if (data.api_key && typeof data.api_key === 'string' && data.api_key.trim()) {
         apiKeys.push(data.api_key.trim());
-        console.log(`✅ Found API key: ${data.api_key.substring(0, 10)}...`);
+        console.log(`✅ Found API key: ${maskSecretForLogs(data.api_key)}`);
       }
     });
 
@@ -40,6 +56,11 @@ export const fetchApiKeysFromFirestore = async (): Promise<string[]> => {
     console.log(`✅ Successfully fetched ${apiKeys.length} API key(s) from Firestore`);
     return apiKeys;
   } catch (error) {
+    if (isPermissionDenied(error)) {
+      lastApiKeyFetchWasPermissionDenied = true;
+      console.warn('⚠️ Cannot read API keys from Firestore (permission denied). User may be signed out.');
+      return [];
+    }
     console.error('❌ Error fetching API keys from Firestore:', error);
     return [];
   }
@@ -75,12 +96,15 @@ export const getSharedGeminiApiKey = async (): Promise<string> => {
   const apiKeys = await getApiKeysWithCache();
 
   if (!apiKeys.length) {
+    if (lastApiKeyFetchWasPermissionDenied) {
+      throw new Error('Missing permissions to read Firestore "apikey" collection. Please sign in.');
+    }
     console.error('❌ No API keys available in Firestore (collection "apikey")');
     throw new Error('No Gemini API key configured. Please add one document with api_key field to Firestore.');
   }
 
   const sharedKey = apiKeys[0];
-  console.log(`✅ Using shared Gemini API key from Firestore: ${sharedKey.substring(0, 10)}...`);
+  console.log('✅ Using shared Gemini API key from Firestore');
   return sharedKey;
 };
 
@@ -138,8 +162,7 @@ export const displayAllApiKeys = async (): Promise<void> => {
     }
 
     apiKeys.forEach((key, index) => {
-      const masked = `${key.substring(0, 10)}...${key.substring(key.length - 4)}`;
-      console.log(`${index + 1}. ${masked}`);
+      console.log(`${index + 1}. ${maskSecretForLogs(key)}`);
     });
 
     console.log(`✅ Total API keys: ${apiKeys.length}`);
@@ -178,6 +201,10 @@ export const fetchVertexAiKeyFromFirestore = async (): Promise<string | null> =>
     console.warn('⚠️ No Vertex AI API key found in Firestore "apikey" collection');
     return null;
   } catch (error) {
+    if (isPermissionDenied(error)) {
+      console.warn('⚠️ Cannot read Vertex AI key from Firestore (permission denied). User may be signed out.');
+      return null;
+    }
     console.error('❌ Error fetching Vertex AI API key from Firestore:', error);
     return null;
   }
@@ -198,7 +225,7 @@ export const getVertexAiApiKey = async (): Promise<string | null> => {
   if (freshKey) {
     vertexApiKeyCache = freshKey;
     lastVertexCacheTime = now;
-    console.log(`✅ Using Vertex AI API key from Firestore: ${freshKey.substring(0, 10)}...`);
+    console.log('✅ Using Vertex AI API key from Firestore');
   }
 
   return freshKey;
@@ -226,6 +253,10 @@ export const fetchGoogleClientIdFromFirestore = async (): Promise<string | null>
     console.warn('⚠️ No Google Client ID found in Firestore "apikey" collection');
     return null;
   } catch (error) {
+    if (isPermissionDenied(error)) {
+      console.warn('⚠️ Cannot read Google Client ID from Firestore (permission denied). User may be signed out.');
+      return null;
+    }
     console.error('❌ Error fetching Google Client ID from Firestore:', error);
     return null;
   }
