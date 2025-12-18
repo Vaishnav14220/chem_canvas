@@ -291,7 +291,8 @@ export async function executeWithRotation<T>(
 ): Promise<T> {
   const stats = apiKeyRotation.getStats();
   const rotationKeyCount = Math.max(0, stats.total);
-  const effectiveMaxRetries = typeof maxRetries === 'number' ? maxRetries : Math.max(1, rotationKeyCount);
+  // Default to a few retries even in single-key mode so we can honor retryDelay on 429/quota errors.
+  const effectiveMaxRetries = typeof maxRetries === 'number' ? maxRetries : Math.max(3, rotationKeyCount || 1);
 
   let lastError: Error | null = null;
   const totalAttempts = effectiveMaxRetries + (userProvidedApiKey ? 1 : 0);
@@ -344,8 +345,7 @@ export async function executeWithRotation<T>(
     } catch (error: any) {
       lastError = error;
       const message = String(error?.message ?? '').toLowerCase();
-      const retryMatch = error?.message?.match(/retry in ([\d.]+)s/i);
-      const retrySeconds = retryMatch ? parseFloat(retryMatch[1]) : undefined;
+      const retrySeconds = extractRetrySeconds(error);
 
       if (message.includes('api key expired') || message.includes('api_key_invalid')) {
         if (usingUserKey) {
@@ -361,6 +361,11 @@ export async function executeWithRotation<T>(
       }
 
       if (message.includes('429') || message.includes('quota exceeded') || message.includes('rate limit')) {
+        // Quota/rate limits are often global across keys; honor retryDelay before trying again.
+        const waitSeconds = retrySeconds ?? 12;
+        const waitMs = Math.min(60_000, Math.max(1_000, Math.ceil(waitSeconds * 1000))) + Math.floor(Math.random() * 500);
+        await sleep(waitMs);
+
         if (usingUserKey) {
           markUserKeyRateLimited(retrySeconds);
           const stats = apiKeyRotation.getStats();
@@ -398,3 +403,25 @@ export async function executeWithRotation<T>(
 }
 
 export default apiKeyRotation;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractRetrySeconds(error: any): number | undefined {
+  const msg = String(error?.message ?? '');
+  const retryIn = msg.match(/retry in ([\d.]+)s/i);
+  if (retryIn?.[1]) {
+    const v = parseFloat(retryIn[1]);
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+
+  // Some errors include an embedded RetryInfo block, e.g. `"retryDelay": "11s"`.
+  const retryDelay = msg.match(/\"retryDelay\"\s*:\s*\"(\d+)s\"/i);
+  if (retryDelay?.[1]) {
+    const v = parseInt(retryDelay[1], 10);
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+
+  return undefined;
+}

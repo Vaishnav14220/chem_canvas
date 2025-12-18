@@ -1303,8 +1303,63 @@ Return only the extracted relevant context, without additional commentary.`;
 };
 
 /**
- * Generates immersive learning images using Imagen API (primary) with fallback to Nano Banana Pro.
- * Uses 1K resolution (1024x1024) for fast, high-quality educational illustrations.
+ * Enhances a user prompt into a purely academic, well-defined image generation prompt.
+ * Uses Gemini to transform the prompt into a detailed, scientifically accurate description.
+ * 
+ * @param userPrompt - The user's original prompt
+ * @param documentContext - Optional document context to enhance accuracy
+ * @returns Enhanced academic prompt optimized for educational image generation
+ */
+const enhancePromptForAcademicImage = async (
+  userPrompt: string,
+  documentContext?: string
+): Promise<string> => {
+  try {
+    const { generateTextContent } = await import('./geminiService');
+    
+    const enhancementPrompt = `You are an expert academic illustrator and prompt engineer specializing in creating detailed, scientifically accurate image generation prompts for educational materials.
+
+TASK: Transform the user's image request into a comprehensive, well-defined academic prompt that will generate a high-quality educational illustration suitable for textbooks, scientific journals, or educational presentations.
+
+CRITICAL REQUIREMENTS:
+1. The prompt MUST be purely academic and scientifically accurate
+2. Use descriptive, narrative language - describe the scene, don't just list keywords
+3. Include specific visual details: composition, lighting, perspective, style, and key elements
+4. Specify academic illustration style (textbook diagram, scientific figure, educational infographic, etc.)
+5. Include technical accuracy requirements
+6. Mention professional color palettes and clean composition
+7. Ensure the prompt is detailed enough to generate publication-quality educational imagery
+
+USER'S REQUEST: "${userPrompt}"
+${documentContext ? `\nDOCUMENT CONTEXT (use this for accuracy):\n${documentContext}` : ''}
+
+Create a comprehensive, detailed academic image generation prompt that:
+- Describes the subject matter with scientific precision
+- Specifies the illustration style (e.g., "textbook-style scientific diagram", "educational infographic", "cross-sectional view", "labeled anatomical illustration")
+- Includes composition details (camera angle, perspective, framing)
+- Mentions lighting appropriate for educational materials (even, clear, professional)
+- Specifies color scheme suitable for academic publications
+- Ensures scientific accuracy and proper proportions
+- Creates a clean, professional composition suitable for educational use
+
+Return ONLY the enhanced prompt text, without any additional commentary or markdown formatting.`;
+
+    const enhancedPrompt = await generateTextContent(enhancementPrompt, {
+      maxOutputTokens: 1000,
+      model: 'gemini-2.5-flash'
+    });
+
+    return enhancedPrompt.trim();
+  } catch (error) {
+    console.warn('Failed to enhance prompt, using original:', error);
+    // Fallback to original prompt with basic academic formatting
+    return `A detailed, scientifically accurate academic illustration of ${userPrompt}. Professional textbook-style diagram with clear composition, even lighting, and educational quality suitable for academic publications. Clean, well-defined visual elements with proper proportions and scientific accuracy.`;
+  }
+};
+
+/**
+ * Generates immersive learning images using Gemini 3 Pro Image Preview (Nano Banana Pro).
+ * Uses 1K resolution for fast, high-quality educational illustrations with enhanced academic prompts.
  * 
  * @param prompt - The image prompt describing what to generate
  * @param aspectRatio - Optional aspect ratio (defaults to 16:9 for widescreen)
@@ -1317,19 +1372,73 @@ export const generateImmersiveImage = async (
   documentContext?: string
 ): Promise<string> => {
   try {
-    // Enhance prompt with document context if provided
-    let enhancedPrompt = prompt;
-    if (documentContext && documentContext.trim() && documentContext !== 'No relevant context found.') {
-      enhancedPrompt = `${prompt}\n\nContext from document: ${documentContext}`;
-      console.log('📄 Enhanced image prompt with document context');
+    // Enhance prompt to be purely academic and well-defined
+    const enhancedPrompt = await enhancePromptForAcademicImage(prompt, documentContext);
+    console.log('📚 Enhanced academic prompt:', enhancedPrompt.substring(0, 200) + '...');
+
+    // Use Gemini 3 Pro Image Preview (Nano Banana Pro) with 1K resolution
+    const { GoogleGenAI } = await import('@google/genai');
+    const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
+    const apiKey = await getSharedGeminiApiKey();
+
+    if (!apiKey) {
+      throw new Error('API key not available');
     }
 
-    // Try Imagen API first (preferred for academic images)
-    return await generateImagenImage(enhancedPrompt, aspectRatio, 1);
+    const genAI = new GoogleGenAI({ apiKey });
+
+    // Map aspect ratio to string format
+    const aspectRatioStr = aspectRatio === AspectRatio.LANDSCAPE_16_9 ? '16:9' :
+                          aspectRatio === AspectRatio.PORTRAIT_9_16 ? '9:16' :
+                          aspectRatio === AspectRatio.SQUARE_1_1 ? '1:1' :
+                          aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
+                          aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' : '16:9';
+
+    console.log(`🎨 Generating image with Gemini 3 Pro Image Preview (Nano Banana Pro) at 1K resolution...`);
+
+    const response = await genAI.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [{ text: enhancedPrompt }],
+      },
+      config: {
+        responseModalities: ['Image'], // Request only image output
+        imageConfig: {
+          aspectRatio: aspectRatioStr,
+          imageSize: '1K', // 1K resolution as requested
+        },
+      },
+    });
+
+    // Extract image from response
+    const candidates = response.candidates;
+    if (!candidates || candidates.length === 0) {
+      throw new Error('No image candidates returned');
+    }
+
+    const parts = candidates[0].content?.parts;
+    if (!parts || parts.length === 0) {
+      throw new Error('No image parts returned');
+    }
+
+    // Look for inlineData which contains the base64 image
+    for (const part of parts) {
+      if (part.inlineData && part.inlineData.data) {
+        const base64Data = part.inlineData.data;
+        // Check if it already has data URL prefix
+        if (base64Data.startsWith('data:')) {
+          return base64Data;
+        }
+        return `data:image/png;base64,${base64Data}`;
+      }
+    }
+
+    throw new Error('No image data found in response');
   } catch (error) {
-    console.warn('Imagen API failed, falling back to Nano Banana Pro:', error);
+    console.error('Failed to generate image with Gemini 3 Pro Image Preview:', error);
+    // Fallback to educational image generator
     try {
-      // Fallback to Nano Banana Pro for high-quality 1K educational images
+      console.warn('Falling back to educational image generator...');
       const imageDataUrl = await generateEducationalImage(
         prompt,
         aspectRatio,

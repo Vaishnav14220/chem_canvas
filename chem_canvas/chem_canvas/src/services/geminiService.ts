@@ -1602,6 +1602,63 @@ export const generateImage = async (
   }
 };
 
+export type ImagenPersonGeneration = 'dont_allow' | 'allow_adult' | 'allow_all';
+
+export type GeneratedImagenImage = {
+  mimeType: string;
+  imageBytesBase64: string;
+};
+
+export const generateImagen4Images = async (
+  prompt: string,
+  options?: {
+    aspectRatio?: AspectRatio;
+    imageSize?: ImageSize;
+    numberOfImages?: 1 | 2 | 3 | 4;
+    personGeneration?: ImagenPersonGeneration;
+    outputMimeType?: 'image/png' | 'image/jpeg' | string;
+    outputCompressionQuality?: number;
+  }
+): Promise<GeneratedImagenImage[]> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  return await executeWithRotation(async (apiKey) => {
+    if (apiKey !== currentApiKey) {
+      genAI = new GoogleGenAI({ apiKey });
+      currentApiKey = apiKey;
+      cachedModelName = null;
+    }
+
+    const response = await genAI!.models.generateImages({
+      model: 'imagen-4.0-generate-001',
+      prompt,
+      config: {
+        numberOfImages: options?.numberOfImages ?? 1,
+        aspectRatio: options?.aspectRatio ?? '1:1',
+        imageSize: options?.imageSize ?? '1K',
+        personGeneration: options?.personGeneration ?? 'allow_adult',
+        outputMimeType: options?.outputMimeType ?? 'image/png',
+        outputCompressionQuality: options?.outputCompressionQuality,
+      } as any,
+    });
+
+    const images = (response as any)?.generatedImages as Array<any> | undefined;
+    if (!images?.length) return [];
+
+    return images
+      .map((img) => {
+        const mimeType = String(img?.image?.mimeType ?? options?.outputMimeType ?? 'image/png');
+        const imageBytes = img?.image?.imageBytes;
+        if (!imageBytes || typeof imageBytes !== 'string') return null;
+        return { mimeType, imageBytesBase64: imageBytes } satisfies GeneratedImagenImage;
+      })
+      .filter(Boolean) as GeneratedImagenImage[];
+  });
+};
+
 /**
  * Generates a high-quality educational image using Nano Banana Pro (Gemini 3 Pro Image Preview).
  */
@@ -2441,4 +2498,3 @@ export const generateMultiSpeakerAudio = async (
     throw error;
   }
 };
-

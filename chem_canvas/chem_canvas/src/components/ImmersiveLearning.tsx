@@ -78,6 +78,17 @@ import {
 import { extractJsonBlock, fetchGroundingSources, generateTextContent, sendStudiumChatMessage } from '../services/geminiService';
 import { generateStreamingContent } from '../services/geminiStreaming';
 import ReactFlowMindMap from './ReactFlowMindMap';
+import {
+    generateNotebookSummary,
+    generateNotebookMindmap,
+    generateNotebookAudioScript,
+    generateNotebookAudio,
+    chatAboutNotebook,
+    NotebookSummary,
+    NotebookChatMessage,
+    NotebookContent,
+    createEmptyNotebookContent
+} from '../services/notebookService';
 import DrawIOWorkspace, { STORAGE_DIAGRAM_XML_KEY } from './DrawIOWorkspace';
 import { LessonGeneratorActivity } from './LessonGeneratorActivity';
 import { Reasoning } from './ai-elements/reasoning';
@@ -91,7 +102,7 @@ interface ImmersiveLearningProps {
     apiKey?: string;
 }
 
-type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity' | 'code-lab' | 'assignment' | 'latex-assignment';
+type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity' | 'code-lab' | 'assignment' | 'latex-assignment' | 'notebook';
 
 type CodeLabLanguage = 'python' | 'javascript' | 'java' | 'cpp';
 
@@ -249,6 +260,23 @@ const LaTeXIcon = ({ active }: { active?: boolean }) => (
         <path d="M14 9L18 13M18 9L14 13" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="2" strokeLinecap="round" />
         {/* Code brackets */}
         <path d="M10 15L8 17L10 19M14 15L16 17L14 19" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+);
+
+// Notebook Icon - HyperBookLM-inspired research notebook
+const NotebookIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Notebook outline */}
+        <rect x="4" y="2" width="16" height="20" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        {/* Binding */}
+        <line x1="8" y1="2" x2="8" y2="22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        {/* Lines */}
+        <line x1="11" y1="7" x2="17" y2="7" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="11" y1="11" x2="17" y2="11" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="11" y1="15" x2="15" y2="15" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        {/* AI sparkle */}
+        <circle cx="18" cy="18" r="4" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.4"} />
+        <path d="M18 16V20M16 18H20" stroke={active ? "#000000" : "#9aa0a6"} strokeWidth="1" strokeLinecap="round" />
     </svg>
 );
 
@@ -522,6 +550,17 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const analyserRef = useRef<AnalyserNode | null>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [audioGenerationError, setAudioGenerationError] = useState(false);
+
+    // Notebook State (HyperBookLM-inspired)
+    const [notebookContent, setNotebookContent] = useState<NotebookContent | null>(null);
+    const [notebookActiveTab, setNotebookActiveTab] = useState<'summary' | 'mindmap' | 'audio' | 'chat'>('summary');
+    const [isGeneratingNotebookSummary, setIsGeneratingNotebookSummary] = useState(false);
+    const [isGeneratingNotebookMindmap, setIsGeneratingNotebookMindmap] = useState(false);
+    const [isGeneratingNotebookAudio, setIsGeneratingNotebookAudio] = useState(false);
+    const [notebookChatInput, setNotebookChatInput] = useState('');
+    const [isNotebookChatLoading, setIsNotebookChatLoading] = useState(false);
+    const [notebookAudioPlaying, setNotebookAudioPlaying] = useState(false);
+    const notebookAudioRef = useRef<HTMLAudioElement | null>(null);
 
     // Bring-your-own-notes support (for audio, mindmap, simulation)
     const [standaloneNotes, setStandaloneNotes] = useState('');
@@ -2611,7 +2650,8 @@ ${edgesXML}
         { id: 'image-activity', icon: <ImageActivityIcon active={activeMode === 'image-activity'} />, label: 'Image Activity', activeColor: '#f97316', activeBg: '#ffedd5' },
         { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' },
         { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Assignment', activeColor: '#1a73e8', activeBg: '#e8f0fe' },
-        { id: 'latex-assignment', icon: <LaTeXIcon active={activeMode === 'latex-assignment'} />, label: 'LaTeX', activeColor: '#f97316', activeBg: '#ffedd5' }
+        { id: 'latex-assignment', icon: <LaTeXIcon active={activeMode === 'latex-assignment'} />, label: 'LaTeX', activeColor: '#f97316', activeBg: '#ffedd5' },
+        { id: 'notebook', icon: <NotebookIcon active={activeMode === 'notebook'} />, label: 'Notebook', activeColor: '#8b5cf6', activeBg: '#ede9fe' }
     ];
 
 
@@ -5217,7 +5257,11 @@ sys.stderr = StringIO()
 
                                 {/* Generate Button */}
                                 <button
-                                    onClick={() => setActiveMode('source')}
+                                    onClick={() => {
+                                        if (activeMode !== 'notebook') {
+                                            setActiveMode('source');
+                                        }
+                                    }}
                                     disabled={!standaloneNotes.trim() && !standaloneTopic.trim()}
                                     className={
                                         !standaloneNotes.trim() && !standaloneTopic.trim()
@@ -8577,7 +8621,7 @@ sys.stderr = StringIO()
                                         </div>
                                         <div>
                                             <p className="text-lg font-bold text-slate-700 mb-2">Generating Image</p>
-                                            <p className="text-sm text-slate-500 mb-4">AI is crafting your image using Imagen 4.0...</p>
+                                            <p className="text-sm text-slate-500 mb-4">AI is crafting your image using Gemini 3 Pro Image Preview (Nano Banana Pro)...</p>
                                             <p className="text-xs text-slate-400">This usually takes 5-10 seconds</p>
                                         </div>
                                     </div>
@@ -9191,6 +9235,384 @@ sys.stderr = StringIO()
 
             case 'latex-assignment':
                 return <LaTeXAssignmentPrep />;
+
+            case 'notebook':
+                // Notebook Panel - HyperBookLM-inspired research workspace
+                if (isLoading) {
+                    const terminalStages = [
+                        {
+                            name: 'Uploading',
+                            status: processingStage === 'uploading' ? 'loading' :
+                                ['extracting', 'analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
+                        },
+                        {
+                            name: 'Extracting Content',
+                            status: processingStage === 'extracting' ? 'loading' :
+                                ['analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
+                        },
+                        {
+                            name: 'Analyzing Structure',
+                            status: processingStage === 'analyzing' ? 'loading' :
+                                processingStage === 'generating' ? 'complete' : 'pending' as const
+                        },
+                        {
+                            name: 'Generating Experience',
+                            status: processingStage === 'generating' ? 'loading' : 'pending' as const
+                        }
+                    ];
+
+                    const stageProgress = {
+                        'idle': 0,
+                        'uploading': 15,
+                        'extracting': 40,
+                        'analyzing': 65,
+                        'generating': 90
+                    };
+
+                    return (
+                        <div className="flex flex-col items-center justify-center h-full space-y-6 p-8 bg-[#f8f9fa]">
+                            <div className="w-full max-w-2xl">
+                                {uploadedFileName && (
+                                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white rounded-full w-fit mx-auto mb-6 shadow-sm border border-slate-100">
+                                        <FileText className="w-4 h-4 text-violet-600" />
+                                        <span className="text-sm text-slate-600 truncate max-w-[200px]">{uploadedFileName}</span>
+                                    </div>
+                                )}
+                                <ProgressTerminal
+                                    stages={terminalStages}
+                                    progress={stageProgress[processingStage]}
+                                    subSteps={terminalSubSteps}
+                                    title="processing-notebook"
+                                />
+                                <div className="mt-4 text-center">
+                                    <p className="text-sm text-slate-500">{loadingMessage}</p>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                const documentText = documentTextRef.current || standaloneNotes || '';
+                const hasDocument = documentText.length > 0;
+
+                // Generate notebook content when tab is selected
+                const handleGenerateNotebookContent = async (tab: 'summary' | 'mindmap' | 'audio') => {
+                    if (!hasDocument) return;
+
+                    if (tab === 'summary' && !notebookContent?.summary && !isGeneratingNotebookSummary) {
+                        setIsGeneratingNotebookSummary(true);
+                        try {
+                            const summary = await generateNotebookSummary(documentText);
+                            setNotebookContent(prev => ({ ...(prev || createEmptyNotebookContent()), summary }));
+                        } catch (e) {
+                            console.error('Failed to generate notebook summary:', e);
+                        } finally {
+                            setIsGeneratingNotebookSummary(false);
+                        }
+                    }
+
+                    if (tab === 'mindmap' && !notebookContent?.mindmapData && !isGeneratingNotebookMindmap) {
+                        setIsGeneratingNotebookMindmap(true);
+                        try {
+                            const mindmapData = await generateNotebookMindmap(documentText);
+                            setNotebookContent(prev => ({ ...(prev || createEmptyNotebookContent()), mindmapData }));
+                        } catch (e) {
+                            console.error('Failed to generate notebook mindmap:', e);
+                        } finally {
+                            setIsGeneratingNotebookMindmap(false);
+                        }
+                    }
+
+                    if (tab === 'audio' && !notebookContent?.audioBuffer && !isGeneratingNotebookAudio) {
+                        setIsGeneratingNotebookAudio(true);
+                        try {
+                            const topic = immersiveContent?.title || uploadedFileName || 'Document Overview';
+                            const script = await generateNotebookAudioScript(topic, documentText);
+                            const audioBuffer = await generateNotebookAudio(script);
+                            setNotebookContent(prev => ({ ...(prev || createEmptyNotebookContent()), audioScript: script, audioBuffer }));
+                        } catch (e) {
+                            console.error('Failed to generate notebook audio:', e);
+                        } finally {
+                            setIsGeneratingNotebookAudio(false);
+                        }
+                    }
+                };
+
+                // Handle chat submission
+                const handleNotebookChatSubmit = async () => {
+                    if (!notebookChatInput.trim() || !hasDocument || isNotebookChatLoading) return;
+
+                    const userMessage: NotebookChatMessage = {
+                        role: 'user',
+                        content: notebookChatInput,
+                        timestamp: Date.now()
+                    };
+
+                    const history = notebookContent?.chatHistory || [];
+                    setNotebookContent(prev => ({
+                        ...(prev || createEmptyNotebookContent()),
+                        chatHistory: [...history, userMessage]
+                    }));
+                    setNotebookChatInput('');
+                    setIsNotebookChatLoading(true);
+
+                    try {
+                        const response = await chatAboutNotebook(history, notebookChatInput, documentText);
+                        const assistantMessage: NotebookChatMessage = {
+                            role: 'assistant',
+                            content: response,
+                            timestamp: Date.now()
+                        };
+                        setNotebookContent(prev => ({
+                            ...(prev || createEmptyNotebookContent()),
+                            chatHistory: [...(prev?.chatHistory || []), assistantMessage]
+                        }));
+                    } catch (e) {
+                        console.error('Failed to get chat response:', e);
+                    } finally {
+                        setIsNotebookChatLoading(false);
+                    }
+                };
+
+                return (
+                    <div className="flex flex-col h-full bg-[#eef2f7]">
+                        {/* Header */}
+                        <div className="p-4 border-b border-slate-200 bg-white">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center">
+                                    <NotebookIcon active />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-slate-800">Research Notebook</h2>
+                                    <p className="text-sm text-slate-500">AI-powered research workspace inspired by HyperBookLM</p>
+                                </div>
+                            </div>
+
+                            {/* Tabs */}
+                            <div className="flex gap-2 mt-4">
+                                {(['summary', 'mindmap', 'audio', 'chat'] as const).map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => {
+                                            setNotebookActiveTab(tab);
+                                            if (tab !== 'chat') handleGenerateNotebookContent(tab);
+                                        }}
+                                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${notebookActiveTab === tab
+                                            ? 'bg-violet-600 text-white'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                            }`}
+                                    >
+                                        {tab === 'summary' && '📝 Summary'}
+                                        {tab === 'mindmap' && '🧠 Mindmap'}
+                                        {tab === 'audio' && '🎙️ Audio'}
+                                        {tab === 'chat' && '💬 Chat'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Content Area */}
+                        <div className="flex-1 overflow-auto p-6">
+                            {!hasDocument ? (
+                                <div className="flex flex-col items-center justify-center h-full text-center">
+                                    <div className="w-20 h-20 bg-slate-200 rounded-2xl flex items-center justify-center mb-4">
+                                        <FileText className="w-10 h-10 text-slate-400" />
+                                    </div>
+                                    <h3 className="text-xl font-semibold text-slate-700 mb-2">No Document Loaded</h3>
+                                    <p className="text-slate-500 max-w-md">
+                                        Upload a document in the Source tab first, then return here to explore your research notebook.
+                                    </p>
+                                </div>
+                            ) : notebookActiveTab === 'summary' ? (
+                                isGeneratingNotebookSummary ? (
+                                    <div className="flex flex-col items-center justify-center h-full">
+                                        <Loader2 className="w-12 h-12 animate-spin text-violet-600 mb-4" />
+                                        <p className="text-slate-600">Generating AI summary...</p>
+                                    </div>
+                                ) : notebookContent?.summary ? (
+                                    <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm p-8">
+                                        <h3 className="text-2xl font-bold text-slate-800 mb-4">{notebookContent.summary.title}</h3>
+                                        <p className="text-slate-600 leading-relaxed mb-6">{notebookContent.summary.overview}</p>
+
+                                        <h4 className="text-lg font-semibold text-slate-700 mb-3">Key Insights</h4>
+                                        <div className="space-y-2 mb-6">
+                                            {notebookContent.summary.keyInsights.map((item, i) => (
+                                                <div key={i} className={`p-3 rounded-lg border-l-4 ${item.importance === 'high' ? 'bg-red-50 border-red-500' :
+                                                    item.importance === 'medium' ? 'bg-yellow-50 border-yellow-500' :
+                                                        'bg-green-50 border-green-500'
+                                                    }`}>
+                                                    <p className="text-slate-700">{item.insight}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <h4 className="text-lg font-semibold text-slate-700 mb-3">Main Topics</h4>
+                                        <div className="grid grid-cols-2 gap-3 mb-6">
+                                            {notebookContent.summary.mainTopics.map((topic, i) => (
+                                                <div key={i} className="p-3 bg-slate-50 rounded-lg">
+                                                    <p className="font-medium text-slate-800">{topic.topic}</p>
+                                                    <p className="text-sm text-slate-500">{topic.description}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <h4 className="text-lg font-semibold text-slate-700 mb-3">Suggested Questions</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {notebookContent.summary.suggestedQuestions.map((q, i) => (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => {
+                                                        setNotebookChatInput(q);
+                                                        setNotebookActiveTab('chat');
+                                                    }}
+                                                    className="px-3 py-1.5 bg-violet-100 text-violet-700 rounded-full text-sm hover:bg-violet-200 transition"
+                                                >
+                                                    {q}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-full">
+                                        <button
+                                            onClick={() => handleGenerateNotebookContent('summary')}
+                                            className="px-6 py-3 bg-violet-600 text-white rounded-xl font-medium hover:bg-violet-700 transition flex items-center gap-2"
+                                        >
+                                            <Sparkles className="w-5 h-5" />
+                                            Generate Summary
+                                        </button>
+                                    </div>
+                                )
+                            ) : notebookActiveTab === 'mindmap' ? (
+                                isGeneratingNotebookMindmap ? (
+                                    <div className="flex flex-col items-center justify-center h-full">
+                                        <Loader2 className="w-12 h-12 animate-spin text-violet-600 mb-4" />
+                                        <p className="text-slate-600">Building concept mindmap...</p>
+                                    </div>
+                                ) : notebookContent?.mindmapData ? (
+                                    <div className="h-full bg-white rounded-2xl shadow-sm overflow-hidden">
+                                        <ReactFlowMindMap data={notebookContent.mindmapData} />
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-full">
+                                        <button
+                                            onClick={() => handleGenerateNotebookContent('mindmap')}
+                                            className="px-6 py-3 bg-violet-600 text-white rounded-xl font-medium hover:bg-violet-700 transition flex items-center gap-2"
+                                        >
+                                            <Brain className="w-5 h-5" />
+                                            Generate Mindmap
+                                        </button>
+                                    </div>
+                                )
+                            ) : notebookActiveTab === 'audio' ? (
+                                isGeneratingNotebookAudio ? (
+                                    <div className="flex flex-col items-center justify-center h-full">
+                                        <Loader2 className="w-12 h-12 animate-spin text-violet-600 mb-4" />
+                                        <p className="text-slate-600">Generating audio overview with Gemini TTS...</p>
+                                    </div>
+                                ) : notebookContent?.audioBuffer ? (
+                                    <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-sm p-8">
+                                        <div className="flex items-center gap-4 mb-6">
+                                            <button
+                                                onClick={() => {
+                                                    if (notebookAudioRef.current) {
+                                                        if (notebookAudioPlaying) {
+                                                            notebookAudioRef.current.pause();
+                                                        } else {
+                                                            notebookAudioRef.current.play();
+                                                        }
+                                                        setNotebookAudioPlaying(!notebookAudioPlaying);
+                                                    }
+                                                }}
+                                                className="w-16 h-16 bg-violet-600 rounded-full flex items-center justify-center hover:bg-violet-700 transition"
+                                            >
+                                                {notebookAudioPlaying ? (
+                                                    <div className="w-4 h-4 bg-white rounded-sm" />
+                                                ) : (
+                                                    <Play className="w-8 h-8 text-white ml-1" />
+                                                )}
+                                            </button>
+                                            <div>
+                                                <h3 className="text-lg font-semibold text-slate-800">Audio Overview</h3>
+                                                <p className="text-sm text-slate-500">Podcast-style discussion about your document</p>
+                                            </div>
+                                        </div>
+                                        <audio
+                                            ref={(el) => {
+                                                if (el && notebookContent?.audioBuffer) {
+                                                    const blob = new Blob([notebookContent.audioBuffer], { type: 'audio/wav' });
+                                                    el.src = URL.createObjectURL(blob);
+                                                    notebookAudioRef.current = el;
+                                                }
+                                            }}
+                                            onEnded={() => setNotebookAudioPlaying(false)}
+                                            className="w-full"
+                                            controls
+                                        />
+                                        {notebookContent?.audioScript && (
+                                            <div className="mt-6 p-4 bg-slate-50 rounded-xl">
+                                                <h4 className="text-sm font-semibold text-slate-700 mb-2">Transcript</h4>
+                                                <pre className="text-sm text-slate-600 whitespace-pre-wrap font-sans">{notebookContent.audioScript}</pre>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-full">
+                                        <button
+                                            onClick={() => handleGenerateNotebookContent('audio')}
+                                            className="px-6 py-3 bg-violet-600 text-white rounded-xl font-medium hover:bg-violet-700 transition flex items-center gap-2"
+                                        >
+                                            <Volume2 className="w-5 h-5" />
+                                            Generate Audio Overview
+                                        </button>
+                                    </div>
+                                )
+                            ) : (
+                                /* Chat Tab */
+                                <div className="flex flex-col h-full max-w-3xl mx-auto">
+                                    <div className="flex-1 overflow-auto space-y-4 mb-4">
+                                        {(notebookContent?.chatHistory || []).map((msg, i) => (
+                                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                <div className={`max-w-[80%] p-4 rounded-2xl ${msg.role === 'user'
+                                                    ? 'bg-violet-600 text-white'
+                                                    : 'bg-white text-slate-700 shadow-sm'
+                                                    }`}>
+                                                    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                                        {msg.content}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {isNotebookChatLoading && (
+                                            <div className="flex justify-start">
+                                                <div className="bg-white p-4 rounded-2xl shadow-sm">
+                                                    <Loader2 className="w-5 h-5 animate-spin text-violet-600" />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={notebookChatInput}
+                                            onChange={(e) => setNotebookChatInput(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleNotebookChatSubmit()}
+                                            placeholder="Ask a question about your document..."
+                                            className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                        />
+                                        <button
+                                            onClick={handleNotebookChatSubmit}
+                                            disabled={!notebookChatInput.trim() || isNotebookChatLoading}
+                                            className="px-4 py-3 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition disabled:opacity-50"
+                                        >
+                                            <Send className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
 
             default:
                 return null;
