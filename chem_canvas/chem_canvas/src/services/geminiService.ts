@@ -137,11 +137,9 @@ export const isGeminiInitialized = () => {
 };
 
 const MODEL_CANDIDATES = [
-  'gemini-2.0-flash-thinking-exp',
-  'gemini-2.0-flash-exp',
-  'gemini-1.5-pro',
-  'gemini-1.5-flash',
-  'gemini-2.0-flash'
+  'gemini-3-pro-preview',
+  'gemini-3-flash-preview',
+  'gemini-2.0-flash-thinking-exp'
 ];
 
 const resolveModelForClient = async (client: GoogleGenAI): Promise<string> => {
@@ -1672,10 +1670,10 @@ export const generateEducationalImage = async (
 
       // Step 1: Research with Google Search grounding for scientific accuracy
       const researchResult = await genAI!.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         config: {
           tools: [{ googleSearch: {} }],
-          thinkingConfig: { thinkingBudget: 1024 }
+          thinkingConfig: { thinking_level: 'Comprehensive' }
         },
         contents: [{
           role: 'user', parts: [{
@@ -1690,9 +1688,9 @@ export const generateEducationalImage = async (
       const researchContext = researchResult.text || '';
       console.log("Research context gathered for image generation");
 
-      // Step 2: Prompt Engineering with Gemini 2.5 Flash using research context
+      // Step 2: Prompt Engineering with Gemini 3 Flash using research context
       const promptResult = await genAI!.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         config: {
           systemInstruction: `Role: You are an Expert SCIENTIFIC and ACADEMIC Illustrator and Prompt Engineer for an advanced AI image generator.
 
@@ -1727,7 +1725,7 @@ ${researchContext}
 Output Format: return ONLY the raw JSON object. Do not wrap it in markdown code blocks.`,
           responseMimeType: 'application/json',
           responseSchema: ImageGenerationPromptSchema,
-          thinkingConfig: { thinkingBudget: 512 }
+          thinkingConfig: { thinking_level: 'Comprehensive' }
         },
         contents: [{ role: 'user', parts: [{ text: topic }] }]
       });

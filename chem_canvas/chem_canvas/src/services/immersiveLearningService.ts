@@ -3,6 +3,9 @@ import { AspectRatio, ImageSize } from '../types/studium';
 import { fetchYouTubeVideos, YouTubeVideo } from './youtubeService';
 import { fetchYouTubeTranscript, getVideoTranscriptWithTimestamps, VideoTranscript } from './youtubeTranscriptService';
 
+// Default text model for Immersive Learning flows (document analysis, section generation, etc.)
+const IMMERSIVE_TEXT_MODEL = 'gemini-3-flash-preview';
+
 /**
  * Attempts to repair truncated or malformed JSON strings from AI responses.
  */
@@ -367,7 +370,7 @@ export const analyzeDocumentForImmersive = async (text: string): Promise<Immersi
     REMEMBER: Your response must be based STRICTLY on the text above. Do not add any information, examples, or explanations that are not present in the provided text. If the document is about a specific topic (like rotary encoders, sensors, etc.), focus ONLY on what is written about that topic in the provided text.
   `;
 
-  const response = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
+  const response = await generateTextContent(prompt, { model: IMMERSIVE_TEXT_MODEL });
   const json = extractJsonBlock(response);
 
   const fallbackContent: ImmersiveContent = {
@@ -655,7 +658,7 @@ export const streamAnalyzeDocumentForImmersive = async (
         console.log(`📦 Chunk received: ${chunk.length} chars, total: ${accumulatedText.length}`);
         onStreamUpdate(accumulatedText, false);
       },
-      { model: 'gemini-1.5-pro', timeout: 180000 } // Extended timeout for long content
+      { model: IMMERSIVE_TEXT_MODEL, timeout: 180000 } // Extended timeout for long content
     );
     console.log('🏁 Stream finished, total length:', finalText.length);
     // Signal completion with the final text
@@ -712,7 +715,7 @@ export const streamAnalyzeDocumentForImmersive = async (
 
     // Fallback to non-streaming if streaming fails AND we don't have enough partial content
     console.log('Not enough partial content to recover, trying non-streaming fallback...');
-    const fallbackResponse = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
+    const fallbackResponse = await generateTextContent(prompt, { model: IMMERSIVE_TEXT_MODEL });
     onStreamUpdate(fallbackResponse, true);
 
     const json = extractJsonBlock(fallbackResponse);
@@ -1019,7 +1022,7 @@ export const generateAudioScript = async (text: string): Promise<string> => {
     ${text.slice(0, 10000)}
   `;
 
-  return await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
+  return await generateTextContent(prompt, { model: IMMERSIVE_TEXT_MODEL });
 };
 
 export const generateMindMapData = async (text: string): Promise<MindMapNode> => {
@@ -1088,7 +1091,7 @@ export const generateReactFlowData = async (text: string): Promise<ReactFlowData
     ${text.slice(0, 8000)}
   `;
 
-  const response = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
+  const response = await generateTextContent(prompt, { model: IMMERSIVE_TEXT_MODEL });
   const json = extractJsonBlock(response);
 
   const fallback: ReactFlowData = {
@@ -1133,7 +1136,7 @@ export const extendMindMapNode = async (nodeLabel: string, context: string = '')
     - Focus on educational value and logical hierarchy.
   `;
 
-  const response = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
+  const response = await generateTextContent(prompt, { model: IMMERSIVE_TEXT_MODEL });
   const json = extractJsonBlock(response);
 
   const fallback: ReactFlowData = {
@@ -1711,7 +1714,7 @@ export const generateVideoSummary = async (
   `;
 
   try {
-    const response = await generateTextContent(prompt, { model: 'gemini-3-pro-preview' });
+    const response = await generateTextContent(prompt, { model: IMMERSIVE_TEXT_MODEL });
     const json = extractJsonBlock(response);
 
     const fallback: VideoSummary = {
@@ -1984,7 +1987,7 @@ export const generatePodcastScript = async (
   `;
 
   try {
-    const response = await generateTextContent(prompt, { maxOutputTokens: 2000, model: 'gemini-3-pro-preview' });
+    const response = await generateTextContent(prompt, { maxOutputTokens: 2000, model: IMMERSIVE_TEXT_MODEL });
     return response;
   } catch (error) {
     console.error('Failed to generate podcast script:', error);
@@ -2200,7 +2203,7 @@ Create a blueprint that a developer could use to build a complete educational si
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${IMMERSIVE_TEXT_MODEL}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2276,9 +2279,9 @@ ${librarySetup}
 Generate the complete HTML now:`;
 
   try {
-    // Use Gemini 3 Pro Preview for best code generation
+    // Use Immersive Learning model for best code generation
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${IMMERSIVE_TEXT_MODEL}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2295,8 +2298,8 @@ Generate the complete HTML now:`;
     if (!response.ok) {
       const errorText = await response.text();
       console.error('HTML generation error:', errorText);
-      // Fallback to gemini-3-pro-preview if primary call fails
-      console.log('Falling back to gemini-3-pro-preview...');
+      // Fallback to the same model via a simpler prompt if primary call fails
+      console.log(`Falling back to ${IMMERSIVE_TEXT_MODEL}...`);
       return await generateSimulationHTMLFallback(blueprint, apiKey);
     }
 
@@ -2317,10 +2320,10 @@ Generate the complete HTML now:`;
       return await generateSimulationHTMLFallback(blueprint, apiKey);
     }
 
-    console.log('✅ Simulation HTML generated successfully with Gemini 3 Pro, length:', htmlContent.length);
+    console.log('✅ Simulation HTML generated successfully, length:', htmlContent.length);
     return htmlContent;
   } catch (error) {
-    console.error('Failed to generate simulation HTML with Gemini 3:', error);
+    console.error('Failed to generate simulation HTML:', error);
     // Try fallback
     try {
       return await generateSimulationHTMLFallback(blueprint, apiKey);
@@ -2382,13 +2385,13 @@ const cleanHtmlResponse = (html: string): string => {
 };
 
 /**
- * Fallback HTML generation using gemini-3-pro-preview
+ * Fallback HTML generation using the Immersive Learning model
  */
 const generateSimulationHTMLFallback = async (
   blueprint: SimulationBlueprint,
   apiKey: string
 ): Promise<string> => {
-  console.log('🔄 Using fallback generation with gemini-3-pro-preview...');
+  console.log(`🔄 Using fallback generation with ${IMMERSIVE_TEXT_MODEL}...`);
 
   const prompt = `Generate a simple but working HTML simulation for: "${blueprint.educational_content.title}"
 
@@ -2401,7 +2404,7 @@ Requirements:
 Output ONLY the HTML code starting with <!DOCTYPE html>:`;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${IMMERSIVE_TEXT_MODEL}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

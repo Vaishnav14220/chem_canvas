@@ -14,11 +14,9 @@ const getAvailableModel = async (): Promise<string> => {
   }
 
   const models = [
-    'gemini-2.0-flash-thinking-exp',
-    'gemini-2.0-flash-exp',
-    'gemini-1.5-pro',
-    'gemini-1.5-flash',
-    'gemini-2.0-flash'
+    'gemini-3-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-2.0-flash-thinking-exp'
   ];
 
   for (const modelName of models) {
@@ -44,9 +42,9 @@ const getAvailableModel = async (): Promise<string> => {
   }
 
   // Fallback to default if nothing works
-  console.warn('⚠️ No model test succeeded, using fallback: gemini-1.5-pro');
-  cachedModelName = 'gemini-1.5-pro';
-  return 'gemini-1.5-pro';
+  console.warn('⚠️ No model test succeeded, using fallback: gemini-3-pro-preview');
+  cachedModelName = 'gemini-3-pro-preview';
+  return 'gemini-3-pro-preview';
 };
 
 // Initialize the Gemini AI service

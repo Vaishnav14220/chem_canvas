@@ -10,9 +10,10 @@ import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLangua
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
 
-const MODEL_NAME = 'gemini-2.0-flash-exp';
-const CONCEPT_IMAGE_MODEL = 'gemini-1.5-pro'; // Or an image model if available
-const REASONING_MODEL = 'gemini-1.5-pro';
+const MODEL_NAME = 'gemini-3-flash-preview';
+const CONCEPT_IMAGE_MODEL = 'gemini-3-pro-image-preview';
+const REASONING_MODEL = 'gemini-3-pro-preview';
+const AUDIO_MODEL = 'gemini-2.5-flash-preview-tts';
 const CONCEPT_IMAGE_SIZE = '1K';
 const IMAGE_GENERATION_TOOLS = [{ googleSearch: {} }];
 

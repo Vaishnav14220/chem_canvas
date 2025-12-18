@@ -723,7 +723,7 @@ Respond in JSON format only:
 }`;
 
             const responseText = await generateTextContent(prompt, {
-                model: 'gemini-2.0-flash',
+                model: 'gemini-3-flash-preview',
                 maxOutputTokens: 512,
             });
 
