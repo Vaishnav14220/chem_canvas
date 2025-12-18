@@ -136,7 +136,13 @@ export const isGeminiInitialized = () => {
   return genAI !== null;
 };
 
-const MODEL_CANDIDATES = ['gemini-3-pro-preview', 'gemini-2.0-flash-thinking-exp', 'gemini-2.0-flash-exp', 'gemini-2.5-flash', 'gemini-flash-latest'];
+const MODEL_CANDIDATES = [
+  'gemini-2.0-flash-thinking-exp',
+  'gemini-2.0-flash-exp',
+  'gemini-1.5-pro',
+  'gemini-1.5-flash',
+  'gemini-2.0-flash'
+];
 
 const resolveModelForClient = async (client: GoogleGenAI): Promise<string> => {
   for (const modelName of MODEL_CANDIDATES) {
@@ -210,40 +216,23 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
         if (options?.maxOutputTokens) {
           config = { ...config, maxOutputTokens: options.maxOutputTokens };
         }
-        if (options?.thinking) {
-          // Gemini Thinking config - different for 2.5 vs 3 models
-          const isGemini3 = modelName.includes('gemini-3') || modelName.includes('gemini-3-pro');
-          const isGemini25 = modelName.includes('gemini-2.5') || modelName.includes('gemini-2.0');
 
-          if (isGemini3) {
-            // Gemini 3 supports thinking_level
-            const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
+        if (options?.thinking) {
+          if (modelName.includes('thinking')) {
             config = {
               ...config,
               thinkingConfig: {
                 includeThoughts: true,
-                thinking_level: thinkingLevel,
-              }
-            };
-          } else if (isGemini25) {
-            // Gemini 2.5 uses thinkingBudget (-1 = dynamic, 0 = off, >0 = token budget)
-            const thinkingBudget = typeof options.thinking === 'string'
-              ? (options.thinking === 'high' ? -1 : 1024)
-              : (options.thinking === true ? -1 : 1024);
-            config = {
-              ...config,
-              thinkingConfig: {
-                includeThoughts: true,
-                thinkingBudget: thinkingBudget,
+                thinking_level: 'Comprehensive'
               }
             };
           } else {
-            // Default: try thinkingBudget
+            // Default to thinkingBudget for standard models
             config = {
               ...config,
               thinkingConfig: {
                 includeThoughts: true,
-                thinkingBudget: -1, // Dynamic thinking
+                thinkingBudget: -1 // Dynamic thinking
               }
             };
           }

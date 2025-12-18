@@ -13,7 +13,13 @@ const getAvailableModel = async (): Promise<string> => {
     return cachedModelName;
   }
 
-  const models = ['gemini-2.5-pro', 'gemini-2.0-pro-exp-02-05', 'gemini-2.0-flash-thinking-exp-01-21', 'gemini-2.0-flash-exp'];
+  const models = [
+    'gemini-2.0-flash-thinking-exp',
+    'gemini-2.0-flash-exp',
+    'gemini-1.5-pro',
+    'gemini-1.5-flash',
+    'gemini-2.0-flash'
+  ];
 
   for (const modelName of models) {
     try {
@@ -38,9 +44,9 @@ const getAvailableModel = async (): Promise<string> => {
   }
 
   // Fallback to default if nothing works
-  console.warn('⚠️ No model test succeeded, using fallback: gemini-flash-latest');
-  cachedModelName = 'gemini-flash-latest';
-  return 'gemini-flash-latest';
+  console.warn('⚠️ No model test succeeded, using fallback: gemini-1.5-pro');
+  cachedModelName = 'gemini-1.5-pro';
+  return 'gemini-1.5-pro';
 };
 
 // Initialize the Gemini AI service
@@ -68,7 +74,7 @@ export const initializeGeminiStreaming = async (): Promise<void> => {
 
     cachedModelName = null; // Reset cache when reinitializing
     isInitialized = true;
-    console.log('✅ Gemini Streaming API initialized successfully!');
+    // Removed the log as per instruction, assuming it was a duplicate/incorrect one.
   } catch (error) {
     console.error('❌ Failed to initialize Gemini Streaming API:', error);
     throw error;
@@ -94,7 +100,7 @@ export const generateStreamingContent = async (
     } catch (e: any) {
       const error = new Error(
         e?.message ||
-          'Gemini Streaming API not initialized. Please sign in and ensure an API key exists in Firestore.'
+        'Gemini Streaming API not initialized. Please sign in and ensure an API key exists in Firestore.'
       );
       onError?.(error);
       throw error;
@@ -135,6 +141,7 @@ Please format your response using proper markdown:
     ];
 
     console.log('🔮 Starting Gemini Stream Request...');
+    if (!genAI) throw new Error('GenAI not initialized'); // Added null check for genAI
     const response = await genAI.models.generateContentStream({
       model,
       config,

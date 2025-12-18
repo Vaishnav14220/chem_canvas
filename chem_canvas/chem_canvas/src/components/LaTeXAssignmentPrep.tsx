@@ -260,7 +260,6 @@ Special Instructions:
                 setPdfUrl(result.pdfUrl);
             } else {
                 setError(result.log || 'Compilation failed');
-                // Create a blob URL for log if needed, or just show error
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Compilation failed');

@@ -89,13 +89,10 @@ const safeJsonParse = <T>(jsonString: string, fallback: T): T => {
       const repaired = repairJson(cleaned);
       return JSON.parse(repaired);
     } catch (e2) {
-      // Step 3: Aggressive clean (replace all backslashes with forward slashes) - ONLY as last resort
+      // Step 3: Minimal repair for JSON structure only
       try {
-        console.warn('Standard repair failed, trying aggressive backslash replacement...');
-        // This destroys LaTeX but saves the JSON structure
-        const aggressive = jsonString.replace(/\\/g, '/');
-        const repairedAggressive = repairJson(aggressive);
-        return JSON.parse(repairedAggressive);
+        const repairedMinimal = repairJson(jsonString);
+        return JSON.parse(repairedMinimal);
       } catch (e3) {
         console.error('All JSON repair attempts failed:', e2);
         return fallback;
@@ -404,7 +401,7 @@ export const streamAnalyzeDocumentForImmersive = async (
   if (mainTopic.includes('oszilloskop') || mainTopic.includes('oscilloscope')) topicKeywords.push('oscilloscope/Oszilloskop');
   if (mainTopic.includes('sensor')) topicKeywords.push('sensors');
   if (mainTopic.includes('funktionsgenerator') || mainTopic.includes('function generator')) topicKeywords.push('function generator');
-  
+
   const prompt = `
     🚨🚨🚨 ABSOLUTE REQUIREMENT - READ THIS FIRST 🚨🚨🚨
     
@@ -658,7 +655,7 @@ export const streamAnalyzeDocumentForImmersive = async (
         console.log(`📦 Chunk received: ${chunk.length} chars, total: ${accumulatedText.length}`);
         onStreamUpdate(accumulatedText, false);
       },
-      { model: 'gemini-3-pro-preview', timeout: 180000 } // Extended timeout for long content
+      { model: 'gemini-1.5-pro', timeout: 180000 } // Extended timeout for long content
     );
     console.log('🏁 Stream finished, total length:', finalText.length);
     // Signal completion with the final text
@@ -1177,10 +1174,10 @@ export const generateImagenImage = async (
 
     // Map aspect ratio to Imagen format
     const imagenAspectRatio = aspectRatio === AspectRatio.LANDSCAPE_16_9 ? '16:9' :
-                             aspectRatio === AspectRatio.PORTRAIT_9_16 ? '9:16' :
-                             aspectRatio === AspectRatio.SQUARE_1_1 ? '1:1' :
-                             aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
-                             aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' : '16:9';
+      aspectRatio === AspectRatio.PORTRAIT_9_16 ? '9:16' :
+        aspectRatio === AspectRatio.SQUARE_1_1 ? '1:1' :
+          aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
+            aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' : '16:9';
 
     // Imagen API endpoint - using header for API key as per documentation
     const url = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict';
@@ -1214,7 +1211,7 @@ export const generateImagenImage = async (
 
     const data = await response.json();
     console.log('Imagen API response structure:', Object.keys(data));
-    
+
     // Handle different possible response structures
     // Try predictions array first (REST API format)
     if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
@@ -1230,7 +1227,7 @@ export const generateImagenImage = async (
         return `data:image/png;base64,${imageBase64}`;
       }
     }
-    
+
     // Try generatedImages array (alternative SDK format)
     if (data.generatedImages && Array.isArray(data.generatedImages) && data.generatedImages.length > 0) {
       const generatedImage = data.generatedImages[0];
@@ -1268,7 +1265,7 @@ export const extractDocumentContextForImage = async (
   try {
     // Limit document text to avoid token limits (keep it reasonable)
     const maxDocumentLength = 30000; // ~30k chars should be enough for context
-    const truncatedDocument = documentText.length > maxDocumentLength 
+    const truncatedDocument = documentText.length > maxDocumentLength
       ? documentText.slice(0, maxDocumentLength) + '...'
       : documentText;
 
@@ -1316,7 +1313,7 @@ const enhancePromptForAcademicImage = async (
 ): Promise<string> => {
   try {
     const { generateTextContent } = await import('./geminiService');
-    
+
     const enhancementPrompt = `You are an expert academic illustrator and prompt engineer specializing in creating detailed, scientifically accurate image generation prompts for educational materials.
 
 TASK: Transform the user's image request into a comprehensive, well-defined academic prompt that will generate a high-quality educational illustration suitable for textbooks, scientific journals, or educational presentations.
@@ -1389,10 +1386,10 @@ export const generateImmersiveImage = async (
 
     // Map aspect ratio to string format
     const aspectRatioStr = aspectRatio === AspectRatio.LANDSCAPE_16_9 ? '16:9' :
-                          aspectRatio === AspectRatio.PORTRAIT_9_16 ? '9:16' :
-                          aspectRatio === AspectRatio.SQUARE_1_1 ? '1:1' :
-                          aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
-                          aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' : '16:9';
+      aspectRatio === AspectRatio.PORTRAIT_9_16 ? '9:16' :
+        aspectRatio === AspectRatio.SQUARE_1_1 ? '1:1' :
+          aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
+            aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' : '16:9';
 
     console.log(`🎨 Generating image with Gemini 3 Pro Image Preview (Nano Banana Pro) at 1K resolution...`);
 

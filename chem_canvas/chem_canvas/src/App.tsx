@@ -326,6 +326,11 @@ const App: React.FC = () => {
       webcamStreamRef.current = stream;
       setIsWebcamSharing(true);
 
+      // Clear any existing interval before starting a new one to prevent leaks
+      if (webcamIntervalRef.current) {
+        clearInterval(webcamIntervalRef.current as number);
+      }
+
       // Create a canvas to capture frames
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -1851,10 +1856,10 @@ Here is the learner's question: ${message}`;
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground dark">
+    <div className="min-h-screen bg-[#0f172a] text-foreground dark">
       {/* Header */}
       {true && (
-        <header className="sticky top-0 z-50 w-full border-b border-border/40 shadow-sm" style={{ backgroundColor: '#171717', backdropFilter: 'blur-xl' }}>
+        <header className="sticky top-0 z-50 w-full border-b border-border/40 shadow-sm" style={{ backgroundColor: '#0f172a', backdropFilter: 'blur-xl' }}>
           <input
             ref={fileUploadInputRef}
             type="file"
@@ -1863,7 +1868,7 @@ Here is the learner's question: ${message}`;
             className="hidden"
             onChange={handleHeaderFileChange}
           />
-          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6" style={{ backgroundColor: '#171717' }}>
+          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6" style={{ backgroundColor: '#0f172a' }}>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
@@ -1884,7 +1889,7 @@ Here is the learner's question: ${message}`;
                   onClick={() => setCommandPaletteOpen(true)}
                   className="group relative inline-flex h-12 w-full max-w-xl items-center justify-between rounded-2xl border overflow-hidden px-4 text-sm font-semibold text-slate-100 backdrop-blur-xl transition-all duration-300 hover:-translate-y-[1px] active:translate-y-0"
                   style={{
-                    backgroundColor: '#171717',
+                    backgroundColor: '#0f172a',
                     borderColor: 'rgba(6, 182, 212, 0.3)',
                     boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
                   }}
@@ -1896,7 +1901,7 @@ Here is the learner's question: ${message}`;
                     <div
                       className="flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110"
                       style={{
-                        background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(34, 211, 238, 0.3) 100%)',
+                        backgroundColor: 'rgba(6, 182, 212, 0.2)',
                         boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(6, 182, 212, 0.3)',
                         border: '1px solid rgba(6, 182, 212, 0.4)'
                       }}
@@ -1987,7 +1992,7 @@ Here is the learner's question: ${message}`;
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-rose-500/20 transition-transform hover:scale-[1.01]"
+                    className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-rose-500/20 transition-transform hover:scale-[1.01]"
                     title={`Logged in as ${user?.username || user?.displayName}`}
                   >
                     <LogOut className="h-4 w-4" />

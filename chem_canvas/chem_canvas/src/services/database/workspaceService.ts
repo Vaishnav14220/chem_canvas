@@ -71,13 +71,13 @@ export const getWorkspaces = async (
     workspaces.sort((a, b) => {
       const aVal = a[orderByField] as any;
       const bVal = b[orderByField] as any;
-      
+
       // Handle Timestamp objects
-      const aTime = aVal?.toMillis?.() || aVal?.seconds * 1000 || 
+      const aTime = aVal?.toMillis?.() || aVal?.seconds * 1000 ||
         (typeof aVal === 'string' ? new Date(aVal).getTime() : 0);
-      const bTime = bVal?.toMillis?.() || bVal?.seconds * 1000 || 
+      const bTime = bVal?.toMillis?.() || bVal?.seconds * 1000 ||
         (typeof bVal === 'string' ? new Date(bVal).getTime() : 0);
-      
+
       return orderDirection === 'desc' ? bTime - aTime : aTime - bTime;
     });
 
@@ -567,58 +567,70 @@ export const saveCanvasState = async (
   console.log('💾 Workspace ID:', workspaceId, 'User ID:', uid);
 
   try {
-    const batch = writeBatch(db);
     const now = serverTimestamp();
 
-    // Clear existing nodes
-    console.log('🗑️ Clearing existing nodes...');
-    const existingNodes = await getNodes(workspaceId);
-    console.log('  Found', existingNodes.length, 'existing nodes to delete');
-    for (const node of existingNodes) {
-      const docRef = doc(db, 'users', uid, 'workspaces', workspaceId, 'nodes', node.id);
-      batch.delete(docRef);
-    }
+    // Clear existing nodes and edges
+    console.log('🗑️ Fetching existing nodes and edges to clear...');
+    const [existingNodes, existingEdges] = await Promise.all([
+      getNodes(workspaceId),
+      getEdges(workspaceId)
+    ]);
 
-    // Clear existing edges
-    console.log('🗑️ Clearing existing edges...');
-    const existingEdges = await getEdges(workspaceId);
-    console.log('  Found', existingEdges.length, 'existing edges to delete');
-    for (const edge of existingEdges) {
-      const docRef = doc(db, 'users', uid, 'workspaces', workspaceId, 'edges', edge.id);
-      batch.delete(docRef);
-    }
+    // Helper to commit batches in chunks
+    const nodesCopy = [...nodes];
+    const edgesCopy = [...edges];
+    const totalOps = nodesCopy.length + edgesCopy.length + existingNodes.length + existingEdges.length + 1;
 
-    // Add new nodes
-    console.log('➕ Adding', nodes.length, 'new nodes...');
-    for (const node of nodes) {
-      // Check if node data is too large (Firestore limit is ~1MB)
-      const nodeSize = JSON.stringify(node).length;
-      if (nodeSize > 900000) {
-        console.warn('⚠️ Node', node.id, 'is very large:', Math.round(nodeSize / 1024), 'KB - may fail to save');
-      }
-      
-      const docRef = doc(db, 'users', uid, 'workspaces', workspaceId, 'nodes', node.id);
-      batch.set(docRef, {
-        ...node,
-        createdAt: now,
-        updatedAt: now,
+    console.log('📦 Total operations planned:', totalOps);
+
+    // Firestore batch limit is 500. We'll use 400 to be safe.
+    const BATCH_SIZE = 400;
+
+    // 1. Delete existing nodes and edges
+    const itemsToDelete = [
+      ...existingNodes.map(n => ({ type: 'node', id: n.id })),
+      ...existingEdges.map(e => ({ type: 'edge', id: e.id }))
+    ];
+    for (let i = 0; i < itemsToDelete.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      const chunk = itemsToDelete.slice(i, i + BATCH_SIZE);
+      chunk.forEach(item => {
+        const docRef = doc(db, 'users', uid, 'workspaces', workspaceId, item.type === 'node' ? 'nodes' : 'edges', item.id);
+        batch.delete(docRef);
       });
+      await batch.commit();
+      console.log(`  Deleted chunk ${Math.floor(i / BATCH_SIZE) + 1}`);
     }
 
-    // Add new edges
-    console.log('➕ Adding', edges.length, 'new edges...');
-    for (const edge of edges) {
-      const docRef = doc(db, 'users', uid, 'workspaces', workspaceId, 'edges', edge.id);
-      batch.set(docRef, edge);
+    // 2. Add new nodes
+    for (let i = 0; i < nodesCopy.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      const chunk = nodesCopy.slice(i, i + BATCH_SIZE);
+      chunk.forEach(node => {
+        const docRef = doc(db, 'users', uid, 'workspaces', workspaceId, 'nodes', node.id);
+        batch.set(docRef, { ...node, createdAt: now, updatedAt: now });
+      });
+      await batch.commit();
+      console.log(`  Added nodes chunk ${Math.floor(i / BATCH_SIZE) + 1}`);
     }
 
-    // Update workspace
-    console.log('📝 Updating workspace timestamp...');
+    // 3. Add new edges
+    for (let i = 0; i < edgesCopy.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      const chunk = edgesCopy.slice(i, i + BATCH_SIZE);
+      chunk.forEach(edge => {
+        const docRef = doc(db, 'users', uid, 'workspaces', workspaceId, 'edges', edge.id);
+        batch.set(docRef, edge);
+      });
+      await batch.commit();
+      console.log(`  Added edges chunk ${Math.floor(i / BATCH_SIZE) + 1}`);
+    }
+
+    // 4. Update workspace timestamp
     const workspaceRef = doc(db, 'users', uid, 'workspaces', workspaceId);
-    batch.update(workspaceRef, { updatedAt: now });
+    await updateDoc(workspaceRef, { updatedAt: now });
 
-    console.log('📤 Committing batch...');
-    await batch.commit();
+    console.log('✅ Canvas state saved successfully in multiple batches!');
     console.log('✅ Canvas state saved successfully!');
   } catch (error) {
     console.error('❌ Error saving canvas state:', error);
@@ -654,7 +666,7 @@ export const subscribeToWorkspace = (
   const uid = getCurrentUserId();
   if (!uid) {
     onUpdate(null);
-    return () => {};
+    return () => { };
   }
 
   const docRef = doc(db, 'users', uid, 'workspaces', workspaceId);
@@ -677,7 +689,7 @@ export const subscribeToNodes = (
   const uid = getCurrentUserId();
   if (!uid) {
     onUpdate([]);
-    return () => {};
+    return () => { };
   }
 
   const nodesRef = collection(db, 'users', uid, 'workspaces', workspaceId, 'nodes');
@@ -700,7 +712,7 @@ export const subscribeToEdges = (
   const uid = getCurrentUserId();
   if (!uid) {
     onUpdate([]);
-    return () => {};
+    return () => { };
   }
 
   const edgesRef = collection(db, 'users', uid, 'workspaces', workspaceId, 'edges');

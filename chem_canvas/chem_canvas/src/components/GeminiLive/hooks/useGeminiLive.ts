@@ -10,9 +10,9 @@ import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLangua
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
 
-const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-12-2025';
-const CONCEPT_IMAGE_MODEL = 'gemini-3-pro-image-preview';
-const REASONING_MODEL = 'gemini-2.5-flash';
+const MODEL_NAME = 'gemini-2.0-flash-exp';
+const CONCEPT_IMAGE_MODEL = 'gemini-1.5-pro'; // Or an image model if available
+const REASONING_MODEL = 'gemini-1.5-pro';
 const CONCEPT_IMAGE_SIZE = '1K';
 const IMAGE_GENERATION_TOOLS = [{ googleSearch: {} }];
 
@@ -1920,8 +1920,8 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                       const formattedContent = `[${category?.toUpperCase() || 'INFO'}] ${content}`;
                       canvasHandwritingHandlerRef.current(formattedContent);
                     } else {
-                       // Fallback if handwriting not available, push to regular text handler
-                       pushTextToCanvas(content, category || 'Key Point');
+                      // Fallback if handwriting not available, push to regular text handler
+                      pushTextToCanvas(content, category || 'Key Point');
                     }
                     return {
                       id: fc.id,
@@ -1931,26 +1931,26 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                   } else if (fc.name === 'consult_deep_reasoning') {
                     const { query } = fc.args as any;
                     console.log('Deep Reasoning Tool Called:', query);
-                    
+
                     // Show placeholder on canvas immediately to indicate work in progress
                     pushTextToCanvas(
-                      "### 🧠 Deep Reasoning in Progress...\n\nI am analyzing this complex query. Please wait a moment while I generate a comprehensive response.\n\n*The conversation can continue while I work on this.*", 
+                      "### 🧠 Deep Reasoning in Progress...\n\nI am analyzing this complex query. Please wait a moment while I generate a comprehensive response.\n\n*The conversation can continue while I work on this.*",
                       "Deep Analysis Status"
                     );
-                    
+
                     try {
                       if (!aiInstanceRef.current) throw new Error('AI client not initialized');
                       const model = aiInstanceRef.current.getGenerativeModel({ model: REASONING_MODEL });
-                      
+
                       // Enforce strict formatting for the deep reasoning model
                       const enhancedQuery = `${query}\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n- Use standard LaTeX for ALL math formulas (enclosed in $ for inline or $$ for block).\n- Use LaTeX for chemical reactions (e.g., \\ce{H2O}).\n- Use standard Markdown code blocks for any code.\n- Return the response in clean, structured Markdown.`;
-                      
+
                       const result = await model.generateContent(enhancedQuery);
                       const responseText = result.response.text();
-                      
+
                       // Push final result to canvas
                       pushTextToCanvas(responseText, 'Deep Analysis Result');
-                      
+
                       return {
                         id: fc.id,
                         name: fc.name,
@@ -1959,9 +1959,9 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                     } catch (error: any) {
                       pushTextToCanvas(`### ❌ Analysis Failed\n\nUnable to complete the deep reasoning request.\nError: ${error.message}`, 'Error');
                       return {
-                         id: fc.id,
-                         name: fc.name,
-                         response: { error: error.message || 'Deep reasoning failed' }
+                        id: fc.id,
+                        name: fc.name,
+                        response: { error: error.message || 'Deep reasoning failed' }
                       };
                     }
                   }
