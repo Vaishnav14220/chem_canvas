@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Settings, Search, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine, Image as ImageIcon } from 'lucide-react';
+import { FileText, Settings, Search, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine, Image as ImageIcon, Gem, Atom, Scan } from 'lucide-react';
 import Canvas, {
   type CanvasCommand,
   type CanvasMoleculeInsertionHandler,
@@ -10,9 +10,9 @@ import Canvas, {
 
 import AIElementsChat from './components/AIElementsChat';
 import CommandPalette from './components/CommandPalette';
+import InlineMoleculeSearch from './components/InlineMoleculeSearch';
 
 import MoldrawEmbed from './components/MoldrawEmbed';
-import StudyToolsOriginal from './pages/StudyToolsOriginal';
 import VisionAnalyzePage from './pages/VisionAnalyzePage';
 import VisionChatPage from './pages/VisionChatPage';
 import VisionVideoPage from './pages/VisionVideoPage';
@@ -37,6 +37,7 @@ import { detectToolCalls, executeToolCalls } from './services/aiToolOrchestrator
 import ChemistryWidgetPanel from './components/ChemistryWidgetPanel';
 import DarkButtonWithIcon from './components/DarkButtonWithIcon';
 import ArMobileView from './components/ArMobileView';
+import SegmentedControl, { type SegmentedOption } from './components/SegmentedControl';
 
 import AdaptivePlan from './components/AdaptivePlan';
 import FlippingInfo from './components/FlippingInfo';
@@ -59,8 +60,10 @@ import AIWord from './components/AIWord';
 
 import { ExcalidrawCanvas, type ExcalidrawCanvasRef } from './components/ExcalidrawCanvas';
 import GeminiLiveWorkspace from './components/GeminiLiveWorkspace';
-import ImmersiveLearning from './components/ImmersiveLearning';
+import SrlCoachWorkspace from './components/SrlCoachWorkspace';
+import YouTubeVideos from './components/ImmersiveLearning';
 import DrawingToolsDock, { type DrawingTool } from './components/DrawingToolsDock';
+import FeynmanCoachPanel, { type FeynmanGuide } from './components/FeynmanCoachPanel';
 import {
   createWorkspace,
   getWorkspaces,
@@ -69,6 +72,7 @@ import {
   updateWorkspace as updateWorkspaceFirebase,
   deleteWorkspace as deleteWorkspaceFirebase
 } from './services/database/workspaceService';
+import { getFeynmanLiveConfig } from './services/learningTheoriesService';
 import { uploadFileToStorage, UploadedFile } from './services/database/storageService';
 import { getCurrentUserId } from './services/database/userService';
 import { Save, CloudOff, Cloud, FolderOpen, Loader2 as LoaderIcon, ChevronUp, ChevronDown } from 'lucide-react';
@@ -155,51 +159,7 @@ const App: React.FC = () => {
     { emoji: "🤖", name: "Robot", online: false, backgroundColor: "bg-rose-200 dark:bg-rose-300", gradientColors: "#fecaca, #fef2f2" },
   ];
 
-  if (location.pathname.startsWith('/epoxidation')) {
-    return (
-      <>
-        <EpoxidationLearningExperience />
-        <MessageDock
-          characters={dockCharacters}
-          onMessageSend={(message, character) => {
-            console.log('Message:', message, 'to', character.name);
-          }}
-          onCharacterSelect={(character) => {
-            console.log('Selected:', character.name);
-          }}
-          expandedWidth={500}
-          placeholder={(name) => `Send a message to ${name}...`}
-          theme="light"
-        />
-      </>
-    );
-  }
 
-  if (location.pathname === '/components/dock/message-dock') {
-    return <MessageDockPage />;
-  }
-
-  const isArRoute = location.pathname.startsWith('/ar/');
-
-  if (isArRoute) {
-    return (
-      <>
-        <ArMobileView />
-        <MessageDock
-          characters={dockCharacters}
-          onMessageSend={(message, character) => {
-            console.log('Message:', message, 'to', character.name);
-          }}
-          onCharacterSelect={(character) => {
-            console.log('Selected:', character.name);
-          }}
-          expandedWidth={500}
-          placeholder={(name) => `Send a message to ${name}...`}
-          theme="light"
-        />
-      </>
-    );
-  }
 
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -261,24 +221,85 @@ const App: React.FC = () => {
   const CHAT_MIN_WIDTH = 300;
   const CHAT_MAX_WIDTH = 700;
   const [showChatPanel, setShowChatPanel] = useState(false);
+  const [chatMode, setChatMode] = useState<SegmentedOption>('auto');
+  const [feynmanTopic, setFeynmanTopic] = useState('');
+  const [feynmanGuide, setFeynmanGuide] = useState<FeynmanGuide | null>(null);
+  const [isFeynmanGuideLoading, setIsFeynmanGuideLoading] = useState(false);
+  const [feynmanGuideError, setFeynmanGuideError] = useState<string | null>(null);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
   const [showNmrFullscreen, setShowNmrFullscreen] = useState(false);
+  const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
 
   const [showAdaptivePlan, setShowAdaptivePlan] = useState(false);
 
   const [showGeminiLiveWorkspace, setShowGeminiLiveWorkspace] = useState(false); // Kept for compatibility if needed, or remove
   const [showAIWord, setShowAIWord] = useState(false);
-  const [showImmersiveLearning, setShowImmersiveLearning] = useState(false);
+  const [showYouTubeVideos, setShowYouTubeVideos] = useState(false);
   const [showExcalidrawCanvas, setShowExcalidrawCanvas] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [showQuickActionsPopup, setShowQuickActionsPopup] = useState(false);
+  const [quickActionHandlers, setQuickActionHandlers] = useState<{
+    onOpenMinerals: () => void;
+    onOpenReactions: () => void;
+    onOpenProteins: () => void;
+    onOpenAR: () => void;
+    getSelectedMoleculeCid: () => string | null;
+    getReactionSearchActive: () => boolean;
+  } | null>(null);
+
+  const feynmanAutoConnectRef = useRef(false);
+  const feynmanAutoScreenShareRef = useRef(false);
+  const wasFeynmanModeRef = useRef(false);
+  const isFeynmanMode = chatMode === 'feynman';
+
+  const resolvedFeynmanTopic = useMemo(() => {
+    if (feynmanTopic.trim()) {
+      return feynmanTopic.trim();
+    }
+    const fallbackTitle = sources.find(source => source.title && source.title.trim())?.title;
+    return fallbackTitle?.trim() || '';
+  }, [feynmanTopic, sources]);
+
+  const feynmanKeyConcepts = useMemo(() => {
+    if (!feynmanGuide) return [];
+    const raw = [...(feynmanGuide.listenFor || []), ...(feynmanGuide.followUps || [])];
+    const unique = Array.from(new Set(raw.map(item => item.trim()).filter(Boolean)));
+    return unique.slice(0, 6);
+  }, [feynmanGuide]);
+
+  const feynmanSystemInstruction = useMemo(() => {
+    if (!isFeynmanMode) return undefined;
+    const topic = resolvedFeynmanTopic || 'the topic you chose';
+    return getFeynmanLiveConfig(topic, feynmanKeyConcepts, 'curious-student').systemInstruction;
+  }, [isFeynmanMode, resolvedFeynmanTopic, feynmanKeyConcepts]);
+
+  const feynmanGreetingPrompt = useMemo(() => {
+    if (!isFeynmanMode) return undefined;
+    const topic = resolvedFeynmanTopic || 'the topic you chose';
+    return `You are the student. Start by asking the user to teach you about "${topic}". Invite them to explain aloud and draw on the canvas.`;
+  }, [isFeynmanMode, resolvedFeynmanTopic]);
+
+  const geminiLiveOptions = useMemo(() => ({
+    systemInstructionOverride: feynmanSystemInstruction,
+    greetingPrompt: feynmanGreetingPrompt
+  }), [feynmanSystemInstruction, feynmanGreetingPrompt]);
 
   // Ref for ExcalidrawCanvas to add handwriting text
   const excalidrawCanvasRef = useRef<ExcalidrawCanvasRef>(null);
 
   // Initialize global Gemini Live state
-  const geminiLiveState = useGeminiLive(apiKey);
+  const geminiLiveState = useGeminiLive(apiKey, 'en', geminiLiveOptions);
   const {
+    connect,
+    disconnect,
+    startScreenShare,
+    stopScreenShare,
+    isScreenSharing,
+    connectionState,
+    isListening,
+    isSpeaking,
+    captureAndSendSnapshot,
     setRequestCanvasSnapshot,
     setCanvasTextInsertionHandler,
     setCanvasMarkdownInsertionHandler,
@@ -314,6 +335,11 @@ const App: React.FC = () => {
   const startWebcamShare = useCallback(async () => {
     try {
       console.log('[Webcam] Requesting access...');
+      // Clear any existing interval before starting a new one to prevent leaks
+      if (webcamIntervalRef.current) {
+        clearInterval(webcamIntervalRef.current as number);
+        webcamIntervalRef.current = null;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640 },
@@ -349,7 +375,7 @@ const App: React.FC = () => {
 
       // Start capturing frames
       webcamIntervalRef.current = setInterval(() => {
-        if (!ctx || geminiLiveState.connectionState !== ConnectionState.CONNECTED) return;
+        if (!ctx || connectionState !== ConnectionState.CONNECTED) return;
 
         // Draw video frame to canvas
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -385,6 +411,201 @@ const App: React.FC = () => {
       stopWebcamShare();
     };
   }, [stopWebcamShare]);
+
+  const buildFallbackFeynmanGuide = useCallback((topic: string): FeynmanGuide => ({
+    topic,
+    openingPrompt: `Teach me ${topic} from scratch. Start with a plain-language overview.`,
+    drawPrompt: 'Draw a quick diagram that shows the main parts and how they connect.',
+    followUps: [
+      `What is the first step in ${topic}?`,
+      'What causes the change you just described?',
+      `Where do people usually get confused about ${topic}?`
+    ],
+    listenFor: [
+      'Missing definitions for core terms',
+      'No cause-and-effect explanation',
+      'Steps out of order or skipped'
+    ],
+    nextChallenge: `Explain ${topic} again in three sentences without jargon.`
+  }), []);
+
+  const generateFeynmanGuide = useCallback(async () => {
+    const topic = resolvedFeynmanTopic.trim();
+    if (!topic) {
+      setFeynmanGuideError('Enter a topic to generate prompts.');
+      return;
+    }
+
+    setIsFeynmanGuideLoading(true);
+    setFeynmanGuideError(null);
+
+    try {
+      const prompt = [
+        'You are a learning coach creating a Feynman teaching script for a student-led explanation.',
+        'Return JSON only, using this schema:',
+        '{',
+        '  "topic": "string",',
+        '  "openingPrompt": "string",',
+        '  "drawPrompt": "string",',
+        '  "followUps": ["string", "string", "string"],',
+        '  "listenFor": ["string", "string", "string"],',
+        '  "nextChallenge": "string"',
+        '}',
+        'Rules:',
+        '- Keep each string under 140 characters.',
+        '- Use plain text only. No markdown, no emojis.',
+        '- Follow ups and listenFor must contain 3 items each.',
+        `Topic: ${topic}`
+      ].join('\n');
+
+      const response = await geminiService.generateTextContent(prompt, {
+        model: 'gemini-3-flash-preview',
+        maxOutputTokens: 600
+      });
+      const json = geminiService.extractJsonBlock(response);
+      const parsed = JSON.parse(json);
+
+      const normalizeList = (value: unknown): string[] => {
+        if (!Array.isArray(value)) return [];
+        return value
+          .map(item => (typeof item === 'string' ? item.trim() : String(item || '').trim()))
+          .filter(Boolean)
+          .slice(0, 3);
+      };
+
+      const guideTopic = typeof parsed.topic === 'string' && parsed.topic.trim()
+        ? parsed.topic.trim()
+        : topic;
+
+      const followUps = normalizeList(parsed.followUps);
+      const listenFor = normalizeList(parsed.listenFor);
+
+      const guide: FeynmanGuide = {
+        topic: guideTopic,
+        openingPrompt: typeof parsed.openingPrompt === 'string' && parsed.openingPrompt.trim()
+          ? parsed.openingPrompt.trim()
+          : `Teach me ${guideTopic} in simple terms.`,
+        drawPrompt: typeof parsed.drawPrompt === 'string' && parsed.drawPrompt.trim()
+          ? parsed.drawPrompt.trim()
+          : 'Sketch a simple diagram that shows how the parts connect.',
+        followUps: followUps.length ? followUps : [
+          `What is the first step in ${guideTopic}?`,
+          'What causes the change you described?',
+          'Where does this usually go wrong?'
+        ],
+        listenFor: listenFor.length ? listenFor : [
+          'Missing definitions for core terms',
+          'No cause-and-effect explanation',
+          'Steps out of order or skipped'
+        ],
+        nextChallenge: typeof parsed.nextChallenge === 'string' && parsed.nextChallenge.trim()
+          ? parsed.nextChallenge.trim()
+          : `Explain ${guideTopic} again in three sentences without jargon.`
+      };
+
+      setFeynmanGuide(guide);
+      if (!feynmanTopic.trim() && guideTopic) {
+        setFeynmanTopic(guideTopic);
+      }
+    } catch (error) {
+      setFeynmanGuideError(error instanceof Error ? error.message : 'Failed to generate coach prompts.');
+      setFeynmanGuide(buildFallbackFeynmanGuide(topic));
+    } finally {
+      setIsFeynmanGuideLoading(false);
+    }
+  }, [buildFallbackFeynmanGuide, feynmanTopic, resolvedFeynmanTopic]);
+
+  const handleFeynmanConnect = useCallback((forceReconnect = false) => {
+    if (!forceReconnect && (connectionState === ConnectionState.CONNECTED || connectionState === ConnectionState.CONNECTING)) {
+      return;
+    }
+    feynmanAutoConnectRef.current = true;
+    connect();
+  }, [connect, connectionState]);
+
+  const handleFeynmanDisconnect = useCallback(() => {
+    if (connectionState === ConnectionState.DISCONNECTED) {
+      return;
+    }
+    feynmanAutoConnectRef.current = false;
+    disconnect();
+  }, [connectionState, disconnect]);
+
+  const handleFeynmanStartScreenShare = useCallback(() => {
+    if (isScreenSharing) {
+      return;
+    }
+    feynmanAutoScreenShareRef.current = true;
+    startScreenShare();
+  }, [isScreenSharing, startScreenShare]);
+
+  const handleFeynmanStopScreenShare = useCallback(() => {
+    feynmanAutoScreenShareRef.current = false;
+    stopScreenShare();
+  }, [stopScreenShare]);
+
+  const handleChatModeChange = useCallback((mode: SegmentedOption) => {
+    setChatMode(mode);
+
+    if (mode === 'feynman') {
+      setShowChatPanel(false);
+      setShowExcalidrawCanvas(true);
+      if (!feynmanGuide && !isFeynmanGuideLoading) {
+        void generateFeynmanGuide();
+      }
+      handleFeynmanConnect(true);
+      if (!isScreenSharing) {
+        handleFeynmanStartScreenShare();
+      }
+      return;
+    }
+
+    if (feynmanAutoScreenShareRef.current) {
+      handleFeynmanStopScreenShare();
+    }
+  }, [
+    feynmanGuide,
+    generateFeynmanGuide,
+    handleFeynmanStartScreenShare,
+    handleFeynmanStopScreenShare,
+    isFeynmanGuideLoading,
+    isScreenSharing
+  ]);
+
+  useEffect(() => {
+    if (!isFeynmanMode) {
+      return;
+    }
+    setShowExcalidrawCanvas(true);
+    if (!feynmanTopic.trim() && resolvedFeynmanTopic) {
+      setFeynmanTopic(resolvedFeynmanTopic);
+    }
+    if (!feynmanGuide && !isFeynmanGuideLoading) {
+      void generateFeynmanGuide();
+    }
+  }, [
+    feynmanGuide,
+    generateFeynmanGuide,
+    feynmanTopic,
+    isFeynmanGuideLoading,
+    isFeynmanMode,
+    resolvedFeynmanTopic
+  ]);
+
+  useEffect(() => {
+    const wasFeynmanMode = wasFeynmanModeRef.current;
+
+    if (!isFeynmanMode && wasFeynmanMode) {
+      if (feynmanAutoConnectRef.current) {
+        handleFeynmanDisconnect();
+      }
+      if (feynmanAutoScreenShareRef.current) {
+        handleFeynmanStopScreenShare();
+      }
+    }
+
+    wasFeynmanModeRef.current = isFeynmanMode;
+  }, [handleFeynmanDisconnect, handleFeynmanStopScreenShare, isFeynmanMode]);
 
 
   const handleCanvasImageExpand = useCallback(
@@ -442,6 +663,7 @@ const App: React.FC = () => {
 
   const isMainCanvasSurfaceActive =
     !isMolecularMode &&
+    !showSrlCoachWorkspace &&
     !showNmrFullscreen &&
     !showGeminiLiveWorkspace;
 
@@ -499,6 +721,12 @@ const App: React.FC = () => {
     const handlers = workspaceHandlersRef.current[activeWorkspaceId];
     return handlers?.handwriting ?? null;
   }, [activeWorkspaceId, handlersVersion]); // Added handlersVersion to trigger recalculation
+
+  // Get current molecule handler for active workspace
+  const currentMoleculeHandler = useMemo(() => {
+    const handlers = workspaceHandlersRef.current[activeWorkspaceId];
+    return handlers?.molecule ?? null;
+  }, [activeWorkspaceId, handlersVersion]);
 
   // Route handwriting to Excalidraw canvas when it's open
   useEffect(() => {
@@ -942,8 +1170,8 @@ const App: React.FC = () => {
 
     // Expose immersive learning trigger for testing
     if (typeof window !== 'undefined') {
-      (window as any).openImmersiveLearning = () => {
-        setShowImmersiveLearning(true);
+      (window as any).openYouTubeVideos = () => {
+        setShowYouTubeVideos(true);
         startFeature('immersive-learning');
       };
     }
@@ -1016,6 +1244,7 @@ const App: React.FC = () => {
 
   const openChemistryPanel = () => {
     setShowChemistryPanel(true);
+    setShowSrlCoachWorkspace(false);
 
     setShowNmrFullscreen(false);
     setShowChatPanel(false);
@@ -1494,8 +1723,8 @@ const App: React.FC = () => {
         const targetWindow = nmrIframeRef.current?.contentWindow;
         if (targetWindow) {
           targetWindow.postMessage(payload, '*');
-          targetWindow.postMessage({ type: 'nmrium', ...payload }, '*');
-          targetWindow.postMessage({ type: 'nmrium-load', ...payload }, '*');
+          targetWindow.postMessage({ ...payload, type: 'nmrium' }, '*');
+          targetWindow.postMessage({ ...payload, type: 'nmrium-load' }, '*');
           if (payload.action === 'load_smiles' && payload.params?.smiles) {
             targetWindow.postMessage(
               {
@@ -1656,7 +1885,15 @@ Here is the learner's question: ${message}`;
 
           setInteractions(prev => prev.map(interaction =>
             interaction.id === assistantId
-              ? { ...interaction, response: finalText, toolResponses: actions }
+              ? {
+                ...interaction,
+                response: finalText,
+                toolResponses: actions.map(a => ({
+                  ...a,
+                  id: `nmr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'nmr'
+                }))
+              }
               : interaction
           ));
         } catch (nmrError) {
@@ -1769,6 +2006,7 @@ Here is the learner's question: ${message}`;
       case 'voice-chat':
       case 'interactive-tutor':
         setShowGeminiLiveWorkspace(true);
+        setShowSrlCoachWorkspace(false);
 
         setShowNmrFullscreen(false);
         setShowChemistryPanel(false);
@@ -1780,7 +2018,8 @@ Here is the learner's question: ${message}`;
         setRdkitStatus('idle');
         break;
       case 'immersive-learning':
-        setShowImmersiveLearning(true);
+        setShowYouTubeVideos(true);
+        setShowSrlCoachWorkspace(false);
 
         setShowNmrFullscreen(false);
         setShowChemistryPanel(false);
@@ -1839,6 +2078,51 @@ Here is the learner's question: ${message}`;
   }, []);
 
   // Show login page if not authenticated
+  // Consolidated Routing Logic (to comply with Rules of Hooks)
+  if (location.pathname.startsWith('/epoxidation')) {
+    return (
+      <>
+        <EpoxidationLearningExperience />
+        <MessageDock
+          characters={dockCharacters}
+          onMessageSend={(message, character) => {
+            console.log('Message:', message, 'to', character.name);
+          }}
+          onCharacterSelect={(character) => {
+            console.log('Selected:', character.name);
+          }}
+          expandedWidth={500}
+          placeholder={(name) => `Send a message to ${name}...`}
+          theme="light"
+        />
+      </>
+    );
+  }
+
+  if (location.pathname === '/components/dock/message-dock') {
+    return <MessageDockPage />;
+  }
+
+  if (location.pathname.startsWith('/ar/')) {
+    return (
+      <>
+        <ArMobileView />
+        <MessageDock
+          characters={dockCharacters}
+          onMessageSend={(message, character) => {
+            console.log('Message:', message, 'to', character.name);
+          }}
+          onCharacterSelect={(character) => {
+            console.log('Selected:', character.name);
+          }}
+          expandedWidth={500}
+          placeholder={(name) => `Send a message to ${name}...`}
+          theme="light"
+        />
+      </>
+    );
+  }
+
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />;
   }
@@ -2025,6 +2309,26 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
+                    setShowSrlCoachWorkspace(true);
+                    setShowChatPanel(false);
+                    setShowNmrFullscreen(false);
+                    setShowChemistryPanel(false);
+                    setShowGeminiLiveWorkspace(false);
+                    setShowAIWord(false);
+                    setIsNmrAssistantActive(false);
+                    setShowNmrAssistant(false);
+                    setIsRdkitAssistantActive(false);
+                    setShowRdkitAssistant(false);
+                    setRdkitStatus('idle');
+                  }}
+                  className={pillButtonClasses}
+                >
+                  <Target className="h-5 w-5 relative z-10" />
+                  <span className="relative z-10">SRL Coach</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     startFeature('3d_explorer');
                     openChemistryPanel();
                   }}
@@ -2037,6 +2341,7 @@ Here is the learner's question: ${message}`;
                 <button
                   onClick={() => {
                     setShowNmrFullscreen(true);
+                    setShowSrlCoachWorkspace(false);
                     setIsNmrAssistantActive(false);
                     setShowChatPanel(false);
                     startFeature('nmr_lab');
@@ -2082,7 +2387,7 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={() => {
-                    setShowImmersiveLearning(true);
+                    setShowYouTubeVideos(true);
                     setShowAIWord(false);
                     setShowNmrFullscreen(false);
                     setShowChemistryPanel(false);
@@ -2202,7 +2507,25 @@ Here is the learner's question: ${message}`;
 
       {/* Fullscreen NMR viewer */}
       {
-        showNmrFullscreen ? (
+        showSrlCoachWorkspace ? (
+          <SrlCoachWorkspace
+            interactions={interactions}
+            onSendMessage={handleSendMessage}
+            isLoading={chatLoading}
+            documentName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
+            onOpenDocument={() => setDocumentViewerOpen(true)}
+            user={user}
+            onClose={() => {
+              setShowSrlCoachWorkspace(false);
+              setShowChatPanel(false);
+              setIsNmrAssistantActive(false);
+              setShowNmrAssistant(false);
+              setIsRdkitAssistantActive(false);
+              setShowRdkitAssistant(false);
+            }}
+          />
+
+        ) : showNmrFullscreen ? (
           <div className="flex h-[calc(100vh-5rem)] flex-col">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-slate-800 px-4 md:px-6 py-3" style={{ backgroundColor: '#212121' }}>
               <div>
@@ -2629,6 +2952,11 @@ Here is the learner's question: ${message}`;
                               onRegisterSetShapesHandler={(handler) => registerWorkspaceHandler(workspace.id, 'setShapes', handler)}
                               onShapesChange={(shapes) => handleShapesChange(workspace.id, shapes)}
                               initialShapes={workspace.shapes}
+                              onRegisterQuickActionHandlers={(handlers) => {
+                                if (workspace.id === activeWorkspaceId) {
+                                  setQuickActionHandlers(handlers);
+                                }
+                              }}
                             />
                           </div>
                         ))}
@@ -2640,6 +2968,7 @@ Here is the learner's question: ${message}`;
                           position="left"
                           enableKeyboardShortcuts={true}
                           forceCollapsed={documentViewerOpen}
+                          onChemistryToolsClick={() => setShowQuickActionsPopup(true)}
                         />
                       </div>
                     </>
@@ -2652,13 +2981,25 @@ Here is the learner's question: ${message}`;
                 {/* Study Tools Panel */}
                 {/* Study Tools Panel handled via full-screen workspace */}
 
-                {/* Chat Start Button - Floating */}
-                {!showChatPanel && !showNmrFullscreen && !showGeminiLiveWorkspace && (
+                {/* Chat Mode Selector - Centered */}
+                {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
+                  <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2">
+                    <label className="text-sm font-medium text-gray-400">Learning Mode</label>
+                    <SegmentedControl
+                      value={chatMode}
+                      onChange={handleChatModeChange}
+                      className="shadow-lg"
+                    />
+                  </div>
+                )}
+
+                {/* Chat Start Button - Floating Right Corner */}
+                {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && !isFeynmanMode && (
                   <div className="absolute top-16 right-8 z-10 flex flex-col gap-3 items-end">
                     {/* Gemini Live Share Canvas Button */}
-                    {geminiLiveState.connectionState === ConnectionState.CONNECTED && (
+                    {connectionState === ConnectionState.CONNECTED && (
                       <DarkButtonWithIcon
-                        onClick={() => geminiLiveState.captureAndSendSnapshot()}
+                        onClick={() => captureAndSendSnapshot()}
                         className="shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 bg-blue-600 hover:bg-blue-500 border-blue-500"
                       >
                         <span className='mr-[10px]'>
@@ -2685,7 +3026,7 @@ Here is the learner's question: ${message}`;
                 )}
 
                 {/* Chat Panel */}
-                {showChatPanel && (
+                {showChatPanel && !isFeynmanMode && (
                   <>
                     <div
                       className="border-l-2 border-border flex flex-col shadow-lg"
@@ -2724,6 +3065,26 @@ Here is the learner's question: ${message}`;
                       </div>
                     </div>
                   </>
+                )}
+
+                {isFeynmanMode && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
+                  <FeynmanCoachPanel
+                    topic={feynmanTopic}
+                    onTopicChange={setFeynmanTopic}
+                    guide={feynmanGuide}
+                    isLoading={isFeynmanGuideLoading}
+                    error={feynmanGuideError}
+                    onGenerateGuide={generateFeynmanGuide}
+                    connectionState={connectionState}
+                    isListening={isListening}
+                    isSpeaking={isSpeaking}
+                    isScreenSharing={isScreenSharing}
+                    onConnect={handleFeynmanConnect}
+                    onDisconnect={handleFeynmanDisconnect}
+                    onStartScreenShare={handleFeynmanStartScreenShare}
+                    onStopScreenShare={handleFeynmanStopScreenShare}
+                    onShareSnapshot={() => captureAndSendSnapshot()}
+                  />
                 )}
               </div>
             </div>
@@ -2803,7 +3164,7 @@ Here is the learner's question: ${message}`;
 
       {/* Chemistry Widget Panel */}
       {
-        showChemistryPanel && !showNmrFullscreen && (
+        showChemistryPanel && !showNmrFullscreen && !showSrlCoachWorkspace && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden">
               <ChemistryWidgetPanel
@@ -2841,7 +3202,7 @@ Here is the learner's question: ${message}`;
         onMessageSend={(message, character) => {
           console.log('Message:', message, 'to', character.name);
         }}
-        onCharacterSelect={(character, index) => {
+        onCharacterSelect={(character, _index) => {
           console.log('Selected:', character.name);
         }}
         onWriteToCanvas={currentHandwritingHandler || undefined}
@@ -2849,6 +3210,7 @@ Here is the learner's question: ${message}`;
           // Ensure canvas is visible when Gemini Live connects for handwriting responses
           // Close any fullscreen panels that might hide the canvas
           setShowNmrFullscreen(false);
+          setShowSrlCoachWorkspace(false);
           setShowGeminiLiveWorkspace(false);
 
           setShowAIWord(false);
@@ -2856,21 +3218,21 @@ Here is the learner's question: ${message}`;
           setShowExcalidrawCanvas(true);
           console.log('[App] Gemini Live mic connected - Excalidraw canvas opened for handwriting responses');
         }}
-        isConnected={geminiLiveState.connectionState === ConnectionState.CONNECTED}
-        isConnecting={geminiLiveState.connectionState === ConnectionState.CONNECTING}
-        isListening={geminiLiveState.isListening}
-        isSpeaking={geminiLiveState.isSpeaking}
-        isScreenSharing={geminiLiveState.isScreenSharing}
-        onConnect={() => geminiLiveState.connect()}
+        isConnected={connectionState === ConnectionState.CONNECTED}
+        isConnecting={connectionState === ConnectionState.CONNECTING}
+        isListening={isListening}
+        isSpeaking={isSpeaking}
+        isScreenSharing={isScreenSharing}
+        onConnect={() => connect()}
         onDisconnect={() => {
-          geminiLiveState.disconnect();
+          disconnect();
           // Optionally close the Excalidraw canvas when disconnecting
           // setShowExcalidrawCanvas(false);
         }}
-        onStartScreenShare={() => geminiLiveState.startScreenShare()}
-        onStopScreenShare={() => geminiLiveState.stopScreenShare()}
-        onShareCanvas={() => geminiLiveState.captureAndSendSnapshot()}
-        showShareCanvas={!showNmrFullscreen && !showGeminiLiveWorkspace}
+        onStartScreenShare={() => startScreenShare()}
+        onStopScreenShare={() => stopScreenShare()}
+        onShareCanvas={() => captureAndSendSnapshot()}
+        showShareCanvas={!showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace}
 
         // Webcam Sharing
         isWebcamSharing={isWebcamSharing}
@@ -2886,7 +3248,8 @@ Here is the learner's question: ${message}`;
         ref={excalidrawCanvasRef}
         isOpen={showExcalidrawCanvas}
         onClose={() => setShowExcalidrawCanvas(false)}
-        title="Gemini Live Notes"
+        className={isFeynmanMode ? 'lg:right-[440px]' : ''}
+        title={isFeynmanMode ? 'Feynman Canvas' : 'Gemini Live Notes'}
       />
 
       {/* Image Lightbox */}
@@ -2904,18 +3267,123 @@ Here is the learner's question: ${message}`;
 
 
 
-      {/* Immersive Learning */}
+      {/* YouTube Videos */}
       {
-        showImmersiveLearning && (
-          <ImmersiveLearning
+        showYouTubeVideos && (
+          <YouTubeVideos
             onClose={() => {
-              setShowImmersiveLearning(false);
+              setShowYouTubeVideos(false);
               endCurrentFeature();
             }}
             apiKey={apiKey}
           />
         )
       }
+
+      {/* Quick Actions Popup */}
+      {showQuickActionsPopup && quickActionHandlers && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowQuickActionsPopup(false)}>
+          <div 
+            className="flex flex-col gap-4 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg bg-slate-900/95 max-w-2xl w-full" 
+            style={{ borderColor: 'rgba(6, 182, 212, 0.2)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-100">Chemistry Tools</h3>
+              <button
+                onClick={() => setShowQuickActionsPopup(false)}
+                className="rounded-full p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            {/* Molecule Search Bar */}
+            <div className="w-full">
+              <InlineMoleculeSearch
+                className="w-full"
+                onSelectMolecule={async (moleculeData) => {
+                  if (currentMoleculeHandler) {
+                    try {
+                      await currentMoleculeHandler(moleculeData);
+                      setShowQuickActionsPopup(false);
+                    } catch (error) {
+                      console.error('Failed to insert molecule from search:', error);
+                    }
+                  }
+                }}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => {
+                  quickActionHandlers.onOpenMinerals();
+                  setShowQuickActionsPopup(false);
+                }}
+                className="group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white"
+                title="Search Minerals (COD 3D)"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-emerald-500/15 text-emerald-300">
+                  <Gem size={14} />
+                </span>
+                <span>Minerals</span>
+              </button>
+              <button
+                onClick={() => {
+                  quickActionHandlers.onOpenReactions();
+                  setShowQuickActionsPopup(false);
+                }}
+                className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${
+                  quickActionHandlers.getReactionSearchActive()
+                    ? 'bg-slate-800/95 text-white border-slate-500/80 shadow-lg ring-1 ring-orange-500/40 border-orange-500/60'
+                    : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
+                }`}
+                title="Search Reactions"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-orange-500/15 text-orange-300">
+                  <FlaskConical size={14} />
+                </span>
+                <span>Reactions</span>
+              </button>
+              <button
+                onClick={() => {
+                  quickActionHandlers.onOpenProteins();
+                  setShowQuickActionsPopup(false);
+                }}
+                className="group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white"
+                title="Browse PDB Proteins"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-rose-500/15 text-rose-300">
+                  <Atom size={14} />
+                </span>
+                <span>Proteins</span>
+              </button>
+              <button
+                onClick={() => {
+                  quickActionHandlers.onOpenAR();
+                  setShowQuickActionsPopup(false);
+                }}
+                disabled={!quickActionHandlers.getSelectedMoleculeCid()}
+                className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${
+                  !quickActionHandlers.getSelectedMoleculeCid()
+                    ? 'opacity-50 cursor-not-allowed pointer-events-none'
+                    : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
+                }`}
+                title={quickActionHandlers.getSelectedMoleculeCid()
+                  ? 'View selected molecule in AR'
+                  : 'Select a molecule on the canvas to enable AR viewer'}
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-purple-500/15 text-purple-300">
+                  <Scan size={14} />
+                </span>
+                <span>AR</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Webcam Preview - Small floating video when sharing */}
       {isWebcamSharing && (
