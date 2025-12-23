@@ -16,7 +16,8 @@ import {
   Palette,
   Sparkles,
   Sun,
-  Trash2
+  Trash2,
+  Box
 } from 'lucide-react';
 import pako from 'pako';
 
@@ -25,6 +26,7 @@ import { generateImagen4Images, streamTextContent } from '../services/geminiServ
 import { streamGroqContent } from '../services/groqService';
 import { extractTextFromDocument, isImageFile, isPdfFile, isPlainTextDocument } from '../utils/documentTextExtractor';
 import { ModelSelector } from './GeminiLive/ModelSelector';
+import ThreeDArchitectureEditor from './ThreeDArchitectureEditor';
 import { GeminiModelId, getDefaultModelId, getModelProvider } from '../types/modelTypes';
 import { AspectRatio, ImageSize } from '../types/studium';
 
@@ -682,6 +684,7 @@ export default function DrawIOWorkspace({ onBack }: DrawIOWorkspaceProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [isChatVisible, setIsChatVisible] = useState(true);
   const [drawioUi, setDrawioUi] = useState<'min' | 'sketch'>('min');
+  const [viewMode, setViewMode] = useState<'drawio' | '3d'>('drawio');
   const [darkMode, setDarkMode] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isDrawioReady, setIsDrawioReady] = useState(false);
@@ -1598,30 +1601,45 @@ Generate the diagram now.`;
                     {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                     {darkMode ? 'Light' : 'Dark'}
                   </button>
+                  <button
+                    onClick={() => setViewMode(prev => prev === 'drawio' ? '3d' : 'drawio')}
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors ${viewMode === '3d'
+                      ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50'
+                      : 'border-border text-foreground hover:bg-muted'
+                      }`}
+                    title="Toggle 3D Architecture Mode"
+                  >
+                    <Box className="w-4 h-4" />
+                    {viewMode === 'drawio' ? '3D View' : '2D View'}
+                  </button>
                 </div>
               </div>
 
-              <div className="flex-1 min-h-0">
-                {isLoaded ? (
-                  <DrawIoEmbed
-                    key={`${drawioUi}-${darkMode}`}
-                    ref={drawioRef}
-                    onExport={onDrawioExport}
-                    onLoad={onDrawioLoad}
-                    baseUrl={DRAWIO_BASE_URL}
-                    urlParameters={{
-                      ui: drawioUi,
-                      spin: true,
-                      libraries: false,
-                      saveAndExit: false,
-                      noExitBtn: true,
-                      dark: darkMode
-                    }}
-                  />
+              <div className="flex-1 min-h-0 relative bg-white dark:bg-[#1e1e1e]">
+                {viewMode === '3d' ? (
+                  <ThreeDArchitectureEditor />
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center bg-background">
-                    <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-                  </div>
+                  isLoaded ? (
+                    <DrawIoEmbed
+                      key={`${drawioUi}-${darkMode}`}
+                      ref={drawioRef}
+                      onExport={onDrawioExport}
+                      onLoad={onDrawioLoad}
+                      baseUrl={DRAWIO_BASE_URL}
+                      urlParameters={{
+                        ui: drawioUi,
+                        spin: true,
+                        libraries: false,
+                        saveAndExit: false,
+                        noExitBtn: true,
+                        dark: darkMode
+                      }}
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center bg-background">
+                      <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+                    </div>
+                  )
                 )}
               </div>
             </div>
@@ -1681,7 +1699,7 @@ Generate the diagram now.`;
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-1">Quick Examples</p>
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-700/60 to-transparent" />
                       </div>
-                      
+
                       <div className="grid gap-2">
                         {quickExamples.map((example) => {
                           const Icon = example.icon;
@@ -1713,7 +1731,7 @@ Generate the diagram now.`;
                           );
                         })}
                       </div>
-                      
+
                       <div className="pt-1.5">
                         <p className="text-[10px] text-slate-500 text-center font-medium leading-tight">
                           Examples are cached for instant response
@@ -1939,16 +1957,16 @@ Generate the diagram now.`;
                           }}
                         >
                           <span
-                            className={`inline-flex h-[1.1rem] w-7 items-center rounded-full border transition-all duration-200 ${styledMode 
-                              ? 'bg-primary border-primary/50 shadow-sm shadow-primary/20' 
+                            className={`inline-flex h-[1.1rem] w-7 items-center rounded-full border transition-all duration-200 ${styledMode
+                              ? 'bg-primary border-primary/50 shadow-sm shadow-primary/20'
                               : 'bg-slate-700/60 border-slate-600/50'
-                            }`}
+                              }`}
                           >
                             <span
-                              className={`h-3 w-3 rounded-full transition-all duration-200 ${styledMode 
-                                ? 'bg-white translate-x-[calc(100%+2px)] shadow-sm' 
+                              className={`h-3 w-3 rounded-full transition-all duration-200 ${styledMode
+                                ? 'bg-white translate-x-[calc(100%+2px)] shadow-sm'
                                 : 'bg-slate-500 translate-x-0.5'
-                              }`}
+                                }`}
                             />
                           </span>
                           <span className="font-medium">Styled</span>
@@ -1967,16 +1985,16 @@ Generate the diagram now.`;
                           title="When enabled, Send generates images (Imagen 4) and inserts them into the canvas"
                         >
                           <span
-                            className={`inline-flex h-[1.1rem] w-7 items-center rounded-full border transition-all duration-200 ${imageMode 
-                              ? 'bg-primary border-primary/50 shadow-sm shadow-primary/20' 
+                            className={`inline-flex h-[1.1rem] w-7 items-center rounded-full border transition-all duration-200 ${imageMode
+                              ? 'bg-primary border-primary/50 shadow-sm shadow-primary/20'
                               : 'bg-slate-700/60 border-slate-600/50'
-                            }`}
+                              }`}
                           >
                             <span
-                              className={`h-3 w-3 rounded-full transition-all duration-200 ${imageMode 
-                                ? 'bg-white translate-x-[calc(100%+2px)] shadow-sm' 
+                              className={`h-3 w-3 rounded-full transition-all duration-200 ${imageMode
+                                ? 'bg-white translate-x-[calc(100%+2px)] shadow-sm'
                                 : 'bg-slate-500 translate-x-0.5'
-                              }`}
+                                }`}
                             />
                           </span>
                           <span className="font-medium">Image</span>

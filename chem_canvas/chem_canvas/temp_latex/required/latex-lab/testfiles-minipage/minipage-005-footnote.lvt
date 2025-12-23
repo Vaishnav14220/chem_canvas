@@ -1,9 +1,0 @@
-\DocumentMetadata{tagging=on}
-\input{regression-test}
-\documentclass{article}
-\begin{document}
-\START \showoutput abc 
-\begin{minipage}{4cm}
- aaa\footnote{blub} 
-\end{minipage}
-\end{document}

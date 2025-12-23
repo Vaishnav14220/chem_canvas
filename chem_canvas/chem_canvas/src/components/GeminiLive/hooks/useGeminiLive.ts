@@ -10,7 +10,7 @@ import { ConnectionState, TranscriptionMessage, SimulationState, SupportedLangua
 import { createBlob, decode, decodeAudioData } from '../services/audioUtils';
 import { v4 as uuidv4 } from 'uuid';
 
-const MODEL_NAME = 'gemini-3-flash-preview';
+const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-12-2025';
 const CONCEPT_IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const REASONING_MODEL = 'gemini-3-pro-preview';
 const AUDIO_MODEL = 'gemini-2.5-flash-preview-tts';
@@ -353,8 +353,22 @@ Seu objetivo é ajudar os alunos a entender conceitos complexos em qualquer disc
 - إذا ارتكب الطالب خطأ، صححه برفق واشرح السبب.` + CONCEPT_IMAGE_DIRECTIVE
 };
 
-const getSystemInstruction = (language: SupportedLanguage, pdfContext?: string): string => {
-  let baseInstruction = SYSTEM_INSTRUCTIONS[language] || SYSTEM_INSTRUCTIONS.en;
+interface UseGeminiLiveOptions {
+  systemInstructionOverride?: string;
+  systemInstructionAppend?: string;
+  greetingPrompt?: string;
+  skipDefaultGreeting?: boolean;
+}
+
+const getSystemInstruction = (
+  language: SupportedLanguage,
+  pdfContext?: string,
+  overrideInstruction?: string,
+  appendInstruction?: string
+): string => {
+  let baseInstruction = overrideInstruction?.trim()
+    ? overrideInstruction.trim()
+    : SYSTEM_INSTRUCTIONS[language] || SYSTEM_INSTRUCTIONS.en;
 
   // If PDF content is available, add it to the context
   if (pdfContext && pdfContext.trim().length > 0) {
@@ -372,6 +386,10 @@ IMPORTANT: When discussing this document:
 3. Make your explanations directly relevant to what the student is asking about in relation to this PDF
 4. If the student asks about the PDF, ONLY discuss content that is in the document above
 5. Correct the student if they misunderstand something in the PDF`;
+  }
+
+  if (appendInstruction && appendInstruction.trim().length > 0) {
+    baseInstruction += `\n\n${appendInstruction.trim()}`;
   }
 
   return baseInstruction;
@@ -750,7 +768,17 @@ const buildDisplayPrompt = (args: ConceptImageToolArgs): string => {
   return `Illustrative snapshot for ${target}.`;
 };
 
-export const useGeminiLive = (apiKey: string, language: SupportedLanguage = 'en') => {
+export const useGeminiLive = (
+  apiKey: string,
+  language: SupportedLanguage = 'en',
+  options: UseGeminiLiveOptions = {}
+) => {
+  const {
+    systemInstructionOverride,
+    systemInstructionAppend,
+    greetingPrompt,
+    skipDefaultGreeting
+  } = options;
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [transcripts, setTranscripts] = useState<TranscriptionMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1617,7 +1645,12 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } }
           },
-          systemInstruction: getSystemInstruction(selectedLanguage, pdfContent),
+          systemInstruction: getSystemInstruction(
+            selectedLanguage,
+            pdfContent,
+            systemInstructionOverride,
+            systemInstructionAppend
+          ),
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           tools: [{ functionDeclarations: [simulationTool, molecule3DTool, learningCanvasTool, pdfHighlightTool, conceptImageTool, canvasSnapshotTool, canvasWriteTool, canvasMoleculeTool, canvasProteinTool, canvasReactionTool, learningBiteTool, deepReasoningTool] }]
@@ -1633,14 +1666,16 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
               }, 100);
             }
 
-            // Send initial greeting prompt
-            setTimeout(() => {
-              sessionPromiseRef.current?.then(session => {
-                session.sendRealtimeInput({
-                  text: "The user has just connected. Please greet them warmly and ask 'How can I help you today?'"
+            if (!skipDefaultGreeting) {
+              const greeting =
+                greetingPrompt ||
+                "The user has just connected. Please greet them warmly and ask 'How can I help you today?'";
+              setTimeout(() => {
+                sessionPromiseRef.current?.then(session => {
+                  session.sendRealtimeInput({ text: greeting });
                 });
-              });
-            }, 500);
+              }, 500);
+            }
 
             // Start Audio Input Streaming
             if (!inputContextRef.current || !streamRef.current) return;
@@ -1657,7 +1692,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
 
               sessionPromiseRef.current?.then((session) => {
                 try {
-                  session.sendRealtimeInput({ media: pcmBlob });
+                  session.sendRealtimeInput({ audio: pcmBlob });
                 } catch (e) {
                   console.error("Error sending audio data:", e);
                 }
@@ -2185,7 +2220,18 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
       setError(err.message || "Failed to connect");
       setConnectionState(ConnectionState.ERROR);
     }
-  }, [disconnect, apiKey]);
+  }, [
+    disconnect,
+    apiKey,
+    selectedLanguage,
+    selectedVoice,
+    pdfContent,
+    sendPdfContextToAI,
+    systemInstructionOverride,
+    systemInstructionAppend,
+    greetingPrompt,
+    skipDefaultGreeting
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {

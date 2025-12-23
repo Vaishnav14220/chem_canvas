@@ -1,8 +1,0 @@
-\documentclass{article}
-\input{test2e}
-\usepackage[demo]{graphicx}
-\begin{document}
-\START
-% no error from alt
-\includegraphics[alt=demo run blank rectangle]{thisimage}
-\END

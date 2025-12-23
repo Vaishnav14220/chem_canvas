@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from "@/lib/utils";
-import { motion, useReducedMotion, AnimatePresence, useMotionValue } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import { useState, useRef, useEffect } from "react";
 import { Mic, PhoneOff, Activity, Monitor, MonitorOff, Video, VideoOff, Image as ImageIcon } from "lucide-react";
 
@@ -123,7 +123,7 @@ export function MessageDock({
   onStartWebcamShare,
   onStopWebcamShare,
 }: MessageDockProps) {
-  const shouldReduceMotion = useReducedMotion();
+  const [shouldReduceMotion, setShouldReduceMotion] = useState(false);
   const [expandedCharacter, setExpandedCharacter] = useState<number | null>(
     null
   );
@@ -131,6 +131,20 @@ export function MessageDock({
   const dockRef = useRef<HTMLDivElement>(null);
   const [collapsedWidth, setCollapsedWidth] = useState<number>(266);
   const [hasInitialized, setHasInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!enableAnimations || typeof window === "undefined") {
+      setShouldReduceMotion(false);
+      return;
+    }
+
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleChange = () => setShouldReduceMotion(media.matches);
+
+    handleChange();
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, [enableAnimations]);
 
   useEffect(() => {
     if (dockRef.current && !hasInitialized) {

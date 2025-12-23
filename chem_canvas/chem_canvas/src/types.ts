@@ -48,56 +48,64 @@ export interface ReactionMechanismSummary {
 
 export type AIToolResponse =
   | {
-      id: string;
-      type: 'molecule';
-      title: string;
-      summary?: string;
-      embedUrl: string;
-      formula?: string;
-      molecularWeight?: number;
-      smiles?: string;
-      cid?: number;
-      query?: string;
-      highlights?: string[];
-    }
+    id: string;
+    type: 'molecule';
+    title: string;
+    summary?: string;
+    embedUrl: string;
+    formula?: string;
+    molecularWeight?: number;
+    smiles?: string;
+    cid?: number;
+    query?: string;
+    highlights?: string[];
+  }
   | {
-      id: string;
-      type: 'reaction';
-      title: string;
-      summary?: string;
-      reactionSmiles?: string;
-      components?: ReactionComponentSummary[];
-      mechanismStages?: ReactionMechanismSummary[];
-      notes?: string;
-      query?: string;
-      reactionSvg?: string;
-    }
+    id: string;
+    type: 'reaction';
+    title: string;
+    summary?: string;
+    reactionSmiles?: string;
+    components?: ReactionComponentSummary[];
+    mechanismStages?: ReactionMechanismSummary[];
+    notes?: string;
+    query?: string;
+    reactionSvg?: string;
+  }
   | {
+    id: string;
+    type: 'video';
+    title: string;
+    summary?: string;
+    query?: string;
+    videos: Array<{
       id: string;
-      type: 'video';
       title: string;
-      summary?: string;
-      query?: string;
-      videos: Array<{
-        id: string;
-        title: string;
-        url: string;
-        channelTitle: string;
-        thumbnailUrl: string;
-        publishedAt: string;
-        description?: string;
-      }>;
-    }
+      url: string;
+      channelTitle: string;
+      thumbnailUrl: string;
+      publishedAt: string;
+      description?: string;
+    }>;
+  }
   | {
-      id: string;
-      type: 'document';
-      title: string;
-      summary: string;
-      keyTopics: string[];
-      essentialConcepts: string[];
-      videoQueries?: string[];
-      sourceName?: string;
-    };
+    id: string;
+    type: 'document';
+    title: string;
+    summary: string;
+    keyTopics: string[];
+    essentialConcepts: string[];
+    videoQueries?: string[];
+    sourceName?: string;
+  }
+  | {
+    id: string;
+    type: 'nmr';
+    action: string;
+    params?: Record<string, any>;
+    rationale?: string;
+    priority?: 'action' | 'info';
+  };
 
 export interface AIInteraction {
   id: string;

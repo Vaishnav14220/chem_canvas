@@ -1,8 +1,0 @@
-* text=auto !eol
-*.def linguist-language=tex
-*.fdd linguist-language=tex
-*.ini linguist-language=tex
-*.lvt linguist-language=tex
-*.pvt linguist-language=tex
-texmf/** linguist-vendored
-support/** linguist-vendored

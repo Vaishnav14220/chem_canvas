@@ -1359,17 +1359,26 @@ Return ONLY the enhanced prompt text, without any additional commentary or markd
 
 /**
  * Generates immersive learning images using Gemini 3 Pro Image Preview (Nano Banana Pro).
- * Uses 1K resolution for fast, high-quality educational illustrations with enhanced academic prompts.
+ * 
+ * Official API Documentation: https://ai.google.dev/gemini-api/docs/image-generation
+ * 
+ * Model: gemini-3-pro-image-preview (Nano Banana Pro)
+ * - Supports 1K, 2K, and 4K resolutions
+ * - Features real-world grounding using Google Search
+ * - Default "Thinking" process that refines composition prior to generation
+ * - High-fidelity text rendering for diagrams and educational content
  * 
  * @param prompt - The image prompt describing what to generate
  * @param aspectRatio - Optional aspect ratio (defaults to 16:9 for widescreen)
  * @param documentContext - Optional document context to enhance the prompt
+ * @param imageSize - Optional image size: '1K' (1120 tokens), '2K' (1120 tokens), or '4K' (2000 tokens). Defaults to '1K'
  * @returns Base64 data URL of the generated image
  */
 export const generateImmersiveImage = async (
   prompt: string,
   aspectRatio: AspectRatio = AspectRatio.LANDSCAPE_16_9,
-  documentContext?: string
+  documentContext?: string,
+  imageSize: '1K' | '2K' | '4K' = '1K'
 ): Promise<string> => {
   try {
     // Enhance prompt to be purely academic and well-defined
@@ -1394,23 +1403,22 @@ export const generateImmersiveImage = async (
           aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
             aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' : '16:9';
 
-    console.log(`🎨 Generating image with Gemini 3 Pro Image Preview (Nano Banana Pro) at 1K resolution...`);
+    console.log(`🎨 Generating image with Gemini 3 Pro Image Preview (Nano Banana Pro) at ${imageSize} resolution...`);
 
+    // Use the official API format as per documentation: https://ai.google.dev/gemini-api/docs/image-generation
+    // Reference: https://ai.google.dev/gemini-api/docs/image-generation#image-generation-text-to-image
     const response = await genAI.models.generateContent({
       model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: enhancedPrompt }],
-      },
+      contents: [enhancedPrompt], // Simple array format as per official documentation
       config: {
-        responseModalities: ['Image'], // Request only image output
         imageConfig: {
           aspectRatio: aspectRatioStr,
-          imageSize: '1K', // 1K resolution as requested
+          imageSize: imageSize, // '1K', '2K', or '4K' - see documentation for resolution details
         },
       },
     });
 
-    // Extract image from response
+    // Extract image from response - following official API documentation format
     const candidates = response.candidates;
     if (!candidates || candidates.length === 0) {
       throw new Error('No image candidates returned');
@@ -1422,14 +1430,28 @@ export const generateImmersiveImage = async (
     }
 
     // Look for inlineData which contains the base64 image
+    // According to documentation: https://ai.google.dev/gemini-api/docs/image-generation
     for (const part of parts) {
+      // Check for inlineData (base64 image)
       if (part.inlineData && part.inlineData.data) {
         const base64Data = part.inlineData.data;
         // Check if it already has data URL prefix
         if (base64Data.startsWith('data:')) {
           return base64Data;
         }
+        // Return as data URL
         return `data:image/png;base64,${base64Data}`;
+      }
+      // Also check for text parts that might contain image data
+      if (part.text) {
+        // Sometimes the API returns text with image reference
+        const srcMatch = part.text.match(/src="([^"]+)"/);
+        if (srcMatch) {
+          return srcMatch[1];
+        }
+        if (part.text.trim().startsWith('http') || part.text.trim().startsWith('data:')) {
+          return part.text.trim();
+        }
       }
     }
 

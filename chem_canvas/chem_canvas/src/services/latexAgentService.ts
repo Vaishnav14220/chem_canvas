@@ -543,57 +543,112 @@ enum EngineStatus {
   Error = 4
 }
 
+const DEFAULT_TEXLIVE_ENDPOINT = 'https://texlive2.swiftlatex.com/';
+
 // Add global declaration for PdfTeXEngine
 declare global {
   interface Window {
     PdfTeXEngine: any;
     CompileResult: any;
+    XeTeXEngine: any;
+    DvipdfmxEngine: any;
   }
 }
 
 class SwiftLaTeXEngine {
   private engineStatus: EngineStatus = EngineStatus.Init;
   private realEngine: any = null;
+  private loadPromise: Promise<void> | null = null;
+  private formatReady = false;
+  private formatPromise: Promise<void> | null = null;
+  private texliveEndpoint: string | null = null;
+  private pdfEngine: any = null;
+  private pdfLoadPromise: Promise<void> | null = null;
 
-  async loadEngine(): Promise<void> {
-    if (typeof window.XeTeXEngine === 'undefined') {
-      console.error('XeTeXEngine not loaded. Waiting for script...');
-      // Simple wait loop
-      for (let i = 0; i < 10; i++) {
-        if (typeof window.XeTeXEngine !== 'undefined') break;
-        await new Promise(r => setTimeout(r, 500));
-      }
-      if (typeof window.XeTeXEngine === 'undefined') {
-        throw new Error('XeTeXEngine library not found. Please ensure /swiftlatex/XeTeXEngine.js is loaded.');
-      }
+  private async resolveTexliveEndpoint(): Promise<string> {
+    if (typeof window === 'undefined') {
+      return DEFAULT_TEXLIVE_ENDPOINT;
     }
+
+    const localBase = `${window.location.origin}/swiftlatex/texlive/`;
+    const probeUrl = `${localBase}xetex/26/xelatex.ini`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
 
     try {
-      this.realEngine = new window.XeTeXEngine();
-      const texliveEndpoint = `${window.location.origin}/swiftlatex/texlive/`;
-      this.realEngine.setTexliveEndpoint(texliveEndpoint);
-      await this.realEngine.loadEngine();
-      // Try to generate the format file, but don't fail if remote fetch is blocked
-      try {
-        const fmtBuffer = await Promise.race([
-          this.realEngine.compileFormat(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Format compilation timeout')), 3000))
-        ]);
-        if (fmtBuffer) {
-          // Write the format file with the correct name
-          this.writeMemFSFile('swiftlatexxetex.fmt', new Uint8Array(fmtBuffer));
-        }
-      } catch (fmtError) {
-        console.warn('Format compilation skipped (may be normal in dev):', fmtError);
-        // Continue without format file - engine will attempt to compile anyway
+      const response = await fetch(probeUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      if (response.ok) {
+        return localBase;
       }
-      this.engineStatus = EngineStatus.Ready;
-      console.log('✅ Local SwiftLaTeX Engine loaded successfully');
-    } catch (e) {
-      console.error('Failed to load SwiftLaTeX engine:', e);
-      this.engineStatus = EngineStatus.Error;
-      throw e;
+    } catch {
+      // Fall back to hosted texlive endpoint.
+    } finally {
+      clearTimeout(timeout);
     }
+
+    return DEFAULT_TEXLIVE_ENDPOINT;
+  }
+
+  private setTexliveEndpoint(endpoint: string): void {
+    this.texliveEndpoint = endpoint;
+    if (this.realEngine) {
+      this.realEngine.setTexliveEndpoint(endpoint);
+    }
+  }
+
+  async loadEngine(): Promise<void> {
+    if (this.loadPromise) return this.loadPromise;
+
+    this.loadPromise = (async () => {
+      if (typeof window.XeTeXEngine === 'undefined') {
+        console.error('XeTeXEngine not loaded. Waiting for script...');
+        // Simple wait loop (up to ~20s)
+        for (let i = 0; i < 40; i++) {
+          if (typeof window.XeTeXEngine !== 'undefined') break;
+          await new Promise(r => setTimeout(r, 500));
+        }
+        if (typeof window.XeTeXEngine === 'undefined') {
+          throw new Error('XeTeXEngine library not found. Please ensure /swiftlatex/XeTeXEngine.js is loaded.');
+        }
+      }
+
+      try {
+        this.engineStatus = EngineStatus.Busy;
+        this.realEngine = new window.XeTeXEngine();
+        const texliveEndpoint = await this.resolveTexliveEndpoint();
+        this.setTexliveEndpoint(texliveEndpoint);
+        await this.realEngine.loadEngine();
+        const ready = await this.waitForEngineReady(10000);
+        if (!ready) {
+          console.warn('SwiftLaTeX engine still initializing; deferring format compilation.');
+        } else {
+          // Try to generate the format file, but don't fail if remote fetch is blocked
+          try {
+            await this.ensureFormatReady(180000);
+          } catch (fmtError) {
+            console.warn('Format compilation skipped (may be normal in dev):', fmtError);
+            this.formatReady = false;
+            // Continue without format file - engine will attempt to compile anyway
+          }
+        }
+        // Wait a bit for the engine to report ready
+        await this.waitForEngineReady(10000);
+        this.engineStatus = this.realEngine?.isReady?.() ? EngineStatus.Ready : EngineStatus.Busy;
+        console.log('Local SwiftLaTeX Engine loaded successfully');
+      } catch (e) {
+        console.error('Failed to load SwiftLaTeX engine:', e);
+        this.engineStatus = EngineStatus.Error;
+        throw e;
+      }
+    })().finally(() => {
+      this.loadPromise = null;
+    });
+
+    return this.loadPromise;
   }
 
   isReady(): boolean {
@@ -604,9 +659,15 @@ class SwiftLaTeXEngine {
     return this.isReady();
   }
 
-  writeMemFSFile(filename: string, content: string): void {
+  writeMemFSFile(filename: string, content: string | Uint8Array): void {
     if (this.realEngine) {
       this.realEngine.writeMemFSFile(filename, content);
+    }
+  }
+
+  makeMemFSFolder(folder: string): void {
+    if (this.realEngine) {
+      this.realEngine.makeMemFSFolder(folder);
     }
   }
 
@@ -622,10 +683,164 @@ class SwiftLaTeXEngine {
     }
   }
 
+  private async waitForEngineReady(timeoutMs: number): Promise<boolean> {
+    if (!this.realEngine?.isReady) return false;
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      if (this.realEngine?.isReady?.()) return true;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return !!this.realEngine?.isReady?.();
+  }
+
+  private async ensureFormatReady(timeoutMs: number): Promise<void> {
+    if (this.formatReady) return;
+    if (!this.realEngine) return;
+
+    if (this.formatPromise) return this.formatPromise;
+
+    this.formatPromise = (async () => {
+      const ready = await this.waitForEngineReady(Math.min(10000, timeoutMs));
+      if (!ready) {
+        throw new Error('Engine not ready for format compilation');
+      }
+
+      const compileWithTimeout = async () =>
+        Promise.race([
+          this.realEngine.compileFormat(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Format compilation timeout')), timeoutMs)),
+        ]);
+
+      try {
+        const fmtBuffer = await compileWithTimeout();
+        if (fmtBuffer) {
+          this.writeMemFSFile('swiftlatexxetex.fmt', new Uint8Array(fmtBuffer));
+          this.formatReady = true;
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        if (/spinning|not ready/i.test(message)) {
+          const retryReady = await this.waitForEngineReady(Math.min(15000, timeoutMs));
+          if (retryReady) {
+            const fmtBuffer = await compileWithTimeout();
+            if (fmtBuffer) {
+              this.writeMemFSFile('swiftlatexxetex.fmt', new Uint8Array(fmtBuffer));
+              this.formatReady = true;
+              return;
+            }
+          }
+        }
+        const shouldRetryRemote =
+          this.texliveEndpoint &&
+          this.texliveEndpoint !== DEFAULT_TEXLIVE_ENDPOINT;
+        if (shouldRetryRemote) {
+          console.warn('Format compile failed; retrying with remote TexLive endpoint.');
+          this.setTexliveEndpoint(DEFAULT_TEXLIVE_ENDPOINT);
+          const retryReady = await this.waitForEngineReady(Math.min(15000, timeoutMs));
+          if (retryReady) {
+            const fmtBuffer = await compileWithTimeout();
+            if (fmtBuffer) {
+              this.writeMemFSFile('swiftlatexxetex.fmt', new Uint8Array(fmtBuffer));
+              this.formatReady = true;
+              return;
+            }
+          }
+        }
+        this.formatReady = false;
+        throw e;
+      }
+    })().finally(() => {
+      this.formatPromise = null;
+    });
+
+    return this.formatPromise;
+  }
+
+  private isPdfBytes(data?: Uint8Array | null): boolean {
+    if (!data || data.length < 5) return false;
+    return (
+      data[0] === 0x25 && // %
+      data[1] === 0x50 && // P
+      data[2] === 0x44 && // D
+      data[3] === 0x46 && // F
+      data[4] === 0x2d // -
+    );
+  }
+
+  private async loadPdfEngine(): Promise<void> {
+    if (this.pdfLoadPromise) return this.pdfLoadPromise;
+
+    this.pdfLoadPromise = (async () => {
+      if (typeof window.DvipdfmxEngine === 'undefined') {
+        console.error('DvipdfmxEngine not loaded. Waiting for script...');
+        for (let i = 0; i < 40; i++) {
+          if (typeof window.DvipdfmxEngine !== 'undefined') break;
+          await new Promise(r => setTimeout(r, 500));
+        }
+        if (typeof window.DvipdfmxEngine === 'undefined') {
+          throw new Error('DvipdfmxEngine library not found. Please ensure /swiftlatex/DvipdfmxEngine.js is loaded.');
+        }
+      }
+
+      this.pdfEngine = new window.DvipdfmxEngine();
+      await this.pdfEngine.loadEngine();
+    })().finally(() => {
+      this.pdfLoadPromise = null;
+    });
+
+    return this.pdfLoadPromise;
+  }
+
+  private writePdfEngineFile(filePath: string, content: Uint8Array): void {
+    if (!this.pdfEngine) return;
+    const dirPath = filePath.split('/').slice(0, -1).filter(Boolean);
+    let currentDir = '';
+    for (const segment of dirPath) {
+      currentDir = currentDir ? `${currentDir}/${segment}` : segment;
+      this.pdfEngine.makeMemFSFolder(currentDir);
+    }
+    this.pdfEngine.writeMemFSFile(filePath, content);
+  }
+
+  private async convertXdvToPdf(xdv: Uint8Array, mainFile: string): Promise<Uint8Array | null> {
+    await this.loadPdfEngine();
+    if (!this.pdfEngine?.isReady?.()) return null;
+
+    const normalizedMainFile = mainFile.replace(/^\/+/, '');
+    const baseName = normalizedMainFile.replace(/\.[^/.]+$/, '');
+    const xdvFile = `${baseName}.xdv`;
+
+    this.writePdfEngineFile(xdvFile, xdv);
+    this.pdfEngine.setEngineMainFile(normalizedMainFile);
+
+    const pdfResult = await this.pdfEngine.compilePDF();
+    if (pdfResult?.pdf) {
+      return pdfResult.pdf instanceof Uint8Array ? pdfResult.pdf : new Uint8Array(pdfResult.pdf);
+    }
+
+    return null;
+  }
+
   async compile(files: LaTeXFile[], mainFile: string = 'main.tex'): Promise<CompileResult> {
     // Initialize if needed
     if (!this.isReady()) {
       await this.loadEngine();
+    }
+
+    const normalizedMainFile = mainFile.replace(/^\/+/, '');
+
+    // If still warming up, wait a bit longer for readiness.
+    for (let i = 0; i < 40; i++) {
+      if (this.realEngine?.isReady?.()) break;
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    // Ensure format is available; ignore if it times out here and retry after log hints.
+    try {
+      await this.ensureFormatReady(120000);
+    } catch (e) {
+      // Non-fatal; will retry below if needed.
+      console.warn('ensureFormatReady initial pass failed:', e);
     }
 
     // Flush cache to clear any previous files
@@ -644,34 +859,73 @@ class SwiftLaTeXEngine {
 
     // Write all files to engine
     for (const file of files) {
-      this.writeMemFSFile(file.name, file.content);
+      const filePath = (file.path || file.name).replace(/^\/+/, '');
+      const dirPath = filePath.split('/').slice(0, -1).filter(Boolean);
+      let currentDir = '';
+      for (const segment of dirPath) {
+        currentDir = currentDir ? `${currentDir}/${segment}` : segment;
+        this.makeMemFSFolder(currentDir);
+      }
+      this.writeMemFSFile(filePath, file.content);
     }
 
     // Set main file
-    this.setEngineMainFile(mainFile);
+    this.setEngineMainFile(normalizedMainFile);
 
-    console.log('🚀 Starting Local SwiftLaTeX Compilation...');
+    console.log('Starting Local SwiftLaTeX Compilation...');
 
     try {
-      const result = await this.realEngine.compileLaTeX();
+      let result = await this.realEngine.compileLaTeX();
 
-      // Map engine result to our CompileResult type
-      const success = result.status === 0 || (result.pdf && result.pdf.length > 0);
+      // If compilation failed and log hints at missing/invalid format, retry once after forcing format.
+      const logText = String(result?.log || '');
+      const maybeFormatIssue = result?.status !== 0 && /(\.fmt\b|format file|I can't find the format|cannot find the format|no format)/i.test(logText);
+
+      if (maybeFormatIssue && !this.formatReady) {
+        try {
+          await this.ensureFormatReady(120000);
+          result = await this.realEngine.compileLaTeX();
+        } catch (e) {
+          console.warn('Format rebuild retry failed:', e);
+        }
+      }
+
+      let pdfBytes: Uint8Array | undefined;
+      let conversionError: string | null = null;
+      if (result.pdf) {
+        if (this.isPdfBytes(result.pdf)) {
+          pdfBytes = result.pdf;
+        } else {
+          try {
+            const converted = await this.convertXdvToPdf(result.pdf, normalizedMainFile);
+            if (converted) {
+              pdfBytes = converted;
+            } else {
+              conversionError = 'XDV to PDF conversion failed.';
+            }
+          } catch (e) {
+            conversionError = `XDV to PDF conversion failed: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
+      }
+
+      const success = result.status === 0 && !!pdfBytes;
+      const log = conversionError ? `${result.log}\n${conversionError}` : result.log;
 
       let pdfUrl = undefined;
       // result.pdf is a Uint8Array
-      if (success && result.pdf) {
-        const blob = new Blob([result.pdf], { type: 'application/pdf' });
+      if (success && pdfBytes) {
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         pdfUrl = URL.createObjectURL(blob);
       }
 
       return {
         success,
         pdfUrl,
-        pdfData: result.pdf,
-        log: result.log,
-        errors: success ? [] : this.extractErrors(result.log || ''),
-        warnings: this.extractWarnings(result.log || '')
+        pdfData: pdfBytes,
+        log,
+        errors: success ? [] : [...this.extractErrors(log || ''), ...(conversionError ? [conversionError] : [])],
+        warnings: this.extractWarnings(log || '')
       };
 
     } catch (e) {

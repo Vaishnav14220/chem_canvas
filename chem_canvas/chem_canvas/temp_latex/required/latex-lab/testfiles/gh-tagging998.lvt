@@ -1,9 +1,0 @@
-\DocumentMetadata{}
-\input{regression-test}
-\documentclass{report}
-\START
-\AddToHook{cmd/@makecaption/before}{}
-\begin{document}
-
-\END
-\end{document}

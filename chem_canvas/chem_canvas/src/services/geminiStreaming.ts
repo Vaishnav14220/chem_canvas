@@ -90,7 +90,8 @@ export const generateStreamingContent = async (
   onChunk?: (chunk: string) => void,
   onComplete?: (fullResponse: string) => void,
   onError?: (error: Error) => void,
-  onThought?: (thought: string) => void
+  onThought?: (thought: string) => void,
+  modelName?: string
 ): Promise<string> => {
   if (!genAI || !isInitialized) {
     try {
@@ -126,7 +127,7 @@ Please format your response using proper markdown:
       },
     };
 
-    const model = await getAvailableModel();
+    const model = modelName || await getAvailableModel();
     const contents = [
       {
         role: 'user' as const,

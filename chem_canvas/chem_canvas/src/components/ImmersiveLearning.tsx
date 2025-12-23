@@ -1,12 +1,26 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { X, Upload, FileUp, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon, Lightbulb, Zap, Target, Award, Eye, EyeOff, Code2, Terminal as TerminalIcon, Save, RotateCcw, Download, Check } from 'lucide-react';
+import { X, Upload, FileUp, FileText, Loader2, Volume2, BookOpen, Play, Brain, ChevronLeft, ChevronRight, HelpCircle, CheckCircle2, Info, RefreshCw, Box, Mail, Sparkles, ChevronDown, Send, MessageCircle, Hand, Atom, Maximize2, Minimize2, Mic, Film, Move, Globe, ExternalLink, Copy, Image as ImageIcon, Lightbulb, Zap, Target, Award, Eye, EyeOff, Code2, Terminal as TerminalIcon, Save, RotateCcw, Download, Check, GitBranch } from 'lucide-react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import CodeMirror from '@uiw/react-codemirror';
+import ReactFlow, {
+    useNodesState,
+    useEdgesState,
+    Controls,
+    Background,
+    Node,
+    Edge,
+    Position,
+    MarkerType,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
 import { python } from '@codemirror/lang-python';
 import { SrlCoachWorkspace } from './SrlCoachWorkspace';
 import { InteractiveAssignmentWorkspace } from './InteractiveAssignmentWorkspace';
 import { LaTeXAssignmentPrep } from './LaTeXAssignmentPrep';
+import { HyperbookNotebook } from '@/hyperbook/components/HyperbookNotebook';
 import { javascript } from '@codemirror/lang-javascript';
 import { java } from '@codemirror/lang-java';
 import { cpp } from '@codemirror/lang-cpp';
@@ -73,10 +87,14 @@ import {
     DetectedObject,
     BoundingBox,
     ReactFlowData,
-    BrainstormActivity
+    BrainstormActivity,
+    WhatIfActivity,
+    EnhancedTermInfo
 } from '../services/immersiveLearningService';
 import { extractJsonBlock, fetchGroundingSources, generateTextContent, sendStudiumChatMessage } from '../services/geminiService';
 import { generateStreamingContent } from '../services/geminiStreaming';
+import { streamScienceTeacherChat, ScienceTeacherMessage, LearningMode as TeacherLearningMode, getLearningModeName, getLearningModeDescription } from '../services/scienceTeacherService';
+import { selectLearningTheory, getLearningTheoryDisplayInfo, getFeynmanLiveConfig, LearningTheoryToTResponse, LearningTheoryType, FeynmanLiveConfig } from '../services/learningTheoriesService';
 import ReactFlowMindMap from './ReactFlowMindMap';
 import {
     generateNotebookSummary,
@@ -92,17 +110,29 @@ import {
 import DrawIOWorkspace, { STORAGE_DIAGRAM_XML_KEY } from './DrawIOWorkspace';
 import { LessonGeneratorActivity } from './LessonGeneratorActivity';
 import { Reasoning } from './ai-elements/reasoning';
+import {
+    generateImmersivePlanTree,
+    generateImmersiveContentWithToT,
+    buildImmersiveTree,
+    ImmersiveToTResponse,
+    ImmersivePlanNode,
+    ImmersivePlanNodeWithChildren
+} from '../services/immersiveToTService';
+import { SocraticLearningMode } from './SocraticLearningMode';
+import { FeynmanLearningMode } from './FeynmanLearningMode';
+
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { AspectRatio } from '../types/studium';
+import { AspectRatio, InteractiveLabel, EnhancedLabelInfo } from '../types/studium';
+import { analyzeImageForLearning, generateEnhancedLabelInfo } from '../services/geminiService';
 
-interface ImmersiveLearningProps {
+interface YouTubeVideosProps {
     onClose: () => void;
     apiKey?: string;
 }
 
-type LearningMode = 'source' | 'immersive-text' | 'slides-narration' | 'audio-lesson' | 'mindmap' | 'simulation' | 'robotics' | 'viewer3d' | 'image-activity' | 'code-lab' | 'assignment' | 'latex-assignment' | 'notebook';
+type LearningMode = 'source' | 'immersive-text' | 'audio-video' | 'mindmap' | 'simulation' | 'robotics' | 'visual-activity' | 'code-lab' | 'assignment' | 'latex-assignment' | 'notebook' | 'learning-theories' | 'socratic' | 'feynman-enhanced';
 
 type CodeLabLanguage = 'python' | 'javascript' | 'java' | 'cpp';
 
@@ -280,7 +310,821 @@ const NotebookIcon = ({ active }: { active?: boolean }) => (
     </svg>
 );
 
-const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }) => {
+const ScienceTeacherIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="8" r="4" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.3" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <path d="M4 20C4 15.5817 7.58172 12 12 12C16.4183 12 20 15.5817 20 20" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M9 16L12 19L15 16" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="17" cy="6" r="3" fill="#ffcc00" fillOpacity="0.6" />
+        <path d="M17 5V7M16 6H18" stroke="white" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+);
+
+const LearningTheoriesIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Brain with light bulb - representing intelligent learning selection */}
+        <circle cx="12" cy="10" r="7" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <path d="M9 10C9 8.5 10 7 12 7C14 7 15 8.5 15 10C15 11 14.5 12 14 12.5V14H10V12.5C9.5 12 9 11 9 10Z" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <rect x="10" y="15" width="4" height="2" rx="0.5" fill={active ? "#ffffff" : "#9aa0a6"} />
+        {/* Decision tree branches */}
+        <line x1="4" y1="18" x2="8" y2="15" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="20" y1="18" x2="16" y2="15" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="4" cy="19" r="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.4"} />
+        <circle cx="20" cy="19" r="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.8" : "0.4"} />
+    </svg>
+);
+
+// Socratic Learning Icon - Question-based discovery
+const SocraticIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Question bubbles */}
+        <circle cx="12" cy="10" r="7" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <text x="12" y="13" fontSize="10" fill={active ? "#ffffff" : "#9aa0a6"} textAnchor="middle" fontWeight="bold">?</text>
+        {/* Ladder steps */}
+        <line x1="6" y1="18" x2="18" y2="18" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="8" y1="20" x2="16" y2="20" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="10" y1="22" x2="14" y2="22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+);
+
+// Feynman Learning Icon - Teach-back concept
+const FeynmanIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Blackboard */}
+        <rect x="3" y="4" width="18" height="12" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        {/* Simple diagram */}
+        <circle cx="8" cy="10" r="2" fill={active ? "#ffffff" : "#9aa0a6"} />
+        <line x1="10" y1="10" x2="14" y2="10" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <circle cx="16" cy="10" r="2" fill={active ? "#ffffff" : "#9aa0a6"} />
+        {/* Stand */}
+        <line x1="12" y1="16" x2="12" y2="22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
+        <line x1="8" y1="22" x2="16" y2="22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+);
+
+const allLearningModes: LearningModeCard[] = [
+    { id: 'source', icon: <SourceIcon />, label: 'My Library', activeColor: '#5f6368', activeBg: 'rgba(95, 99, 104, 0.1)' },
+    { id: 'immersive-text', icon: <ImmersiveTextIcon />, label: 'Immersive Text', activeColor: '#8ab4f8', activeBg: 'rgba(138, 180, 248, 0.1)' },
+    { id: 'audio-video', icon: <SlidesIcon />, label: 'Audio Video', activeColor: '#f28b82', activeBg: 'rgba(242, 139, 130, 0.1)' },
+    { id: 'mindmap', icon: <MindmapIcon />, label: 'Mindmap', activeColor: '#fdd663', activeBg: 'rgba(253, 214, 99, 0.1)' },
+    { id: 'simulation', icon: <SimulationIcon />, label: 'Simulation', activeColor: '#c4b5fd', activeBg: 'rgba(196, 181, 253, 0.1)' },
+    { id: 'robotics', icon: <RoboticsIcon />, label: 'Robotics Vision', activeColor: '#ff8bcb', activeBg: 'rgba(255, 139, 203, 0.1)' },
+    { id: 'visual-activity', icon: <Viewer3DIcon />, label: 'Visual Activity', activeColor: '#4fc3f7', activeBg: 'rgba(79, 195, 247, 0.1)' },
+    { id: 'code-lab', icon: <CodeLabIcon />, label: 'Code Lab', activeColor: '#10b981', activeBg: 'rgba(16, 185, 129, 0.1)' },
+    { id: 'assignment', icon: <AssignmentIcon />, label: 'Assignment', activeColor: '#f59e0b', activeBg: 'rgba(245, 158, 11, 0.1)' },
+    { id: 'notebook', icon: <NotebookIcon />, label: 'Notebook', activeColor: '#3b82f6', activeBg: 'rgba(59, 130, 246, 0.1)' },
+    { id: 'socratic', icon: <SocraticIcon />, label: 'Socratic', activeColor: '#3b82f6', activeBg: 'rgba(59, 130, 246, 0.1)' },
+    { id: 'feynman-enhanced', icon: <FeynmanIcon />, label: 'Feynman', activeColor: '#a855f7', activeBg: 'rgba(168, 85, 247, 0.1)' },
+];
+
+// Immersive Tree Node Component
+const ImmersiveTreeNode: React.FC<{
+    node: ImmersivePlanNodeWithChildren;
+    depth: number;
+    selectedId: string | null;
+    onSelect: (node: ImmersivePlanNode) => void;
+}> = ({ node, depth, selectedId, onSelect }) => {
+    const [expanded, setExpanded] = useState(true);
+    const hasChildren = node.children && node.children.length > 0;
+    const isSelected = node.id === selectedId;
+    const isRejected = node.status === 'rejected';
+
+    const getStatusColor = () => {
+        if (isSelected) return 'bg-emerald-500/20 border-emerald-500';
+        if (isRejected) return 'bg-red-500/10 border-red-500/30 opacity-60';
+        if (node.status === 'candidate') return 'bg-blue-500/10 border-blue-500/30';
+        return 'bg-slate-700/50 border-slate-600';
+    };
+
+    return (
+        <div className={`ml-${depth > 0 ? 4 : 0}`} style={{ marginLeft: depth > 0 ? depth * 16 : 0 }}>
+            <div
+                className={`p-3 rounded-lg border ${getStatusColor()} cursor-pointer transition-all hover:border-white/30 mb-2`}
+                onClick={() => !isRejected && onSelect(node)}
+            >
+                <div className="flex items-start gap-2">
+                    {hasChildren && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+                            className="mt-0.5 text-slate-400 hover:text-white"
+                        >
+                            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                    )}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <GitBranch className="w-3.5 h-3.5 text-slate-400" />
+                            <span className="text-sm font-medium text-white truncate">{node.approach}</span>
+                            <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+                                {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />}
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${node.score >= 7 ? 'bg-emerald-500/20 text-emerald-300' :
+                                    node.score >= 4 ? 'bg-amber-500/20 text-amber-300' :
+                                        'bg-red-500/20 text-red-300'
+                                    }`}>
+                                    {node.score}/10
+                                </span>
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-400 line-clamp-2">{node.description}</p>
+                    </div>
+                </div>
+            </div>
+            {hasChildren && expanded && (
+                <div className="border-l border-slate-600/50 ml-2 pl-2">
+                    {node.children.map(child => (
+                        <ImmersiveTreeNode
+                            key={child.id}
+                            node={child}
+                            depth={depth + 1}
+                            selectedId={selectedId}
+                            onSelect={onSelect}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ToT Graph Visualization Component - Layered Flowchart Style (matching reference image)
+const ToTGraphVisualization: React.FC<{
+    tree: ImmersivePlanNode[];
+    rootId?: string;
+    selectedId: string | null;
+    onSelect: (node: ImmersivePlanNode) => void;
+}> = ({ tree, rootId, selectedId, onSelect }) => {
+    const [nodes, setNodes, onNodesChange] = useNodesState([]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+    // Pastel color palette like reference image
+    const APPROACH_COLORS = [
+        { bg: '#fff3e0', border: '#ff9800', text: '#e65100' }, // Orange
+        { bg: '#e3f2fd', border: '#2196f3', text: '#1565c0' }, // Blue
+        { bg: '#fce4ec', border: '#e91e63', text: '#ad1457' }, // Pink
+        { bg: '#f3e5f5', border: '#9c27b0', text: '#6a1b9a' }, // Purple
+        { bg: '#e0f7fa', border: '#00bcd4', text: '#00695c' }, // Cyan
+    ];
+
+    // Convert ToT tree data to ReactFlow nodes and edges
+    useEffect(() => {
+        if (!tree || tree.length === 0) return;
+
+        const approachNodes = tree.filter(n => n.id !== rootId && n.status !== 'rejected');
+        const flowNodes: Node[] = [];
+        const flowEdges: Edge[] = [];
+
+        // Calculate layout dimensions
+        const colWidth = 200;
+        const colSpacing = 20;
+        const headerWidth = Math.max(700, approachNodes.length * (colWidth + colSpacing));
+        const startX = 40;
+
+        // Layer 0: Header row (Green bar like reference)
+        flowNodes.push({
+            id: 'header',
+            type: 'default',
+            data: {
+                label: (
+                    <div style={{ textAlign: 'center', color: '#2e7d32' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                            🎯 AI THINKING APPROACHES
+                        </div>
+                        <div style={{ fontSize: '14px', fontWeight: 700 }}>
+                            Tree of Thoughts Planning
+                        </div>
+                    </div>
+                )
+            },
+            position: { x: startX, y: 15 },
+            style: {
+                background: '#e8f5e9',
+                border: '2px solid #4caf50',
+                borderRadius: '10px',
+                padding: '12px 24px',
+                width: headerWidth,
+                boxShadow: '0 3px 10px rgba(76,175,80,0.15)',
+            },
+            sourcePosition: Position.Bottom,
+        });
+
+        // Layer 1: Approach columns (colored boxes like reference)
+        const approachY = 100;
+
+        approachNodes.forEach((node, idx) => {
+            const isSelected = node.id === selectedId;
+            const colorScheme = APPROACH_COLORS[idx % APPROACH_COLORS.length];
+            const scoreColor = node.score >= 8 ? '#4caf50' : node.score >= 6 ? '#ff9800' : '#f44336';
+
+            flowNodes.push({
+                id: node.id,
+                type: 'default',
+                data: {
+                    label: (
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{
+                                fontWeight: 700,
+                                fontSize: '13px',
+                                color: colorScheme.text,
+                                marginBottom: '8px'
+                            }}>
+                                {node.approach}
+                            </div>
+                            <div style={{
+                                display: 'inline-block',
+                                background: scoreColor,
+                                color: 'white',
+                                padding: '3px 10px',
+                                borderRadius: '12px',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                            }}>
+                                Score: {node.score}/10
+                            </div>
+                        </div>
+                    ),
+                    nodeData: node
+                },
+                position: { x: startX + idx * (colWidth + colSpacing), y: approachY },
+                style: {
+                    background: isSelected ? '#c8e6c9' : colorScheme.bg,
+                    border: isSelected ? '3px solid #4caf50' : `2px solid ${colorScheme.border}`,
+                    borderRadius: '10px',
+                    padding: '14px 12px',
+                    width: colWidth,
+                    cursor: 'pointer',
+                    boxShadow: isSelected
+                        ? '0 0 15px rgba(76, 175, 80, 0.4)'
+                        : '0 3px 10px rgba(0,0,0,0.08)',
+                    transition: 'all 0.3s ease',
+                },
+                targetPosition: Position.Top,
+                sourcePosition: Position.Bottom,
+            });
+
+            // Edge from header to approach
+            flowEdges.push({
+                id: `header-${node.id}`,
+                source: 'header',
+                target: node.id,
+                type: 'smoothstep',
+                animated: isSelected,
+                style: {
+                    stroke: colorScheme.border,
+                    strokeWidth: isSelected ? 3 : 2,
+                },
+                markerEnd: {
+                    type: MarkerType.ArrowClosed,
+                    color: colorScheme.border,
+                    width: 14,
+                    height: 14,
+                },
+            });
+
+            // Layer 2: Section boxes under each approach (yellow boxes like reference)
+            const sections = node.sections || [];
+            sections.slice(0, 3).forEach((section, sIdx) => {
+                const sectionNodeId = `${node.id}-sec-${sIdx}`;
+                const sectionY = 200 + sIdx * 50;
+
+                flowNodes.push({
+                    id: sectionNodeId,
+                    type: 'default',
+                    data: {
+                        label: (
+                            <div style={{ textAlign: 'center', fontSize: '10px', color: '#f57f17', fontWeight: 600 }}>
+                                {section.title || `Section ${sIdx + 1}`}
+                            </div>
+                        )
+                    },
+                    position: { x: startX + idx * (colWidth + colSpacing), y: sectionY },
+                    style: {
+                        background: '#fffde7',
+                        border: '1px solid #ffc107',
+                        borderRadius: '8px',
+                        padding: '8px 6px',
+                        width: colWidth,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                    },
+                    targetPosition: Position.Top,
+                    sourcePosition: Position.Bottom,
+                });
+
+                // Edge from approach/previous section to this section
+                const prevId = sIdx === 0 ? node.id : `${node.id}-sec-${sIdx - 1}`;
+                flowEdges.push({
+                    id: `${prevId}-${sectionNodeId}`,
+                    source: prevId,
+                    target: sectionNodeId,
+                    type: 'smoothstep',
+                    style: {
+                        stroke: '#ffc107',
+                        strokeWidth: 1.5,
+                        strokeDasharray: '4 4',
+                    },
+                    markerEnd: {
+                        type: MarkerType.ArrowClosed,
+                        color: '#ffc107',
+                        width: 10,
+                        height: 10,
+                    },
+                });
+            });
+        });
+
+        setNodes(flowNodes);
+        setEdges(flowEdges);
+    }, [tree, rootId, selectedId, setNodes, setEdges]);
+
+    const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+        if (node.id !== 'header' && !node.id.includes('-sec-') && node.data.nodeData) {
+            onSelect(node.data.nodeData);
+        }
+    }, [onSelect]);
+
+    return (
+        <div style={{
+            width: '100%',
+            height: '480px',
+            background: 'linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%)',
+            borderRadius: '14px',
+            border: '1px solid #e0e0e0',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+        }}>
+            <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onNodeClick={handleNodeClick}
+                fitView
+                fitViewOptions={{ padding: 0.1 }}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={true}
+                proOptions={{ hideAttribution: true }}
+            >
+                <Background color="#e0e0e0" gap={25} size={1} />
+                <Controls
+                    showInteractive={false}
+                    style={{
+                        background: 'white',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '8px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                    }}
+                />
+            </ReactFlow>
+        </div>
+    );
+};
+
+interface CodeLabViewProps {
+    codeLabFiles: CodeLabFile[];
+    setCodeLabFiles: React.Dispatch<React.SetStateAction<CodeLabFile[]>>;
+    codeLabActiveFileId: string;
+    setCodeLabActiveFileId: React.Dispatch<React.SetStateAction<string>>;
+    codeLabCode: string;
+    setCodeLabCode: React.Dispatch<React.SetStateAction<string>>;
+    codeLabLanguage: CodeLabLanguage;
+    setCodeLabLanguage: React.Dispatch<React.SetStateAction<CodeLabLanguage>>;
+    codeLabTheme: 'vscode' | 'dracula';
+    setCodeLabTheme: React.Dispatch<React.SetStateAction<'vscode' | 'dracula'>>;
+    codeLabOutput: string;
+    setCodeLabOutput: React.Dispatch<React.SetStateAction<string>>;
+    codeLabIsRunning: boolean;
+    setCodeLabIsRunning: React.Dispatch<React.SetStateAction<boolean>>;
+    codeLabAiPrompt: string;
+    setCodeLabAiPrompt: React.Dispatch<React.SetStateAction<string>>;
+    codeLabAiResponse: string;
+    setCodeLabAiResponse: React.Dispatch<React.SetStateAction<string>>;
+    codeLabAiLoading: boolean;
+    codeLabAiStreaming: boolean;
+    codeLabAiReasoning: string;
+    codeLabAiError: string | null;
+    handleAskCodeLabAi: () => void;
+    handleInsertAiCode: () => void;
+    loadPyodide: () => Promise<any>;
+    codeLabExtensions: any[];
+    codeLabBasicSetup: Record<string, unknown>;
+}
+
+const CodeLabView: React.FC<CodeLabViewProps> = ({
+    codeLabFiles,
+    setCodeLabFiles,
+    codeLabActiveFileId,
+    setCodeLabActiveFileId,
+    codeLabCode,
+    setCodeLabCode,
+    codeLabLanguage,
+    setCodeLabLanguage,
+    codeLabTheme,
+    setCodeLabTheme,
+    codeLabOutput,
+    setCodeLabOutput,
+    codeLabIsRunning,
+    setCodeLabIsRunning,
+    codeLabAiPrompt,
+    setCodeLabAiPrompt,
+    codeLabAiResponse,
+    setCodeLabAiResponse,
+    codeLabAiLoading,
+    codeLabAiStreaming,
+    codeLabAiReasoning,
+    codeLabAiError,
+    handleAskCodeLabAi,
+    handleInsertAiCode,
+    loadPyodide,
+    codeLabExtensions,
+    codeLabBasicSetup,
+}) => {
+    const activeFile = codeLabFiles.find(file => file.id === codeLabActiveFileId) || codeLabFiles[0];
+    const aiInputRef = useRef<HTMLInputElement>(null);
+    const codeMirrorRef = useRef<any>(null);
+    const isInputFocusedRef = useRef(false);
+
+    // Monitor input focus state and prevent CodeMirror from stealing focus
+    useEffect(() => {
+        const input = aiInputRef.current;
+        if (!input) return;
+
+        const handleFocus = () => {
+            isInputFocusedRef.current = true;
+        };
+
+        const handleBlur = () => {
+            // Small delay to check if focus moved to CodeMirror
+            setTimeout(() => {
+                const activeElement = document.activeElement;
+                const cmEditor = activeElement?.closest('.cm-editor');
+                if (cmEditor && isInputFocusedRef.current) {
+                    // Focus was stolen by CodeMirror, return it to input
+                    input.focus();
+                } else {
+                    isInputFocusedRef.current = false;
+                }
+            }, 10);
+        };
+
+        // Global listener to prevent CodeMirror focus stealing
+        const handleGlobalFocus = (e: FocusEvent) => {
+            if (isInputFocusedRef.current && input === document.activeElement) {
+                const target = e.target as HTMLElement;
+                if (target?.closest('.cm-editor') || target?.classList.contains('cm-content')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    requestAnimationFrame(() => {
+                        input.focus();
+                    });
+                }
+            }
+        };
+
+        input.addEventListener('focus', handleFocus);
+        input.addEventListener('blur', handleBlur);
+        document.addEventListener('focusin', handleGlobalFocus, true);
+
+        return () => {
+            input.removeEventListener('focus', handleFocus);
+            input.removeEventListener('blur', handleBlur);
+            document.removeEventListener('focusin', handleGlobalFocus, true);
+        };
+    }, []);
+
+    const handleFileSelect = (fileId: string) => {
+        setCodeLabActiveFileId(fileId);
+    };
+
+    const handleCodeChange = (value: string) => {
+        setCodeLabCode(value);
+        setCodeLabFiles(prev => prev.map(file => file.id === (activeFile?.id || '') ? { ...file, content: value } : file));
+    };
+
+    const runCode = async () => {
+        if (!activeFile) return;
+        setCodeLabIsRunning(true);
+        setCodeLabOutput('');
+
+        try {
+            if (codeLabLanguage === 'python') {
+                const pyodide = await loadPyodide();
+                if (!pyodide) {
+                    setCodeLabOutput('Error: Failed to load Python runtime.');
+                    return;
+                }
+
+                pyodide.runPython(`
+import sys
+from io import StringIO
+sys.stdout = StringIO()
+sys.stderr = StringIO()
+                    `);
+
+                try {
+                    pyodide.runPython(codeLabCode);
+                } catch (e: any) {
+                    const stderr = pyodide.runPython('sys.stderr.getvalue()');
+                    setCodeLabOutput(`Error:\n${e.message}\n${stderr}`);
+                    return;
+                }
+
+                const stdout = pyodide.runPython('sys.stdout.getvalue()');
+                const stderr = pyodide.runPython('sys.stderr.getvalue()');
+                const combined = [stdout, stderr].filter(Boolean).join('\n');
+                setCodeLabOutput(combined.trim() || 'No output.');
+                return;
+            }
+
+            if (codeLabLanguage === 'javascript') {
+                const logs: string[] = [];
+                const originalLog = console.log;
+                console.log = (...args) => {
+                    logs.push(args.map(String).join(' '));
+                };
+
+                try {
+                    const result = eval(codeLabCode);
+                    if (typeof result !== 'undefined') {
+                        logs.push(`Result: ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
+                    }
+                } catch (e: any) {
+                    logs.push(`Error: ${e?.message || e}`);
+                } finally {
+                    console.log = originalLog;
+                }
+
+                setCodeLabOutput(logs.join('\n') || 'No output.');
+                return;
+            }
+
+            setCodeLabOutput('Execution is available for Python and JavaScript right now.');
+        } finally {
+            setCodeLabIsRunning(false);
+        }
+    };
+
+    const clearOutput = () => setCodeLabOutput('');
+
+    if (!activeFile) {
+        return (
+            <div className="p-6 text-center text-[#444746]">
+                <p>No files are loaded in Code Lab.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-1 w-full h-screen bg-[#eef2f7] text-slate-900 overflow-hidden">
+            <div className="relative flex-1 w-full h-full flex flex-col overflow-hidden">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.12),_transparent_45%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.08),_transparent_40%)]" />
+                <div className="relative flex-1 w-full h-full flex flex-col overflow-hidden">
+                    {/* Header Bar */}
+                    <div className="flex-shrink-0 border-b border-slate-200/70 bg-white/80 backdrop-blur-sm px-6 py-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-700">
+                                    <Code2 className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-900">Code Lab</p>
+                                    <p className="text-xs text-slate-500">Edit, run, and iterate quickly</p>
+                                </div>
+                            </div>
+                            <div className="ml-auto flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 shadow-sm">
+                                    <TerminalIcon className="h-3.5 w-3.5 text-emerald-500" />
+                                    {activeFile.language === 'java' || activeFile.language === 'cpp' ? 'Run coming soon for Java/C++' : 'Python + JS runnable'}
+                                </span>
+                                <select
+                                    value={codeLabTheme}
+                                    onChange={(e) => setCodeLabTheme(e.target.value as 'vscode' | 'dracula')}
+                                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+                                >
+                                    <option value="vscode">VS Code</option>
+                                    <option value="dracula">Dracula</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* File Tabs */}
+                        <div className="flex flex-wrap items-center gap-2 mt-3">
+                            {codeLabFiles.map(file => {
+                                const isActive = file.id === activeFile.id;
+                                return (
+                                    <button
+                                        key={file.id}
+                                        onClick={() => handleFileSelect(file.id)}
+                                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${isActive
+                                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 shadow-sm'
+                                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                                            }`}
+                                    >
+                                        {file.name}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Main Content Area - Full Height */}
+                    <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 p-4 overflow-hidden">
+                        {/* Code Editor - Left Side */}
+                        <div className="flex flex-col min-h-0 overflow-hidden">
+                            <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <div className="flex items-center justify-between border-b border-slate-800/60 bg-[#111319] px-4 py-3 text-slate-200">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex gap-1.5">
+                                            <div className="h-3 w-3 rounded-full bg-[#fa5e5b] opacity-80" />
+                                            <div className="h-3 w-3 rounded-full bg-[#fbbc05] opacity-80" />
+                                            <div className="h-3 w-3 rounded-full bg-[#27c93f] opacity-80" />
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-slate-300">
+                                            <span className="font-semibold text-slate-100">{activeFile.name}</span>
+                                            <span className="text-slate-500">/</span>
+                                            <div className="relative">
+                                                <select
+                                                    value={codeLabLanguage}
+                                                    onChange={(e) => {
+                                                        const nextLang = e.target.value as CodeLabLanguage;
+                                                        setCodeLabLanguage(nextLang);
+                                                        setCodeLabFiles(prev => prev.map(file => file.id === activeFile.id ? { ...file, language: nextLang } : file));
+                                                    }}
+                                                    className="appearance-none bg-transparent pr-5 text-xs font-medium uppercase tracking-wider text-slate-300 outline-none"
+                                                >
+                                                    <option value="python" className="bg-[#111319]">Python</option>
+                                                    <option value="javascript" className="bg-[#111319]">JavaScript</option>
+                                                    <option value="java" className="bg-[#111319]">Java</option>
+                                                    <option value="cpp" className="bg-[#111319]">C++</option>
+                                                </select>
+                                                <ChevronDown className="absolute right-0 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={clearOutput}
+                                            className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
+                                            title="Clear Output"
+                                        >
+                                            <RotateCcw className="h-3.5 w-3.5" />
+                                        </button>
+                                        <div className="h-4 w-px bg-slate-800" />
+                                        <button
+                                            onClick={runCode}
+                                            disabled={codeLabIsRunning}
+                                            className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${codeLabIsRunning
+                                                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                                : 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                                                }`}
+                                        >
+                                            {codeLabIsRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+                                            {codeLabIsRunning ? 'Running...' : 'Run Code'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div
+                                    className="flex-1 overflow-hidden bg-[#0b0f14] relative"
+                                    onMouseDown={(e) => {
+                                        if (isInputFocusedRef.current && aiInputRef.current) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            requestAnimationFrame(() => {
+                                                aiInputRef.current?.focus();
+                                            });
+                                        }
+                                    }}
+                                    onClick={(e) => {
+                                        if (isInputFocusedRef.current && aiInputRef.current) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            aiInputRef.current?.focus();
+                                        }
+                                    }}
+                                >
+                                    <CodeMirror
+                                        ref={codeMirrorRef}
+                                        value={codeLabCode}
+                                        height="100%"
+                                        editable
+                                        theme={codeLabTheme === 'vscode' ? vscodeDark : dracula}
+                                        basicSetup={{
+                                            ...codeLabBasicSetup,
+                                            autofocus: false,
+                                        }}
+                                        className="h-full text-sm"
+                                        extensions={codeLabExtensions}
+                                        onChange={handleCodeChange}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right Sidebar - AI Assistant & Output */}
+                        <div className="flex flex-col gap-4 min-h-0 overflow-hidden">
+                            {/* AI Assistant Panel */}
+                            <div className="flex flex-col flex-1 min-h-0 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 flex-shrink-0">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                                        <Sparkles className="h-4 w-4 text-emerald-500" />
+                                        AI Assistant
+                                    </div>
+                                    {codeLabAiResponse && (
+                                        <button
+                                            onClick={() => setCodeLabAiResponse('')}
+                                            className="text-xs text-slate-500 hover:text-slate-900"
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="space-y-3 p-4 overflow-y-auto flex-1 min-h-0">
+                                    <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-400/30">
+                                        <Sparkles className="h-3.5 w-3.5 text-slate-400" />
+                                        <input
+                                            ref={aiInputRef}
+                                            value={codeLabAiPrompt}
+                                            onChange={(e) => setCodeLabAiPrompt(e.target.value)}
+                                            placeholder="Ask AI to edit code..."
+                                            className="flex-1 bg-transparent text-xs text-slate-700 placeholder:text-slate-400 outline-none"
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    handleAskCodeLabAi();
+                                                }
+                                                e.stopPropagation();
+                                            }}
+                                            onFocus={(e) => {
+                                                e.stopPropagation();
+                                            }}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                            }}
+                                            autoFocus={false}
+                                        />
+                                        <button
+                                            onClick={handleAskCodeLabAi}
+                                            disabled={codeLabAiLoading || !codeLabAiPrompt.trim()}
+                                            className="rounded-md px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 transition-colors disabled:opacity-50"
+                                        >
+                                            {codeLabAiLoading ? 'Thinking...' : 'Ask'}
+                                        </button>
+                                        {codeLabAiResponse && (
+                                            <button
+                                                onClick={handleInsertAiCode}
+                                                className="rounded-md px-2 py-1 text-[10px] font-semibold text-emerald-600 hover:bg-emerald-500/10 transition-colors"
+                                            >
+                                                Apply
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="text-xs text-slate-600">
+                                        <Reasoning isStreaming={codeLabAiStreaming}>{codeLabAiReasoning}</Reasoning>
+                                    </div>
+
+                                    {codeLabAiResponse && !codeLabAiReasoning && (
+                                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <span className="text-[10px] font-semibold uppercase text-slate-500">Suggested Change</span>
+                                            </div>
+                                            <pre className="text-xs text-slate-600 font-mono whitespace-pre-wrap border-l-2 border-slate-200 pl-2">{codeLabAiResponse}</pre>
+                                        </div>
+                                    )}
+                                    {codeLabAiError && (
+                                        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                                            {codeLabAiError}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Output Panel */}
+                            <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 flex-shrink-0">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                                        <TerminalIcon className="h-4 w-4 text-emerald-500" />
+                                        Output
+                                    </div>
+                                    <button onClick={clearOutput} className="text-xs text-slate-500 hover:text-slate-900">Clear</button>
+                                </div>
+                                <div className="flex-1 min-h-0 overflow-auto bg-[#0b0f14] px-4 py-3 font-mono text-xs text-slate-200">
+                                    {codeLabOutput ? codeLabOutput.split('\n').map((line, idx) => (
+                                        <div key={idx} className="whitespace-pre-wrap leading-6">{line || ' '}</div>
+                                    )) : (
+                                        <div className="text-slate-400">Run code to see output here.</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const YouTubeVideos: React.FC<YouTubeVideosProps> = ({ onClose, apiKey }) => {
+
     // Initialize Gemini Live
     const geminiLiveState = useGeminiLive(apiKey || '');
 
@@ -288,6 +1132,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const dockCharacters: Character[] = [
         { emoji: "✨", name: "Sparkle", online: false, backgroundColor: "bg-amber-200", gradientColors: "#fde68a, #fffbeb" },
         { emoji: "🧙‍♂️", name: "Wizard", online: true, backgroundColor: "bg-emerald-200 dark:bg-emerald-300", gradientColors: "#a7f3d0, #ecfdf5" },
+        { emoji: "👨‍🔬", name: "Teacher", online: true, backgroundColor: "bg-amber-100 dark:bg-amber-200", gradientColors: "#fbbf24, #fef3c7" },
         { emoji: "🦄", name: "Unicorn", online: true, backgroundColor: "bg-violet-200 dark:bg-violet-300", gradientColors: "#c4b5fd, #f5f3ff" },
         { emoji: "🤖", name: "Robot", online: false, backgroundColor: "bg-rose-200 dark:bg-rose-300", gradientColors: "#fecaca, #fef2f2" },
     ];
@@ -367,6 +1212,9 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
             interactionMode: 'drag' | 'rotate' | 'scale' | 'animate';
         } | null;
         brainstormActivities: { [sectionId: string]: BrainstormActivity };
+        scienceTeacherData: {
+            messages: ScienceTeacherMessage[];
+        } | null;
     }
 
     interface LocalUserSpace {
@@ -387,12 +1235,13 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [showWorkspaceManager, setShowWorkspaceManager] = useState(false);
     const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
     const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState('');
-    const [showUserSpaces, setShowUserSpaces] = useState(false); // Show user spaces view
+    const [dashboardTab, setDashboardTab] = useState<'notebooks' | 'spaces'>('notebooks');
     const [spaceSearchQuery, setSpaceSearchQuery] = useState('');
 
     const [userSpaces, setUserSpaces] = useState<LocalUserSpace[]>([]);
 
     const [activeMode, setActiveMode] = useState<LearningMode>('source'); // Start with workspace manager
+    const [assignmentTab, setAssignmentTab] = useState<'exam-prep' | 'latex-prep'>('exam-prep');
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState('');
     const [processingStage, setProcessingStage] = useState<'idle' | 'uploading' | 'extracting' | 'analyzing' | 'generating'>('idle');
@@ -470,7 +1319,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [immersiveContent, setImmersiveContent] = useState<ImmersiveContent | null>(null);
     const [sectionImages, setSectionImages] = useState<{ [key: string]: string }>({});
     const [loadingImages, setLoadingImages] = useState<{ [key: string]: boolean }>({}); // Track which images are loading
-    const [widgetImages, setWidgetImages] = useState<{ [key: string]: { before?: string, after?: string } }>({});
+    const [widgetImages, setWidgetImages] = useState<{ [key: string]: { before: string, after: string } }>({});
     const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
     const [audioScript, setAudioScript] = useState<string>('');
     const [mindMap, setMindMap] = useState<MindMapNode | null>(null);
@@ -496,6 +1345,9 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     // Brainstorm Activity State
     const [brainstormActivity, setBrainstormActivity] = useState<BrainstormActivity | null>(null);
     const [brainstormActivities, setBrainstormActivities] = useState<{ [sectionId: string]: BrainstormActivity }>({});
+
+    // Science Teacher State
+    const [scienceTeacherMessages, setScienceTeacherMessages] = useState<ScienceTeacherMessage[]>([]);
     const [isLoadingBrainstorm, setIsLoadingBrainstorm] = useState(false);
     const [showBrainstormHints, setShowBrainstormHints] = useState<boolean[]>([]);
     const [showBrainstormApproaches, setShowBrainstormApproaches] = useState(false);
@@ -507,8 +1359,10 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [isLoadingWhatIf, setIsLoadingWhatIf] = useState(false);
     const [revealedWhatIfs, setRevealedWhatIfs] = useState<{ [key: number]: boolean }>({});
 
+    // Audio Video mode tabs
+    const [audioVideoModeTab, setAudioVideoModeTab] = useState<'video' | 'audio'>('video');
     // Thoreo-style tabs for slides-narration
-    const [videoContentTab, setVideoContentTab] = useState<'summary' | 'key-concepts' | 'transcript'>('summary');
+    const [videoContentTab, setVideoContentTab] = useState<'summary' | 'key-concepts' | 'clips' | 'transcript'>('summary');
     const [videoInteractiveTab, setVideoInteractiveTab] = useState<'chat' | 'quiz' | 'flashcards'>('chat');
     const [videoChatInput, setVideoChatInput] = useState('');
 
@@ -530,9 +1384,101 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [currentVideoQuizIndex, setCurrentVideoQuizIndex] = useState(0);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
+    const parseTimestampToSeconds = (value: string): number | null => {
+        if (!value) return null;
+        const cleaned = value.trim().replace(/^[^\d]+/, '');
+        const parts = cleaned.split(':').map((part) => Number(part));
+        if (parts.length === 0 || parts.some(Number.isNaN)) return null;
+        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        if (parts.length === 2) return parts[0] * 60 + parts[1];
+        return parts[0];
+    };
+
+    const formatTimestamp = (totalSeconds: number): string => {
+        const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+        const hours = Math.floor(safeSeconds / 3600);
+        const minutes = Math.floor((safeSeconds % 3600) / 60);
+        const seconds = safeSeconds % 60;
+        if (hours > 0) {
+            return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+        return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    };
+
+    const videoClipChapters = useMemo(() => {
+        const timestamps = videoSummary?.timestamps || [];
+        if (timestamps.length === 0) return [];
+
+        const entries = timestamps
+            .map((item) => {
+                const startSeconds = parseTimestampToSeconds(item.time);
+                if (startSeconds === null) return null;
+                return {
+                    title: item.topic?.trim() || 'Segment',
+                    startLabel: item.time,
+                    startSeconds
+                };
+            })
+            .filter((entry): entry is { title: string; startLabel: string; startSeconds: number } => Boolean(entry))
+            .sort((a, b) => a.startSeconds - b.startSeconds);
+
+        if (entries.length === 0) return [];
+
+        const conceptTitles = (videoSummary?.keyConcepts || []).map((concept) => concept.title).filter(Boolean);
+
+        const getKeywords = (topic: string) => {
+            const keywords: string[] = [];
+            const lowerTopic = topic.toLowerCase();
+            conceptTitles.forEach((title) => {
+                if (title.toLowerCase().includes(lowerTopic) || lowerTopic.includes(title.toLowerCase())) {
+                    if (!keywords.some((existing) => existing.toLowerCase() === title.toLowerCase())) {
+                        keywords.push(title);
+                    }
+                }
+            });
+
+            topic
+                .split(/[^a-zA-Z0-9]+/)
+                .filter((word) => word.length > 3)
+                .forEach((word) => {
+                    if (!keywords.some((existing) => existing.toLowerCase() === word.toLowerCase())) {
+                        keywords.push(word);
+                    }
+                });
+
+            return keywords.slice(0, 6);
+        };
+
+        return entries.map((entry, idx) => {
+            const nextEntry = entries[idx + 1];
+            const minDuration = 20;
+            const defaultDuration = 50;
+            const endSeconds = nextEntry
+                ? Math.max(entry.startSeconds + minDuration, nextEntry.startSeconds - 1)
+                : entry.startSeconds + defaultDuration;
+
+            return {
+                title: entry.title,
+                startLabel: entry.startLabel,
+                endLabel: formatTimestamp(endSeconds),
+                startSeconds: entry.startSeconds,
+                endSeconds,
+                keywords: getKeywords(entry.title)
+            };
+        });
+    }, [videoSummary]);
+
     // Streaming state for real-time content generation
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamedContent, setStreamedContent] = useState('');
+
+    // ToT Planning State
+    const [useToTGeneration, setUseToTGeneration] = useState(false);
+    const [immersiveToTPlan, setImmersiveToTPlan] = useState<ImmersiveToTResponse | null>(null);
+    const [isPlanningImmersive, setIsPlanningImmersive] = useState(false);
+    const [showToTTree, setShowToTTree] = useState(false);
+    const [currentPlanNode, setCurrentPlanNode] = useState<ImmersivePlanNode | null>(null);
+
 
     // Audio Lesson State
     const [podcastScript, setPodcastScript] = useState<string | null>(null);
@@ -580,6 +1526,17 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const simulationIframeRef = useRef<HTMLIFrameElement>(null);
     const documentTextRef = useRef<string>(''); // Store document text for simulation generation
 
+    // Learning Theories Mode State
+    const [learningTheoriesResult, setLearningTheoriesResult] = useState<LearningTheoryToTResponse | null>(null);
+    const [isAnalyzingLearningTheory, setIsAnalyzingLearningTheory] = useState(false);
+    const [selectedLearningTheory, setSelectedLearningTheory] = useState<LearningTheoryType | null>(null);
+    const [feynmanLiveConfig, setFeynmanLiveConfig] = useState<FeynmanLiveConfig | null>(null);
+    const [learningTheoryError, setLearningTheoryError] = useState<string | null>(null);
+    const [learningTheoryTopicInput, setLearningTheoryTopicInput] = useState('');
+    const [learningTheoryContent, setLearningTheoryContent] = useState<string>('');
+    const [isGeneratingTheoryContent, setIsGeneratingTheoryContent] = useState(false);
+    const [learningTheoryPhase, setLearningTheoryPhase] = useState<'input' | 'analysis' | 'learning'>('input');
+
     // Robotics Vision State
     const [isWebcamActive, setIsWebcamActive] = useState(false);
     const [webcamError, setWebcamError] = useState<string | null>(null);
@@ -610,6 +1567,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [viewer3dHandLandmarks, setViewer3dHandLandmarks] = useState<Array<Array<{ x: number, y: number, z: number }>>>([]);
     const [viewer3dSmoothedLandmarks, setViewer3dSmoothedLandmarks] = useState<Array<Array<{ x: number, y: number, z: number }>>>([]);
     const [viewer3dModelUrl, setViewer3dModelUrl] = useState<string | null>(null);
+    const [viewer3dModelLoading, setViewer3dModelLoading] = useState(false);
     const [viewer3dModelName, setViewer3dModelName] = useState<string>('');
     const [viewer3dRotation, setViewer3dRotation] = useState({ x: 0, y: 0, z: 0 });
     const [viewer3dPosition, setViewer3dPosition] = useState({ x: 0, y: 0, z: 0 });
@@ -696,9 +1654,31 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [generatedImageActivityUrl, setGeneratedImageActivityUrl] = useState<string | null>(null);
     const [isGeneratingImageActivity, setIsGeneratingImageActivity] = useState(false);
     const [imageActivityError, setImageActivityError] = useState<string | null>(null);
+    const [visualActivityTab, setVisualActivityTab] = useState<'image' | '3d'>('image');
     const [useDocumentContext, setUseDocumentContext] = useState(true); // Default to true - use document if available
     const [isExtractingContext, setIsExtractingContext] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+
+    // Image Activity Mode (Generate vs Upload)
+    const [imageActivityMode, setImageActivityMode] = useState<'generate' | 'upload'>('generate');
+    const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+    const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+    // Interactive Image Activity States
+    const [imageActivityLabels, setImageActivityLabels] = useState<InteractiveLabel[]>([]);
+    const [selectedImageLabel, setSelectedImageLabel] = useState<InteractiveLabel | null>(null);
+    const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+    const [imageQuizMode, setImageQuizMode] = useState(false);
+    const [imageQuizType, setImageQuizType] = useState<'find' | 'write'>('find');
+    const [imageQuizCorrect, setImageQuizCorrect] = useState<string[]>([]);
+    const [imageQuizWrong, setImageQuizWrong] = useState<string | null>(null);
+    const [imageRevealedLabels, setImageRevealedLabels] = useState<string[]>([]);
+    const [imageUserGuess, setImageUserGuess] = useState('');
+    const [imageGuessError, setImageGuessError] = useState(false);
+    const [imageContainerRef, setImageContainerRef] = useState<HTMLDivElement | null>(null);
+    const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+    const [enhancedLabelInfo, setEnhancedLabelInfo] = useState<EnhancedLabelInfo | null>(null);
+    const [isLoadingEnhancedInfo, setIsLoadingEnhancedInfo] = useState(false);
 
     // LocalStorage key for persisting immersive learning content
     // Removed - now using Firebase
@@ -809,6 +1789,9 @@ Respond in JSON format only:
                     interactionMode: viewer3dInteractionMode,
                 } : null,
                 brainstormActivities: brainstormActivities || {},
+                scienceTeacherData: scienceTeacherMessages.length > 1 ? {
+                    messages: scienceTeacherMessages,
+                } : null,
             };
 
             const keys = getLocalStorageKeys();
@@ -870,6 +1853,7 @@ Respond in JSON format only:
                 roboticsData: null,
                 viewer3dData: null,
                 brainstormActivities: {},
+                scienceTeacherData: null,
             };
 
             const keys = getLocalStorageKeys();
@@ -941,6 +1925,9 @@ Respond in JSON format only:
                         interactionMode: viewer3dInteractionMode,
                     } : null,
                     brainstormActivities: brainstormActivities || {},
+                    scienceTeacherData: scienceTeacherMessages.length > 1 ? {
+                        messages: scienceTeacherMessages,
+                    } : null,
                 };
             });
             localStorage.setItem(keys.WORKSPACES, JSON.stringify(updatedWorkspaces));
@@ -986,10 +1973,7 @@ Respond in JSON format only:
                 setCodeLabCode(activeFile.content);
             }
         }
-        if (workspace.imageActivityData) {
-            setImageActivityPrompt(workspace.imageActivityData.prompt);
-            setGeneratedImageActivityUrl(workspace.imageActivityData.generatedImageUrl);
-        }
+
         if (workspace.roboticsData) {
             setDetectedObjects(workspace.roboticsData.detectedObjects);
             setBoundingBoxes(workspace.roboticsData.boundingBoxes);
@@ -1006,6 +1990,9 @@ Respond in JSON format only:
         }
         if (workspace.brainstormActivities) {
             setBrainstormActivities(workspace.brainstormActivities);
+        }
+        if (workspace.scienceTeacherData) {
+            setScienceTeacherMessages(workspace.scienceTeacherData.messages);
         }
 
         // Restore PDF URL from IndexedDB if possible
@@ -1076,16 +2063,16 @@ Respond in JSON format only:
         const metadata: Record<LearningMode, { name: string; description: string; emoji: string }> = {
             'source': { name: 'Source', description: 'Document sources and notebooks', emoji: '📚' },
             'immersive-text': { name: 'Immersive Text', description: 'Interactive text learning with AI insights', emoji: '📖' },
-            'slides-narration': { name: 'Slides & Narration', description: 'Presentation slides with audio narration', emoji: '🎤' },
-            'audio-lesson': { name: 'Audio Lesson', description: 'Audio-based learning experience', emoji: '🎧' },
+            'audio-video': { name: 'Audio Video', description: 'Video lessons with audio narration and interactive features', emoji: '🎬' },
             'mindmap': { name: 'Mind Map', description: 'Visual mind mapping and concept connections', emoji: '🧠' },
             'simulation': { name: 'Simulation', description: 'Interactive simulations and experiments', emoji: '🔬' },
             'robotics': { name: 'Robotics Vision', description: 'Robotics and computer vision tools', emoji: '🤖' },
-            'viewer3d': { name: '3D Viewer', description: '3D molecular visualization and models', emoji: '🔮' },
-            'image-activity': { name: 'Image Activity', description: 'Interactive image labeling and activities', emoji: '🖼️' },
+            'visual-activity': { name: 'Visual Activity', description: '3D visualization and image generation activities', emoji: '🎨' },
             'code-lab': { name: 'Code Lab', description: 'Interactive coding environment', emoji: '💻' },
             'assignment': { name: 'Assignment', description: 'Interactive assignments and exercises', emoji: '📝' },
-            'latex-assignment': { name: 'LaTeX', description: 'LaTeX document preparation and editing', emoji: '📄' }
+            'latex-assignment': { name: 'LaTeX', description: 'LaTeX document preparation and editing', emoji: '📄' },
+            'notebook': { name: 'Notebook', description: 'Research notebook and AI-powered learning workspace', emoji: '📓' },
+            'learning-theories': { name: 'Learning Theories', description: 'AI-powered optimal learning approach selection', emoji: '🎓' }
         };
         return metadata[mode] || { name: 'Unknown', description: 'Unknown space type', emoji: '❓' };
     };
@@ -1156,6 +2143,10 @@ Respond in JSON format only:
     // Open a space (switch to that mode and optionally load workspace)
     const openSpace = async (space: LocalUserSpace) => {
         setShowUserSpaces(false);
+        const targetMode = space.mode === 'latex-assignment' ? 'assignment' : space.mode;
+        if (space.mode === 'latex-assignment') {
+            setAssignmentTab('latex-prep');
+        }
 
         // If space has a linked workspace, open it locally (this will restore all content)
         if (space.workspaceId) {
@@ -1163,18 +2154,18 @@ Respond in JSON format only:
             if (localWorkspace) {
                 await openWorkspace(localWorkspace);
                 // After opening workspace, switch to the space's mode to show the correct view
-                setActiveMode(space.mode);
+                setActiveMode(targetMode);
             } else {
                 // Workspace not found, just switch to mode
-                setActiveMode(space.mode);
+                setActiveMode(targetMode);
             }
         } else {
             // No workspace linked, just switch to mode
-            setActiveMode(space.mode);
+            setActiveMode(targetMode);
         }
 
         // Update last used
-        trackSpaceUsage(space.mode, space.workspaceId);
+        trackSpaceUsage(targetMode, space.workspaceId);
     };
 
     // Delete a space
@@ -1481,6 +2472,160 @@ Respond in JSON format only:
         viewer3dInteractionModeRef.current = viewer3dInteractionMode;
     }, [viewer3dInteractionMode]);
 
+    // Load and render GLB/GLTF files using Three.js
+    useEffect(() => {
+        const canvas = viewer3dThreeCanvasRef.current;
+        if (!canvas || !viewer3dModelUrl || viewer3dModelUrl.startsWith('demo:')) {
+            // Clean up if no model or demo shape
+            setViewer3dModelLoading(false);
+            if (viewer3dSceneRef.current) {
+                // Dispose of existing scene
+                const scene = viewer3dSceneRef.current;
+                scene.traverse((object: any) => {
+                    if (object.geometry) object.geometry.dispose();
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach((mat: any) => mat.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
+                    }
+                });
+                viewer3dSceneRef.current = null;
+            }
+            if (viewer3dRendererRef.current) {
+                viewer3dRendererRef.current.dispose();
+                viewer3dRendererRef.current = null;
+            }
+            viewer3dModelRef.current = null;
+            return;
+        }
+
+        // Wait for canvas to be properly sized
+        const initThree = () => {
+            if (!canvas || canvas.clientWidth === 0 || canvas.clientHeight === 0) {
+                setTimeout(initThree, 100);
+                return;
+            }
+
+            // Initialize Three.js scene
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xeeeeee);
+            viewer3dSceneRef.current = scene;
+
+            const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+            camera.position.set(0, 0, 5);
+            viewer3dCameraRef.current = camera;
+
+            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            viewer3dRendererRef.current = renderer;
+
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+
+            // Load GLB/GLTF model
+            const loader = new GLTFLoader();
+            let animationFrameId: number;
+
+            setViewer3dModelLoading(true);
+
+            loader.load(
+                viewer3dModelUrl,
+                (gltf) => {
+                    setViewer3dModelLoading(false);
+                    // Remove old model if exists
+                    if (viewer3dModelRef.current) {
+                        scene.remove(viewer3dModelRef.current);
+                    }
+
+                    const model = gltf.scene;
+                    viewer3dModelRef.current = model;
+
+                    // Center and scale model
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 2 / maxDim; // Scale to fit in 2 unit space
+                    model.scale.multiplyScalar(scale);
+                    model.position.sub(center.multiplyScalar(scale));
+
+                    scene.add(model);
+
+                    // Animation loop
+                    const animate = () => {
+                        animationFrameId = requestAnimationFrame(animate);
+
+                        // Apply transforms
+                        if (model) {
+                            model.rotation.x = THREE.MathUtils.degToRad(viewer3dRotation.x);
+                            model.rotation.y = THREE.MathUtils.degToRad(viewer3dRotation.y);
+                            model.rotation.z = THREE.MathUtils.degToRad(viewer3dRotation.z);
+                            model.position.x = viewer3dPosition.x * 0.01;
+                            model.position.y = -viewer3dPosition.y * 0.01;
+                            model.scale.setScalar(viewer3dScale);
+                        }
+
+                        renderer.render(scene, camera);
+                    };
+                    animate();
+                },
+                (progress) => {
+                    // Loading progress
+                    console.log('Loading progress:', (progress.loaded / progress.total) * 100 + '%');
+                },
+                (error) => {
+                    console.error('Error loading GLB/GLTF:', error);
+                    setViewer3dModelLoading(false);
+                    alert('Failed to load 3D model. Please check the file format and try again.');
+                }
+            );
+
+            // Handle window resize
+            const handleResize = () => {
+                if (canvas && camera && renderer) {
+                    camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+                }
+            };
+            window.addEventListener('resize', handleResize);
+
+            // Cleanup
+            return () => {
+                window.removeEventListener('resize', handleResize);
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                if (viewer3dRendererRef.current) {
+                    viewer3dRendererRef.current.dispose();
+                }
+                if (viewer3dSceneRef.current) {
+                    const scene = viewer3dSceneRef.current;
+                    scene.traverse((object: any) => {
+                        if (object.geometry) object.geometry.dispose();
+                        if (object.material) {
+                            if (Array.isArray(object.material)) {
+                                object.material.forEach((mat: any) => mat.dispose());
+                            } else {
+                                object.material.dispose();
+                            }
+                        }
+                    });
+                }
+            };
+        };
+
+        const cleanup = initThree();
+        return cleanup;
+    }, [viewer3dModelUrl, viewer3dRotation, viewer3dPosition, viewer3dScale]);
+
     // Keep document text reference in sync when using standalone notes
     useEffect(() => {
         if (!immersiveContent) {
@@ -1507,6 +2652,38 @@ Respond in JSON format only:
         };
 
         reader.readAsText(file);
+    };
+
+    // Video Lessons Logic
+    const handleFetchVideos = async () => {
+        const sourceText = immersiveContent
+            ? immersiveContent.sections.map(s => s.content).join('\n\n')
+            : standaloneNotes;
+
+        if (!sourceText.trim()) {
+            return;
+        }
+
+        // Skip if already loading
+        if (isLoadingVideos) {
+            console.log('Videos are already being fetched, skipping...');
+            return;
+        }
+
+        setIsLoadingVideos(true);
+        try {
+            console.log('🎬 Fetching relevant YouTube videos...');
+            const videos = await fetchAndRankYouTubeVideos(sourceText);
+            setRelevantVideos(videos);
+            if (videos.length > 0) {
+                setSelectedVideoIndex(0);
+            }
+            console.log('Found relevant videos:', videos.length);
+        } catch (error) {
+            console.error('Failed to fetch YouTube videos:', error);
+        } finally {
+            setIsLoadingVideos(false);
+        }
     };
 
     // Audio Lesson Logic
@@ -2409,10 +3586,10 @@ ${edgesXML}
     // Mode-specific colors for visual feedback
     const getModeColor = (mode: 'drag' | 'rotate' | 'scale' | 'animate') => {
         switch (mode) {
-            case 'drag': return '#00FFFF';      // Cyan
-            case 'rotate': return '#FF00FF';    // Magenta
-            case 'scale': return '#FFFF00';     // Yellow
-            case 'animate': return '#FFA500';   // Orange
+            case 'drag': return '#3b82f6';      // Blue - more readable than cyan
+            case 'rotate': return '#8b5cf6';    // Purple - more readable than magenta
+            case 'scale': return '#eab308';    // Gold/Yellow - more readable than bright yellow
+            case 'animate': return '#f97316';   // Orange - more muted and readable
         }
     };
 
@@ -2618,7 +3795,7 @@ ${edgesXML}
 
     // Cleanup 3D viewer webcam when mode changes
     useEffect(() => {
-        if (activeMode !== 'viewer3d' && viewer3dWebcamActive) {
+        if (activeMode !== 'visual-activity' && viewer3dWebcamActive) {
             if (viewer3dWebcamStream) {
                 viewer3dWebcamStream.getTracks().forEach(t => t.stop());
             }
@@ -2641,20 +3818,113 @@ ${edgesXML}
     const learningModes: LearningModeCard[] = [
         { id: 'source', icon: <SourceIcon />, label: 'Source', activeColor: '#e2e8f0', activeBg: 'transparent' },
         { id: 'immersive-text', icon: <ImmersiveTextIcon active={activeMode === 'immersive-text'} />, label: 'Immersive Text', activeColor: '#ea4335', activeBg: '#fce8e6' },
-        { id: 'slides-narration', icon: <SlidesIcon active={activeMode === 'slides-narration'} />, label: 'Slides & Narration', activeColor: '#9334e9', activeBg: '#f3e8fd' },
-        { id: 'audio-lesson', icon: <AudioIcon active={activeMode === 'audio-lesson'} />, label: 'Audio Lesson', activeColor: '#34a853', activeBg: '#e6f4ea' },
+        { id: 'audio-video', icon: <SlidesIcon active={activeMode === 'audio-video'} />, label: 'Audio Video', activeColor: '#9334e9', activeBg: '#f3e8fd' },
         { id: 'mindmap', icon: <MindmapIcon active={activeMode === 'mindmap'} />, label: 'Mindmap', activeColor: '#4285f4', activeBg: '#e8f0fe' },
         { id: 'simulation', icon: <SimulationIcon active={activeMode === 'simulation'} />, label: 'Simulation', activeColor: '#ff6d01', activeBg: '#fff3e0' },
         { id: 'robotics', icon: <RoboticsIcon active={activeMode === 'robotics'} />, label: 'Robotics Vision', activeColor: '#00bcd4', activeBg: '#e0f7fa' },
-        { id: 'viewer3d', icon: <Viewer3DIcon active={activeMode === 'viewer3d'} />, label: '3D Viewer', activeColor: '#7c3aed', activeBg: '#ede9fe' },
-        { id: 'image-activity', icon: <ImageActivityIcon active={activeMode === 'image-activity'} />, label: 'Image Activity', activeColor: '#f97316', activeBg: '#ffedd5' },
+        { id: 'visual-activity', icon: <Viewer3DIcon active={activeMode === 'visual-activity'} />, label: 'Visual Activity', activeColor: '#7c3aed', activeBg: '#ede9fe' },
         { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' },
         { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Assignment', activeColor: '#1a73e8', activeBg: '#e8f0fe' },
-        { id: 'latex-assignment', icon: <LaTeXIcon active={activeMode === 'latex-assignment'} />, label: 'LaTeX', activeColor: '#f97316', activeBg: '#ffedd5' },
         { id: 'notebook', icon: <NotebookIcon active={activeMode === 'notebook'} />, label: 'Notebook', activeColor: '#8b5cf6', activeBg: '#ede9fe' }
     ];
 
 
+
+
+    const handleStartToTGeneration = useCallback(async (node: ImmersivePlanNode) => {
+        if (!node || !documentTextRef.current) return;
+
+        setShowToTTree(false);
+        setImmersiveContent(null);
+        setProcessingStage('generating');
+        setLoadingMessage('Generating content based on selected plan...');
+        setIsStreaming(true);
+        setShowCursor(true);
+        setStreamedText('');
+        setActiveMode('immersive-text');
+
+        try {
+            console.log('Starting ToT Generation with node:', node.id);
+            // Clear terminal steps
+            setTerminalSubSteps(['Initializing ToT Generation...']);
+
+            const analysis = await generateImmersiveContentWithToT(
+                documentTextRef.current,
+                node,
+                (msg) => setTerminalSubSteps(prev => [...prev, msg]),
+                (chunk) => {
+                    flushSync(() => {
+                        setStreamedText(prev => prev + chunk);
+                    });
+                }
+            );
+
+            setIsStreaming(false);
+            setShowCursor(false);
+            setImmersiveContent(analysis);
+            if (analysis.sections.length > 0) setActiveSectionId(analysis.sections[0].id);
+
+            // Start background tasks
+            const text = documentTextRef.current;
+
+            // Background task: Generate academic images for ALL sections using Imagen API (PARALLEL)
+            const generateImagesAsync = async () => {
+                const sectionsWithImages = analysis.sections.filter(s => s.imagePrompt);
+                if (sectionsWithImages.length === 0) return;
+
+                const loadingState: { [key: string]: boolean } = {};
+                sectionsWithImages.forEach(section => {
+                    loadingState[section.id] = true;
+                });
+                setLoadingImages(loadingState);
+
+                const imagePromises = sectionsWithImages.map(async (section, index) => {
+                    try {
+                        const imageUrl = await generateImmersiveImage(section.imagePrompt!);
+                        setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
+                        setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                        return { sectionId: section.id, success: true };
+                    } catch (e) {
+                        console.error(`❌ Failed to generate image for "${section.title}":`, e);
+                        setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                        return { sectionId: section.id, success: false };
+                    }
+                });
+
+                await Promise.allSettled(imagePromises);
+            };
+
+            // Background task: Generate quiz
+            const generateQuizAsync = async () => {
+                try {
+                    const generatedQuiz = await generateImmersiveQuiz(text);
+                    setQuiz(generatedQuiz);
+                } catch (e) {
+                    console.error('Failed to generate quiz:', e);
+                }
+            };
+
+            const generateAudioAsync = async () => { try { const script = await generateAudioScript(text); setAudioScript(script); } catch (e) { console.error('Audio script failed', e); } };
+            const generateMindMapAsync = async () => { try { const data = await generateReactFlowData(text); setReactFlowData(data); } catch (e) { console.error('Mindmap failed', e); } };
+            const fetchVideosAsync = async () => { try { setIsLoadingVideos(true); const videos = await fetchAndRankYouTubeVideos(text); setRelevantVideos(videos); } catch (e) { console.warn(e); } finally { setIsLoadingVideos(false); } };
+
+            Promise.allSettled([
+                generateImagesAsync(),
+                generateQuizAsync(),
+                generateAudioAsync(),
+                generateMindMapAsync(),
+                fetchVideosAsync()
+            ]).then(() => {
+                console.log('ToT Background tasks complete');
+            });
+
+        } catch (e) {
+            console.error('ToT Generation failed', e);
+            setProcessingStage('idle');
+            setIsStreaming(false);
+            alert('ToT Generation failed: ' + (e instanceof Error ? e.message : String(e)));
+        }
+    }, []);
 
     const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -2815,6 +4085,25 @@ ${edgesXML}
             // Small delay to show the analyzing stage
             await new Promise(resolve => setTimeout(resolve, 500));
             setTerminalSubSteps(prev => [...prev, 'Mapping content hierarchy...']);
+
+            // === ToT BRANCH ===
+            if (useToTGeneration) {
+                setLoadingMessage('Generating Tree of Thoughts Plan (Deep Reasoning)...');
+                setTerminalSubSteps(prev => [...prev, 'Exploring pedagogical approaches...', 'Building decision tree...']);
+                setIsPlanningImmersive(true);
+
+                const text = documentTextRef.current;
+                const plan = await generateImmersivePlanTree(text);
+
+                setImmersiveToTPlan(plan);
+                setShowToTTree(true);
+                setIsPlanningImmersive(false);
+                setIsLoading(false);
+                setProcessingStage('idle');
+
+                return;
+            }
+
 
             // Stage 3: Start STREAMING content generation - show content as it's generated!
             setProcessingStage('generating');
@@ -3111,7 +4400,7 @@ ${edgesXML}
                 fileInputRef.current.value = '';
             }
         }
-    }, []);
+    }, [useToTGeneration, getLocalStorageKeys, handleStartToTGeneration]);
 
     const scrollToQuiz = () => {
         quizRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -3181,7 +4470,7 @@ ${edgesXML}
             console.log('💾 Cached video content for:', video.id);
         };
 
-        if (relevantVideos.length > 0 && activeMode === 'slides-narration') {
+        if (relevantVideos.length > 0 && activeMode === 'audio-video') {
             loadVideoContent();
         }
     }, [selectedVideoIndex, relevantVideos, activeMode]);
@@ -4673,6 +5962,9 @@ sys.stderr = sys.__stderr__
         setImageActivityError(null);
         setGeneratedImageActivityUrl(null);
         setIsExtractingContext(false);
+        setImageActivityLabels([]);
+        setSelectedImageLabel(null);
+        setIsAnalyzingImage(false);
 
         try {
             let documentContext: string | undefined = undefined;
@@ -4701,6 +5993,19 @@ sys.stderr = sys.__stderr__
             );
             setGeneratedImageActivityUrl(imageUrl);
             setImageActivityError(null);
+
+            // Analyze image for labels after generation
+            setIsAnalyzingImage(true);
+            try {
+                const extractedLabels = await analyzeImageForLearning(imageUrl);
+                setImageActivityLabels(extractedLabels);
+                console.log('✅ Extracted labels from image:', extractedLabels.length);
+            } catch (analyzeError) {
+                console.warn('Failed to analyze image for labels:', analyzeError);
+                // Continue without labels if analysis fails
+            } finally {
+                setIsAnalyzingImage(false);
+            }
         } catch (error) {
             console.error('Failed to generate image:', error);
             const errorMessage = error instanceof Error ? error.message : 'Failed to generate image. Please try again.';
@@ -4709,6 +6014,137 @@ sys.stderr = sys.__stderr__
         } finally {
             setIsGeneratingImageActivity(false);
             setIsExtractingContext(false);
+        }
+    };
+
+    // Reset image quiz
+    const resetImageQuiz = () => {
+        setImageQuizMode(false);
+        setImageQuizCorrect([]);
+        setImageQuizWrong(null);
+        setImageRevealedLabels([]);
+        setImageUserGuess('');
+        setImageGuessError(false);
+        setSelectedImageLabel(null);
+    };
+
+    // Handle image upload
+    const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            setImageActivityError('Please upload an image file (PNG, JPG, JPEG, etc.)');
+            return;
+        }
+
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            setImageActivityError('Image size must be less than 10MB');
+            return;
+        }
+
+        setIsUploadingImage(true);
+        setImageActivityError(null);
+        setImageActivityLabels([]);
+        setSelectedImageLabel(null);
+        resetImageQuiz();
+
+        try {
+            // Convert file to base64 data URL
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const dataUrl = e.target?.result as string;
+                setUploadedImageUrl(dataUrl);
+                setGeneratedImageActivityUrl(null); // Clear generated image if any
+
+                // Analyze the uploaded image for labels
+                setIsAnalyzingImage(true);
+                try {
+                    // Extract base64 data (remove data URL prefix if present)
+                    // analyzeImageForLearning expects just the base64 string without data URL prefix
+                    const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+                    const extractedLabels = await analyzeImageForLearning(base64Data);
+                    setImageActivityLabels(extractedLabels);
+                    console.log('✅ Extracted labels from uploaded image:', extractedLabels.length);
+                    if (extractedLabels.length === 0) {
+                        setImageActivityError('Image uploaded successfully, but no labels were detected. Try uploading a diagram with visible text labels.');
+                    }
+                } catch (analyzeError) {
+                    console.warn('Failed to analyze uploaded image for labels:', analyzeError);
+                    setImageActivityError('Image uploaded successfully, but label analysis failed. You can still view the image.');
+                } finally {
+                    setIsAnalyzingImage(false);
+                    setIsUploadingImage(false);
+                }
+            };
+            reader.onerror = () => {
+                setImageActivityError('Failed to read image file');
+                setIsUploadingImage(false);
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error('Image upload error:', error);
+            setImageActivityError('Failed to upload image. Please try again.');
+            setIsUploadingImage(false);
+        }
+    };
+
+    // Get current displayed image (either generated or uploaded)
+    const getCurrentImageUrl = () => {
+        return imageActivityMode === 'upload' ? uploadedImageUrl : generatedImageActivityUrl;
+    };
+
+    // Handle label click
+    const handleImageLabelClick = async (label: InteractiveLabel) => {
+        if (imageQuizMode) {
+            if (imageQuizType === 'find') {
+                if (selectedImageLabel && selectedImageLabel.term === label.term) {
+                    setImageQuizCorrect(prev => [...prev, label.term]);
+                    setImageQuizWrong(null);
+                    setSelectedImageLabel(null);
+                } else {
+                    setImageQuizWrong(label.term);
+                }
+            } else if (imageQuizType === 'write') {
+                if (!imageRevealedLabels.includes(label.term)) {
+                    setSelectedImageLabel(label);
+                    setImageUserGuess('');
+                    setImageGuessError(false);
+                }
+            }
+        } else {
+            setSelectedImageLabel(label);
+            setEnhancedLabelInfo(null);
+
+            // Load enhanced information in background
+            setIsLoadingEnhancedInfo(true);
+            try {
+                const imageUrl = getCurrentImageUrl();
+                const enhanced = await generateEnhancedLabelInfo(label, imageActivityPrompt, imageActivityLabels);
+                setEnhancedLabelInfo(enhanced);
+            } catch (error) {
+                console.error('Failed to load enhanced label info:', error);
+            } finally {
+                setIsLoadingEnhancedInfo(false);
+            }
+        }
+    };
+
+    // Submit guess for quiz
+    const submitImageGuess = () => {
+        if (!selectedImageLabel) return;
+
+        const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').trim();
+
+        if (normalize(imageUserGuess) === normalize(selectedImageLabel.term)) {
+            setImageRevealedLabels(prev => [...prev, selectedImageLabel.term]);
+            setSelectedImageLabel(null);
+            setImageUserGuess('');
+            setImageGuessError(false);
+        } else {
+            setImageGuessError(true);
         }
     };
 
@@ -4829,364 +6265,35 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         setCodeLabFiles(prev => prev.map(file => file.id === codeLabActiveFileId ? { ...file, content: nextCode } : file));
     };
 
-    const CodeLabView = () => {
-        const activeFile = codeLabFiles.find(file => file.id === codeLabActiveFileId) || codeLabFiles[0];
-        const aiInputRef = useRef<HTMLInputElement>(null);
-        const codeMirrorRef = useRef<any>(null);
-        const isInputFocusedRef = useRef(false);
-
-        // Monitor input focus state and prevent CodeMirror from stealing focus
-        useEffect(() => {
-            const input = aiInputRef.current;
-            if (!input) return;
-
-            const handleFocus = () => {
-                isInputFocusedRef.current = true;
-            };
-
-            const handleBlur = () => {
-                // Small delay to check if focus moved to CodeMirror
-                setTimeout(() => {
-                    const activeElement = document.activeElement;
-                    const cmEditor = activeElement?.closest('.cm-editor');
-                    if (cmEditor && isInputFocusedRef.current) {
-                        // Focus was stolen by CodeMirror, return it to input
-                        input.focus();
-                    } else {
-                        isInputFocusedRef.current = false;
-                    }
-                }, 10);
-            };
-
-            // Global listener to prevent CodeMirror focus stealing
-            const handleGlobalFocus = (e: FocusEvent) => {
-                if (isInputFocusedRef.current && input === document.activeElement) {
-                    const target = e.target as HTMLElement;
-                    if (target?.closest('.cm-editor') || target?.classList.contains('cm-content')) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        requestAnimationFrame(() => {
-                            input.focus();
-                        });
-                    }
-                }
-            };
-
-            input.addEventListener('focus', handleFocus);
-            input.addEventListener('blur', handleBlur);
-            document.addEventListener('focusin', handleGlobalFocus, true);
-
-            return () => {
-                input.removeEventListener('focus', handleFocus);
-                input.removeEventListener('blur', handleBlur);
-                document.removeEventListener('focusin', handleGlobalFocus, true);
-            };
-        }, []);
-
-        const handleFileSelect = (fileId: string) => {
-            setCodeLabActiveFileId(fileId);
-        };
-
-        const handleCodeChange = (value: string) => {
-            setCodeLabCode(value);
-            setCodeLabFiles(prev => prev.map(file => file.id === (activeFile?.id || '') ? { ...file, content: value } : file));
-        };
-
-        const runCode = async () => {
-            if (!activeFile) return;
-            setCodeLabIsRunning(true);
-            setCodeLabOutput('');
-
-            try {
-                if (codeLabLanguage === 'python') {
-                    const pyodide = await loadPyodide();
-                    if (!pyodide) {
-                        setCodeLabOutput('Error: Failed to load Python runtime.');
-                        return;
-                    }
-
-                    pyodide.runPython(`
-import sys
-from io import StringIO
-sys.stdout = StringIO()
-sys.stderr = StringIO()
-                    `);
-
-                    try {
-                        pyodide.runPython(codeLabCode);
-                    } catch (e: any) {
-                        const stderr = pyodide.runPython('sys.stderr.getvalue()');
-                        setCodeLabOutput(`Error:\n${e.message}\n${stderr}`);
-                        return;
-                    }
-
-                    const stdout = pyodide.runPython('sys.stdout.getvalue()');
-                    const stderr = pyodide.runPython('sys.stderr.getvalue()');
-                    const combined = [stdout, stderr].filter(Boolean).join('\n');
-                    setCodeLabOutput(combined.trim() || 'No output.');
-                    return;
-                }
-
-                if (codeLabLanguage === 'javascript') {
-                    const logs: string[] = [];
-                    const originalLog = console.log;
-                    console.log = (...args) => {
-                        logs.push(args.map(String).join(' '));
-                    };
-
-                    try {
-                        const result = eval(codeLabCode);
-                        if (typeof result !== 'undefined') {
-                            logs.push(`Result: ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
-                        }
-                    } catch (e: any) {
-                        logs.push(`Error: ${e?.message || e}`);
-                    } finally {
-                        console.log = originalLog;
-                    }
-
-                    setCodeLabOutput(logs.join('\n') || 'No output.');
-                    return;
-                }
-
-                setCodeLabOutput('Execution is available for Python and JavaScript right now.');
-            } finally {
-                setCodeLabIsRunning(false);
-            }
-        };
-
-        const clearOutput = () => setCodeLabOutput('');
-
-        if (!activeFile) {
-            return (
-                <div className="p-6 text-center text-[#444746]">
-                    <p>No files are loaded in Code Lab.</p>
-                </div>
-            );
-        }
+    const renderAssignmentWorkspace = () => {
+        const tabs = [
+            { id: 'exam-prep' as const, label: 'Exam Prep', icon: <AssignmentIcon active={assignmentTab === 'exam-prep'} /> },
+            { id: 'latex-prep' as const, label: 'LaTeX Prep', icon: <LaTeXIcon active={assignmentTab === 'latex-prep'} /> }
+        ];
 
         return (
-            <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-y-auto text-slate-900">
-                <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-y-auto flex flex-col relative">
-                    <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 flex-shrink-0">
-                        <div className="flex items-center gap-2">
-                            {codeLabFiles.map(file => {
-                                const isActive = file.id === activeFile.id;
-                                return (
-                                    <button
-                                        key={file.id}
-                                        onClick={() => handleFileSelect(file.id)}
-                                        className={`px-3 py-1.5 text-sm transition-colors ${isActive ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md' : 'bg-white/5 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                                    >
-                                        {file.name}
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        <div className="flex items-center gap-2 ml-auto">
-                            <select
-                                value={codeLabTheme}
-                                onChange={(e) => setCodeLabTheme(e.target.value as 'vscode' | 'dracula')}
-                                className="text-sm border border-slate-200 px-2 py-1 bg-white text-slate-900"
-                            >
-                                <option value="vscode">VS Code</option>
-                                <option value="dracula">Dracula</option>
-                            </select>
-                            <span className="text-xs text-slate-600 px-2 py-1 bg-slate-100 border border-slate-200">
-                                {activeFile.language === 'java' || activeFile.language === 'cpp' ? 'Run coming soon for Java/C++' : 'Python + JS runnable'}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col lg:flex-row gap-4 p-4 min-h-full overflow-y-auto">
-                        <div className="flex-1 min-h-[340px] h-full flex flex-col">
-                            <div className="flex-1 flex flex-col rounded-xl overflow-hidden border border-[#2b2b2b] shadow-2xl bg-[#1e1e1e]">
-                                {/* Mac-style Window Header */}
-                                <div className="flex items-center justify-between px-4 py-3 bg-[#1e1e1e] border-b border-[#2b2b2b] select-none">
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex gap-1.5">
-                                            <div className="w-3 h-3 rounded-full bg-[#fa5e5b] opacity-80 hover:opacity-100 transition-opacity" />
-                                            <div className="w-3 h-3 rounded-full bg-[#fbbc05] opacity-80 hover:opacity-100 transition-opacity" />
-                                            <div className="w-3 h-3 rounded-full bg-[#27c93f] opacity-80 hover:opacity-100 transition-opacity" />
-                                        </div>
-
-                                        {/* Language Selector */}
-                                        <div className="relative group">
-                                            <select
-                                                value={codeLabLanguage}
-                                                onChange={(e) => {
-                                                    const nextLang = e.target.value as CodeLabLanguage;
-                                                    setCodeLabLanguage(nextLang);
-                                                    setCodeLabFiles(prev => prev.map(file => file.id === activeFile.id ? { ...file, language: nextLang } : file));
-                                                }}
-                                                className="appearance-none bg-transparent text-xs font-medium text-zinc-400 hover:text-zinc-200 uppercase tracking-wider outline-none cursor-pointer pr-4"
-                                            >
-                                                <option value="python" className="bg-[#1e1e1e]">Python</option>
-                                                <option value="javascript" className="bg-[#1e1e1e]">JavaScript</option>
-                                                <option value="java" className="bg-[#1e1e1e]">Java</option>
-                                                <option value="cpp" className="bg-[#1e1e1e]">C++</option>
-                                            </select>
-                                            <ChevronDown className="w-3 h-3 text-zinc-500 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none group-hover:text-zinc-300" />
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={clearOutput}
-                                            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-md transition-colors"
-                                            title="Clear Output"
-                                        >
-                                            <RotateCcw className="w-3.5 h-3.5" />
-                                        </button>
-                                        <div className="w-px h-4 bg-zinc-800" />
-                                        <button
-                                            onClick={runCode}
-                                            disabled={codeLabIsRunning}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${codeLabIsRunning
-                                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                                                : 'bg-green-600/10 text-green-400 hover:bg-green-600/20 border border-green-600/20'
-                                                }`}
-                                        >
-                                            {codeLabIsRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                                            {codeLabIsRunning ? 'Running...' : 'Run Code'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* AI Assistant Input - Integrated */}
-                                <div className="bg-[#1e1e1e] border-b border-[#2b2b2b] p-2">
-                                    <div className="flex gap-2 bg-[#252526] rounded-lg border border-[#2b2b2b] p-1.5 focus-within:border-zinc-700 transition-colors">
-                                        <div className="flex-1 flex items-center gap-2 px-2">
-                                            <Sparkles className="w-3.5 h-3.5 text-zinc-500" />
-                                            <input
-                                                ref={aiInputRef}
-                                                value={codeLabAiPrompt}
-                                                onChange={(e) => setCodeLabAiPrompt(e.target.value)}
-                                                placeholder="Ask AI to edit code..."
-                                                className="flex-1 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        handleAskCodeLabAi();
-                                                    }
-                                                    // Prevent focus from moving to CodeMirror
-                                                    e.stopPropagation();
-                                                }}
-                                                onFocus={(e) => {
-                                                    // Ensure input maintains focus
-                                                    e.stopPropagation();
-                                                }}
-                                                onClick={(e) => {
-                                                    // Prevent click from bubbling to CodeMirror
-                                                    e.stopPropagation();
-                                                }}
-                                                autoFocus={false}
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <button
-                                                onClick={handleAskCodeLabAi}
-                                                disabled={codeLabAiLoading || !codeLabAiPrompt.trim()}
-                                                className="px-2 py-1 text-[10px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 rounded transition-colors disabled:opacity-50"
-                                            >
-                                                {codeLabAiLoading ? 'Thinking...' : 'Ask'}
-                                            </button>
-                                            {codeLabAiResponse && (
-                                                <button
-                                                    onClick={handleInsertAiCode}
-                                                    className="px-2 py-1 text-[10px] font-medium text-blue-400 hover:bg-blue-400/10 rounded transition-colors"
-                                                >
-                                                    Apply
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {/* AI Reasoning & Response */}
-                                    <div className="mt-2 text-sm text-zinc-300">
-                                        <Reasoning isStreaming={codeLabAiStreaming}>{codeLabAiReasoning}</Reasoning>
-                                    </div>
-
-                                    {codeLabAiResponse && !codeLabAiReasoning && ( // Only show raw response if no reasoning parsed yet, or we can improve this logic
-                                        // Actually, codeLabAiResponse contains everything. We might want to HIDE the <thought> part from the visible response if it's already shown in Reasoning.
-                                        // But simplistic approach: Show Reasoning component (which handles parsing internally? No, it takes content string).
-                                        // If we want to hide thought from the 'Suggested Change' block, we should clean it.
-                                        <div className="mt-2 mx-1 p-2 bg-[#252526] rounded border border-[#2b2b2b]">
-                                            <div className="flex items-center justify-between mb-1.5">
-                                                <span className="text-[10px] uppercase font-bold text-zinc-500">Suggested Change</span>
-                                                <button
-                                                    onClick={() => setCodeLabAiResponse('')}
-                                                    className="text-zinc-500 hover:text-zinc-300"
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                            <pre className="text-xs text-zinc-400 font-mono whitespace-pre-wrap pl-2 border-l-2 border-zinc-700">{codeLabAiResponse}</pre>
-                                        </div>
-                                    )}
-                                    {codeLabAiError && (
-                                        <div className="mt-2 mx-1 px-2 py-1 text-xs text-red-400 bg-red-400/10 rounded border border-red-400/20">
-                                            {codeLabAiError}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* CodeMirror Instance */}
-                                <div
-                                    className="flex-1 overflow-hidden relative"
-                                    onMouseDown={(e) => {
-                                        // Prevent CodeMirror from stealing focus when input is focused
-                                        if (isInputFocusedRef.current && aiInputRef.current) {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            // Keep focus on input
-                                            requestAnimationFrame(() => {
-                                                aiInputRef.current?.focus();
-                                            });
-                                        }
-                                    }}
-                                    onClick={(e) => {
-                                        // Prevent clicks from stealing focus from input
-                                        if (isInputFocusedRef.current && aiInputRef.current) {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            aiInputRef.current?.focus();
-                                        }
-                                    }}
+            <div className="flex h-full w-full flex-col bg-[#eef2f7] pt-[50px]">
+                <div className="w-full bg-[#f6f8fc] border-b border-slate-200">
+                    <div className="flex justify-center px-6 py-3">
+                        <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-lg border border-slate-200">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setAssignmentTab(tab.id)}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${assignmentTab === tab.id
+                                        ? 'bg-[#2c4066] text-white shadow-sm'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
                                 >
-                                    <CodeMirror
-                                        ref={codeMirrorRef}
-                                        value={codeLabCode}
-                                        height="100%"
-                                        editable
-                                        theme={codeLabTheme === 'vscode' ? vscodeDark : dracula}
-                                        basicSetup={{
-                                            ...codeLabBasicSetup,
-                                            autofocus: false, // Prevent auto-focus
-                                        }}
-                                        className="h-full text-sm"
-                                        extensions={codeLabExtensions}
-                                        onChange={handleCodeChange}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="w-full lg:w-80 flex-shrink-0 h-full flex flex-col">
-                            <div className="bg-white border border-slate-200 h-full flex flex-col">
-                                <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
-                                    <span className="text-sm font-medium text-slate-900">Output</span>
-                                    <button onClick={clearOutput} className="text-xs text-slate-600 hover:text-slate-900">Clear</button>
-                                </div>
-                                <div className="flex-1 px-4 py-3 overflow-auto font-mono text-sm min-h-0" style={{ backgroundColor: '#1F1F1F' }}>
-                                    {codeLabOutput ? codeLabOutput.split('\n').map((line, idx) => (
-                                        <div key={idx} className="whitespace-pre-wrap leading-6 text-slate-200">{line || ' '}</div>
-                                    )) : (
-                                        <div className="text-slate-400">Run code to see output here.</div>
-                                    )}
-                                </div>
-                            </div>
+                                    <span className="flex items-center justify-center scale-75">{tab.icon}</span>
+                                    {tab.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
+                </div>
+                <div className="flex-1 min-h-0">
+                    {assignmentTab === 'exam-prep' ? <InteractiveAssignmentWorkspace /> : <LaTeXAssignmentPrep />}
                 </div>
             </div>
         );
@@ -5204,8 +6311,8 @@ sys.stderr = StringIO()
 
         // Only show "Start Learning" fallback when NOT streaming
         // During streaming, let case 'immersive-text' handle the streaming UI
-        // Robotics, 3D Viewer, Code Lab, and Image Activity work independently without needing uploaded content
-        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'robotics' && activeMode !== 'viewer3d' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && activeMode !== 'image-activity' && activeMode !== 'audio-lesson' && activeMode !== 'mindmap' && activeMode !== 'simulation' && !isStreaming) {
+        // Robotics, 3D Viewer, Code Lab, Science Teacher, Learning Theories, and Image Activity work independently without needing uploaded content
+        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'notebook' && activeMode !== 'robotics' && activeMode !== 'visual-activity' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && activeMode !== 'audio-video' && activeMode !== 'mindmap' && activeMode !== 'simulation' && activeMode !== 'learning-theories' && activeMode !== 'socratic' && activeMode !== 'feynman-enhanced' && !isStreaming) {
             return (
                 <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
                     {/* Left Sidebar - Input & Controls */}
@@ -5255,16 +6362,56 @@ sys.stderr = StringIO()
                                     />
                                 </div>
 
+                                {/* ToT Toggle */}
+                                <div className="flex items-center justify-between py-2 px-1">
+                                    <div className="flex items-center gap-2" onClick={() => setUseToTGeneration(!useToTGeneration)}>
+                                        <div className={`w-8 h-4 rounded-full p-0.5 cursor-pointer transition-colors ${useToTGeneration ? 'bg-emerald-500' : 'bg-slate-600'}`}>
+                                            <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${useToTGeneration ? 'translate-x-4' : 'translate-x-0'}`} />
+                                        </div>
+                                        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider cursor-pointer select-none">Deep Planning (ToT)</label>
+                                    </div>
+                                    <div className="group relative">
+                                        <Info className="w-3.5 h-3.5 text-slate-500 hover:text-slate-300 cursor-help" />
+                                        <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                            Generates a Tree of Thoughts to plan the best pedagogical approach before writing content. This uses advanced reasoning but takes longer.
+                                        </div>
+                                    </div>
+                                </div>
+
+
                                 {/* Generate Button */}
                                 <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                         if (activeMode !== 'notebook') {
                                             setActiveMode('source');
                                         }
+
+                                        const textToProcess = documentTextRef.current || (standaloneTopic ? `Topic: ${standaloneTopic}\n\nMain Concept: ${standaloneTopic}` : null);
+
+                                        if (textToProcess && useToTGeneration) {
+                                            setIsLoading(true);
+                                            setProcessingStage('analyzing');
+                                            setLoadingMessage('Generating Tree of Thoughts Plan (Deep Reasoning)...');
+                                            setTerminalSubSteps(['Initializing ToT...', 'Exploring approach vectors...', 'Constructing pedagogical tree...']);
+                                            setIsPlanningImmersive(true);
+
+                                            try {
+                                                const plan = await generateImmersivePlanTree(textToProcess);
+                                                setImmersiveToTPlan(plan);
+                                                setShowToTTree(true);
+                                            } catch (e) {
+                                                console.error(e);
+                                                alert('ToT Planning failed: ' + (e instanceof Error ? e.message : String(e)));
+                                            } finally {
+                                                setIsLoading(false);
+                                                setIsPlanningImmersive(false);
+                                                setProcessingStage('idle');
+                                            }
+                                        }
                                     }}
-                                    disabled={!standaloneNotes.trim() && !standaloneTopic.trim()}
+                                    disabled={!standaloneNotes.trim() && !standaloneTopic.trim() && !uploadedFileName}
                                     className={
-                                        !standaloneNotes.trim() && !standaloneTopic.trim()
+                                        (!standaloneNotes.trim() && !standaloneTopic.trim() && !uploadedFileName)
                                             ? 'w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-slate-700 text-slate-400 cursor-not-allowed rounded-none'
                                             : 'w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95 rounded-none'
                                     }
@@ -5345,8 +6492,52 @@ sys.stderr = StringIO()
 
         switch (activeMode) {
             case 'source':
-                // Show processing animation when loading - Terminal Style
-                if (isLoading) {
+                // Show ToT Tree Selection UI
+                if (showToTTree && immersiveToTPlan) {
+                    return (
+                        <div className="flex flex-col h-full bg-[#131314] overflow-hidden p-6 text-white">
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h2 className="text-xl font-bold text-white mb-1">Choose Learning Path</h2>
+                                    <p className="text-sm text-slate-400">AI analyzed your document and proposed {immersiveToTPlan.tree?.length || 0} structure options.</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm" onClick={() => setShowToTTree(false)}>Cancel</button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                                <ToTGraphVisualization
+                                    tree={immersiveToTPlan.tree}
+                                    rootId={immersiveToTPlan.rootId}
+                                    selectedId={currentPlanNode?.id || null}
+                                    onSelect={setCurrentPlanNode}
+                                />
+                            </div>
+                            <div className="mt-6 pt-6 border-t border-slate-700 flex flex-col sm:flex-row justify-end gap-4 items-center">
+                                <div className="flex-1 w-full">
+                                    {currentPlanNode && (
+                                        <div className="p-4 bg-[#1e232e] rounded-lg border border-[#3b5b8a]/30">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Badge className="bg-[#8ab4f8]/20 text-[#8ab4f8] hover:bg-[#8ab4f8]/30 border-0">SELECTED APPROACH</Badge>
+                                                <span className="text-sm font-bold text-white">{currentPlanNode.approach}</span>
+                                            </div>
+                                            <div className="text-sm text-slate-300">{currentPlanNode.description}</div>
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => currentPlanNode && handleStartToTGeneration(currentPlanNode)}
+                                    disabled={!currentPlanNode}
+                                    className={`px-8 py-3 rounded-lg font-bold transition-all shadow-lg ${currentPlanNode ? 'bg-[#8ab4f8] hover:bg-[#aecbfa] text-[#202124] hover:shadow-[#8ab4f8]/20 hover:scale-105' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}
+                                >
+                                    Generate Content
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (isLoading || isPlanningImmersive) {
                     const terminalStages = [
                         {
                             name: 'Uploading',
@@ -5471,13 +6662,13 @@ sys.stderr = StringIO()
                                     <div className="flex items-center justify-between mb-6">
                                         <div className="flex items-center gap-4">
                                             <h2 className="text-base font-medium text-[#e8eaed]">
-                                                {showUserSpaces ? 'My Spaces' : 'My notebooks'}
+                                                {dashboardTab === 'spaces' ? 'My Spaces' : 'My notebooks'}
                                             </h2>
                                             {/* Tabs */}
                                             <div className="flex items-center gap-2 border border-[#3c4043] rounded-lg p-1 bg-[#202124]">
                                                 <button
-                                                    onClick={() => setShowUserSpaces(false)}
-                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${!showUserSpaces
+                                                    onClick={() => setDashboardTab('notebooks')}
+                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${dashboardTab === 'notebooks'
                                                         ? 'bg-[#8ab4f8] text-[#202124]'
                                                         : 'text-[#9aa0a6] hover:text-white'
                                                         }`}
@@ -5485,8 +6676,8 @@ sys.stderr = StringIO()
                                                     Notebooks
                                                 </button>
                                                 <button
-                                                    onClick={() => setShowUserSpaces(true)}
-                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${showUserSpaces
+                                                    onClick={() => setDashboardTab('spaces')}
+                                                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${dashboardTab === 'spaces'
                                                         ? 'bg-[#8ab4f8] text-[#202124]'
                                                         : 'text-[#9aa0a6] hover:text-white'
                                                         }`}
@@ -5499,9 +6690,9 @@ sys.stderr = StringIO()
                                         <div className="relative">
                                             <input
                                                 type="text"
-                                                value={showUserSpaces ? spaceSearchQuery : workspaceSearchQuery}
-                                                onChange={(e) => showUserSpaces ? setSpaceSearchQuery(e.target.value) : setWorkspaceSearchQuery(e.target.value)}
-                                                placeholder={showUserSpaces ? "Search spaces..." : "Search notebooks..."}
+                                                value={dashboardTab === 'spaces' ? spaceSearchQuery : workspaceSearchQuery}
+                                                onChange={(e) => dashboardTab === 'spaces' ? setSpaceSearchQuery(e.target.value) : setWorkspaceSearchQuery(e.target.value)}
+                                                placeholder={dashboardTab === 'spaces' ? "Search spaces..." : "Search notebooks..."}
                                                 className="w-64 px-4 py-2 pl-10 bg-[#202124] border border-[#3c4043] rounded-full text-sm text-white placeholder-[#9aa0a6] focus:outline-none focus:border-[#8ab4f8] transition-all"
                                             />
                                             <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9aa0a6]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5511,7 +6702,7 @@ sys.stderr = StringIO()
                                     </div>
 
                                     {/* Show Spaces View */}
-                                    {showUserSpaces ? (
+                                    {dashboardTab === 'spaces' ? (
                                         filteredSpaces.length === 0 ? (
                                             <div className="flex flex-col items-center justify-center h-64">
                                                 <span className="text-4xl mb-4">🚀</span>
@@ -5633,6 +6824,8 @@ sys.stderr = StringIO()
                                                             className="hidden"
                                                         />
                                                     </button>
+
+
 
                                                     {/* Notebook Cards */}
                                                     {filteredWorkspaces.map((workspace, index) => {
@@ -5827,1149 +7020,938 @@ sys.stderr = StringIO()
                 const contentParts = activeSection?.content.split('{{INTERACTIVE_WIDGET}}') || [];
 
                 return (
-                    <div className="flex w-full min-h-full bg-white">
-                        {/* Main Content - Single scrollable area */}
-                        <div className={`flex-1 py-10 px-12 relative overflow-y-auto transition-all duration-300 bg-white`}>
-                            {/* Section Title Header */}
-                            <div className="text-[13px] text-[#5f6368] mb-1 font-medium">
-                                {activeSection?.title}
-                            </div>
-
-                            {/* Main Heading with Navigation Arrows */}
-                            <div className="flex items-start justify-between mb-4">
-                                <h2 className="text-[32px] leading-[1.2] font-medium text-[#1f1f1f] max-w-[700px]">
+                    <>
+                        <div className="flex w-full min-h-full bg-white">
+                            {/* Main Content - Single scrollable area */}
+                            <div className={`flex-1 py-10 px-12 relative overflow-y-auto transition-all duration-300 bg-white`}>
+                                {/* Section Title Header */}
+                                <div className="text-[13px] text-[#5f6368] mb-1 font-medium">
                                     {activeSection?.title}
-                                </h2>
-                                <div className="flex gap-0.5 flex-shrink-0 ml-4">
-                                    <button
-                                        onClick={() => {
-                                            if (sectionIdx > 0 && immersiveContent) {
-                                                setActiveSectionId(immersiveContent.sections[sectionIdx - 1].id);
-                                                setCurrentSectionIndex(sectionIdx - 1);
-                                            }
-                                        }}
-                                        disabled={sectionIdx === 0}
-                                        className="p-2 hover:bg-[#f1f3f4] rounded-full text-[#5f6368] disabled:opacity-40 transition-colors"
-                                    >
-                                        <ChevronLeft className="w-5 h-5" />
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (immersiveContent && sectionIdx < immersiveContent.sections.length - 1) {
-                                                setActiveSectionId(immersiveContent.sections[sectionIdx + 1].id);
-                                                setCurrentSectionIndex(sectionIdx + 1);
-                                            }
-                                        }}
-                                        disabled={!immersiveContent || sectionIdx === immersiveContent.sections.length - 1}
-                                        className="p-2 hover:bg-[#f1f3f4] rounded-full text-[#5f6368] disabled:opacity-40 transition-colors"
-                                    >
-                                        <ChevronRight className="w-5 h-5" />
-                                    </button>
                                 </div>
-                            </div>
 
-                            {/* Grounding Sources Bar - Shows all sources with bubble badges */}
-                            {groundingSources.length > 0 && (
-                                <div className="flex items-center gap-2 mb-6 flex-wrap">
-                                    <div className="flex items-center gap-1.5 text-[12px] text-[#5f6368]">
-                                        <Globe className="w-3.5 h-3.5" />
-                                        <span>Sources:</span>
-                                    </div>
-                                    {groundingSources.map((source, idx) => (
+                                {/* Main Heading with Navigation Arrows */}
+                                <div className="flex items-start justify-between mb-4">
+                                    <h2 className="text-[32px] leading-[1.2] font-medium text-[#1f1f1f] max-w-[700px]">
+                                        {activeSection?.title}
+                                    </h2>
+                                    <div className="flex gap-0.5 flex-shrink-0 ml-4">
                                         <button
-                                            key={idx}
                                             onClick={() => {
-                                                setActiveSource(source);
-                                                setShowPdfSidebar(true);
+                                                if (sectionIdx > 0 && immersiveContent) {
+                                                    setActiveSectionId(immersiveContent.sections[sectionIdx - 1].id);
+                                                    setCurrentSectionIndex(sectionIdx - 1);
+                                                }
                                             }}
-                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] transition-colors ${activeSource?.url === source.url
-                                                ? 'bg-indigo-600 text-white'
-                                                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                                                }`}
-                                            title={source.url}
+                                            disabled={sectionIdx === 0}
+                                            className="p-2 hover:bg-[#f1f3f4] rounded-full text-[#5f6368] disabled:opacity-40 transition-colors"
                                         >
-                                            <span className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full ${activeSource?.url === source.url
-                                                ? 'bg-white/30 text-white'
-                                                : 'bg-blue-200 text-blue-700'
-                                                }`}>
-                                                {idx + 1}
-                                            </span>
-                                            <span className="truncate max-w-[120px]">{source.title || new URL(source.url).hostname}</span>
+                                            <ChevronLeft className="w-5 h-5" />
                                         </button>
-                                    ))}
-                                    {isLoadingGrounding && (
-                                        <div className="flex items-center gap-1.5 text-[12px] text-blue-500">
-                                            <Loader2 className="w-3 h-3 animate-spin" />
-                                            <span>Finding sources...</span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Content paragraphs with floating ? buttons */}
-                            <div className="space-y-5 mb-8">
-                                {contentParts[0]?.split('\n\n').map((paragraph, pIdx) => (
-                                    <div key={pIdx} className="relative group">
-                                        <div className="pr-14">
-                                            <ReactMarkdown
-                                                remarkPlugins={[remarkMath]}
-                                                rehypePlugins={[rehypeKatex]}
-                                                components={{
-                                                    p: ({ children }) => (
-                                                        <p className="text-[18px] leading-[1.8] text-[#444746]">
-                                                            {children}
-                                                        </p>
-                                                    ),
-                                                    strong: ({ children }) => {
-                                                        const term = String(children);
-                                                        const def = immersiveContent?.keyTerms.find(t => t.term.toLowerCase() === term.toLowerCase());
-                                                        return def ? (
-                                                            <span
-                                                                onClick={() => handleTermClick(def.term, def.definition)}
-                                                                className="cursor-pointer"
-                                                            >
-                                                                <Highlighter
-                                                                    action="highlight"
-                                                                    color="#FBBF24"
-                                                                    animationDuration={1200}
-                                                                    iterations={1}
-                                                                >
-                                                                    <span className="font-semibold text-[#1f1f1f] hover:text-[#1a73e8] transition-colors">
-                                                                        {children}
-                                                                    </span>
-                                                                </Highlighter>
-                                                            </span>
-                                                        ) : (
-                                                            <Highlighter
-                                                                action="highlight"
-                                                                color="#FBBF24"
-                                                                animationDuration={1200}
-                                                                iterations={1}
-                                                            >
-                                                                <strong className="font-semibold text-[#1f1f1f]">{children}</strong>
-                                                            </Highlighter>
-                                                        );
-                                                    },
-                                                    em: ({ children }) => (
-                                                        <Highlighter
-                                                            action="underline"
-                                                            color="#3B82F6"
-                                                            strokeWidth={2}
-                                                            animationDuration={800}
-                                                            iterations={1}
-                                                        >
-                                                            <em className="not-italic text-[#374151]">{children}</em>
-                                                        </Highlighter>
-                                                    ),
-                                                    code: ({ className, children, ...props }) => {
-                                                        const match = /language-(\w+)/.exec(className || '');
-                                                        const isInline = !match;
-                                                        if (isInline) {
-                                                            return (
-                                                                <code className="bg-gray-100 text-[#e11d48] px-1.5 py-0.5 rounded text-[15px] font-mono" {...props}>
-                                                                    {children}
-                                                                </code>
-                                                            );
-                                                        }
-                                                        return (
-                                                            <div className="my-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-                                                                <div className="bg-gray-800 text-gray-300 px-4 py-2 text-xs flex items-center justify-between">
-                                                                    <span className="font-medium">{match[1]}</span>
-                                                                    <button
-                                                                        onClick={() => navigator.clipboard.writeText(String(children))}
-                                                                        className="hover:text-white transition-colors flex items-center gap-1"
-                                                                    >
-                                                                        <Copy className="w-3.5 h-3.5" />
-                                                                        <span>Copy</span>
-                                                                    </button>
-                                                                </div>
-                                                                <pre className="bg-gray-900 p-4 overflow-x-auto">
-                                                                    <code className={`${className} text-sm font-mono text-gray-100`} {...props}>
-                                                                        {children}
-                                                                    </code>
-                                                                </pre>
-                                                            </div>
-                                                        );
-                                                    },
-                                                    pre: ({ children }) => <>{children}</>
-                                                }}
-                                            >
-                                                {paragraph}
-                                            </ReactMarkdown>
-                                        </div>
-
-                                        {/* Floating Orange ? Button */}
                                         <button
-                                            onClick={() => handleOpenFloatingQuiz(paragraph, pIdx)}
-                                            className="absolute right-0 top-0 w-9 h-9 bg-[#ff9064] hover:bg-[#ff7d4d] text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-105"
-                                            title="Check your understanding"
+                                            onClick={() => {
+                                                if (immersiveContent && sectionIdx < immersiveContent.sections.length - 1) {
+                                                    setActiveSectionId(immersiveContent.sections[sectionIdx + 1].id);
+                                                    setCurrentSectionIndex(sectionIdx + 1);
+                                                }
+                                            }}
+                                            disabled={!immersiveContent || sectionIdx === immersiveContent.sections.length - 1}
+                                            className="p-2 hover:bg-[#f1f3f4] rounded-full text-[#5f6368] disabled:opacity-40 transition-colors"
                                         >
-                                            <span className="font-bold text-base">?</span>
+                                            <ChevronRight className="w-5 h-5" />
                                         </button>
                                     </div>
-                                ))}
+                                </div>
 
-                                {activeWidget && activeWidget.data && (
-                                    <div className="animate-slide-up">
-                                        {activeWidget.type === 'reveal' && activeWidget.data.title && <ScratchReveal title={activeWidget.data.title} content={activeWidget.data.content || ''} />}
-                                        {activeWidget.type === 'comparison' && <ComparisonSlider data={activeWidget.data} images={widgetImgs} />}
-                                        {activeWidget.type === 'quiz' && <InlineQuiz data={activeWidget.data} />}
-                                        {activeWidget.type === 'fill-blank' && <FillBlankActivity data={activeWidget.data} />}
-                                        {activeWidget.type === 'matching' && <MatchingActivity data={activeWidget.data} />}
-                                        {activeWidget.type === 'ordering' && <OrderingActivity data={activeWidget.data} />}
-                                        {activeWidget.type === 'true-false' && <TrueFalseActivity data={activeWidget.data} />}
-                                        {activeWidget.type === 'labeling' && <LabelingActivity data={activeWidget.data} />}
-                                        {activeWidget.type === 'reflection' && <ReflectionActivity data={activeWidget.data} />}
-                                        {activeWidget.type === 'code-playground' && <CodePlaygroundActivity data={activeWidget.data} />}
-                                        {activeWidget.type === 'code-explanation' && <CodeExplanationActivity data={activeWidget.data} />}
+                                {/* Grounding Sources Bar - Shows all sources with bubble badges */}
+                                {groundingSources.length > 0 && (
+                                    <div className="flex items-center gap-2 mb-6 flex-wrap">
+                                        <div className="flex items-center gap-1.5 text-[12px] text-[#5f6368]">
+                                            <Globe className="w-3.5 h-3.5" />
+                                            <span>Sources:</span>
+                                        </div>
+                                        {groundingSources.map((source, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => {
+                                                    setActiveSource(source);
+                                                    setShowPdfSidebar(true);
+                                                }}
+                                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] transition-colors ${activeSource?.url === source.url
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                                    }`}
+                                                title={source.url}
+                                            >
+                                                <span className={`inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded-full ${activeSource?.url === source.url
+                                                    ? 'bg-white/30 text-white'
+                                                    : 'bg-blue-200 text-blue-700'
+                                                    }`}>
+                                                    {idx + 1}
+                                                </span>
+                                                <span className="truncate max-w-[120px]">{source.title || new URL(source.url).hostname}</span>
+                                            </button>
+                                        ))}
+                                        {isLoadingGrounding && (
+                                            <div className="flex items-center gap-1.5 text-[12px] text-blue-500">
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                <span>Finding sources...</span>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
-                                {contentParts[1]?.split('\n\n').map((paragraph, pIdx) => (
-                                    <div key={`p2-${pIdx}`} className="relative group">
-                                        <div className="pr-14">
-                                            <ReactMarkdown
-                                                remarkPlugins={[remarkMath]}
-                                                rehypePlugins={[rehypeKatex]}
-                                                components={{
-                                                    p: ({ children }) => (
-                                                        <p className="text-[18px] leading-[1.8] text-[#444746]">
-                                                            {children}
-                                                        </p>
-                                                    ),
-                                                    strong: ({ children }) => {
-                                                        const term = String(children);
-                                                        const def = immersiveContent?.keyTerms.find(t => t.term.toLowerCase() === term.toLowerCase());
-                                                        return def ? (
-                                                            <span
-                                                                onClick={() => handleTermClick(def.term, def.definition)}
-                                                                className="cursor-pointer"
-                                                            >
+                                {/* Content paragraphs with floating ? buttons */}
+                                <div className="space-y-5 mb-8">
+                                    {contentParts[0]?.split('\n\n').map((paragraph, pIdx) => (
+                                        <div key={pIdx} className="relative group">
+                                            <div className="pr-14">
+                                                <ReactMarkdown
+                                                    remarkPlugins={[remarkMath]}
+                                                    rehypePlugins={[rehypeKatex]}
+                                                    components={{
+                                                        p: ({ children }) => (
+                                                            <p className="text-[18px] leading-[1.8] text-[#444746]">
+                                                                {children}
+                                                            </p>
+                                                        ),
+                                                        strong: ({ children }) => {
+                                                            const term = String(children);
+                                                            const def = immersiveContent?.keyTerms.find(t => t.term.toLowerCase() === term.toLowerCase());
+                                                            return def ? (
+                                                                <span
+                                                                    onClick={() => handleTermClick(def.term, def.definition)}
+                                                                    className="cursor-pointer"
+                                                                >
+                                                                    <Highlighter
+                                                                        action="highlight"
+                                                                        color="#FBBF24"
+                                                                        animationDuration={1200}
+                                                                        iterations={1}
+                                                                    >
+                                                                        <span className="font-semibold text-[#1f1f1f] hover:text-[#1a73e8] transition-colors">
+                                                                            {children}
+                                                                        </span>
+                                                                    </Highlighter>
+                                                                </span>
+                                                            ) : (
                                                                 <Highlighter
                                                                     action="highlight"
                                                                     color="#FBBF24"
                                                                     animationDuration={1200}
                                                                     iterations={1}
                                                                 >
-                                                                    <span className="font-semibold text-[#1f1f1f] hover:text-[#1a73e8] transition-colors">
-                                                                        {children}
-                                                                    </span>
+                                                                    <strong className="font-semibold text-[#1f1f1f]">{children}</strong>
                                                                 </Highlighter>
-                                                            </span>
-                                                        ) : (
+                                                            );
+                                                        },
+                                                        em: ({ children }) => (
                                                             <Highlighter
-                                                                action="highlight"
-                                                                color="#FBBF24"
-                                                                animationDuration={1200}
+                                                                action="underline"
+                                                                color="#3B82F6"
+                                                                strokeWidth={2}
+                                                                animationDuration={800}
                                                                 iterations={1}
                                                             >
-                                                                <strong className="font-semibold text-[#1f1f1f]">{children}</strong>
+                                                                <em className="not-italic text-[#374151]">{children}</em>
                                                             </Highlighter>
-                                                        );
-                                                    },
-                                                    em: ({ children }) => (
-                                                        <Highlighter
-                                                            action="underline"
-                                                            color="#3B82F6"
-                                                            strokeWidth={2}
-                                                            animationDuration={800}
-                                                            iterations={1}
-                                                        >
-                                                            <em className="not-italic text-[#374151]">{children}</em>
-                                                        </Highlighter>
-                                                    ),
-                                                    code: ({ className, children, ...props }) => {
-                                                        const match = /language-(\w+)/.exec(className || '');
-                                                        const isInline = !match;
-                                                        if (isInline) {
-                                                            return (
-                                                                <code className="bg-gray-100 text-[#e11d48] px-1.5 py-0.5 rounded text-[15px] font-mono" {...props}>
-                                                                    {children}
-                                                                </code>
-                                                            );
-                                                        }
-                                                        return (
-                                                            <div className="my-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-                                                                <div className="bg-gray-800 text-gray-300 px-4 py-2 text-xs flex items-center justify-between">
-                                                                    <span className="font-medium">{match[1]}</span>
-                                                                    <button
-                                                                        onClick={() => navigator.clipboard.writeText(String(children))}
-                                                                        className="hover:text-white transition-colors flex items-center gap-1"
-                                                                    >
-                                                                        <Copy className="w-3.5 h-3.5" />
-                                                                        <span>Copy</span>
-                                                                    </button>
-                                                                </div>
-                                                                <pre className="bg-gray-900 p-4 overflow-x-auto">
-                                                                    <code className={`${className} text-sm font-mono text-gray-100`} {...props}>
+                                                        ),
+                                                        code: ({ className, children, ...props }) => {
+                                                            const match = /language-(\w+)/.exec(className || '');
+                                                            const isInline = !match;
+                                                            if (isInline) {
+                                                                return (
+                                                                    <code className="bg-gray-100 text-[#e11d48] px-1.5 py-0.5 rounded text-[15px] font-mono" {...props}>
                                                                         {children}
                                                                     </code>
-                                                                </pre>
-                                                            </div>
-                                                        );
-                                                    },
-                                                    pre: ({ children }) => <>{children}</>
-                                                }}
-                                            >
-                                                {paragraph}
-                                            </ReactMarkdown>
-                                        </div>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <div className="my-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                                                                    <div className="bg-gray-800 text-gray-300 px-4 py-2 text-xs flex items-center justify-between">
+                                                                        <span className="font-medium">{match[1]}</span>
+                                                                        <button
+                                                                            onClick={() => navigator.clipboard.writeText(String(children))}
+                                                                            className="hover:text-white transition-colors flex items-center gap-1"
+                                                                        >
+                                                                            <Copy className="w-3.5 h-3.5" />
+                                                                            <span>Copy</span>
+                                                                        </button>
+                                                                    </div>
+                                                                    <pre className="bg-gray-900 p-4 overflow-x-auto">
+                                                                        <code className={`${className} text-sm font-mono text-gray-100`} {...props}>
+                                                                            {children}
+                                                                        </code>
+                                                                    </pre>
+                                                                </div>
+                                                            );
+                                                        },
+                                                        pre: ({ children }) => <>{children}</>
+                                                    }}
+                                                >
+                                                    {paragraph}
+                                                </ReactMarkdown>
+                                            </div>
 
-                                        {/* Floating Orange ? Button */}
-                                        <button
-                                            onClick={() => handleOpenFloatingQuiz(paragraph, pIdx + 100)}
-                                            className="absolute right-0 top-0 w-9 h-9 bg-[#ff9064] hover:bg-[#ff7d4d] text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-105"
-                                            title="Check your understanding"
-                                        >
-                                            <span className="font-bold text-base">?</span>
-                                        </button>
-                                    </div>
-                                ))}
-
-                                {/* Image from original document if exists */}
-                                {activeSection?.imagePrompt && activeImage && (
-                                    <div className="my-6">
-                                        <div className="relative group w-full max-w-[700px] aspect-video rounded-xl overflow-hidden bg-gray-100">
-                                            <img
-                                                src={activeImage}
-                                                alt={activeSection?.title}
-                                                className="w-full h-full object-cover"
-                                            />
-                                            {/* Expand button */}
+                                            {/* Floating Orange ? Button */}
                                             <button
-                                                onClick={() => setExpandedImage({ src: activeImage, title: activeSection?.title || '' })}
-                                                className="absolute top-3 right-3 p-2 bg-black/50 hover:bg-black/70 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-all duration-200"
-                                                title="Expand image"
+                                                onClick={() => handleOpenFloatingQuiz(paragraph, pIdx)}
+                                                className="absolute right-0 top-0 w-9 h-9 bg-[#ff9064] hover:bg-[#ff7d4d] text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-105"
+                                                title="Check your understanding"
                                             >
-                                                <Maximize2 className="w-5 h-5" />
+                                                <span className="font-bold text-base">?</span>
                                             </button>
                                         </div>
-                                        <p className="text-[13px] text-[#5f6368] mt-2 italic">
-                                            Figure: AI-generated illustration for {activeSection?.title}
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
+                                    ))}
 
-                            {/* Core ideas illustrated by AI - Card */}
-                            <div className="bg-[#fff8f0] rounded-2xl p-6 mb-8 border border-[#ffe0c0]">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-8 h-8 bg-[#ff9064] rounded-lg flex items-center justify-center">
-                                        <Sparkles className="w-5 h-5 text-white" />
-                                    </div>
-                                    <h3 className="text-[16px] font-medium text-[#1f1f1f]">Core ideas illustrated by AI</h3>
-                                </div>
-                                <div className="flex gap-6">
-                                    <div className="flex-1">
-                                        <p className="text-[15px] leading-[1.7] text-[#444746]">
-                                            {immersiveContent?.summary || activeSection?.content.slice(0, 300) + '...'}
-                                        </p>
-                                    </div>
-                                    {activeSection?.imagePrompt && (
-                                        <div className="w-[280px] flex-shrink-0">
-                                            {activeImage ? (
+                                    {activeWidget && activeWidget.data && (
+                                        <div className="animate-slide-up">
+                                            {activeWidget.type === 'reveal' && activeWidget.data.title && <ScratchReveal title={activeWidget.data.title} content={activeWidget.data.content || ''} />}
+                                            {activeWidget.type === 'comparison' && <ComparisonSlider data={activeWidget.data} images={widgetImgs} />}
+                                            {activeWidget.type === 'quiz' && <InlineQuiz data={activeWidget.data} />}
+                                            {activeWidget.type === 'fill-blank' && <FillBlankActivity data={activeWidget.data} />}
+                                            {activeWidget.type === 'matching' && <MatchingActivity data={activeWidget.data} />}
+                                            {activeWidget.type === 'ordering' && <OrderingActivity data={activeWidget.data} />}
+                                            {activeWidget.type === 'true-false' && <TrueFalseActivity data={activeWidget.data} />}
+                                            {activeWidget.type === 'labeling' && <LabelingActivity data={activeWidget.data} />}
+                                            {activeWidget.type === 'reflection' && <ReflectionActivity data={activeWidget.data} />}
+                                            {activeWidget.type === 'code-playground' && <CodePlaygroundActivity data={activeWidget.data} />}
+                                            {activeWidget.type === 'code-explanation' && <CodeExplanationActivity data={activeWidget.data} />}
+                                        </div>
+                                    )}
+
+                                    {contentParts[1]?.split('\n\n').map((paragraph, pIdx) => (
+                                        <div key={`p2-${pIdx}`} className="relative group">
+                                            <div className="pr-14">
+                                                <ReactMarkdown
+                                                    remarkPlugins={[remarkMath]}
+                                                    rehypePlugins={[rehypeKatex]}
+                                                    components={{
+                                                        p: ({ children }) => (
+                                                            <p className="text-[18px] leading-[1.8] text-[#444746]">
+                                                                {children}
+                                                            </p>
+                                                        ),
+                                                        strong: ({ children }) => {
+                                                            const term = String(children);
+                                                            const def = immersiveContent?.keyTerms.find(t => t.term.toLowerCase() === term.toLowerCase());
+                                                            return def ? (
+                                                                <span
+                                                                    onClick={() => handleTermClick(def.term, def.definition)}
+                                                                    className="cursor-pointer"
+                                                                >
+                                                                    <Highlighter
+                                                                        action="highlight"
+                                                                        color="#FBBF24"
+                                                                        animationDuration={1200}
+                                                                        iterations={1}
+                                                                    >
+                                                                        <span className="font-semibold text-[#1f1f1f] hover:text-[#1a73e8] transition-colors">
+                                                                            {children}
+                                                                        </span>
+                                                                    </Highlighter>
+                                                                </span>
+                                                            ) : (
+                                                                <Highlighter
+                                                                    action="highlight"
+                                                                    color="#FBBF24"
+                                                                    animationDuration={1200}
+                                                                    iterations={1}
+                                                                >
+                                                                    <strong className="font-semibold text-[#1f1f1f]">{children}</strong>
+                                                                </Highlighter>
+                                                            );
+                                                        },
+                                                        em: ({ children }) => (
+                                                            <Highlighter
+                                                                action="underline"
+                                                                color="#3B82F6"
+                                                                strokeWidth={2}
+                                                                animationDuration={800}
+                                                                iterations={1}
+                                                            >
+                                                                <em className="not-italic text-[#374151]">{children}</em>
+                                                            </Highlighter>
+                                                        ),
+                                                        code: ({ className, children, ...props }) => {
+                                                            const match = /language-(\w+)/.exec(className || '');
+                                                            const isInline = !match;
+                                                            if (isInline) {
+                                                                return (
+                                                                    <code className="bg-gray-100 text-[#e11d48] px-1.5 py-0.5 rounded text-[15px] font-mono" {...props}>
+                                                                        {children}
+                                                                    </code>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <div className="my-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                                                                    <div className="bg-gray-800 text-gray-300 px-4 py-2 text-xs flex items-center justify-between">
+                                                                        <span className="font-medium">{match[1]}</span>
+                                                                        <button
+                                                                            onClick={() => navigator.clipboard.writeText(String(children))}
+                                                                            className="hover:text-white transition-colors flex items-center gap-1"
+                                                                        >
+                                                                            <Copy className="w-3.5 h-3.5" />
+                                                                            <span>Copy</span>
+                                                                        </button>
+                                                                    </div>
+                                                                    <pre className="bg-gray-900 p-4 overflow-x-auto">
+                                                                        <code className={`${className} text-sm font-mono text-gray-100`} {...props}>
+                                                                            {children}
+                                                                        </code>
+                                                                    </pre>
+                                                                </div>
+                                                            );
+                                                        },
+                                                        pre: ({ children }) => <>{children}</>
+                                                    }}
+                                                >
+                                                    {paragraph}
+                                                </ReactMarkdown>
+                                            </div>
+
+                                            {/* Floating Orange ? Button */}
+                                            <button
+                                                onClick={() => handleOpenFloatingQuiz(paragraph, pIdx + 100)}
+                                                className="absolute right-0 top-0 w-9 h-9 bg-[#ff9064] hover:bg-[#ff7d4d] text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-105"
+                                                title="Check your understanding"
+                                            >
+                                                <span className="font-bold text-base">?</span>
+                                            </button>
+                                        </div>
+                                    ))}
+
+                                    {/* Image from original document if exists */}
+                                    {activeSection?.imagePrompt && activeImage && (
+                                        <div className="my-6">
+                                            <div className="relative group w-full max-w-[700px] aspect-video rounded-xl overflow-hidden bg-gray-100">
                                                 <img
                                                     src={activeImage}
                                                     alt={activeSection?.title}
-                                                    className="w-full h-auto rounded-xl"
+                                                    className="w-full h-full object-cover"
                                                 />
-                                            ) : (
-                                                <div className="w-full aspect-square bg-gradient-to-br from-[#fff0e0] to-[#ffe0c0] rounded-xl flex items-center justify-center">
-                                                    <div className="text-center">
-                                                        <Loader2 className="w-8 h-8 text-[#ff9064] animate-spin mx-auto mb-2" />
-                                                        <p className="text-[12px] text-[#5f6368]">Generating...</p>
-                                                    </div>
-                                                </div>
-                                            )}
+                                                {/* Expand button */}
+                                                <button
+                                                    onClick={() => setExpandedImage({ src: activeImage, title: activeSection?.title || '' })}
+                                                    className="absolute top-3 right-3 p-2 bg-black/50 hover:bg-black/70 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-all duration-200"
+                                                    title="Expand image"
+                                                >
+                                                    <Maximize2 className="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                            <p className="text-[13px] text-[#5f6368] mt-2 italic">
+                                                Figure: AI-generated illustration for {activeSection?.title}
+                                            </p>
                                         </div>
                                     )}
                                 </div>
-                            </div>
 
-                            {/* Interactive Learning Activities Section */}
-                            <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl p-6 mb-8 border border-purple-100">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
-                                        <Brain className="w-6 h-6 text-white" />
+                                {/* Core ideas illustrated by AI - Card */}
+                                <div className="bg-[#fff8f0] rounded-2xl p-6 mb-8 border border-[#ffe0c0]">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-8 h-8 bg-[#ff9064] rounded-lg flex items-center justify-center">
+                                            <Sparkles className="w-5 h-5 text-white" />
+                                        </div>
+                                        <h3 className="text-[16px] font-medium text-[#1f1f1f]">Core ideas illustrated by AI</h3>
                                     </div>
-                                    <div>
-                                        <h3 className="text-[16px] font-bold text-[#1f1f1f]">🧠 Brain Activities</h3>
-                                        <p className="text-[13px] text-gray-500">Challenge yourself with interactive learning!</p>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    {/* Brainstorm Activity Button */}
-                                    <button
-                                        onClick={handleGenerateBrainstorm}
-                                        disabled={isLoadingBrainstorm}
-                                        className="group relative overflow-hidden bg-white hover:bg-gradient-to-br hover:from-orange-400 hover:to-pink-500 rounded-xl p-4 border border-orange-200 hover:border-transparent transition-all duration-300 text-left"
-                                    >
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="w-10 h-10 bg-orange-100 group-hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
-                                                {isLoadingBrainstorm ? (
-                                                    <Loader2 className="w-5 h-5 text-orange-500 group-hover:text-white animate-spin" />
+                                    <div className="flex gap-6">
+                                        <div className="flex-1">
+                                            <p className="text-[15px] leading-[1.7] text-[#444746]">
+                                                {immersiveContent?.summary || activeSection?.content.slice(0, 300) + '...'}
+                                            </p>
+                                        </div>
+                                        {activeSection?.imagePrompt && (
+                                            <div className="w-[280px] flex-shrink-0">
+                                                {activeImage ? (
+                                                    <img
+                                                        src={activeImage}
+                                                        alt={activeSection?.title}
+                                                        className="w-full h-auto rounded-xl"
+                                                    />
                                                 ) : (
-                                                    <Lightbulb className="w-5 h-5 text-orange-500 group-hover:text-white" />
-                                                )}
-                                            </div>
-                                            <div>
-                                                <h4 className="font-semibold text-gray-800 group-hover:text-white transition-colors">Brainstorm Challenge</h4>
-                                                <p className="text-xs text-gray-500 group-hover:text-white/80 transition-colors">Think creatively!</p>
-                                            </div>
-                                        </div>
-                                        <p className="text-sm text-gray-600 group-hover:text-white/90 transition-colors">
-                                            Get a real-world scenario and brainstorm solutions using what you've learned.
-                                        </p>
-                                    </button>
-
-                                    {/* What-If Activity Button */}
-                                    <button
-                                        onClick={handleGenerateWhatIf}
-                                        disabled={isLoadingWhatIf}
-                                        className="group relative overflow-hidden bg-white hover:bg-gradient-to-br hover:from-cyan-400 hover:to-blue-500 rounded-xl p-4 border border-cyan-200 hover:border-transparent transition-all duration-300 text-left"
-                                    >
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="w-10 h-10 bg-cyan-100 group-hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
-                                                {isLoadingWhatIf ? (
-                                                    <Loader2 className="w-5 h-5 text-cyan-500 group-hover:text-white animate-spin" />
-                                                ) : (
-                                                    <span className="text-xl">🤔</span>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <h4 className="font-semibold text-gray-800 group-hover:text-white transition-colors">What If...?</h4>
-                                                <p className="text-xs text-gray-500 group-hover:text-white/80 transition-colors">Explore possibilities!</p>
-                                            </div>
-                                        </div>
-                                        <p className="text-sm text-gray-600 group-hover:text-white/90 transition-colors">
-                                            Explore thought-provoking "what if" scenarios to deepen understanding.
-                                        </p>
-                                    </button>
-                                </div>
-
-                                {/* Tips for learning */}
-                                <div className="mt-4 flex items-center gap-2 p-3 bg-white/50 rounded-lg border border-purple-100">
-                                    <Sparkles className="w-4 h-4 text-purple-500 flex-shrink-0" />
-                                    <p className="text-xs text-purple-700">
-                                        <span className="font-semibold">Pro tip:</span> Click on any <span className="font-bold underline decoration-dotted">bold term</span> in the text above for an interactive deep-dive with quizzes, brain teasers, and fun facts!
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Quiz Section at Bottom - Google Style */}
-                            {quiz.length > 0 && (
-                                <div className="bg-white rounded-2xl border border-[#e8eaed] overflow-hidden mb-8">
-                                    {/* Quiz Header */}
-                                    <div className="flex items-center justify-between px-6 py-4 border-b border-[#e8eaed]">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-[#ff9064] rounded-lg flex items-center justify-center">
-                                                <HelpCircle className="w-5 h-5 text-white" />
-                                            </div>
-                                            <span className="text-[16px] font-medium text-[#1f1f1f]">Take a quiz to check your understanding</span>
-                                        </div>
-                                        <span className="text-[14px] text-[#5f6368]">
-                                            {currentQuestionIndex + 1} / {quiz.length}
-                                        </span>
-                                    </div>
-
-                                    {/* Progress Bar */}
-                                    <div className="h-1 bg-[#f1f3f4]">
-                                        <div
-                                            className="h-full bg-[#ff9064] transition-all duration-300"
-                                            style={{ width: `${((currentQuestionIndex + 1) / quiz.length) * 100}%` }}
-                                        />
-                                    </div>
-
-                                    {/* Question */}
-                                    <div className="p-6">
-                                        <p className="text-[16px] text-[#1f1f1f] mb-5">
-                                            <span className="font-medium">Question {currentQuestionIndex + 1}:</span> {quiz[currentQuestionIndex]?.question}
-                                        </p>
-
-                                        {/* Options */}
-                                        <div className="space-y-2">
-                                            {quiz[currentQuestionIndex]?.options.map((option, idx) => {
-                                                const isSelected = quizAnswers[currentQuestionIndex] === idx;
-                                                const showFeedback = showQuizFeedback[currentQuestionIndex];
-                                                const isCorrect = idx === quiz[currentQuestionIndex]?.correctAnswerIndex;
-
-                                                let bgColor = 'bg-white hover:bg-[#f8f9fa]';
-                                                let borderColor = 'border-[#dadce0]';
-                                                let textColor = 'text-[#1f1f1f]';
-
-                                                if (showFeedback && isCorrect) {
-                                                    bgColor = 'bg-[#ceead6]';
-                                                    borderColor = 'border-[#34a853]';
-                                                    textColor = 'text-[#137333]';
-                                                } else if (showFeedback && isSelected && !isCorrect) {
-                                                    bgColor = 'bg-[#fad2cf]';
-                                                    borderColor = 'border-[#ea4335]';
-                                                    textColor = 'text-[#c5221f]';
-                                                } else if (isSelected) {
-                                                    borderColor = 'border-[#1a73e8]';
-                                                    bgColor = 'bg-[#e8f0fe]';
-                                                }
-
-                                                return (
-                                                    <button
-                                                        key={idx}
-                                                        onClick={() => {
-                                                            if (!showQuizFeedback[currentQuestionIndex]) {
-                                                                setQuizAnswers(prev => ({ ...prev, [currentQuestionIndex]: idx }));
-                                                                setShowQuizFeedback(prev => ({ ...prev, [currentQuestionIndex]: true }));
-                                                            }
-                                                        }}
-                                                        disabled={showQuizFeedback[currentQuestionIndex]}
-                                                        className={`w-full text-left px-4 py-3 rounded-xl border-2 ${borderColor} ${bgColor} ${textColor} transition-all duration-150 font-medium text-[15px]`}
-                                                    >
-                                                        <span className="font-semibold mr-2">{String.fromCharCode(65 + idx)}.</span>
-                                                        {option}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {/* Feedback */}
-                                        {showQuizFeedback[currentQuestionIndex] && (
-                                            <div className="mt-4 p-4 bg-[#f8f9fa] rounded-xl">
-                                                <p className={`text-[14px] font-medium ${quizAnswers[currentQuestionIndex] === quiz[currentQuestionIndex]?.correctAnswerIndex ? 'text-[#137333]' : 'text-[#c5221f]'}`}>
-                                                    {quizAnswers[currentQuestionIndex] === quiz[currentQuestionIndex]?.correctAnswerIndex
-                                                        ? '✓ Correct!'
-                                                        : '✗ Not quite.'}
-                                                </p>
-                                                <p className="text-[13px] text-[#5f6368] mt-1">
-                                                    {quiz[currentQuestionIndex]?.explanation}
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Quiz Footer */}
-                                    <div className="flex items-center justify-center gap-4 px-6 py-4 border-t border-[#e8eaed] bg-[#fafafa]">
-                                        <button
-                                            onClick={() => {
-                                                // Finish quiz - could show summary
-                                                setCurrentQuestionIndex(0);
-                                                setQuizAnswers({});
-                                                setShowQuizFeedback({});
-                                            }}
-                                            className="px-4 py-2 text-[14px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors"
-                                        >
-                                            Finish quiz
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setQuizAnswers({});
-                                                setShowQuizFeedback({});
-                                                setCurrentQuestionIndex(0);
-                                            }}
-                                            className="px-4 py-2 text-[14px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors"
-                                        >
-                                            Restart quiz
-                                        </button>
-                                        {showQuizFeedback[currentQuestionIndex] && currentQuestionIndex < quiz.length - 1 && (
-                                            <button
-                                                onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
-                                                className="px-4 py-2 text-[14px] text-white bg-[#1a73e8] hover:bg-[#1557b0] rounded-lg transition-colors"
-                                            >
-                                                Next question
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Enhanced Term Definition Popover */}
-                            {activeDefinition && (
-                                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-white border border-[#e8eaed] rounded-2xl shadow-2xl w-[500px] max-h-[80vh] overflow-hidden animate-fade-in">
-                                    {/* Header with gradient */}
-                                    <div className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-4">
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                                                    <BookOpen className="w-5 h-5 text-white" />
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-bold text-white text-lg">{activeDefinition.term}</h4>
-                                                    <p className="text-white/80 text-sm">Click tabs to explore more!</p>
-                                                </div>
-                                            </div>
-                                            <button onClick={handleCloseTermPopup} className="text-white/70 hover:text-white p-1 hover:bg-white/20 rounded-lg transition-all">
-                                                <X className="w-5 h-5" />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Tab Navigation */}
-                                    <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
-                                        {[
-                                            { id: 'definition', icon: <Info className="w-4 h-4" />, label: 'Definition' },
-                                            { id: 'deepDive', icon: <Zap className="w-4 h-4" />, label: 'Deep Dive' },
-                                            { id: 'brainTeaser', icon: <Brain className="w-4 h-4" />, label: 'Brain Teaser' },
-                                            { id: 'quiz', icon: <Target className="w-4 h-4" />, label: 'Quick Quiz' },
-                                            { id: 'funFact', icon: <Sparkles className="w-4 h-4" />, label: 'Fun Fact' },
-                                        ].map((tab) => (
-                                            <button
-                                                key={tab.id}
-                                                onClick={() => setEnhancedTermTab(tab.id as any)}
-                                                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-all border-b-2 ${enhancedTermTab === tab.id
-                                                    ? 'border-blue-500 text-blue-600 bg-white'
-                                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                            >
-                                                {tab.icon}
-                                                {tab.label}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {/* Tab Content */}
-                                    <div className="p-4 overflow-y-auto max-h-[400px]">
-                                        {isLoadingEnhancedTerm && enhancedTermTab !== 'definition' ? (
-                                            <div className="flex flex-col items-center justify-center py-8">
-                                                <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
-                                                <p className="text-gray-500 text-sm">Loading enhanced content...</p>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                {/* Definition Tab */}
-                                                {enhancedTermTab === 'definition' && (
-                                                    <div className="space-y-4">
-                                                        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                                                            <p className="text-gray-700 leading-relaxed">{enhancedTermInfo?.definition || activeDefinition.definition}</p>
-                                                        </div>
-                                                        {enhancedTermInfo?.analogy && (
-                                                            <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <Lightbulb className="w-5 h-5 text-amber-500" />
-                                                                    <span className="font-semibold text-amber-700">Think of it like...</span>
-                                                                </div>
-                                                                <p className="text-gray-700">{enhancedTermInfo.analogy}</p>
-                                                            </div>
-                                                        )}
-                                                        {enhancedTermInfo?.memoryTrick && (
-                                                            <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <Brain className="w-5 h-5 text-purple-500" />
-                                                                    <span className="font-semibold text-purple-700">Memory Trick</span>
-                                                                </div>
-                                                                <p className="text-gray-700">{enhancedTermInfo.memoryTrick}</p>
-                                                            </div>
-                                                        )}
-                                                        {enhancedTermInfo?.relatedTerms && enhancedTermInfo.relatedTerms.length > 0 && (
-                                                            <div className="flex flex-wrap gap-2">
-                                                                <span className="text-sm text-gray-500">Related:</span>
-                                                                {enhancedTermInfo.relatedTerms.map((t, i) => (
-                                                                    <span key={i} className="px-2 py-1 bg-gray-100 rounded-full text-xs text-gray-600">{t}</span>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Deep Dive Tab */}
-                                                {enhancedTermTab === 'deepDive' && enhancedTermInfo && (
-                                                    <div className="space-y-4">
-                                                        <div className="prose prose-sm max-w-none">
-                                                            <p className="text-gray-700 leading-relaxed whitespace-pre-line">{enhancedTermInfo.deepDive}</p>
-                                                        </div>
-                                                        {enhancedTermInfo.realWorldExample && (
-                                                            <div className="bg-green-50 rounded-xl p-4 border border-green-100">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <Globe className="w-5 h-5 text-green-500" />
-                                                                    <span className="font-semibold text-green-700">Real World Example</span>
-                                                                </div>
-                                                                <p className="text-gray-700">{enhancedTermInfo.realWorldExample}</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Brain Teaser Tab */}
-                                                {enhancedTermTab === 'brainTeaser' && enhancedTermInfo && (
-                                                    <div className="space-y-4">
-                                                        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100">
-                                                            <div className="flex items-center gap-2 mb-3">
-                                                                <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center">
-                                                                    <Brain className="w-4 h-4 text-white" />
-                                                                </div>
-                                                                <span className="font-bold text-indigo-700">Brain Teaser Challenge</span>
-                                                            </div>
-                                                            <p className="text-gray-800 text-lg font-medium mb-4">{enhancedTermInfo.brainTeaser.question}</p>
-
-                                                            {!brainTeaserRevealed ? (
-                                                                <div className="space-y-3">
-                                                                    <button
-                                                                        onClick={() => setBrainTeaserRevealed(true)}
-                                                                        className="w-full px-4 py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                                                                    >
-                                                                        <Eye className="w-4 h-4" />
-                                                                        Reveal Answer
-                                                                    </button>
-                                                                    <div className="bg-white/60 rounded-lg p-3 border border-indigo-200">
-                                                                        <p className="text-sm text-indigo-600">
-                                                                            <span className="font-medium">💡 Hint:</span> {enhancedTermInfo.brainTeaser.hint}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="bg-white rounded-xl p-4 border-2 border-green-300 animate-fade-in">
-                                                                    <div className="flex items-center gap-2 mb-2">
-                                                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                                                        <span className="font-semibold text-green-700">Answer</span>
-                                                                    </div>
-                                                                    <p className="text-gray-700">{enhancedTermInfo.brainTeaser.answer}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Quick Quiz Tab */}
-                                                {enhancedTermTab === 'quiz' && enhancedTermInfo && (
-                                                    <div className="space-y-4">
-                                                        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                                                            <p className="font-medium text-gray-800 mb-4">{enhancedTermInfo.quickQuiz.question}</p>
-                                                            <div className="space-y-2">
-                                                                {enhancedTermInfo.quickQuiz.options.map((option, idx) => (
-                                                                    <button
-                                                                        key={idx}
-                                                                        onClick={() => setEnhancedQuizAnswer(idx)}
-                                                                        disabled={enhancedQuizAnswer !== null}
-                                                                        className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${enhancedQuizAnswer !== null
-                                                                            ? idx === enhancedTermInfo.quickQuiz.correctIndex
-                                                                                ? 'bg-green-100 border-green-400 text-green-700'
-                                                                                : enhancedQuizAnswer === idx
-                                                                                    ? 'bg-red-100 border-red-400 text-red-700'
-                                                                                    : 'bg-gray-50 border-gray-200 text-gray-500'
-                                                                            : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50'
-                                                                            }`}
-                                                                    >
-                                                                        <span className="font-bold mr-2">{String.fromCharCode(65 + idx)}.</span>
-                                                                        {option}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                            {enhancedQuizAnswer !== null && (
-                                                                <div className={`mt-4 p-3 rounded-lg ${enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? 'bg-green-100' : 'bg-amber-100'}`}>
-                                                                    <p className={`font-medium ${enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? 'text-green-700' : 'text-amber-700'}`}>
-                                                                        {enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? '🎉 Correct!' : '💡 Not quite...'}
-                                                                    </p>
-                                                                    <p className="text-gray-600 text-sm mt-1">{enhancedTermInfo.quickQuiz.explanation}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Fun Fact Tab */}
-                                                {enhancedTermTab === 'funFact' && enhancedTermInfo && (
-                                                    <div className="space-y-4">
-                                                        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-5 border border-amber-200">
-                                                            <div className="flex items-center gap-2 mb-3">
-                                                                <div className="w-10 h-10 bg-amber-400 rounded-full flex items-center justify-center text-xl">
-                                                                    🌟
-                                                                </div>
-                                                                <span className="font-bold text-amber-700">Did You Know?</span>
-                                                            </div>
-                                                            <p className="text-gray-800 text-lg leading-relaxed">{enhancedTermInfo.funFact}</p>
-                                                        </div>
+                                                    <div className="w-full aspect-square bg-gradient-to-br from-[#fff0e0] to-[#ffe0c0] rounded-xl flex items-center justify-center">
                                                         <div className="text-center">
-                                                            <p className="text-gray-400 text-sm">Share this fun fact with your friends! 📚</p>
+                                                            <Loader2 className="w-8 h-8 text-[#ff9064] animate-spin mx-auto mb-2" />
+                                                            <p className="text-[12px] text-[#5f6368]">Generating...</p>
                                                         </div>
                                                     </div>
                                                 )}
-                                            </>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
-                            )}
 
-                            {/* Brainstorm Activity Panel */}
-                            {brainstormActivity && (
-                                <div className="fixed bottom-4 right-4 z-50 w-[420px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-slide-up">
-                                    <div className="bg-gradient-to-r from-orange-400 to-pink-500 p-4">
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                                                    <Lightbulb className="w-6 h-6 text-white" />
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-bold text-white">{brainstormActivity.title}</h4>
-                                                    <p className="text-white/80 text-sm">Brainstorming Challenge</p>
-                                                </div>
-                                            </div>
-                                            <button onClick={() => setBrainstormActivity(null)} className="text-white/70 hover:text-white">
-                                                <X className="w-5 h-5" />
-                                            </button>
+                                {/* Interactive Learning Activities Section */}
+                                <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl p-6 mb-8 border border-purple-100">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                                            <Brain className="w-6 h-6 text-white" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-[16px] font-bold text-[#1f1f1f]">🧠 Brain Activities</h3>
+                                            <p className="text-[13px] text-gray-500">Challenge yourself with interactive learning!</p>
                                         </div>
                                     </div>
-                                    <div className="p-4 max-h-[400px] overflow-y-auto space-y-4">
-                                        <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
-                                            <p className="text-gray-700 font-medium">📌 Scenario:</p>
-                                            <p className="text-gray-600 mt-1">{brainstormActivity.scenario}</p>
-                                        </div>
-                                        <div className="bg-pink-50 rounded-xl p-4 border border-pink-100">
-                                            <p className="text-gray-700 font-medium">🎯 Your Challenge:</p>
-                                            <p className="text-gray-800 mt-1 font-semibold">{brainstormActivity.challenge}</p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {/* Brainstorm Activity Button */}
+                                        <button
+                                            onClick={handleGenerateBrainstorm}
+                                            disabled={isLoadingBrainstorm}
+                                            className="group relative overflow-hidden bg-white hover:bg-gradient-to-br hover:from-orange-400 hover:to-pink-500 rounded-xl p-4 border border-orange-200 hover:border-transparent transition-all duration-300 text-left"
+                                        >
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className="w-10 h-10 bg-orange-100 group-hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                                                    {isLoadingBrainstorm ? (
+                                                        <Loader2 className="w-5 h-5 text-orange-500 group-hover:text-white animate-spin" />
+                                                    ) : (
+                                                        <Lightbulb className="w-5 h-5 text-orange-500 group-hover:text-white" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-semibold text-gray-800 group-hover:text-white transition-colors">Brainstorm Challenge</h4>
+                                                    <p className="text-xs text-gray-500 group-hover:text-white/80 transition-colors">Think creatively!</p>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-gray-600 group-hover:text-white/90 transition-colors">
+                                                Get a real-world scenario and brainstorm solutions using what you've learned.
+                                            </p>
+                                        </button>
+
+                                        {/* What-If Activity Button */}
+                                        <button
+                                            onClick={handleGenerateWhatIf}
+                                            disabled={isLoadingWhatIf}
+                                            className="group relative overflow-hidden bg-white hover:bg-gradient-to-br hover:from-cyan-400 hover:to-blue-500 rounded-xl p-4 border border-cyan-200 hover:border-transparent transition-all duration-300 text-left"
+                                        >
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className="w-10 h-10 bg-cyan-100 group-hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                                                    {isLoadingWhatIf ? (
+                                                        <Loader2 className="w-5 h-5 text-cyan-500 group-hover:text-white animate-spin" />
+                                                    ) : (
+                                                        <span className="text-xl">🤔</span>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-semibold text-gray-800 group-hover:text-white transition-colors">What If...?</h4>
+                                                    <p className="text-xs text-gray-500 group-hover:text-white/80 transition-colors">Explore possibilities!</p>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-gray-600 group-hover:text-white/90 transition-colors">
+                                                Explore thought-provoking "what if" scenarios to deepen understanding.
+                                            </p>
+                                        </button>
+                                    </div>
+
+                                    {/* Tips for learning */}
+                                    <div className="mt-4 flex items-center gap-2 p-3 bg-white/50 rounded-lg border border-purple-100">
+                                        <Sparkles className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                                        <p className="text-xs text-purple-700">
+                                            <span className="font-semibold">Pro tip:</span> Click on any <span className="font-bold underline decoration-dotted">bold term</span> in the text above for an interactive deep-dive with quizzes, brain teasers, and fun facts!
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Quiz Section at Bottom - Google Style */}
+                                {quiz.length > 0 && (
+                                    <div className="bg-white rounded-2xl border border-[#e8eaed] overflow-hidden mb-8">
+                                        {/* Quiz Header */}
+                                        <div className="flex items-center justify-between px-6 py-4 border-b border-[#e8eaed]">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 bg-[#ff9064] rounded-lg flex items-center justify-center">
+                                                    <HelpCircle className="w-5 h-5 text-white" />
+                                                </div>
+                                                <span className="text-[16px] font-medium text-[#1f1f1f]">Take a quiz to check your understanding</span>
+                                            </div>
+                                            <span className="text-[14px] text-[#5f6368]">
+                                                {currentQuestionIndex + 1} / {quiz.length}
+                                            </span>
                                         </div>
 
-                                        {/* Hints */}
-                                        <div className="space-y-2">
-                                            <p className="font-medium text-gray-700">💡 Need hints?</p>
-                                            {brainstormActivity.hints.map((hint, idx) => (
+                                        {/* Progress Bar */}
+                                        <div className="h-1 bg-[#f1f3f4]">
+                                            <div
+                                                className="h-full bg-[#ff9064] transition-all duration-300"
+                                                style={{ width: `${((currentQuestionIndex + 1) / quiz.length) * 100}%` }}
+                                            />
+                                        </div>
+
+                                        {/* Question */}
+                                        <div className="p-6">
+                                            <p className="text-[16px] text-[#1f1f1f] mb-5">
+                                                <span className="font-medium">Question {currentQuestionIndex + 1}:</span> {quiz[currentQuestionIndex]?.question}
+                                            </p>
+
+                                            {/* Options */}
+                                            <div className="space-y-2">
+                                                {quiz[currentQuestionIndex]?.options.map((option, idx) => {
+                                                    const isSelected = quizAnswers[currentQuestionIndex] === idx;
+                                                    const showFeedback = showQuizFeedback[currentQuestionIndex];
+                                                    const isCorrect = idx === quiz[currentQuestionIndex]?.correctAnswerIndex;
+
+                                                    let bgColor = 'bg-white hover:bg-[#f8f9fa]';
+                                                    let borderColor = 'border-[#dadce0]';
+                                                    let textColor = 'text-[#1f1f1f]';
+
+                                                    if (showFeedback && isCorrect) {
+                                                        bgColor = 'bg-[#ceead6]';
+                                                        borderColor = 'border-[#34a853]';
+                                                        textColor = 'text-[#137333]';
+                                                    } else if (showFeedback && isSelected && !isCorrect) {
+                                                        bgColor = 'bg-[#fad2cf]';
+                                                        borderColor = 'border-[#ea4335]';
+                                                        textColor = 'text-[#c5221f]';
+                                                    } else if (isSelected) {
+                                                        borderColor = 'border-[#1a73e8]';
+                                                        bgColor = 'bg-[#e8f0fe]';
+                                                    }
+
+                                                    return (
+                                                        <button
+                                                            key={idx}
+                                                            onClick={() => {
+                                                                if (!showQuizFeedback[currentQuestionIndex]) {
+                                                                    setQuizAnswers(prev => ({ ...prev, [currentQuestionIndex]: idx }));
+                                                                    setShowQuizFeedback(prev => ({ ...prev, [currentQuestionIndex]: true }));
+                                                                }
+                                                            }}
+                                                            disabled={showQuizFeedback[currentQuestionIndex]}
+                                                            className={`w-full text-left px-4 py-3 rounded-xl border-2 ${borderColor} ${bgColor} ${textColor} transition-all duration-150 font-medium text-[15px]`}
+                                                        >
+                                                            <span className="font-semibold mr-2">{String.fromCharCode(65 + idx)}.</span>
+                                                            {option}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Feedback */}
+                                            {showQuizFeedback[currentQuestionIndex] && (
+                                                <div className="mt-4 p-4 bg-[#f8f9fa] rounded-xl">
+                                                    <p className={`text-[14px] font-medium ${quizAnswers[currentQuestionIndex] === quiz[currentQuestionIndex]?.correctAnswerIndex ? 'text-[#137333]' : 'text-[#c5221f]'}`}>
+                                                        {quizAnswers[currentQuestionIndex] === quiz[currentQuestionIndex]?.correctAnswerIndex
+                                                            ? '✓ Correct!'
+                                                            : '✗ Not quite.'}
+                                                    </p>
+                                                    <p className="text-[13px] text-[#5f6368] mt-1">
+                                                        {quiz[currentQuestionIndex]?.explanation}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Quiz Footer */}
+                                        <div className="flex items-center justify-center gap-4 px-6 py-4 border-t border-[#e8eaed] bg-[#fafafa]">
+                                            <button
+                                                onClick={() => {
+                                                    // Finish quiz - could show summary
+                                                    setCurrentQuestionIndex(0);
+                                                    setQuizAnswers({});
+                                                    setShowQuizFeedback({});
+                                                }}
+                                                className="px-4 py-2 text-[14px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors"
+                                            >
+                                                Finish quiz
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setQuizAnswers({});
+                                                    setShowQuizFeedback({});
+                                                    setCurrentQuestionIndex(0);
+                                                }}
+                                                className="px-4 py-2 text-[14px] text-[#5f6368] hover:bg-[#f1f3f4] rounded-lg transition-colors"
+                                            >
+                                                Restart quiz
+                                            </button>
+                                            {showQuizFeedback[currentQuestionIndex] && currentQuestionIndex < quiz.length - 1 && (
                                                 <button
-                                                    key={idx}
-                                                    onClick={() => {
-                                                        const newHints = [...showBrainstormHints];
-                                                        newHints[idx] = true;
-                                                        setShowBrainstormHints(newHints);
-                                                    }}
-                                                    className={`w-full text-left p-3 rounded-lg border transition-all ${showBrainstormHints[idx]
-                                                        ? 'bg-amber-50 border-amber-200'
-                                                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                                    onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
+                                                    className="px-4 py-2 text-[14px] text-white bg-[#1a73e8] hover:bg-[#1557b0] rounded-lg transition-colors"
+                                                >
+                                                    Next question
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Enhanced Term Definition Popover */}
+                                {activeDefinition && (
+                                    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-white border border-[#e8eaed] rounded-2xl shadow-2xl w-[500px] max-h-[80vh] overflow-hidden animate-fade-in">
+                                        {/* Header with gradient */}
+                                        <div className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-4">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                                                        <BookOpen className="w-5 h-5 text-white" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-white text-lg">{activeDefinition.term}</h4>
+                                                        <p className="text-white/80 text-sm">Click tabs to explore more!</p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={handleCloseTermPopup} className="text-white/70 hover:text-white p-1 hover:bg-white/20 rounded-lg transition-all">
+                                                    <X className="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Tab Navigation */}
+                                        <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
+                                            {[
+                                                { id: 'definition', icon: <Info className="w-4 h-4" />, label: 'Definition' },
+                                                { id: 'deepDive', icon: <Zap className="w-4 h-4" />, label: 'Deep Dive' },
+                                                { id: 'brainTeaser', icon: <Brain className="w-4 h-4" />, label: 'Brain Teaser' },
+                                                { id: 'quiz', icon: <Target className="w-4 h-4" />, label: 'Quick Quiz' },
+                                                { id: 'funFact', icon: <Sparkles className="w-4 h-4" />, label: 'Fun Fact' },
+                                            ].map((tab) => (
+                                                <button
+                                                    key={tab.id}
+                                                    onClick={() => setEnhancedTermTab(tab.id as any)}
+                                                    className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-all border-b-2 ${enhancedTermTab === tab.id
+                                                        ? 'border-blue-500 text-blue-600 bg-white'
+                                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                                                         }`}
                                                 >
-                                                    {showBrainstormHints[idx] ? (
-                                                        <span className="text-amber-700">{hint}</span>
-                                                    ) : (
-                                                        <span className="text-gray-500 flex items-center gap-2">
-                                                            <EyeOff className="w-4 h-4" />
-                                                            Click to reveal Hint {idx + 1}
-                                                        </span>
-                                                    )}
+                                                    {tab.icon}
+                                                    {tab.label}
                                                 </button>
                                             ))}
                                         </div>
 
-                                        {/* Notes Area */}
-                                        <div>
-                                            <p className="font-medium text-gray-700 mb-2">📝 Your Ideas:</p>
-                                            <textarea
-                                                value={userBrainstormNotes}
-                                                onChange={(e) => setUserBrainstormNotes(e.target.value)}
-                                                placeholder="Write your brainstorm ideas here..."
-                                                className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-[100px] resize-y"
-                                            />
-                                        </div>
-
-                                        {/* Reveal Solutions */}
-                                        <div className="space-y-2">
-                                            <button
-                                                onClick={() => setShowBrainstormApproaches(!showBrainstormApproaches)}
-                                                className="w-full px-4 py-2 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg font-medium hover:opacity-90 transition-all"
-                                            >
-                                                {showBrainstormApproaches ? 'Hide' : 'Show'} Possible Approaches
-                                            </button>
-                                            {showBrainstormApproaches && (
-                                                <div className="bg-gradient-to-br from-orange-50 to-pink-50 rounded-xl p-4 border border-orange-200 space-y-2 animate-fade-in">
-                                                    {brainstormActivity.possibleApproaches.map((approach, idx) => (
-                                                        <div key={idx} className="flex items-start gap-2">
-                                                            <span className="w-6 h-6 bg-orange-400 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">{idx + 1}</span>
-                                                            <p className="text-gray-700">{approach}</p>
+                                        {/* Tab Content */}
+                                        <div className="p-4 overflow-y-auto max-h-[400px]">
+                                            {isLoadingEnhancedTerm && enhancedTermTab !== 'definition' ? (
+                                                <div className="flex flex-col items-center justify-center py-8">
+                                                    <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                                                    <p className="text-gray-500 text-sm">Loading enhanced content...</p>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {/* Definition Tab */}
+                                                    {enhancedTermTab === 'definition' && (
+                                                        <div className="space-y-4">
+                                                            <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                                                                <p className="text-gray-700 leading-relaxed">{enhancedTermInfo?.definition || activeDefinition.definition}</p>
+                                                            </div>
+                                                            {enhancedTermInfo?.analogy && (
+                                                                <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <Lightbulb className="w-5 h-5 text-amber-500" />
+                                                                        <span className="font-semibold text-amber-700">Think of it like...</span>
+                                                                    </div>
+                                                                    <p className="text-gray-700">{enhancedTermInfo.analogy}</p>
+                                                                </div>
+                                                            )}
+                                                            {enhancedTermInfo?.memoryTrick && (
+                                                                <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <Brain className="w-5 h-5 text-purple-500" />
+                                                                        <span className="font-semibold text-purple-700">Memory Trick</span>
+                                                                    </div>
+                                                                    <p className="text-gray-700">{enhancedTermInfo.memoryTrick}</p>
+                                                                </div>
+                                                            )}
+                                                            {enhancedTermInfo?.relatedTerms && enhancedTermInfo.relatedTerms.length > 0 && (
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    <span className="text-sm text-gray-500">Related:</span>
+                                                                    {enhancedTermInfo.relatedTerms.map((t, i) => (
+                                                                        <span key={i} className="px-2 py-1 bg-gray-100 rounded-full text-xs text-gray-600">{t}</span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            <button
-                                                onClick={() => setShowBrainstormInsight(!showBrainstormInsight)}
-                                                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 transition-all"
-                                            >
-                                                {showBrainstormInsight ? 'Hide' : 'Show'} Expert Insight
-                                            </button>
-                                            {showBrainstormInsight && (
-                                                <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 animate-fade-in">
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <Award className="w-5 h-5 text-purple-500" />
-                                                        <span className="font-semibold text-purple-700">Expert Insight</span>
-                                                    </div>
-                                                    <p className="text-gray-700">{brainstormActivity.expertInsight}</p>
-                                                </div>
+                                                    )}
+
+                                                    {/* Deep Dive Tab */}
+                                                    {enhancedTermTab === 'deepDive' && enhancedTermInfo && (
+                                                        <div className="space-y-4">
+                                                            <div className="prose prose-sm max-w-none">
+                                                                <p className="text-gray-700 leading-relaxed whitespace-pre-line">{enhancedTermInfo.deepDive}</p>
+                                                            </div>
+                                                            {enhancedTermInfo.realWorldExample && (
+                                                                <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <Globe className="w-5 h-5 text-green-500" />
+                                                                        <span className="font-semibold text-green-700">Real World Example</span>
+                                                                    </div>
+                                                                    <p className="text-gray-700">{enhancedTermInfo.realWorldExample}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Brain Teaser Tab */}
+                                                    {enhancedTermTab === 'brainTeaser' && enhancedTermInfo && (
+                                                        <div className="space-y-4">
+                                                            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100">
+                                                                <div className="flex items-center gap-2 mb-3">
+                                                                    <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center">
+                                                                        <Brain className="w-4 h-4 text-white" />
+                                                                    </div>
+                                                                    <span className="font-bold text-indigo-700">Brain Teaser Challenge</span>
+                                                                </div>
+                                                                <p className="text-gray-800 text-lg font-medium mb-4">{enhancedTermInfo.brainTeaser.question}</p>
+
+                                                                {!brainTeaserRevealed ? (
+                                                                    <div className="space-y-3">
+                                                                        <button
+                                                                            onClick={() => setBrainTeaserRevealed(true)}
+                                                                            className="w-full px-4 py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+                                                                        >
+                                                                            <Eye className="w-4 h-4" />
+                                                                            Reveal Answer
+                                                                        </button>
+                                                                        <div className="bg-white/60 rounded-lg p-3 border border-indigo-200">
+                                                                            <p className="text-sm text-indigo-600">
+                                                                                <span className="font-medium">💡 Hint:</span> {enhancedTermInfo.brainTeaser.hint}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="bg-white rounded-xl p-4 border-2 border-green-300 animate-fade-in">
+                                                                        <div className="flex items-center gap-2 mb-2">
+                                                                            <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                                                            <span className="font-semibold text-green-700">Answer</span>
+                                                                        </div>
+                                                                        <p className="text-gray-700">{enhancedTermInfo.brainTeaser.answer}</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Quick Quiz Tab */}
+                                                    {enhancedTermTab === 'quiz' && enhancedTermInfo && (
+                                                        <div className="space-y-4">
+                                                            <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                                                                <p className="font-medium text-gray-800 mb-4">{enhancedTermInfo.quickQuiz.question}</p>
+                                                                <div className="space-y-2">
+                                                                    {enhancedTermInfo.quickQuiz.options.map((option, idx) => (
+                                                                        <button
+                                                                            key={idx}
+                                                                            onClick={() => setEnhancedQuizAnswer(idx)}
+                                                                            disabled={enhancedQuizAnswer !== null}
+                                                                            className={`w-full text-left p-3 rounded-lg border-2 transition-all font-medium ${enhancedQuizAnswer !== null
+                                                                                ? idx === enhancedTermInfo.quickQuiz.correctIndex
+                                                                                    ? 'bg-green-100 border-green-400 text-green-700'
+                                                                                    : enhancedQuizAnswer === idx
+                                                                                        ? 'bg-red-100 border-red-400 text-red-700'
+                                                                                        : 'bg-gray-50 border-gray-200 text-gray-500'
+                                                                                : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50'
+                                                                                }`}
+                                                                        >
+                                                                            <span className="font-bold mr-2">{String.fromCharCode(65 + idx)}.</span>
+                                                                            {option}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                                {enhancedQuizAnswer !== null && (
+                                                                    <div className={`mt-4 p-3 rounded-lg ${enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? 'bg-green-100' : 'bg-amber-100'}`}>
+                                                                        <p className={`font-medium ${enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? 'text-green-700' : 'text-amber-700'}`}>
+                                                                            {enhancedQuizAnswer === enhancedTermInfo.quickQuiz.correctIndex ? '🎉 Correct!' : '💡 Not quite...'}
+                                                                        </p>
+                                                                        <p className="text-gray-600 text-sm mt-1">{enhancedTermInfo.quickQuiz.explanation}</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Fun Fact Tab */}
+                                                    {enhancedTermTab === 'funFact' && enhancedTermInfo && (
+                                                        <div className="space-y-4">
+                                                            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-5 border border-amber-200">
+                                                                <div className="flex items-center gap-2 mb-3">
+                                                                    <div className="w-10 h-10 bg-amber-400 rounded-full flex items-center justify-center text-xl">
+                                                                        🌟
+                                                                    </div>
+                                                                    <span className="font-bold text-amber-700">Did You Know?</span>
+                                                                </div>
+                                                                <p className="text-gray-800 text-lg leading-relaxed">{enhancedTermInfo.funFact}</p>
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <p className="text-gray-400 text-sm">Share this fun fact with your friends! 📚</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* What-If Activity Panel */}
-                            {whatIfActivity && (
-                                <div className="fixed bottom-4 left-4 z-50 w-[400px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-slide-up">
-                                    <div className="bg-gradient-to-r from-cyan-400 to-blue-500 p-4">
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-xl">
-                                                    🤔
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-bold text-white">{whatIfActivity.title}</h4>
-                                                    <p className="text-white/80 text-sm">Explore the Possibilities</p>
-                                                </div>
-                                            </div>
-                                            <button onClick={() => setWhatIfActivity(null)} className="text-white/70 hover:text-white">
-                                                <X className="w-5 h-5" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="p-4 max-h-[400px] overflow-y-auto space-y-4">
-                                        <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-100">
-                                            <p className="text-gray-700">{whatIfActivity.baseScenario}</p>
-                                        </div>
-
-                                        {whatIfActivity.whatIfQuestions.map((q, idx) => (
-                                            <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
-                                                <button
-                                                    onClick={() => setRevealedWhatIfs(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                                                    className="w-full p-4 text-left bg-gradient-to-r from-cyan-50 to-blue-50 hover:from-cyan-100 hover:to-blue-100 transition-all"
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="font-medium text-blue-700">{q.question}</span>
-                                                        <ChevronDown className={`w-5 h-5 text-blue-500 transition-transform ${revealedWhatIfs[idx] ? 'rotate-180' : ''}`} />
+                                {/* Brainstorm Activity Panel */}
+                                {brainstormActivity && (
+                                    <div className="fixed bottom-4 right-4 z-50 w-[420px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-slide-up">
+                                        <div className="bg-gradient-to-r from-orange-400 to-pink-500 p-4">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                                                        <Lightbulb className="w-6 h-6 text-white" />
                                                     </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-white">{brainstormActivity.title}</h4>
+                                                        <p className="text-white/80 text-sm">Brainstorming Challenge</p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={() => setBrainstormActivity(null)} className="text-white/70 hover:text-white">
+                                                    <X className="w-5 h-5" />
                                                 </button>
-                                                {revealedWhatIfs[idx] && (
-                                                    <div className="p-4 bg-white border-t border-gray-100 space-y-3 animate-fade-in">
-                                                        <div>
-                                                            <p className="text-sm font-medium text-gray-500 mb-2">Think about:</p>
-                                                            <ul className="space-y-1">
-                                                                {q.thinkingPoints.map((point, pIdx) => (
-                                                                    <li key={pIdx} className="flex items-start gap-2 text-gray-600">
-                                                                        <span className="text-blue-400">•</span>
-                                                                        {point}
-                                                                    </li>
-                                                                ))}
-                                                            </ul>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 max-h-[400px] overflow-y-auto space-y-4">
+                                            <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
+                                                <p className="text-gray-700 font-medium">📌 Scenario:</p>
+                                                <p className="text-gray-600 mt-1">{brainstormActivity.scenario}</p>
+                                            </div>
+                                            <div className="bg-pink-50 rounded-xl p-4 border border-pink-100">
+                                                <p className="text-gray-700 font-medium">🎯 Your Challenge:</p>
+                                                <p className="text-gray-800 mt-1 font-semibold">{brainstormActivity.challenge}</p>
+                                            </div>
+
+                                            {/* Hints */}
+                                            <div className="space-y-2">
+                                                <p className="font-medium text-gray-700">💡 Need hints?</p>
+                                                {brainstormActivity.hints.map((hint, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => {
+                                                            const newHints = [...showBrainstormHints];
+                                                            newHints[idx] = true;
+                                                            setShowBrainstormHints(newHints);
+                                                        }}
+                                                        className={`w-full text-left p-3 rounded-lg border transition-all ${showBrainstormHints[idx]
+                                                            ? 'bg-amber-50 border-amber-200'
+                                                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                                            }`}
+                                                    >
+                                                        {showBrainstormHints[idx] ? (
+                                                            <span className="text-amber-700">{hint}</span>
+                                                        ) : (
+                                                            <span className="text-gray-500 flex items-center gap-2">
+                                                                <EyeOff className="w-4 h-4" />
+                                                                Click to reveal Hint {idx + 1}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            {/* Notes Area */}
+                                            <div>
+                                                <p className="font-medium text-gray-700 mb-2">📝 Your Ideas:</p>
+                                                <textarea
+                                                    value={userBrainstormNotes}
+                                                    onChange={(e) => setUserBrainstormNotes(e.target.value)}
+                                                    placeholder="Write your brainstorm ideas here..."
+                                                    className="w-full p-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-[100px] resize-y"
+                                                />
+                                            </div>
+
+                                            {/* Reveal Solutions */}
+                                            <div className="space-y-2">
+                                                <button
+                                                    onClick={() => setShowBrainstormApproaches(!showBrainstormApproaches)}
+                                                    className="w-full px-4 py-2 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg font-medium hover:opacity-90 transition-all"
+                                                >
+                                                    {showBrainstormApproaches ? 'Hide' : 'Show'} Possible Approaches
+                                                </button>
+                                                {showBrainstormApproaches && (
+                                                    <div className="bg-gradient-to-br from-orange-50 to-pink-50 rounded-xl p-4 border border-orange-200 space-y-2 animate-fade-in">
+                                                        {brainstormActivity.possibleApproaches.map((approach, idx) => (
+                                                            <div key={idx} className="flex items-start gap-2">
+                                                                <span className="w-6 h-6 bg-orange-400 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">{idx + 1}</span>
+                                                                <p className="text-gray-700">{approach}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <button
+                                                    onClick={() => setShowBrainstormInsight(!showBrainstormInsight)}
+                                                    className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 transition-all"
+                                                >
+                                                    {showBrainstormInsight ? 'Hide' : 'Show'} Expert Insight
+                                                </button>
+                                                {showBrainstormInsight && (
+                                                    <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 animate-fade-in">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <Award className="w-5 h-5 text-purple-500" />
+                                                            <span className="font-semibold text-purple-700">Expert Insight</span>
                                                         </div>
-                                                        <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                                                            <p className="text-sm font-medium text-blue-700 mb-1">💡 Key Insight:</p>
-                                                            <p className="text-gray-700 text-sm">{q.insight}</p>
-                                                        </div>
+                                                        <p className="text-gray-700">{brainstormActivity.expertInsight}</p>
                                                     </div>
                                                 )}
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                );
-
-
-            case 'audio-lesson':
-                return (
-                    <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900" style={{ fontFamily: '"Google Sans", sans-serif' }}>
-                        {/* Left Sidebar - mimic assignment layout */}
-                        <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#171717' }}>
-                            <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
-                                <div className="space-y-3">
-                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
-                                    {renderStandaloneNotesPanel('dark')}
-                                </div>
-                                <div className="space-y-3">
-                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Actions</p>
-                                    <button
-                                        onClick={handleGeneratePodcast}
-                                        disabled={isGeneratingScript || isGeneratingAudio || (!standaloneNotes.trim() && !immersiveContent)}
-                                        className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {isGeneratingScript || isGeneratingAudio ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Sparkles className="w-4 h-4" />
-                                        )}
-                                        {isGeneratingScript || isGeneratingAudio ? 'Working...' : 'Generate Podcast'}
-                                    </button>
-                                    {audioGenerationError && (
-                                        <p className="text-xs text-rose-300">Add notes and try again.</p>
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Status</p>
-                                    <Badge
-                                        variant={
-                                            podcastAudio
-                                                ? 'success'
-                                                : isGeneratingScript || isGeneratingAudio
-                                                    ? 'warning'
-                                                    : 'outline'
-                                        }
-                                        className="w-full justify-center py-2 text-xs normal-case tracking-normal bg-white/5 text-slate-200 border-white/10"
-                                    >
-                                        {podcastAudio ? (
-                                            <>
-                                                <CheckCircle2 className="w-3 h-3" />
-                                                Audio ready.
-                                            </>
-                                        ) : isGeneratingScript ? (
-                                            <>
-                                                <Loader2 className="w-3 h-3 animate-spin" />
-                                                Generating script...
-                                            </>
-                                        ) : isGeneratingAudio ? (
-                                            <>
-                                                <Loader2 className="w-3 h-3 animate-spin" />
-                                                Rendering audio...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Info className="w-3 h-3" />
-                                                Awaiting notes.
-                                            </>
-                                        )}
-                                    </Badge>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Main Content */}
-                        <div className="flex-1 bg-[#eef2f7] flex flex-col">
-                            <div className="flex-1 flex flex-col items-center p-8 overflow-y-auto">
-                                <div className="w-full max-w-3xl space-y-6">
-                                    {/* Header Card */}
-                                    <div className="p-6 space-y-4" style={{ backgroundColor: '#1F1F1F' }}>
-                                        <div className="flex items-center gap-3 mb-4">
-                                            <div className="w-12 h-12 flex items-center justify-center">
-                                                <Volume2 className="w-6 h-6 text-slate-300" />
-                                            </div>
-                                            <div>
-                                                <h2 className="text-lg font-semibold text-slate-200">Audio Lesson Podcast</h2>
-                                                <p className="text-xs text-slate-400">
-                                                    Generate an AI-hosted podcast about this topic. Listen to a conversation between an expert and a host.
-                                                </p>
-                                            </div>
                                         </div>
-
-                                        {!podcastScript && !isGeneratingAudio && !isGeneratingScript && (
-                                            <button
-                                                onClick={handleGeneratePodcast}
-                                                disabled={isGeneratingScript || isGeneratingAudio || (!standaloneNotes.trim() && !immersiveContent)}
-                                                className="w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#2c4066]"
-                                            >
-                                                <Sparkles className="w-4 h-4" />
-                                                <span>Generate Podcast</span>
-                                            </button>
-                                        )}
-
-                                        {/* Script Generation Loading State */}
-                                        {isGeneratingScript && (
-                                            <div className="flex items-center justify-center gap-2 text-slate-300 py-2">
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                <span className="text-sm">Generating podcast script...</span>
-                                            </div>
-                                        )}
                                     </div>
+                                )}
 
-                                    {/* Audio Player */}
-                                    {podcastAudio && (
-                                        <div className="p-6 border border-white/10 sticky top-0 z-10" style={{ backgroundColor: '#1F1F1F' }}>
-                                            <div className="flex items-center gap-4">
-                                                <button
-                                                    onClick={toggleAudioPlayback}
-                                                    className="w-12 h-12 bg-[#2c4066] hover:bg-[#34507c] flex items-center justify-center text-white transition-colors flex-shrink-0"
-                                                >
-                                                    {isPlayingAudio ? (
-                                                        <div className="w-4 h-4 bg-white rounded-[2px]" />
-                                                    ) : (
-                                                        <Play className="w-6 h-6 ml-1" />
-                                                    )}
-                                                </button>
-                                                <div className="flex-1">
-                                                    {/* Waveform Canvas */}
-                                                    <div className="h-12 mb-2 bg-[#f8f9fa] rounded-lg overflow-hidden relative">
-                                                        <canvas
-                                                            ref={canvasRef}
-                                                            width={600}
-                                                            height={48}
-                                                            className="w-full h-full"
-                                                        />
+                                {/* What-If Activity Panel */}
+                                {whatIfActivity && (
+                                    <div className="fixed bottom-4 left-4 z-50 w-[400px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-slide-up">
+                                        <div className="bg-gradient-to-r from-cyan-400 to-blue-500 p-4">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-xl">
+                                                        🤔
                                                     </div>
-
-                                                    <div className="h-1.5 bg-[#e8eaed] rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-[#1e8e3e] transition-all duration-100"
-                                                            style={{ width: `${(audioProgress / audioDuration) * 100}%` }}
-                                                        />
-                                                    </div>
-                                                    <div className="flex justify-between mt-1.5 text-[12px] text-[#5f6368] font-medium">
-                                                        <span>{formatTime(audioProgress)}</span>
-                                                        <span>{formatTime(audioDuration)}</span>
+                                                    <div>
+                                                        <h4 className="font-bold text-white">{whatIfActivity.title}</h4>
+                                                        <p className="text-white/80 text-sm">Explore the Possibilities</p>
                                                     </div>
                                                 </div>
+                                                <button onClick={() => setWhatIfActivity(null)} className="text-white/70 hover:text-white">
+                                                    <X className="w-5 h-5" />
+                                                </button>
                                             </div>
                                         </div>
-                                    )}
-
-                                    {/* Loading State for Audio */}
-                                    {isGeneratingAudio && (
-                                        <div className="p-6 text-center" style={{ backgroundColor: '#1F1F1F' }}>
-                                            <Loader2 className="w-8 h-8 animate-spin text-slate-300 mx-auto mb-3" />
-                                            <p className="text-slate-200 font-medium">Generating audio...</p>
-                                            <p className="text-[13px] text-slate-400">This may take a minute</p>
-                                        </div>
-                                    )}
-
-                                    {/* Error State for Audio */}
-                                    {audioGenerationError && (
-                                        <div className="p-6 text-center border border-red-500/30" style={{ backgroundColor: '#1F1F1F' }}>
-                                            <div className="w-12 h-12 mx-auto mb-3 bg-red-900/30 rounded-full flex items-center justify-center">
-                                                <Volume2 className="w-6 h-6 text-red-400" />
+                                        <div className="p-4 max-h-[400px] overflow-y-auto space-y-4">
+                                            <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-100">
+                                                <p className="text-gray-700">{whatIfActivity.baseScenario}</p>
                                             </div>
-                                            <p className="text-red-300 font-medium mb-1">Failed to generate audio</p>
-                                            <p className="text-[13px] text-red-400 mb-4">Something went wrong while creating the podcast audio.</p>
-                                            <button
-                                                onClick={handleGeneratePodcast}
-                                                disabled={isGeneratingScript || isGeneratingAudio}
-                                                className="px-5 py-2 bg-[#2c4066] border border-red-500/30 hover:bg-[#34507c] text-white rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
-                                            >
-                                                Try Again
-                                            </button>
-                                        </div>
-                                    )}
 
-                                    {/* Script Display */}
-                                    {podcastScript && (
-                                        <div className="p-6 space-y-6" style={{ backgroundColor: '#1F1F1F' }}>
-                                            <h3 className="text-[18px] font-medium text-slate-200 border-b border-slate-700 pb-4">Transcript</h3>
-                                            <div className="space-y-4">
-                                                {podcastScript.split('\n').map((line, idx) => {
-                                                    const isHost = line.startsWith('Host:');
-                                                    const isExpert = line.startsWith('Expert:');
-
-                                                    if (!isHost && !isExpert) return null;
-
-                                                    const text = line.replace(/^(Host|Expert):/, '').trim();
-
-                                                    return (
-                                                        <div key={idx} className={`flex gap-4 ${isHost ? 'flex-row' : 'flex-row-reverse'}`}>
-                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isHost ? 'bg-[#e6f4ea] text-[#1e8e3e]' : 'bg-[#e8f0fe] text-[#1967d2]'}`}>
-                                                                {isHost ? 'H' : 'E'}
+                                            {whatIfActivity.whatIfQuestions.map((q, idx) => (
+                                                <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                                                    <button
+                                                        onClick={() => setRevealedWhatIfs(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                                        className="w-full p-4 text-left bg-gradient-to-r from-cyan-50 to-blue-50 hover:from-cyan-100 hover:to-blue-100 transition-all"
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-medium text-blue-700">{q.question}</span>
+                                                            <ChevronDown className={`w-5 h-5 text-blue-500 transition-transform ${revealedWhatIfs[idx] ? 'rotate-180' : ''}`} />
+                                                        </div>
+                                                    </button>
+                                                    {revealedWhatIfs[idx] && (
+                                                        <div className="p-4 bg-white border-t border-gray-100 space-y-3 animate-fade-in">
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500 mb-2">Think about:</p>
+                                                                <ul className="space-y-1">
+                                                                    {q.thinkingPoints.map((point, pIdx) => (
+                                                                        <li key={pIdx} className="flex items-start gap-2 text-gray-600">
+                                                                            <span className="text-blue-400">•</span>
+                                                                            {point}
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
                                                             </div>
-                                                            <div className={`flex-1 p-4 rounded-2xl ${isHost ? 'bg-[#f8f9fa] rounded-tl-none' : 'bg-[#f8f9fa] rounded-tr-none'}`}>
-                                                                <p className="text-[12px] font-medium text-[#5f6368] mb-1">{isHost ? 'Host' : 'Expert'}</p>
-                                                                <p className="text-[15px] text-[#1f1f1f] leading-relaxed">{text}</p>
+                                                            <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                                                                <p className="text-sm font-medium text-blue-700 mb-1">💡 Key Insight:</p>
+                                                                <p className="text-gray-700 text-sm">{q.insight}</p>
                                                             </div>
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
+                                                    )}
+                                                </div>
+                                            ))}
                                         </div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                    </div>
+                    </>
                 );
 
 
-
-
-
-
-
-            case 'slides-narration':
+            case 'audio-video': {
                 const selectedVideo = relevantVideos[selectedVideoIndex];
-
-                // Suggested questions based on video content
                 const suggestedQuestions = selectedVideo ? [
                     `What are the main concepts discussed in "${selectedVideo.title.slice(0, 40)}..."?`,
                     `How does this video explain the topic differently?`,
@@ -6977,591 +7959,896 @@ sys.stderr = StringIO()
                     `Can you summarize the most important points?`
                 ] : [];
 
+                // Combined Audio Video mode with tabs
                 return (
-                    <div className="flex h-full bg-[#eef2f7]" style={{ fontFamily: '"Google Sans", sans-serif' }}>
-                        {/* Left Sidebar - Video Playlist */}
-                        {(relevantVideos.length > 0 || isLoadingVideos) && (
-                            <div className="w-[200px] bg-[#1F1F1F] border-r border-slate-700 overflow-y-auto flex-shrink-0">
-                                <div className="p-3">
-                                    <h3 className="text-[13px] font-medium text-slate-200 mb-2 px-1">Playlist</h3>
-                                    <div className="space-y-1">
-                                        {isLoadingVideos ? (
-                                            [...Array(5)].map((_, i) => (
-                                                <div key={i} className="flex gap-2 p-2 rounded-lg">
-                                                    <div className="w-[72px] h-[40px] bg-gray-200 rounded animate-pulse flex-shrink-0" />
-                                                    <div className="flex-1 space-y-1.5 py-1">
-                                                        <div className="h-3 bg-gray-200 rounded w-full animate-pulse" />
-                                                        <div className="h-2 bg-gray-200 rounded w-2/3 animate-pulse" />
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            relevantVideos.map((video, idx) => (
-                                                <button
-                                                    key={video.id}
-                                                    onClick={() => setSelectedVideoIndex(idx)}
-                                                    className={`w-full flex gap-2 p-2 rounded-lg transition-all text-left ${selectedVideoIndex === idx
-                                                        ? 'bg-[#e8f0fe] border border-[#1a73e8]'
-                                                        : 'hover:bg-[#f5f5f5] border border-transparent'
-                                                        }`}
-                                                >
-                                                    {/* Thumbnail */}
-                                                    <div className="w-[72px] h-[40px] flex-shrink-0 rounded overflow-hidden bg-gray-200 relative">
-                                                        <img
-                                                            src={video.thumbnailUrl}
-                                                            alt={video.title}
-                                                            className="w-full h-full object-cover"
-                                                        />
-                                                        <div className="absolute bottom-0.5 right-0.5 px-1 bg-black/80 rounded text-[8px] text-white font-medium">
-                                                            #{idx + 1}
-                                                        </div>
-                                                    </div>
+                    <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900" style={{ fontFamily: '"Google Sans", sans-serif' }}>
+                        {/* Top Tab Bar */}
+                        <div className="absolute top-0 left-0 right-0 z-30 bg-[#1F1F1F] border-b border-slate-700 px-4 py-2">
+                            <div className="flex gap-2 max-w-7xl mx-auto">
+                                <button
+                                    onClick={() => setAudioVideoModeTab('video')}
+                                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${audioVideoModeTab === 'video'
+                                        ? 'bg-[#9334e9] text-white'
+                                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Play className="w-4 h-4" />
+                                        Video Lessons
+                                    </div>
+                                </button>
+                                <button
+                                    onClick={() => setAudioVideoModeTab('audio')}
+                                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${audioVideoModeTab === 'audio'
+                                        ? 'bg-[#9334e9] text-white'
+                                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Volume2 className="w-4 h-4" />
+                                        Audio Podcast
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
 
-                                                    {/* Info */}
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-[11px] font-medium text-[#1f1f1f] line-clamp-2 leading-tight">
-                                                            {video.title}
-                                                        </p>
-                                                        <p className="text-[10px] text-[#5f6368] mt-0.5 truncate">{video.channelTitle}</p>
-                                                    </div>
-                                                </button>
-                                            ))
+                        {/* Video Lessons Tab */}
+                        {audioVideoModeTab === 'video' && (
+                            <>
+                                {/* Left Sidebar */}
+                                <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen pt-12" style={{ backgroundColor: '#171717' }}>
+                                    <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                        <div className="space-y-3">
+                                            <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
+                                            {renderStandaloneNotesPanel('dark')}
+                                        </div>
+                                        <div className="space-y-3">
+                                            <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Actions</p>
+                                            <button
+                                                onClick={handleFetchVideos}
+                                                disabled={isLoadingVideos || (!standaloneNotes.trim() && !immersiveContent)}
+                                                className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isLoadingVideos ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <Play className="w-4 h-4" />
+                                                )}
+                                                {isLoadingVideos ? 'Searching...' : 'Find Videos'}
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Status</p>
+                                            <Badge
+                                                variant={
+                                                    relevantVideos.length > 0
+                                                        ? 'success'
+                                                        : isLoadingVideos
+                                                            ? 'warning'
+                                                            : 'outline'
+                                                }
+                                                className="w-full justify-center py-2 text-xs normal-case tracking-normal bg-white/5 text-slate-200 border-white/10"
+                                            >
+                                                {relevantVideos.length > 0 ? (
+                                                    <>
+                                                        <CheckCircle2 className="w-3 h-3" />
+                                                        {relevantVideos.length} video{relevantVideos.length !== 1 ? 's' : ''} found.
+                                                    </>
+                                                ) : isLoadingVideos ? (
+                                                    <>
+                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                        Searching YouTube...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Info className="w-3 h-3" />
+                                                        Awaiting notes.
+                                                    </>
+                                                )}
+                                            </Badge>
+                                        </div>
+                                        {/* Video Playlist - Show when videos are available */}
+                                        {relevantVideos.length > 0 && (
+                                            <div className="space-y-3">
+                                                <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Playlist</p>
+                                                <div className="space-y-1 max-h-[400px] overflow-y-auto">
+                                                    {relevantVideos.map((video, idx) => (
+                                                        <button
+                                                            key={video.id}
+                                                            onClick={() => setSelectedVideoIndex(idx)}
+                                                            className={`w-full flex gap-2 p-2 rounded-lg transition-all text-left ${selectedVideoIndex === idx
+                                                                ? 'bg-[#2c4066] border border-[#34507c]'
+                                                                : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                                                                }`}
+                                                        >
+                                                            <div className="w-[72px] h-[40px] flex-shrink-0 rounded overflow-hidden bg-gray-200 relative">
+                                                                <img
+                                                                    src={video.thumbnailUrl}
+                                                                    alt={video.title}
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                                <div className="absolute bottom-0.5 right-0.5 px-1 bg-black/80 rounded text-[8px] text-white font-medium">
+                                                                    #{idx + 1}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-[11px] font-medium text-slate-200 line-clamp-2 leading-tight">
+                                                                    {video.title}
+                                                                </p>
+                                                                <p className="text-[10px] text-slate-400 mt-0.5 truncate">{video.channelTitle}</p>
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
-                            </div>
-                        )}
 
-                        {/* Main Content Area */}
-                        <div className="flex-1 flex flex-col overflow-hidden">
-                            {isLoadingVideos ? (
-                                <div className="flex-1 flex overflow-hidden p-4 gap-4">
-                                    {/* Video + Summary Panel Skeleton */}
-                                    <div className="flex-1 flex flex-col bg-white rounded-xl overflow-hidden shadow-sm border border-[#e0e0e0]">
-                                        <div className="aspect-video bg-gray-100 animate-pulse flex items-center justify-center">
-                                            <div className="w-12 h-12 rounded-full bg-gray-200" />
-                                        </div>
-                                        <div className="p-5 space-y-6">
-                                            <div className="space-y-3">
-                                                <div className="h-6 bg-gray-100 rounded w-3/4 animate-pulse" />
-                                                <div className="h-4 bg-gray-100 rounded w-1/2 animate-pulse" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <div className="h-4 bg-gray-100 rounded w-full animate-pulse" />
-                                                <div className="h-4 bg-gray-100 rounded w-full animate-pulse" />
-                                                <div className="h-4 bg-gray-100 rounded w-5/6 animate-pulse" />
-                                            </div>
-                                            <div className="space-y-2 pt-2">
-                                                <div className="h-4 bg-gray-100 rounded w-full animate-pulse" />
-                                                <div className="h-4 bg-gray-100 rounded w-4/5 animate-pulse" />
+                                {/* Main Content Area */}
+                                <div className="flex-1 bg-[#eef2f7] flex flex-col pt-12">
+                                    {isLoadingVideos ? (
+                                        <div className="flex-1 flex items-center justify-center">
+                                            <div className="text-center">
+                                                <Loader2 className="w-12 h-12 animate-spin text-[#9334e9] mx-auto mb-4" />
+                                                <p className="text-lg font-medium text-slate-700 mb-2">Searching for Videos</p>
+                                                <p className="text-sm text-slate-500">Finding relevant YouTube videos based on your content...</p>
                                             </div>
                                         </div>
-                                    </div>
-
-                                    {/* Right Interactive Panel Skeleton */}
-                                    <div className="w-[340px] bg-white rounded-xl shadow-sm flex flex-col overflow-hidden flex-shrink-0 border border-[#e0e0e0]">
-                                        <div className="flex border-b border-[#e0e0e0]">
-                                            {[1, 2, 3].map((i) => (
-                                                <div key={i} className="flex-1 py-3 px-4">
-                                                    <div className="h-4 bg-gray-100 rounded animate-pulse" />
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <div className="p-4 space-y-4">
-                                            <div className="h-24 bg-gray-100 rounded-xl animate-pulse" />
-                                            <div className="h-24 bg-gray-100 rounded-xl animate-pulse" />
-                                            <div className="h-24 bg-gray-100 rounded-xl animate-pulse" />
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : relevantVideos.length === 0 ? (
-                                <div className="flex-1 flex items-center justify-center bg-white m-4 rounded-xl">
-                                    <div className="text-center">
-                                        <div className="w-20 h-20 mx-auto mb-4 bg-[#f5f5f5] rounded-full flex items-center justify-center">
-                                            <Play className="w-10 h-10 text-[#9aa0a6]" />
-                                        </div>
-                                        <p className="text-[16px] text-[#5f6368] mb-2">No videos loaded yet</p>
-                                        <p className="text-[13px] text-[#9aa0a6]">Upload a document to find relevant YouTube videos</p>
-                                    </div>
-                                </div>
-                            ) : selectedVideo && (
-                                <div className="flex-1 flex overflow-hidden p-4 gap-4">
-                                    {/* Video + Summary Panel */}
-                                    <div className="flex-1 flex flex-col bg-white rounded-xl overflow-hidden shadow-sm">
-                                        {/* YouTube Player */}
-                                        <div className="aspect-video bg-black flex-shrink-0">
-                                            <iframe
-                                                src={`https://www.youtube.com/embed/${selectedVideo.id}?rel=0`}
-                                                title={selectedVideo.title}
-                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                allowFullScreen
-                                                className="w-full h-full"
-                                            />
-                                        </div>
-
-                                        {/* Thoreo-style Tabs */}
-                                        <div className="flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0]">
-                                            <div className="flex bg-[#f5f5f5] rounded-full p-0.5">
-                                                {(['summary', 'key-concepts', 'transcript'] as const).map((tab) => (
-                                                    <button
-                                                        key={tab}
-                                                        onClick={() => setVideoContentTab(tab)}
-                                                        className={`px-4 py-1.5 text-[13px] font-medium rounded-full transition-all ${videoContentTab === tab
-                                                            ? 'bg-white text-[#1f1f1f] shadow-sm'
-                                                            : 'text-[#5f6368] hover:text-[#1f1f1f]'
-                                                            }`}
-                                                    >
-                                                        {tab === 'summary' ? 'Summary' : tab === 'key-concepts' ? 'Key Concepts' : 'Transcript'}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <button className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-[#5f6368] hover:bg-[#f5f5f5] rounded-full transition-colors">
-                                                Share
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
-                                                </svg>
-                                            </button>
-                                        </div>
-
-                                        {/* Tab Content */}
-                                        <div className="flex-1 overflow-y-auto p-5">
-                                            {videoContentTab === 'summary' && (
-                                                <article className="prose prose-sm max-w-none">
-                                                    <h1 className="text-[22px] font-medium text-[#d93025] mb-4 leading-tight">
-                                                        {selectedVideo.title}
-                                                    </h1>
-
-                                                    {isLoadingVideoSummary ? (
-                                                        <div className="flex items-center justify-center py-8">
-                                                            <Loader2 className="w-6 h-6 text-[#9334e9] animate-spin mr-2" />
-                                                            <span className="text-[14px] text-[#5f6368]">Generating AI summary...</span>
+                                    ) : relevantVideos.length === 0 ? (
+                                        <div className="flex-1 flex flex-col items-center p-8 overflow-y-auto">
+                                            <div className="w-full max-w-3xl space-y-6">
+                                                {/* Header Card */}
+                                                <div className="p-6 space-y-4" style={{ backgroundColor: '#1F1F1F' }}>
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="w-12 h-12 flex items-center justify-center">
+                                                            <Play className="w-6 h-6 text-slate-300" />
                                                         </div>
-                                                    ) : videoSummary ? (
+                                                        <div>
+                                                            <h2 className="text-lg font-semibold text-slate-200">Video Lessons</h2>
+                                                            <p className="text-xs text-slate-400">
+                                                                Discover relevant YouTube videos based on your document content. Each video includes AI-generated summaries, transcripts, quizzes, and flashcards.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    {!standaloneNotes.trim() && !immersiveContent && (
+                                                        <button
+                                                            onClick={() => {
+                                                                const notesInput = document.querySelector('textarea[placeholder*="notes"], textarea[placeholder*="Notes"]') as HTMLTextAreaElement;
+                                                                if (notesInput) {
+                                                                    notesInput.focus();
+                                                                }
+                                                            }}
+                                                            className="w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95"
+                                                        >
+                                                            <FileUp className="w-4 h-4" />
+                                                            <span>Add Notes or Upload Document</span>
+                                                        </button>
+                                                    )}
+
+                                                    {(standaloneNotes.trim() || immersiveContent) && (
+                                                        <button
+                                                            onClick={handleFetchVideos}
+                                                            disabled={isLoadingVideos}
+                                                            className="w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#2c4066]"
+                                                        >
+                                                            <Sparkles className="w-4 h-4" />
+                                                            <span>Find Videos</span>
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {/* Features List */}
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <div className="p-4 bg-white rounded-xl shadow-sm">
+                                                        <div className="w-10 h-10 bg-[#e8f0fe] rounded-lg flex items-center justify-center mb-3 mx-auto">
+                                                            <BookOpen className="w-5 h-5 text-[#1a73e8]" />
+                                                        </div>
+                                                        <h3 className="text-sm font-semibold text-slate-700 mb-1">AI Summaries</h3>
+                                                        <p className="text-xs text-slate-500">Get key points and overviews</p>
+                                                    </div>
+                                                    <div className="p-4 bg-white rounded-xl shadow-sm">
+                                                        <div className="w-10 h-10 bg-[#e6f4ea] rounded-lg flex items-center justify-center mb-3 mx-auto">
+                                                            <MessageCircle className="w-5 h-5 text-[#1e8e3e]" />
+                                                        </div>
+                                                        <h3 className="text-sm font-semibold text-slate-700 mb-1">Interactive Quizzes</h3>
+                                                        <p className="text-xs text-slate-500">Test your understanding</p>
+                                                    </div>
+                                                    <div className="p-4 bg-white rounded-xl shadow-sm">
+                                                        <div className="w-10 h-10 bg-[#fff8e1] rounded-lg flex items-center justify-center mb-3 mx-auto">
+                                                            <Target className="w-5 h-5 text-[#f9a825]" />
+                                                        </div>
+                                                        <h3 className="text-sm font-semibold text-slate-700 mb-1">Flashcards</h3>
+                                                        <p className="text-xs text-slate-500">Review key concepts</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : selectedVideo && (
+                                        <div className="flex-1 flex overflow-hidden p-4 gap-4">
+                                            {/* Video + Summary Panel */}
+                                            <div className="flex-1 flex flex-col bg-white rounded-xl overflow-hidden shadow-sm">
+                                                <div className="aspect-video bg-black flex-shrink-0">
+                                                    <iframe
+                                                        src={`https://www.youtube.com/embed/${selectedVideo.id}?rel=0`}
+                                                        title={selectedVideo.title}
+                                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                        allowFullScreen
+                                                        className="w-full h-full"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0]">
+                                                    <div className="flex bg-[#f5f5f5] rounded-full p-0.5">
+                                                        {(['summary', 'key-concepts', 'clips', 'transcript'] as const).map((tab) => (
+                                                            <button
+                                                                key={tab}
+                                                                onClick={() => setVideoContentTab(tab)}
+                                                                className={`px-4 py-1.5 text-[13px] font-medium rounded-full transition-all ${videoContentTab === tab
+                                                                    ? 'bg-white text-[#1f1f1f] shadow-sm'
+                                                                    : 'text-[#5f6368] hover:text-[#1f1f1f]'
+                                                                    }`}
+                                                            >
+                                                                {tab === 'summary' ? 'Summary' : tab === 'key-concepts' ? 'Key Concepts' : tab === 'clips' ? 'Clips' : 'Transcript'}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div className="flex-1 overflow-y-auto p-5">
+                                                    {videoContentTab === 'summary' && (
+                                                        <article className="prose prose-sm max-w-none">
+                                                            <h1 className="text-[22px] font-medium text-[#d93025] mb-4 leading-tight">
+                                                                {selectedVideo.title}
+                                                            </h1>
+                                                            {isLoadingVideoSummary ? (
+                                                                <div className="flex items-center justify-center py-8">
+                                                                    <Loader2 className="w-6 h-6 text-[#9334e9] animate-spin mr-2" />
+                                                                    <span className="text-[14px] text-[#5f6368]">Generating AI summary...</span>
+                                                                </div>
+                                                            ) : videoSummary ? (
+                                                                <div className="space-y-4">
+                                                                    <section>
+                                                                        <h2 className="text-[16px] font-medium text-[#1f1f1f] mb-2">Overview</h2>
+                                                                        <p className="text-[14px] text-[#444746] leading-relaxed whitespace-pre-wrap">
+                                                                            {videoSummary.overview}
+                                                                        </p>
+                                                                    </section>
+                                                                    <section>
+                                                                        <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-2">Key Points</h3>
+                                                                        <ul className="space-y-1.5">
+                                                                            {videoSummary.keyPoints.map((point, idx) => (
+                                                                                <li key={idx} className="text-[14px] text-[#444746] flex items-start gap-2">
+                                                                                    <span className="text-[#9334e9] mt-0.5">•</span>
+                                                                                    {point}
+                                                                                </li>
+                                                                            ))}
+                                                                        </ul>
+                                                                    </section>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="space-y-4">
+                                                                    <section>
+                                                                        <h2 className="text-[16px] font-medium text-[#1f1f1f] mb-2">Overview</h2>
+                                                                        <p className="text-[14px] text-[#444746] leading-relaxed">
+                                                                            {selectedVideo.transcriptSummary || selectedVideo.relevanceReason || 'AI-generated summary will appear here after analysis.'}
+                                                                        </p>
+                                                                    </section>
+                                                                </div>
+                                                            )}
+                                                        </article>
+                                                    )}
+                                                    {videoContentTab === 'key-concepts' && (
                                                         <div className="space-y-4">
-                                                            <section>
-                                                                <h2 className="text-[16px] font-medium text-[#1f1f1f] mb-2">Overview</h2>
-                                                                <p className="text-[14px] text-[#444746] leading-relaxed whitespace-pre-wrap">
-                                                                    {videoSummary.overview}
-                                                                </p>
-                                                            </section>
-
-                                                            <section>
-                                                                <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-2">Key Points</h3>
-                                                                <ul className="space-y-1.5">
-                                                                    {videoSummary.keyPoints.map((point, idx) => (
-                                                                        <li key={idx} className="text-[14px] text-[#444746] flex items-start gap-2">
-                                                                            <span className="text-[#9334e9] mt-0.5">•</span>
-                                                                            {point}
-                                                                        </li>
+                                                            <h2 className="text-[16px] font-medium text-[#1f1f1f]">Key Concepts</h2>
+                                                            {isLoadingVideoSummary ? (
+                                                                <div className="flex items-center justify-center py-8">
+                                                                    <Loader2 className="w-6 h-6 text-[#9334e9] animate-spin mr-2" />
+                                                                    <span className="text-[14px] text-[#5f6368]">Extracting key concepts...</span>
+                                                                </div>
+                                                            ) : videoSummary?.keyConcepts && videoSummary.keyConcepts.length > 0 ? (
+                                                                <div className="grid gap-3">
+                                                                    {videoSummary.keyConcepts.map((concept, idx) => (
+                                                                        <div key={idx} className="p-3 bg-[#f8f9fa] rounded-lg border border-[#e0e0e0]">
+                                                                            <h4 className="text-[14px] font-medium text-[#1f1f1f] mb-1">{concept.title}</h4>
+                                                                            <p className="text-[13px] text-[#5f6368]">{concept.description}</p>
+                                                                        </div>
                                                                     ))}
-                                                                </ul>
-                                                            </section>
-
-                                                            <section>
-                                                                <h3 className="text-[14px] font-medium text-[#1f1f1f] mb-2">Why This Video</h3>
-                                                                <p className="text-[14px] text-[#444746] leading-relaxed">
-                                                                    {selectedVideo.relevanceReason || 'This video was selected for its relevance to your document content.'}
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-[13px] text-[#5f6368] italic">
+                                                                    Key concepts will be extracted when the summary is generated.
                                                                 </p>
-                                                                <div className="flex items-center gap-4 mt-2 text-[13px] text-[#5f6368]">
-                                                                    <span><strong className="text-[#1f1f1f]">Relevance:</strong> {selectedVideo.relevanceScore}%</span>
-                                                                    {selectedVideo.subscriberCount && (
-                                                                        <span><strong className="text-[#1f1f1f]">Channel:</strong> {selectedVideo.subscriberCount >= 1000000
-                                                                            ? `${(selectedVideo.subscriberCount / 1000000).toFixed(1)}M`
-                                                                            : `${Math.floor(selectedVideo.subscriberCount / 1000)}K`} subs</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {videoContentTab === 'clips' && (
+                                                        <div className="space-y-4">
+                                                            <div className="flex items-center justify-between">
+                                                                <h2 className="text-[16px] font-medium text-[#1f1f1f]">Semantic Clips</h2>
+                                                                {videoClipChapters.length > 0 && (
+                                                                    <span className="text-[12px] text-[#5f6368]">{videoClipChapters.length} segments</span>
+                                                                )}
+                                                            </div>
+                                                            {isLoadingVideoSummary ? (
+                                                                <div className="flex items-center justify-center py-8">
+                                                                    <Loader2 className="w-6 h-6 text-[#9334e9] animate-spin mr-2" />
+                                                                    <span className="text-[14px] text-[#5f6368]">Preparing semantic clips...</span>
+                                                                </div>
+                                                            ) : videoClipChapters.length > 0 ? (
+                                                                <div className="space-y-4">
+                                                                    {videoClipChapters.slice(0, 6).map((clip, idx) => (
+                                                                        <div key={`${clip.startSeconds}-${idx}`} className="rounded-lg border border-[#e0e0e0] bg-[#f8f9fa] p-3">
+                                                                            <div className="flex items-start justify-between gap-3">
+                                                                                <div className="space-y-1">
+                                                                                    <p className="text-[12px] text-[#5f6368]">{clip.startLabel} - {clip.endLabel}</p>
+                                                                                    <h4 className="text-[14px] font-medium text-[#1f1f1f]">{clip.title}</h4>
+                                                                                    {clip.keywords.length > 0 && (
+                                                                                        <div className="flex flex-wrap gap-2">
+                                                                                            {clip.keywords.map((keyword) => (
+                                                                                                <span
+                                                                                                    key={keyword}
+                                                                                                    className="px-2 py-0.5 text-[11px] rounded-full bg-white border border-[#e0e0e0] text-[#5f6368]"
+                                                                                                >
+                                                                                                    {keyword}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                <a
+                                                                                    href={`https://www.youtube.com/watch?v=${selectedVideo.id}&t=${clip.startSeconds}s`}
+                                                                                    target="_blank"
+                                                                                    rel="noreferrer"
+                                                                                    className="text-[12px] text-[#1a73e8] hover:underline flex items-center gap-1"
+                                                                                >
+                                                                                    <ExternalLink className="w-3.5 h-3.5" />
+                                                                                    Open
+                                                                                </a>
+                                                                            </div>
+                                                                            <div className="mt-3 aspect-video bg-black rounded-md overflow-hidden">
+                                                                                <iframe
+                                                                                    src={`https://www.youtube.com/embed/${selectedVideo.id}?start=${clip.startSeconds}&end=${clip.endSeconds}&rel=0&modestbranding=1`}
+                                                                                    title={`${selectedVideo.title} clip ${idx + 1}`}
+                                                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                                                    allowFullScreen
+                                                                                    className="w-full h-full"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                    {videoClipChapters.length > 6 && (
+                                                                        <p className="text-[11px] text-[#5f6368]">
+                                                                            Showing the first 6 clips. Explore the transcript for the full timeline.
+                                                                        </p>
                                                                     )}
                                                                 </div>
-                                                            </section>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="space-y-4">
-                                                            <section>
-                                                                <h2 className="text-[16px] font-medium text-[#1f1f1f] mb-2">Overview</h2>
-                                                                <p className="text-[14px] text-[#444746] leading-relaxed">
-                                                                    {selectedVideo.transcriptSummary || selectedVideo.relevanceReason || 'AI-generated summary will appear here after analysis.'}
-                                                                </p>
-                                                            </section>
-                                                        </div>
-                                                    )}
-                                                </article>
-                                            )}
-
-                                            {videoContentTab === 'key-concepts' && (
-                                                <div className="space-y-4">
-                                                    <h2 className="text-[16px] font-medium text-[#1f1f1f]">Key Concepts</h2>
-                                                    {isLoadingVideoSummary ? (
-                                                        <div className="flex items-center justify-center py-8">
-                                                            <Loader2 className="w-6 h-6 text-[#9334e9] animate-spin mr-2" />
-                                                            <span className="text-[14px] text-[#5f6368]">Extracting key concepts...</span>
-                                                        </div>
-                                                    ) : videoSummary?.keyConcepts && videoSummary.keyConcepts.length > 0 ? (
-                                                        <div className="grid gap-3">
-                                                            {videoSummary.keyConcepts.map((concept, idx) => (
-                                                                <div key={idx} className="p-3 bg-[#f8f9fa] rounded-lg border border-[#e0e0e0]">
-                                                                    <h4 className="text-[14px] font-medium text-[#1f1f1f] mb-1">{concept.title}</h4>
-                                                                    <p className="text-[13px] text-[#5f6368]">{concept.description}</p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-[13px] text-[#5f6368] italic">
-                                                            Key concepts will be extracted when the summary is generated.
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {videoContentTab === 'transcript' && (
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <h2 className="text-[16px] font-medium text-[#1f1f1f]">Transcript</h2>
-                                                        {isLoadingVideoTranscript && (
-                                                            <div className="flex items-center text-[12px] text-[#5f6368]">
-                                                                <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                                                                Loading...
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    {videoTranscript ? (
-                                                        <div className="text-[14px] text-[#444746] leading-relaxed whitespace-pre-wrap bg-[#f8f9fa] p-4 rounded-lg max-h-[400px] overflow-y-auto">
-                                                            {videoTranscript}
-                                                        </div>
-                                                    ) : isLoadingVideoTranscript ? (
-                                                        <div className="flex items-center justify-center py-8">
-                                                            <Loader2 className="w-6 h-6 text-[#9334e9] animate-spin mr-2" />
-                                                            <span className="text-[14px] text-[#5f6368]">Fetching transcript...</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="text-center py-8 bg-[#f8f9fa] rounded-lg">
-                                                            <p className="text-[14px] text-[#5f6368]">
-                                                                Transcript not available for this video.
-                                                            </p>
-                                                            <p className="text-[12px] text-[#9aa0a6] mt-1">
-                                                                The video may not have captions enabled.
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Right Interactive Panel - Thoreo Style */}
-                                    <div className="w-[340px] bg-white rounded-xl shadow-sm flex flex-col overflow-hidden flex-shrink-0">
-                                        {/* Interactive Tabs */}
-                                        <div className="flex border-b border-[#e0e0e0]">
-                                            {(['chat', 'quiz', 'flashcards'] as const).map((tab) => (
-                                                <button
-                                                    key={tab}
-                                                    onClick={() => {
-                                                        setVideoInteractiveTab(tab);
-                                                        // Auto-load quiz or flashcards when tab is clicked
-                                                        if (tab === 'quiz' && videoQuiz.length === 0 && !isLoadingVideoQuiz) {
-                                                            handleLoadVideoQuiz();
-                                                        }
-                                                        if (tab === 'flashcards' && videoFlashcards.length === 0 && !isLoadingFlashcards) {
-                                                            handleLoadFlashcards();
-                                                        }
-                                                    }}
-                                                    className={`flex-1 py-3 text-[13px] font-medium transition-all border-b-2 ${videoInteractiveTab === tab
-                                                        ? 'text-[#1f1f1f] border-[#1a73e8] bg-white'
-                                                        : 'text-[#5f6368] border-transparent hover:text-[#1f1f1f] bg-[#f8f9fa]'
-                                                        }`}
-                                                >
-                                                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        {/* Interactive Content */}
-                                        <div className="flex-1 overflow-y-auto p-4" ref={chatContainerRef}>
-                                            {videoInteractiveTab === 'chat' && (
-                                                <div className="space-y-3">
-                                                    {/* Chat Messages */}
-                                                    {videoChatMessages.length > 0 ? (
-                                                        <div className="space-y-3 mb-4">
-                                                            {videoChatMessages.map((msg, idx) => (
-                                                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                                    <div className={`max-w-[85%] p-3 rounded-2xl text-[13px] leading-relaxed ${msg.role === 'user'
-                                                                        ? 'bg-[#1a73e8] text-white rounded-br-sm'
-                                                                        : 'bg-[#f1f3f4] text-[#1f1f1f] rounded-bl-sm'
-                                                                        }`}>
-                                                                        {msg.role === 'user' ? (
-                                                                            msg.content
-                                                                        ) : (
-                                                                            <ReactMarkdown
-                                                                                remarkPlugins={[remarkMath]}
-                                                                                rehypePlugins={[rehypeKatex]}
-                                                                                components={{
-                                                                                    p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                                                                                    ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-                                                                                    ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-                                                                                    li: ({ children }) => <li className="mb-1">{children}</li>,
-                                                                                    code: ({ children }) => <code className="bg-black/10 px-1 rounded font-mono text-[11px]">{children}</code>,
-                                                                                    pre: ({ children }) => <pre className="bg-black/10 p-2 rounded mb-2 overflow-x-auto font-mono text-[11px]">{children}</pre>,
-                                                                                    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                                                                                }}
-                                                                            >
-                                                                                {msg.content}
-                                                                            </ReactMarkdown>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                            {isLoadingChatResponse && (
-                                                                <div className="flex justify-start">
-                                                                    <div className="bg-[#f1f3f4] text-[#5f6368] p-3 rounded-2xl rounded-bl-sm flex items-center gap-2">
-                                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                                        <span className="text-[13px]">Thinking...</span>
-                                                                    </div>
+                                                            ) : (
+                                                                <div className="text-center py-8 bg-[#f8f9fa] rounded-lg">
+                                                                    <p className="text-[14px] text-[#5f6368]">
+                                                                        Generate the summary to see semantic clips with keywords.
+                                                                    </p>
                                                                 </div>
                                                             )}
                                                         </div>
-                                                    ) : (
-                                                        /* Suggested Questions - Only show when no messages */
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            {suggestedQuestions.map((question, idx) => (
-                                                                <button
-                                                                    key={idx}
-                                                                    onClick={() => setVideoChatInput(question)}
-                                                                    className="p-3 text-left text-[12px] text-[#1f1f1f] bg-[#fff9e6] hover:bg-[#fff3cc] border border-[#ffe082] rounded-lg transition-colors leading-snug"
-                                                                >
-                                                                    {question}
-                                                                </button>
-                                                            ))}
-                                                        </div>
                                                     )}
-                                                </div>
-                                            )}
-
-                                            {videoInteractiveTab === 'quiz' && (
-                                                <div className="space-y-4">
-                                                    {isLoadingVideoQuiz ? (
-                                                        <div className="flex flex-col items-center justify-center py-8">
-                                                            <Loader2 className="w-8 h-8 text-[#1a73e8] animate-spin mb-3" />
-                                                            <span className="text-[14px] text-[#5f6368]">Generating quiz from video...</span>
-                                                        </div>
-                                                    ) : videoQuiz.length > 0 ? (
-                                                        <>
-                                                            {/* Progress */}
-                                                            <div className="flex items-center justify-between text-[12px] text-[#5f6368] mb-2">
-                                                                <span>Question {currentVideoQuizIndex + 1} of {videoQuiz.length}</span>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setVideoQuiz([]);
-                                                                        handleLoadVideoQuiz();
-                                                                    }}
-                                                                    className="text-[#1a73e8] hover:underline flex items-center gap-1"
-                                                                >
-                                                                    <RefreshCw className="w-3 h-3" />
-                                                                    New Quiz
-                                                                </button>
-                                                            </div>
-
-                                                            <div className="p-4 bg-[#f8f9fa] rounded-lg">
-                                                                <p className="text-[14px] font-medium text-[#1f1f1f] mb-3">
-                                                                    {videoQuiz[currentVideoQuizIndex]?.question}
-                                                                </p>
-                                                                <div className="space-y-2">
-                                                                    {videoQuiz[currentVideoQuizIndex]?.options.map((opt, idx) => {
-                                                                        const isSelected = videoQuizAnswers[currentVideoQuizIndex] === idx;
-                                                                        const showFeedback = showVideoQuizFeedback[currentVideoQuizIndex];
-                                                                        const isCorrect = idx === videoQuiz[currentVideoQuizIndex]?.correctAnswerIndex;
-
-                                                                        let bgColor = 'bg-white hover:bg-[#f5f5f5]';
-                                                                        let borderColor = 'border-[#e0e0e0] hover:border-[#1a73e8]';
-                                                                        let textColor = 'text-[#1f1f1f]';
-
-                                                                        if (showFeedback && isCorrect) {
-                                                                            bgColor = 'bg-[#ceead6]';
-                                                                            borderColor = 'border-[#34a853]';
-                                                                            textColor = 'text-[#137333]';
-                                                                        } else if (showFeedback && isSelected && !isCorrect) {
-                                                                            bgColor = 'bg-[#fad2cf]';
-                                                                            borderColor = 'border-[#ea4335]';
-                                                                            textColor = 'text-[#c5221f]';
-                                                                        } else if (isSelected) {
-                                                                            borderColor = 'border-[#1a73e8]';
-                                                                            bgColor = 'bg-[#e8f0fe]';
-                                                                        }
-
-                                                                        return (
-                                                                            <button
-                                                                                key={idx}
-                                                                                onClick={() => {
-                                                                                    if (!showVideoQuizFeedback[currentVideoQuizIndex]) {
-                                                                                        setVideoQuizAnswers(prev => ({ ...prev, [currentVideoQuizIndex]: idx }));
-                                                                                        setShowVideoQuizFeedback(prev => ({ ...prev, [currentVideoQuizIndex]: true }));
-                                                                                    }
-                                                                                }}
-                                                                                disabled={showVideoQuizFeedback[currentVideoQuizIndex]}
-                                                                                className={`w-full p-2.5 text-left text-[13px] ${bgColor} border ${borderColor} ${textColor} rounded-lg transition-all font-medium`}
-                                                                            >
-                                                                                <span className="font-semibold mr-1">{String.fromCharCode(65 + idx)}.</span>
-                                                                                {opt}
-                                                                            </button>
-                                                                        );
-                                                                    })}
-                                                                </div>
-
-                                                                {/* Feedback */}
-                                                                {showVideoQuizFeedback[currentVideoQuizIndex] && (
-                                                                    <div className="mt-3 p-3 bg-white rounded-lg border border-[#e0e0e0]">
-                                                                        <p className={`text-[13px] font-medium ${videoQuizAnswers[currentVideoQuizIndex] === videoQuiz[currentVideoQuizIndex]?.correctAnswerIndex ? 'text-[#137333]' : 'text-[#c5221f]'}`}>
-                                                                            {videoQuizAnswers[currentVideoQuizIndex] === videoQuiz[currentVideoQuizIndex]?.correctAnswerIndex
-                                                                                ? '✓ Correct!'
-                                                                                : '✗ Not quite.'}
-                                                                        </p>
-                                                                        <p className="text-[12px] text-[#5f6368] mt-1">
-                                                                            {videoQuiz[currentVideoQuizIndex]?.explanation}
-                                                                        </p>
+                                                    {videoContentTab === 'transcript' && (
+                                                        <div className="space-y-3">
+                                                            <div className="flex items-center justify-between">
+                                                                <h2 className="text-[16px] font-medium text-[#1f1f1f]">Transcript</h2>
+                                                                {isLoadingVideoTranscript && (
+                                                                    <div className="flex items-center text-[12px] text-[#5f6368]">
+                                                                        <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                                                                        Loading...
                                                                     </div>
                                                                 )}
                                                             </div>
-
-                                                            {/* Navigation */}
-                                                            {showVideoQuizFeedback[currentVideoQuizIndex] && currentVideoQuizIndex < videoQuiz.length - 1 && (
-                                                                <button
-                                                                    onClick={() => setCurrentVideoQuizIndex(prev => prev + 1)}
-                                                                    className="w-full py-2 bg-[#1a73e8] text-white text-[13px] font-medium rounded-lg hover:bg-[#1557b0] transition-colors"
-                                                                >
-                                                                    Next Question
-                                                                </button>
+                                                            {videoTranscript ? (
+                                                                <div className="text-[14px] text-[#444746] leading-relaxed whitespace-pre-wrap bg-[#f8f9fa] p-4 rounded-lg max-h-[400px] overflow-y-auto">
+                                                                    {videoTranscript}
+                                                                </div>
+                                                            ) : isLoadingVideoTranscript ? (
+                                                                <div className="flex items-center justify-center py-8">
+                                                                    <Loader2 className="w-6 h-6 text-[#9334e9] animate-spin mr-2" />
+                                                                    <span className="text-[14px] text-[#5f6368]">Fetching transcript...</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-center py-8 bg-[#f8f9fa] rounded-lg">
+                                                                    <p className="text-[14px] text-[#5f6368]">
+                                                                        Transcript not available for this video.
+                                                                    </p>
+                                                                </div>
                                                             )}
-                                                        </>
-                                                    ) : (
-                                                        <div className="text-center py-8">
-                                                            <p className="text-[14px] text-[#5f6368] mb-3">Generate a quiz based on this video</p>
-                                                            <button
-                                                                onClick={handleLoadVideoQuiz}
-                                                                className="px-4 py-2 bg-[#1a73e8] text-white text-[13px] font-medium rounded-lg hover:bg-[#1557b0] transition-colors"
-                                                            >
-                                                                Generate Quiz
-                                                            </button>
                                                         </div>
                                                     )}
                                                 </div>
-                                            )}
+                                            </div>
 
-                                            {videoInteractiveTab === 'flashcards' && (
-                                                <div className="space-y-3">
-                                                    {isLoadingFlashcards ? (
-                                                        <div className="flex flex-col items-center justify-center py-8">
-                                                            <Loader2 className="w-8 h-8 text-[#1a73e8] animate-spin mb-3" />
-                                                            <span className="text-[14px] text-[#5f6368]">Creating flashcards...</span>
-                                                        </div>
-                                                    ) : videoFlashcards.length > 0 ? (
-                                                        <>
-                                                            {/* Progress */}
-                                                            <div className="flex items-center justify-between text-[12px] text-[#5f6368] mb-2">
-                                                                <span>Card {currentFlashcardIndex + 1} of {videoFlashcards.length}</span>
-                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${videoFlashcards[currentFlashcardIndex]?.difficulty === 'easy' ? 'bg-[#e6f4ea] text-[#137333]' :
-                                                                    videoFlashcards[currentFlashcardIndex]?.difficulty === 'medium' ? 'bg-[#fff8e1] text-[#f9a825]' :
-                                                                        'bg-[#fce8e6] text-[#c5221f]'
-                                                                    }`}>
-                                                                    {videoFlashcards[currentFlashcardIndex]?.difficulty}
-                                                                </span>
-                                                            </div>
-
-                                                            {/* Flashcard */}
-                                                            <div
-                                                                onClick={() => setIsFlashcardFlipped(!isFlashcardFlipped)}
-                                                                className={`aspect-[3/2] rounded-xl p-5 flex items-center justify-center cursor-pointer hover:shadow-lg transition-all ${isFlashcardFlipped
-                                                                    ? 'bg-[#e8f0fe] border-2 border-[#1a73e8]'
-                                                                    : 'bg-gradient-to-br from-[#4285f4] to-[#1a73e8]'
-                                                                    }`}
-                                                            >
-                                                                <p className={`text-center text-[15px] font-medium ${isFlashcardFlipped ? 'text-[#1f1f1f]' : 'text-white'}`}>
-                                                                    {isFlashcardFlipped
-                                                                        ? videoFlashcards[currentFlashcardIndex]?.back
-                                                                        : videoFlashcards[currentFlashcardIndex]?.front
-                                                                    }
-                                                                </p>
-                                                            </div>
-
-                                                            <p className="text-[11px] text-[#9aa0a6] text-center">
-                                                                {isFlashcardFlipped ? 'Click to see question' : 'Click to reveal answer'}
-                                                            </p>
-
-                                                            {/* Navigation */}
-                                                            <div className="flex justify-center gap-2 pt-2">
-                                                                <button
-                                                                    onClick={() => {
-                                                                        if (currentFlashcardIndex > 0) {
-                                                                            setCurrentFlashcardIndex(prev => prev - 1);
-                                                                            setIsFlashcardFlipped(false);
-                                                                        }
-                                                                    }}
-                                                                    disabled={currentFlashcardIndex === 0}
-                                                                    className="px-4 py-1.5 text-[12px] font-medium border border-[#e0e0e0] rounded-full hover:bg-[#f5f5f5] disabled:opacity-40 transition-colors"
-                                                                >
-                                                                    Previous
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        if (currentFlashcardIndex < videoFlashcards.length - 1) {
-                                                                            setCurrentFlashcardIndex(prev => prev + 1);
-                                                                            setIsFlashcardFlipped(false);
-                                                                        }
-                                                                    }}
-                                                                    disabled={currentFlashcardIndex === videoFlashcards.length - 1}
-                                                                    className="px-4 py-1.5 text-[12px] font-medium bg-[#1a73e8] text-white rounded-full hover:bg-[#1557b0] disabled:opacity-40 transition-colors"
-                                                                >
-                                                                    Next
-                                                                </button>
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <div className="text-center py-8">
-                                                            <p className="text-[14px] text-[#5f6368] mb-3">Create flashcards from this video</p>
-                                                            <button
-                                                                onClick={handleLoadFlashcards}
-                                                                className="px-4 py-2 bg-[#1a73e8] text-white text-[13px] font-medium rounded-lg hover:bg-[#1557b0] transition-colors"
-                                                            >
-                                                                Generate Flashcards
-                                                            </button>
+                                            {/* Right Interactive Panel */}
+                                            <div className="w-[340px] bg-white rounded-xl shadow-sm flex flex-col overflow-hidden flex-shrink-0">
+                                                <div className="flex border-b border-[#e0e0e0]">
+                                                    {(['chat', 'quiz', 'flashcards'] as const).map((tab) => (
+                                                        <button
+                                                            key={tab}
+                                                            onClick={() => {
+                                                                setVideoInteractiveTab(tab);
+                                                                if (tab === 'quiz' && videoQuiz.length === 0 && !isLoadingVideoQuiz) {
+                                                                    handleLoadVideoQuiz();
+                                                                }
+                                                                if (tab === 'flashcards' && videoFlashcards.length === 0 && !isLoadingFlashcards) {
+                                                                    handleLoadFlashcards();
+                                                                }
+                                                            }}
+                                                            className={`flex-1 py-3 text-[13px] font-medium transition-all border-b-2 ${videoInteractiveTab === tab
+                                                                ? 'text-[#1f1f1f] border-[#1a73e8] bg-white'
+                                                                : 'text-[#5f6368] border-transparent hover:text-[#1f1f1f] bg-[#f8f9fa]'
+                                                                }`}
+                                                        >
+                                                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="flex-1 overflow-y-auto p-4" ref={chatContainerRef}>
+                                                    {videoInteractiveTab === 'chat' && (
+                                                        <div className="space-y-3">
+                                                            {videoChatMessages.length > 0 ? (
+                                                                <div className="space-y-3 mb-4">
+                                                                    {videoChatMessages.map((msg, idx) => (
+                                                                        <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                                            <div className={`max-w-[85%] p-3 rounded-2xl text-[13px] leading-relaxed ${msg.role === 'user'
+                                                                                ? 'bg-[#1a73e8] text-white rounded-br-sm'
+                                                                                : 'bg-[#f1f3f4] text-[#1f1f1f] rounded-bl-sm'
+                                                                                }`}>
+                                                                                {msg.role === 'user' ? (
+                                                                                    msg.content
+                                                                                ) : (
+                                                                                    <ReactMarkdown
+                                                                                        remarkPlugins={[remarkMath]}
+                                                                                        rehypePlugins={[rehypeKatex]}
+                                                                                        components={{
+                                                                                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                                                                                            ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                                                                                            ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                                                                                            li: ({ children }) => <li className="mb-1">{children}</li>,
+                                                                                            code: ({ children }) => <code className="bg-black/10 px-1 rounded font-mono text-[11px]">{children}</code>,
+                                                                                            pre: ({ children }) => <pre className="bg-black/10 p-2 rounded mb-2 overflow-x-auto font-mono text-[11px]">{children}</pre>,
+                                                                                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                                                                                        }}
+                                                                                    >
+                                                                                        {msg.content}
+                                                                                    </ReactMarkdown>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                    {isLoadingChatResponse && (
+                                                                        <div className="flex justify-start">
+                                                                            <div className="bg-[#f1f3f4] text-[#5f6368] p-3 rounded-2xl rounded-bl-sm flex items-center gap-2">
+                                                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                                                <span className="text-[13px]">Thinking...</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    {suggestedQuestions.map((question, idx) => (
+                                                                        <button
+                                                                            key={idx}
+                                                                            onClick={() => setVideoChatInput(question)}
+                                                                            className="p-3 text-left text-[12px] text-[#1f1f1f] bg-[#fff9e6] hover:bg-[#fff3cc] border border-[#ffe082] rounded-lg transition-colors leading-snug"
+                                                                        >
+                                                                            {question}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
+                                                    {videoInteractiveTab === 'quiz' && (
+                                                        <div className="space-y-4">
+                                                            {isLoadingVideoQuiz ? (
+                                                                <div className="flex flex-col items-center justify-center py-8">
+                                                                    <Loader2 className="w-8 h-8 text-[#1a73e8] animate-spin mb-3" />
+                                                                    <span className="text-[14px] text-[#5f6368]">Generating quiz from video...</span>
+                                                                </div>
+                                                            ) : videoQuiz.length > 0 ? (
+                                                                <>
+                                                                    <div className="flex items-center justify-between text-[12px] text-[#5f6368] mb-2">
+                                                                        <span>Question {currentVideoQuizIndex + 1} of {videoQuiz.length}</span>
+                                                                    </div>
+                                                                    <div className="p-4 bg-[#f8f9fa] rounded-lg">
+                                                                        <p className="text-[14px] font-medium text-[#1f1f1f] mb-3">
+                                                                            {videoQuiz[currentVideoQuizIndex]?.question}
+                                                                        </p>
+                                                                        <div className="space-y-2">
+                                                                            {videoQuiz[currentVideoQuizIndex]?.options.map((opt, idx) => {
+                                                                                const isSelected = videoQuizAnswers[currentVideoQuizIndex] === idx;
+                                                                                const showFeedback = showVideoQuizFeedback[currentVideoQuizIndex];
+                                                                                const isCorrect = idx === videoQuiz[currentVideoQuizIndex]?.correctAnswerIndex;
+                                                                                let bgColor = 'bg-white hover:bg-[#f5f5f5]';
+                                                                                let borderColor = 'border-[#e0e0e0] hover:border-[#1a73e8]';
+                                                                                let textColor = 'text-[#1f1f1f]';
+                                                                                if (showFeedback && isCorrect) {
+                                                                                    bgColor = 'bg-[#ceead6]';
+                                                                                    borderColor = 'border-[#34a853]';
+                                                                                    textColor = 'text-[#137333]';
+                                                                                } else if (showFeedback && isSelected && !isCorrect) {
+                                                                                    bgColor = 'bg-[#fad2cf]';
+                                                                                    borderColor = 'border-[#ea4335]';
+                                                                                    textColor = 'text-[#c5221f]';
+                                                                                } else if (isSelected) {
+                                                                                    borderColor = 'border-[#1a73e8]';
+                                                                                    bgColor = 'bg-[#e8f0fe]';
+                                                                                }
+                                                                                return (
+                                                                                    <button
+                                                                                        key={idx}
+                                                                                        onClick={() => {
+                                                                                            if (!showVideoQuizFeedback[currentVideoQuizIndex]) {
+                                                                                                setVideoQuizAnswers(prev => ({ ...prev, [currentVideoQuizIndex]: idx }));
+                                                                                                setShowVideoQuizFeedback(prev => ({ ...prev, [currentVideoQuizIndex]: true }));
+                                                                                            }
+                                                                                        }}
+                                                                                        disabled={showVideoQuizFeedback[currentVideoQuizIndex]}
+                                                                                        className={`w-full p-2.5 text-left text-[13px] ${bgColor} border ${borderColor} ${textColor} rounded-lg transition-all font-medium`}
+                                                                                    >
+                                                                                        <span className="font-semibold mr-1">{String.fromCharCode(65 + idx)}.</span>
+                                                                                        {opt}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                        {showVideoQuizFeedback[currentVideoQuizIndex] && (
+                                                                            <div className="mt-3 p-3 bg-white rounded-lg border border-[#e0e0e0]">
+                                                                                <p className={`text-[13px] font-medium ${videoQuizAnswers[currentVideoQuizIndex] === videoQuiz[currentVideoQuizIndex]?.correctAnswerIndex ? 'text-[#137333]' : 'text-[#c5221f]'}`}>
+                                                                                    {videoQuizAnswers[currentVideoQuizIndex] === videoQuiz[currentVideoQuizIndex]?.correctAnswerIndex
+                                                                                        ? '✓ Correct!'
+                                                                                        : '✗ Not quite.'}
+                                                                                </p>
+                                                                                <p className="text-[12px] text-[#5f6368] mt-1">
+                                                                                    {videoQuiz[currentVideoQuizIndex]?.explanation}
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    {showVideoQuizFeedback[currentVideoQuizIndex] && currentVideoQuizIndex < videoQuiz.length - 1 && (
+                                                                        <button
+                                                                            onClick={() => setCurrentVideoQuizIndex(prev => prev + 1)}
+                                                                            className="w-full py-2 bg-[#1a73e8] text-white text-[13px] font-medium rounded-lg hover:bg-[#1557b0] transition-colors"
+                                                                        >
+                                                                            Next Question
+                                                                        </button>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                <div className="text-center py-8">
+                                                                    <p className="text-[14px] text-[#5f6368] mb-3">Generate a quiz based on this video</p>
+                                                                    <button
+                                                                        onClick={handleLoadVideoQuiz}
+                                                                        className="px-4 py-2 bg-[#1a73e8] text-white text-[13px] font-medium rounded-lg hover:bg-[#1557b0] transition-colors"
+                                                                    >
+                                                                        Generate Quiz
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {videoInteractiveTab === 'flashcards' && (
+                                                        <div className="space-y-3">
+                                                            {isLoadingFlashcards ? (
+                                                                <div className="flex flex-col items-center justify-center py-8">
+                                                                    <Loader2 className="w-8 h-8 text-[#1a73e8] animate-spin mb-3" />
+                                                                    <span className="text-[14px] text-[#5f6368]">Creating flashcards...</span>
+                                                                </div>
+                                                            ) : videoFlashcards.length > 0 ? (
+                                                                <>
+                                                                    <div className="flex items-center justify-between text-[12px] text-[#5f6368] mb-2">
+                                                                        <span>Card {currentFlashcardIndex + 1} of {videoFlashcards.length}</span>
+                                                                    </div>
+                                                                    <div
+                                                                        onClick={() => setIsFlashcardFlipped(!isFlashcardFlipped)}
+                                                                        className={`aspect-[3/2] rounded-xl p-5 flex items-center justify-center cursor-pointer hover:shadow-lg transition-all ${isFlashcardFlipped
+                                                                            ? 'bg-[#e8f0fe] border-2 border-[#1a73e8]'
+                                                                            : 'bg-gradient-to-br from-[#4285f4] to-[#1a73e8]'
+                                                                            }`}
+                                                                    >
+                                                                        <p className={`text-center text-[15px] font-medium ${isFlashcardFlipped ? 'text-[#1f1f1f]' : 'text-white'}`}>
+                                                                            {isFlashcardFlipped
+                                                                                ? videoFlashcards[currentFlashcardIndex]?.back
+                                                                                : videoFlashcards[currentFlashcardIndex]?.front
+                                                                            }
+                                                                        </p>
+                                                                    </div>
+                                                                    <p className="text-[11px] text-[#9aa0a6] text-center">
+                                                                        {isFlashcardFlipped ? 'Click to see question' : 'Click to reveal answer'}
+                                                                    </p>
+                                                                    <div className="flex justify-center gap-2 pt-2">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (currentFlashcardIndex > 0) {
+                                                                                    setCurrentFlashcardIndex(prev => prev - 1);
+                                                                                    setIsFlashcardFlipped(false);
+                                                                                }
+                                                                            }}
+                                                                            disabled={currentFlashcardIndex === 0}
+                                                                            className="px-4 py-1.5 text-[12px] font-medium border border-[#e0e0e0] rounded-full hover:bg-[#f5f5f5] disabled:opacity-40 transition-colors"
+                                                                        >
+                                                                            Previous
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (currentFlashcardIndex < videoFlashcards.length - 1) {
+                                                                                    setCurrentFlashcardIndex(prev => prev + 1);
+                                                                                    setIsFlashcardFlipped(false);
+                                                                                }
+                                                                            }}
+                                                                            disabled={currentFlashcardIndex === videoFlashcards.length - 1}
+                                                                            className="px-4 py-1.5 text-[12px] font-medium bg-[#1a73e8] text-white rounded-full hover:bg-[#1557b0] disabled:opacity-40 transition-colors"
+                                                                        >
+                                                                            Next
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <div className="text-center py-8">
+                                                                    <p className="text-[14px] text-[#5f6368] mb-3">Create flashcards from this video</p>
+                                                                    <button
+                                                                        onClick={handleLoadFlashcards}
+                                                                        className="px-4 py-2 bg-[#1a73e8] text-white text-[13px] font-medium rounded-lg hover:bg-[#1557b0] transition-colors"
+                                                                    >
+                                                                        Generate Flashcards
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {videoInteractiveTab === 'chat' && (
+                                                    <div className="p-3 border-t border-[#e0e0e0]">
+                                                        <div className="flex items-center gap-2 bg-[#f5f5f5] rounded-full px-4 py-2">
+                                                            <input
+                                                                type="text"
+                                                                value={videoChatInput}
+                                                                onChange={(e) => setVideoChatInput(e.target.value)}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                                        e.preventDefault();
+                                                                        handleSendChatMessage();
+                                                                    }
+                                                                }}
+                                                                placeholder="Ask about this video..."
+                                                                disabled={isLoadingChatResponse}
+                                                                className="flex-1 bg-transparent text-[13px] text-[#1f1f1f] placeholder-[#9aa0a6] outline-none"
+                                                            />
+                                                            <button
+                                                                onClick={handleSendChatMessage}
+                                                                disabled={!videoChatInput.trim() || isLoadingChatResponse}
+                                                                className="p-1.5 hover:bg-[#e0e0e0] rounded-full transition-colors disabled:opacity-40"
+                                                            >
+                                                                <Send className="w-4 h-4 text-[#5f6368]" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        {/* Audio Podcast Tab */}
+                        {audioVideoModeTab === 'audio' && (
+                            <>
+                                {/* Left Sidebar */}
+                                <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen pt-12" style={{ backgroundColor: '#171717' }}>
+                                    <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                        <div className="space-y-3">
+                                            <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
+                                            {renderStandaloneNotesPanel('dark')}
+                                        </div>
+                                        <div className="space-y-3">
+                                            <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Actions</p>
+                                            <button
+                                                onClick={handleGeneratePodcast}
+                                                disabled={isGeneratingScript || isGeneratingAudio || (!standaloneNotes.trim() && !immersiveContent)}
+                                                className="w-full px-4 py-2.5 text-sm text-white bg-[#2c4066] hover:bg-[#34507c] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isGeneratingScript || isGeneratingAudio ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <Sparkles className="w-4 h-4" />
+                                                )}
+                                                {isGeneratingScript || isGeneratingAudio ? 'Working...' : 'Generate Podcast'}
+                                            </button>
+                                            {audioGenerationError && (
+                                                <p className="text-xs text-rose-300">Add notes and try again.</p>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Status</p>
+                                            <Badge
+                                                variant={
+                                                    podcastAudio
+                                                        ? 'success'
+                                                        : isGeneratingScript || isGeneratingAudio
+                                                            ? 'warning'
+                                                            : 'outline'
+                                                }
+                                                className="w-full justify-center py-2 text-xs normal-case tracking-normal bg-white/5 text-slate-200 border-white/10"
+                                            >
+                                                {podcastAudio ? (
+                                                    <>
+                                                        <CheckCircle2 className="w-3 h-3" />
+                                                        Audio ready.
+                                                    </>
+                                                ) : isGeneratingScript ? (
+                                                    <>
+                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                        Generating script...
+                                                    </>
+                                                ) : isGeneratingAudio ? (
+                                                    <>
+                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                        Rendering audio...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Info className="w-3 h-3" />
+                                                        Awaiting notes.
+                                                    </>
+                                                )}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Main Content */}
+                                <div className="flex-1 bg-[#eef2f7] flex flex-col pt-12">
+                                    <div className="flex-1 flex flex-col items-center p-8 overflow-y-auto">
+                                        <div className="w-full max-w-3xl space-y-6">
+                                            {/* Header Card */}
+                                            <div className="p-6 space-y-4" style={{ backgroundColor: '#1F1F1F' }}>
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="w-12 h-12 flex items-center justify-center">
+                                                        <Volume2 className="w-6 h-6 text-slate-300" />
+                                                    </div>
+                                                    <div>
+                                                        <h2 className="text-lg font-semibold text-slate-200">Audio Lesson Podcast</h2>
+                                                        <p className="text-xs text-slate-400">
+                                                            Generate an AI-hosted podcast about this topic. Listen to a conversation between an expert and a host.
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {!podcastScript && !isGeneratingAudio && !isGeneratingScript && (
+                                                    <button
+                                                        onClick={handleGeneratePodcast}
+                                                        disabled={isGeneratingScript || isGeneratingAudio || (!standaloneNotes.trim() && !immersiveContent)}
+                                                        className="w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#2c4066]"
+                                                    >
+                                                        <Sparkles className="w-4 h-4" />
+                                                        <span>Generate Podcast</span>
+                                                    </button>
+                                                )}
+
+                                                {/* Script Generation Loading State */}
+                                                {isGeneratingScript && (
+                                                    <div className="flex items-center justify-center gap-2 text-slate-300 py-2">
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                        <span className="text-sm">Generating podcast script...</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Audio Player */}
+                                            {podcastAudio && (
+                                                <div className="p-6 border border-white/10 sticky top-0 z-10" style={{ backgroundColor: '#1F1F1F' }}>
+                                                    <div className="flex items-center gap-4">
+                                                        <button
+                                                            onClick={toggleAudioPlayback}
+                                                            className="w-12 h-12 bg-[#2c4066] hover:bg-[#34507c] flex items-center justify-center text-white transition-colors flex-shrink-0"
+                                                        >
+                                                            {isPlayingAudio ? (
+                                                                <div className="w-4 h-4 bg-white rounded-[2px]" />
+                                                            ) : (
+                                                                <Play className="w-6 h-6 ml-1" />
+                                                            )}
+                                                        </button>
+                                                        <div className="flex-1">
+                                                            {/* Waveform Canvas */}
+                                                            <div className="h-12 mb-2 bg-[#f8f9fa] rounded-lg overflow-hidden relative">
+                                                                <canvas
+                                                                    ref={canvasRef}
+                                                                    width={600}
+                                                                    height={48}
+                                                                    className="w-full h-full"
+                                                                />
+                                                            </div>
+
+                                                            <div className="h-1.5 bg-[#e8eaed] rounded-full overflow-hidden">
+                                                                <div
+                                                                    className="h-full bg-[#1e8e3e] transition-all duration-100"
+                                                                    style={{ width: `${(audioProgress / audioDuration) * 100}%` }}
+                                                                />
+                                                            </div>
+                                                            <div className="flex justify-between mt-1.5 text-[12px] text-[#5f6368] font-medium">
+                                                                <span>{formatTime(audioProgress)}</span>
+                                                                <span>{formatTime(audioDuration)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Loading State for Audio */}
+                                            {isGeneratingAudio && (
+                                                <div className="p-6 text-center" style={{ backgroundColor: '#1F1F1F' }}>
+                                                    <Loader2 className="w-8 h-8 animate-spin text-slate-300 mx-auto mb-3" />
+                                                    <p className="text-slate-200 font-medium">Generating audio...</p>
+                                                    <p className="text-[13px] text-slate-400">This may take a minute</p>
+                                                </div>
+                                            )}
+
+                                            {/* Error State for Audio */}
+                                            {audioGenerationError && (
+                                                <div className="p-6 text-center border border-red-500/30" style={{ backgroundColor: '#1F1F1F' }}>
+                                                    <div className="w-12 h-12 mx-auto mb-3 bg-red-900/30 rounded-full flex items-center justify-center">
+                                                        <Volume2 className="w-6 h-6 text-red-400" />
+                                                    </div>
+                                                    <p className="text-red-300 font-medium mb-1">Failed to generate audio</p>
+                                                    <p className="text-[13px] text-red-400 mb-4">Something went wrong while creating the podcast audio.</p>
+                                                    <button
+                                                        onClick={handleGeneratePodcast}
+                                                        disabled={isGeneratingScript || isGeneratingAudio}
+                                                        className="px-5 py-2 bg-[#2c4066] border border-red-500/30 hover:bg-[#34507c] text-white rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
+                                                    >
+                                                        Try Again
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {/* Script Display */}
+                                            {podcastScript && (
+                                                <div className="p-6 space-y-6" style={{ backgroundColor: '#1F1F1F' }}>
+                                                    <h3 className="text-[18px] font-medium text-slate-200 border-b border-slate-700 pb-4">Transcript</h3>
+                                                    <div className="space-y-4">
+                                                        {podcastScript.split('\n').map((line, idx) => {
+                                                            const isHost = line.startsWith('Host:');
+                                                            const isExpert = line.startsWith('Expert:');
+
+                                                            if (!isHost && !isExpert) return null;
+
+                                                            const text = line.replace(/^(Host|Expert):/, '').trim();
+
+                                                            return (
+                                                                <div key={idx} className={`flex gap-4 ${isHost ? 'flex-row' : 'flex-row-reverse'}`}>
+                                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isHost ? 'bg-[#e6f4ea] text-[#1e8e3e]' : 'bg-[#e8f0fe] text-[#1967d2]'}`}>
+                                                                        {isHost ? 'H' : 'E'}
+                                                                    </div>
+                                                                    <div className={`flex-1 p-4 rounded-2xl ${isHost ? 'bg-[#f8f9fa] rounded-tl-none' : 'bg-[#f8f9fa] rounded-tr-none'}`}>
+                                                                        <p className="text-[12px] font-medium text-[#5f6368] mb-1">{isHost ? 'Host' : 'Expert'}</p>
+                                                                        <p className="text-[15px] text-[#1f1f1f] leading-relaxed">{text}</p>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
-
-                                        {/* Chat Input - Only show for chat tab */}
-                                        {videoInteractiveTab === 'chat' && (
-                                            <div className="p-3 border-t border-[#e0e0e0]">
-                                                <div className="flex items-center gap-2 bg-[#f5f5f5] rounded-full px-4 py-2">
-                                                    <input
-                                                        type="text"
-                                                        value={videoChatInput}
-                                                        onChange={(e) => setVideoChatInput(e.target.value)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                                e.preventDefault();
-                                                                handleSendChatMessage();
-                                                            }
-                                                        }}
-                                                        placeholder="Ask about this video..."
-                                                        disabled={isLoadingChatResponse}
-                                                        className="flex-1 bg-transparent text-[13px] text-[#1f1f1f] placeholder-[#9aa0a6] outline-none"
-                                                    />
-                                                    <button
-                                                        onClick={handleSendChatMessage}
-                                                        disabled={!videoChatInput.trim() || isLoadingChatResponse}
-                                                        className="p-1.5 hover:bg-[#e0e0e0] rounded-full transition-colors disabled:opacity-40"
-                                                    >
-                                                        <Send className="w-4 h-4 text-[#5f6368]" />
-                                                    </button>
-                                                </div>
-                                                <p className="text-[11px] text-[#9aa0a6] text-center mt-2">
-                                                    {videoTranscript ? 'AI has access to video transcript for better answers' : 'Using video metadata for context'}
-                                                </p>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
-                            )}
-                        </div>
+                            </>
+                        )}
                     </div>
                 );
+            }
+
+
+
+
+
 
             case 'mindmap':
                 // Show Draw.io workspace if toggled
@@ -8259,7 +9546,7 @@ sys.stderr = StringIO()
                             </div>
 
                             {/* Control Panel */}
-                            <div className="w-[320px] min-h-0 flex flex-col gap-4">
+                            <div className="w-[280px] min-h-0 flex flex-col gap-2 overflow-y-auto flex-shrink-0">
                                 {/* Analysis Mode Selector */}
                                 <div className="p-4 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
                                     <h3 className="text-[14px] font-medium text-white mb-3">Analysis Mode</h3>
@@ -8475,1141 +9762,2326 @@ sys.stderr = StringIO()
                     </div>
                 );
 
-            case 'image-activity':
+            case 'visual-activity':
                 return (
                     <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
-                        {/* Left Sidebar - Input */}
-                        {sidebarOpen && (
-                            <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
-                                {/* Main Content Area */}
-                                <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
-                                    {/* Prompt Input */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Describe Your Image</label>
-                                        <textarea
-                                            id="image-prompt"
-                                            value={imageActivityPrompt}
-                                            onChange={(e) => {
-                                                setImageActivityPrompt(e.target.value);
-                                                // Clear error when user starts typing
-                                                if (imageActivityError) {
-                                                    setImageActivityError(null);
-                                                }
-                                            }}
-                                            placeholder="e.g., A cross-section of a plant cell showing chloroplasts, mitochondria, and nucleus with detailed labels..."
-                                            className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all min-h-[120px] resize-none"
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                                                    handleGenerateImageActivity();
-                                                }
-                                            }}
-                                        />
-                                        <p className="text-xs text-slate-400">
-                                            Tip: Be specific about details, colors, and style for the best results. Press Ctrl+Enter to generate.
-                                        </p>
-                                    </div>
+                        {/* Tab Selector */}
+                        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 flex gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-lg border border-slate-200">
+                            <button
+                                onClick={() => setVisualActivityTab('image')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${visualActivityTab === 'image'
+                                    ? 'bg-[#2c4066] text-white shadow-sm'
+                                    : 'text-slate-600 hover:bg-slate-100'
+                                    }`}
+                            >
+                                <ImageIcon className="w-4 h-4" />
+                                Image Activity
+                            </button>
+                            <button
+                                onClick={() => setVisualActivityTab('3d')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${visualActivityTab === '3d'
+                                    ? 'bg-[#2c4066] text-white shadow-sm'
+                                    : 'text-slate-600 hover:bg-slate-100'
+                                    }`}
+                            >
+                                <Box className="w-4 h-4" />
+                                3D Explorer
+                            </button>
+                        </div>
 
-                                    {/* Document Reference Option */}
-                                    {documentTextRef.current && documentTextRef.current.trim() && (
-                                        <div className="space-y-2">
-                                            <label className="flex items-center gap-3 cursor-pointer group">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={useDocumentContext}
-                                                    onChange={(e) => setUseDocumentContext(e.target.checked)}
-                                                    className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#2c4066] focus:ring-2 focus:ring-[#3b5b8a] cursor-pointer"
-                                                />
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <FileText className="w-4 h-4 text-slate-300" />
-                                                        <span className="text-sm font-medium text-slate-200">Use Document Context</span>
-                                                    </div>
-                                                    <p className="text-xs text-slate-400 mt-1 ml-6">
-                                                        Enhance image generation with context from your current document
-                                                    </p>
+                        {visualActivityTab === 'image' ? (
+                            /* Image Activity Tab */
+                            <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
+                                {/* Left Sidebar - Input */}
+                                {sidebarOpen && (
+                                    <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
+                                        {/* Main Content Area */}
+                                        <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                            {/* Mode Toggle */}
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Mode</label>
+                                                <div className="flex gap-2 bg-slate-800/50 rounded-lg p-1">
+                                                    <button
+                                                        onClick={() => {
+                                                            setImageActivityMode('generate');
+                                                            setUploadedImageUrl(null);
+                                                            setGeneratedImageActivityUrl(null);
+                                                            setImageActivityLabels([]);
+                                                            resetImageQuiz();
+                                                        }}
+                                                        className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-all ${imageActivityMode === 'generate'
+                                                            ? 'bg-[#2c4066] text-white shadow-sm'
+                                                            : 'text-slate-400 hover:text-slate-200'
+                                                            }`}
+                                                    >
+                                                        <Sparkles className="w-3.5 h-3.5 inline mr-1.5" />
+                                                        Generate
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setImageActivityMode('upload');
+                                                            setGeneratedImageActivityUrl(null);
+                                                            setImageActivityPrompt('');
+                                                            setImageActivityLabels([]);
+                                                            resetImageQuiz();
+                                                        }}
+                                                        className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-all ${imageActivityMode === 'upload'
+                                                            ? 'bg-[#2c4066] text-white shadow-sm'
+                                                            : 'text-slate-400 hover:text-slate-200'
+                                                            }`}
+                                                    >
+                                                        <Upload className="w-3.5 h-3.5 inline mr-1.5" />
+                                                        Upload
+                                                    </button>
                                                 </div>
-                                            </label>
+                                            </div>
+
+                                            {imageActivityMode === 'generate' ? (
+                                                <>
+                                                    {/* Prompt Input */}
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Describe Your Image</label>
+                                                        <textarea
+                                                            id="image-prompt"
+                                                            value={imageActivityPrompt}
+                                                            onChange={(e) => {
+                                                                setImageActivityPrompt(e.target.value);
+                                                                // Clear error when user starts typing
+                                                                if (imageActivityError) {
+                                                                    setImageActivityError(null);
+                                                                }
+                                                            }}
+                                                            placeholder="e.g., A cross-section of a plant cell showing chloroplasts, mitochondria, and nucleus with detailed labels..."
+                                                            className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all min-h-[120px] resize-none"
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                                                    handleGenerateImageActivity();
+                                                                }
+                                                            }}
+                                                        />
+                                                        <p className="text-xs text-slate-400">
+                                                            Tip: Be specific about details, colors, and style for the best results. Press Ctrl+Enter to generate.
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Document Reference Option */}
+                                                    {documentTextRef.current && documentTextRef.current.trim() && (
+                                                        <div className="space-y-2">
+                                                            <label className="flex items-center gap-3 cursor-pointer group">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={useDocumentContext}
+                                                                    onChange={(e) => setUseDocumentContext(e.target.checked)}
+                                                                    className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#2c4066] focus:ring-2 focus:ring-[#3b5b8a] cursor-pointer"
+                                                                />
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <FileText className="w-4 h-4 text-slate-300" />
+                                                                        <span className="text-sm font-medium text-slate-200">Use Document Context</span>
+                                                                    </div>
+                                                                    <p className="text-xs text-slate-400 mt-1 ml-6">
+                                                                        Enhance image generation with context from your current document
+                                                                    </p>
+                                                                </div>
+                                                            </label>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Generate Button */}
+                                                    <button
+                                                        onClick={handleGenerateImageActivity}
+                                                        disabled={!imageActivityPrompt.trim() || isGeneratingImageActivity}
+                                                        className={`
+                                                    w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all
+                                                    ${!imageActivityPrompt.trim() || isGeneratingImageActivity
+                                                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                                                : 'bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95'}
+                                                `}
+                                                    >
+                                                        {isGeneratingImageActivity ? (
+                                                            <>
+                                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                                <span className="text-xs">
+                                                                    {isExtractingContext ? 'Analyzing document...' : 'Generating image...'}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Sparkles className="w-4 h-4" />
+                                                                <span>Generate Image</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {/* Upload Section */}
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Upload Your Image</label>
+                                                        <div className="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center hover:border-slate-500 transition-colors">
+                                                            <input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                onChange={handleImageUpload}
+                                                                disabled={isUploadingImage}
+                                                                className="hidden"
+                                                                id="image-upload-input"
+                                                            />
+                                                            <label
+                                                                htmlFor="image-upload-input"
+                                                                className={`cursor-pointer flex flex-col items-center gap-3 ${isUploadingImage ? 'opacity-50 cursor-not-allowed' : ''
+                                                                    }`}
+                                                            >
+                                                                {isUploadingImage ? (
+                                                                    <>
+                                                                        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                                                                        <span className="text-sm text-slate-400">Uploading and analyzing...</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <Upload className="w-10 h-10 text-slate-400" />
+                                                                        <div>
+                                                                            <p className="text-sm font-medium text-slate-200 mb-1">
+                                                                                Click to upload or drag and drop
+                                                                            </p>
+                                                                            <p className="text-xs text-slate-500">
+                                                                                PNG, JPG, JPEG up to 10MB
+                                                                            </p>
+                                                                            <p className="text-xs text-slate-500 mt-1">
+                                                                                Hand-drawn diagrams, textbook images, etc.
+                                                                            </p>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </label>
+                                                        </div>
+                                                        {uploadedImageUrl && (
+                                                            <div className="mt-3 p-3 bg-slate-800/50 rounded-lg">
+                                                                <p className="text-xs text-slate-400 mb-2">Uploaded Image:</p>
+                                                                <div className="relative">
+                                                                    <img
+                                                                        src={uploadedImageUrl}
+                                                                        alt="Uploaded"
+                                                                        className="w-full h-auto rounded border border-slate-700 max-h-32 object-contain"
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setUploadedImageUrl(null);
+                                                                            setImageActivityLabels([]);
+                                                                            resetImageQuiz();
+                                                                        }}
+                                                                        className="absolute top-1 right-1 p-1 bg-slate-900/80 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors"
+                                                                        title="Remove image"
+                                                                    >
+                                                                        <X className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            <div className="h-px bg-slate-700"></div>
                                         </div>
+
+                                        {/* Collapse Button */}
+                                        <div className="border-t border-slate-700 p-3 rounded-none">
+                                            <button
+                                                onClick={() => setSidebarOpen(false)}
+                                                className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 rounded-none"
+                                            >
+                                                <ChevronRight className="w-4 h-4" />
+                                                <span>Collapse Panel</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Right Side - Image Display */}
+                                <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+                                    {!sidebarOpen && (
+                                        <button
+                                            onClick={() => setSidebarOpen(true)}
+                                            className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 transition-colors z-10 shadow-lg"
+                                            title="Open sidebar"
+                                        >
+                                            <ChevronRight className="w-5 h-5 transform rotate-180" />
+                                        </button>
                                     )}
 
-                                    {/* Generate Button */}
-                                    <button
-                                        onClick={handleGenerateImageActivity}
-                                        disabled={!imageActivityPrompt.trim() || isGeneratingImageActivity}
-                                        className={`
-                                            w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all
-                                            ${!imageActivityPrompt.trim() || isGeneratingImageActivity
-                                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                                                : 'bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95'}
-                                        `}
-                                    >
-                                        {isGeneratingImageActivity ? (
-                                            <>
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                <span className="text-xs">
-                                                    {isExtractingContext ? 'Analyzing document...' : 'Generating image...'}
-                                                </span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Sparkles className="w-4 h-4" />
-                                                <span>Generate Image</span>
-                                            </>
-                                        )}
-                                    </button>
-
-                                    <div className="h-px bg-slate-700"></div>
-                                </div>
-
-                                {/* Collapse Button */}
-                                <div className="border-t border-slate-700 p-3 rounded-none">
-                                    <button
-                                        onClick={() => setSidebarOpen(false)}
-                                        className="w-full px-3 py-2 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 rounded-none"
-                                    >
-                                        <ChevronRight className="w-4 h-4" />
-                                        <span>Collapse Panel</span>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Right Side - Image Display */}
-                        <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
-                            {!sidebarOpen && (
-                                <button
-                                    onClick={() => setSidebarOpen(true)}
-                                    className="absolute top-4 left-4 p-2 bg-slate-800 text-white hover:bg-slate-700 transition-colors z-10 shadow-lg"
-                                    title="Open sidebar"
-                                >
-                                    <ChevronRight className="w-5 h-5 transform rotate-180" />
-                                </button>
-                            )}
-
-                            {/* Image Display Area */}
-                            <div className="flex-1 w-full h-full min-h-0 overflow-auto flex items-center justify-center p-8">
-                                {generatedImageActivityUrl ? (
-                                    <div className="w-full max-w-4xl space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-lg font-medium text-slate-900">Generated Image</h3>
-                                            <button
-                                                onClick={() => {
-                                                    const link = document.createElement('a');
-                                                    link.href = generatedImageActivityUrl;
-                                                    link.download = `ai-generated-${Date.now()}.png`;
-                                                    link.click();
-                                                }}
-                                                className="flex items-center gap-2 px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                                Download Image
-                                            </button>
-                                        </div>
-                                        <div className="aspect-video w-full bg-white border border-slate-200 overflow-hidden shadow-lg group relative">
-                                            <img
-                                                src={generatedImageActivityUrl}
-                                                alt="AI Generated"
-                                                className="w-full h-full object-contain"
-                                            />
-                                        </div>
-                                    </div>
-                                ) : isGeneratingImageActivity ? (
-                                    <div className="flex flex-col items-center gap-6 text-center max-w-md">
-                                        <div className="relative w-16 h-16">
-                                            <div className="absolute inset-0 bg-slate-300 opacity-40 blur-xl"></div>
-                                            <Loader2 className="w-16 h-16 animate-spin text-[#2c4066] relative" />
-                                        </div>
-                                        <div>
-                                            <p className="text-lg font-bold text-slate-700 mb-2">Generating Image</p>
-                                            <p className="text-sm text-slate-500 mb-4">AI is crafting your image using Gemini 3 Pro Image Preview (Nano Banana Pro)...</p>
-                                            <p className="text-xs text-slate-400">This usually takes 5-10 seconds</p>
-                                        </div>
-                                    </div>
-                                ) : imageActivityError ? (
-                                    <div className="flex flex-col items-center gap-6 text-center max-w-xl">
-                                        <div className="w-24 h-24 bg-red-100 flex items-center justify-center rounded-full">
-                                            <X className="w-12 h-12 text-red-600" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-2xl font-bold text-slate-700 mb-2">Generation Failed</h3>
-                                            <p className="text-red-600 mb-4">{imageActivityError}</p>
-                                            <button
-                                                onClick={handleGenerateImageActivity}
-                                                className="px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm rounded"
-                                            >
-                                                Try Again
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center gap-6 text-center max-w-xl">
-                                        <div className="w-24 h-24 bg-[#e4e9f2] flex items-center justify-center">
-                                            <ImageIcon className="w-12 h-12 text-[#2c4066]" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-2xl font-bold text-slate-700 mb-2">Ready to Generate</h3>
-                                            <p className="text-slate-500 mb-6">
-                                                Describe any concept, scene, or diagram, and AI will generate a high-quality educational illustration for you.
-                                            </p>
-                                            <div className="flex items-center justify-center gap-4 text-sm text-slate-500">
-                                                <div className="flex items-center gap-2">
-                                                    <ImageIcon className="w-4 h-4" />
-                                                    <span>Describe your image</span>
-                                                </div>
-                                                <div className="w-1 h-1 bg-slate-300"></div>
-                                                <div className="flex items-center gap-2">
-                                                    <Sparkles className="w-4 h-4" />
-                                                    <span>Generate</span>
-                                                </div>
-                                                <div className="w-1 h-1 bg-slate-300"></div>
-                                                <div className="flex items-center gap-2">
-                                                    <Download className="w-4 h-4" />
-                                                    <span>Download</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                );
-
-            case 'viewer3d':
-                return (
-                    <div className="flex flex-col h-full bg-[#eef2f7] p-6">
-                        {/* Header */}
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-[#1F1F1F] flex items-center justify-center">
-                                    <Viewer3DIcon active />
-                                </div>
-                                <div>
-                                    <h2 className="text-[18px] font-medium text-slate-800">3D Object Viewer</h2>
-                                    <p className="text-[13px] text-slate-600">Hand gesture controls for 3D models</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {/* Voice Command Toggle */}
-                                <button
-                                    onClick={() => setViewer3dVoiceActive(!viewer3dVoiceActive)}
-                                    className={`p-2 transition-colors flex items-center gap-1.5 ${viewer3dVoiceActive
-                                        ? 'bg-[#2c4066] text-white'
-                                        : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'
-                                        }`}
-                                    title={viewer3dVoiceActive ? 'Stop Voice Commands' : 'Start Voice Commands'}
-                                >
-                                    <Mic className="w-4 h-4" />
-                                    {viewer3dVoiceActive && <span className="text-[11px]">Listening...</span>}
-                                </button>
-                                {/* Interaction Mode Selector */}
-                                <div className="flex bg-[#1F1F1F] p-1">
-                                    {(['drag', 'rotate', 'scale', 'animate'] as const).map(mode => (
-                                        <button
-                                            key={mode}
-                                            onClick={() => setViewer3dInteractionMode(mode)}
-                                            className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${viewer3dInteractionMode === mode
-                                                ? 'bg-[#2c4066] text-white'
-                                                : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'
-                                                }`}
-                                        >
-                                            {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                                        </button>
-                                    ))}
-                                </div>
-                                <button
-                                    onClick={() => {
-                                        setViewer3dRotation({ x: 0, y: 0, z: 0 });
-                                        setViewer3dPosition({ x: 0, y: 0, z: 0 });
-                                        setViewer3dScale(1);
-                                    }}
-                                    className="px-3 py-1.5 text-[13px] text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center gap-1.5"
-                                >
-                                    <RefreshCw className="w-4 h-4" />
-                                    Reset
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Voice Command Transcript */}
-                        {viewer3dVoiceActive && viewer3dVoiceTranscript && (
-                            <div className="mb-2 px-3 py-1.5 bg-[#1F1F1F] text-[13px] text-slate-200 flex items-center gap-2">
-                                <Mic className="w-4 h-4" />
-                                <span>"{viewer3dVoiceTranscript}"</span>
-                            </div>
-                        )}
-
-                        {/* Main Content - Split View */}
-                        <div className="flex-1 min-h-0 flex gap-4">
-                            {/* Left: 3D Viewer */}
-                            <div
-                                className={`flex-1 min-h-0 relative border-2 overflow-hidden bg-[#eef2f7] transition-colors ${viewer3dIsDraggingFile ? 'border-[#7c3aed] border-dashed' : 'border-slate-300'
-                                    }`}
-                                onDragOver={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setViewer3dIsDraggingFile(true);
-                                }}
-                                onDragLeave={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setViewer3dIsDraggingFile(false);
-                                }}
-                                onDrop={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setViewer3dIsDraggingFile(false);
-
-                                    const files = e.dataTransfer.files;
-                                    if (files.length > 0) {
-                                        const file = files[0];
-                                        const ext = file.name.split('.').pop()?.toLowerCase();
-                                        if (ext === 'glb' || ext === 'gltf') {
-                                            const url = URL.createObjectURL(file);
-                                            setViewer3dModelUrl(url);
-                                            setViewer3dModelName(file.name);
-                                        } else {
-                                            alert('Please drop a GLB or GLTF file');
-                                        }
-                                    }
-                                }}
-                            >
-                                {/* Drag overlay */}
-                                {viewer3dIsDraggingFile && (
-                                    <div className="absolute inset-0 bg-[#7c3aed]/20 flex items-center justify-center z-50 pointer-events-none">
-                                        <div className="text-center">
-                                            <Upload className="w-16 h-16 text-[#7c3aed] mx-auto mb-4" />
-                                            <p className="text-slate-800 text-lg font-medium">Drop GLB/GLTF file here</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {!viewer3dModelUrl ? (
-                                    <div className="flex items-center justify-center h-full">
-                                        <div className="text-center max-w-md px-6">
-                                            <div className="w-20 h-20 mx-auto mb-6 bg-[#1F1F1F] flex items-center justify-center">
-                                                <Box className="w-10 h-10 text-slate-300" />
-                                            </div>
-                                            <h3 className="text-[22px] font-medium text-slate-800 mb-3">Load a 3D Model</h3>
-                                            <p className="text-[15px] text-slate-600 mb-6">
-                                                Drag & drop a GLB/GLTF file, upload from your computer, or try a demo shape to interact with using hand gestures.
-                                            </p>
-                                            <div className="flex flex-col gap-3">
-                                                <input
-                                                    ref={viewer3dFileInputRef}
-                                                    type="file"
-                                                    accept=".glb,.gltf"
-                                                    className="hidden"
-                                                    onChange={(e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (file) {
-                                                            const url = URL.createObjectURL(file);
-                                                            setViewer3dModelUrl(url);
-                                                            setViewer3dModelName(file.name);
-                                                        }
-                                                    }}
-                                                />
-                                                <button
-                                                    onClick={() => viewer3dFileInputRef.current?.click()}
-                                                    className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto"
-                                                >
-                                                    <Upload className="w-5 h-5" />
-                                                    Upload 3D Model (GLB/GLTF)
-                                                </button>
-                                                {/* Quick Load Demo Shapes */}
-                                                <div className="flex flex-wrap gap-2 justify-center mt-2">
-                                                    {[
-                                                        { name: 'Demo Cube', shape: 'cube' },
-                                                        { name: 'Demo Sphere', shape: 'sphere' },
-                                                        { name: 'Demo Torus', shape: 'torus' },
-                                                        { name: 'Demo Pyramid', shape: 'pyramid' },
-                                                    ].map(shape => (
-                                                        <button
-                                                            key={shape.shape}
-                                                            onClick={() => {
-                                                                // Use built-in demo shape (handled by viewer)
-                                                                setViewer3dModelUrl(`demo:${shape.shape}`);
-                                                                setViewer3dModelName(shape.name);
-                                                            }}
-                                                            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[12px] transition-colors"
-                                                        >
-                                                            {shape.name}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                                <p className="text-[12px] text-slate-500 mt-2">
-                                                    Or drag and drop a .glb or .gltf file anywhere on this viewer
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="relative w-full h-full">
-                                        {/* 3D Scene Container */}
-                                        <div
-                                            className="w-full h-full flex items-center justify-center"
-                                            style={{ perspective: '1000px' }}
-                                        >
-                                            {/* CSS3D 3D Object with grabbing pulse effect */}
-                                            <div
-                                                style={{
-                                                    width: '200px',
-                                                    height: '200px',
-                                                    transformStyle: 'preserve-3d',
-                                                    transform: `
-                                                        translateX(${viewer3dPosition.x}px)
-                                                        translateY(${viewer3dPosition.y}px)
-                                                        scale(${viewer3dScale * (viewer3dIsGrabbing ? (1 + Math.sin(viewer3dGrabPulse * Math.PI / 180) * 0.03) : 1)})
-                                                        rotateX(${viewer3dRotation.x}deg)
-                                                        rotateY(${viewer3dRotation.y}deg)
-                                                        rotateZ(${viewer3dRotation.z}deg)
-                                                    `,
-                                                    transition: viewer3dIsGrabbing ? 'none' : 'transform 0.05s ease-out',
-                                                    filter: viewer3dIsGrabbing ? `drop-shadow(0 0 20px ${getModeColor(viewer3dInteractionMode)})` : 'none',
-                                                }}
-                                            >
-                                                {/* Render different shapes based on model URL */}
-                                                {viewer3dModelUrl?.startsWith('demo:sphere') ? (
-                                                    // Sphere (using gradient circle)
-                                                    <div
-                                                        style={{
-                                                            width: '200px',
-                                                            height: '200px',
-                                                            borderRadius: '50%',
-                                                            background: 'radial-gradient(circle at 30% 30%, #a78bfa, #7c3aed 50%, #4c1d95 100%)',
-                                                            boxShadow: 'inset -20px -20px 40px rgba(0,0,0,0.3), 10px 10px 30px rgba(0,0,0,0.5)',
-                                                        }}
-                                                    />
-                                                ) : viewer3dModelUrl?.startsWith('demo:torus') ? (
-                                                    // Torus (simplified ring)
-                                                    <div
-                                                        style={{
-                                                            width: '200px',
-                                                            height: '200px',
-                                                            borderRadius: '50%',
-                                                            border: '40px solid #ec4899',
-                                                            boxShadow: 'inset 0 0 30px rgba(0,0,0,0.5), 10px 10px 30px rgba(0,0,0,0.3)',
-                                                            background: 'transparent',
-                                                        }}
-                                                    />
-                                                ) : viewer3dModelUrl?.startsWith('demo:pyramid') ? (
-                                                    // Pyramid (using CSS triangles)
-                                                    <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
-                                                        {/* Base */}
-                                                        <div style={{
-                                                            position: 'absolute',
-                                                            width: '140px',
-                                                            height: '140px',
-                                                            background: 'rgba(59, 130, 246, 0.8)',
-                                                            transform: 'translateX(30px) translateY(100px) rotateX(90deg)',
-                                                        }} />
-                                                        {/* Front face */}
-                                                        <div style={{
-                                                            position: 'absolute',
-                                                            width: 0,
-                                                            height: 0,
-                                                            borderLeft: '70px solid transparent',
-                                                            borderRight: '70px solid transparent',
-                                                            borderBottom: '120px solid rgba(124, 58, 237, 0.8)',
-                                                            transform: 'translateX(30px) translateY(-10px)',
-                                                        }} />
-                                                        {/* Back face */}
-                                                        <div style={{
-                                                            position: 'absolute',
-                                                            width: 0,
-                                                            height: 0,
-                                                            borderLeft: '70px solid transparent',
-                                                            borderRight: '70px solid transparent',
-                                                            borderBottom: '120px solid rgba(124, 58, 237, 0.6)',
-                                                            transform: 'translateX(30px) translateY(-10px) rotateY(180deg) translateZ(140px)',
-                                                        }} />
-                                                    </div>
-                                                ) : (
-                                                    // Default Cube
-                                                    <>
-                                                        {/* Cube Faces for Demo */}
-                                                        {[
-                                                            { transform: 'translateZ(100px)', bg: `rgba(${viewer3dInteractionMode === 'drag' ? '0,255,255' : viewer3dInteractionMode === 'rotate' ? '255,0,255' : viewer3dInteractionMode === 'scale' ? '255,255,0' : '255,165,0'}, 0.8)`, label: 'Front' },
-                                                            { transform: 'translateZ(-100px) rotateY(180deg)', bg: 'rgba(124, 58, 237, 0.6)', label: 'Back' },
-                                                            { transform: 'translateX(100px) rotateY(90deg)', bg: 'rgba(236, 72, 153, 0.8)', label: 'Right' },
-                                                            { transform: 'translateX(-100px) rotateY(-90deg)', bg: 'rgba(236, 72, 153, 0.6)', label: 'Left' },
-                                                            { transform: 'translateY(-100px) rotateX(90deg)', bg: 'rgba(59, 130, 246, 0.8)', label: 'Top' },
-                                                            { transform: 'translateY(100px) rotateX(-90deg)', bg: 'rgba(59, 130, 246, 0.6)', label: 'Bottom' },
-                                                        ].map((face, idx) => (
-                                                            <div
-                                                                key={idx}
-                                                                className="absolute flex items-center justify-center text-white font-bold text-lg border-2 border-white/30"
-                                                                style={{
-                                                                    width: '200px',
-                                                                    height: '200px',
-                                                                    transform: face.transform,
-                                                                    background: face.bg,
-                                                                    backfaceVisibility: 'visible',
-                                                                }}
-                                                            >
-                                                                {face.label}
+                                    {/* Image Display Area */}
+                                    <div className="flex-1 w-full h-full min-h-0 overflow-auto flex items-center justify-center p-6 lg:p-8">
+                                        {getCurrentImageUrl() ? (
+                                            <div className="w-full max-w-7xl space-y-6">
+                                                {/* Header Section */}
+                                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                                                        <div>
+                                                            <h3 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                                                                <ImageIcon className="w-6 h-6 text-[#2c4066]" />
+                                                                Generated Image
+                                                            </h3>
+                                                            <p className="text-sm text-slate-500 mt-1">Interactive educational diagram</p>
+                                                        </div>
+                                                        {isAnalyzingImage && (
+                                                            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full text-sm text-blue-700">
+                                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                                <span>Analyzing labels...</span>
                                                             </div>
-                                                        ))}
-                                                    </>
+                                                        )}
+                                                        {imageActivityLabels.length > 0 && !imageQuizMode && (
+                                                            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full text-sm text-emerald-700">
+                                                                <CheckCircle2 className="w-4 h-4" />
+                                                                <span className="font-medium">{imageActivityLabels.length} interactive labels</span>
+                                                            </div>
+                                                        )}
+                                                        {imageQuizMode && (
+                                                            <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-full text-sm text-purple-700">
+                                                                <Target className="w-4 h-4" />
+                                                                <span className="font-medium">Quiz Mode Active</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        {imageActivityLabels.length > 0 && (
+                                                            <>
+                                                                <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 border border-slate-200">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (imageQuizMode) {
+                                                                                resetImageQuiz();
+                                                                            } else {
+                                                                                setImageQuizMode(true);
+                                                                                setImageQuizType('find');
+                                                                            }
+                                                                        }}
+                                                                        className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all font-medium text-sm ${imageQuizMode
+                                                                            ? 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'
+                                                                            : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                                                                            }`}
+                                                                    >
+                                                                        <Target className="w-4 h-4" />
+                                                                        {imageQuizMode ? 'Exit Quiz' : 'Start Quiz'}
+                                                                    </button>
+                                                                    {imageQuizMode && (
+                                                                        <div className="flex items-center gap-1 border-l border-slate-300 pl-1">
+                                                                            <button
+                                                                                onClick={() => setImageQuizType('find')}
+                                                                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${imageQuizType === 'find'
+                                                                                    ? 'bg-[#2c4066] text-white shadow-sm'
+                                                                                    : 'text-slate-600 hover:bg-slate-100'
+                                                                                    }`}
+                                                                            >
+                                                                                Find
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => setImageQuizType('write')}
+                                                                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${imageQuizType === 'write'
+                                                                                    ? 'bg-[#2c4066] text-white shadow-sm'
+                                                                                    : 'text-slate-600 hover:bg-slate-100'
+                                                                                    }`}
+                                                                            >
+                                                                                Name
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                        {imageActivityMode === 'generate' && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    const link = document.createElement('a');
+                                                                    link.href = generatedImageActivityUrl || '';
+                                                                    link.download = `ai-generated-${Date.now()}.png`;
+                                                                    link.click();
+                                                                }}
+                                                                className="flex items-center gap-2 px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm rounded-lg shadow-sm"
+                                                            >
+                                                                <Download className="w-4 h-4" />
+                                                                Download
+                                                            </button>
+                                                        )}
+                                                        {imageActivityMode === 'upload' && uploadedImageUrl && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    const link = document.createElement('a');
+                                                                    link.href = uploadedImageUrl;
+                                                                    link.download = `uploaded-image-${Date.now()}.png`;
+                                                                    link.click();
+                                                                }}
+                                                                className="flex items-center gap-2 px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm rounded-lg shadow-sm"
+                                                            >
+                                                                <Download className="w-4 h-4" />
+                                                                Download
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className={`grid grid-cols-1 gap-6 ${selectedImageLabel ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
+                                                    {/* Image with Interactive Overlay */}
+                                                    <div className={selectedImageLabel ? 'lg:col-span-2' : 'lg:col-span-1'}>
+                                                        <div
+                                                            ref={setImageContainerRef}
+                                                            className="aspect-video w-full bg-gradient-to-br from-slate-50 to-white border-2 border-slate-200 rounded-xl overflow-hidden shadow-xl group relative"
+                                                        >
+                                                            <img
+                                                                src={getCurrentImageUrl() || ''}
+                                                                alt={imageActivityMode === 'upload' ? 'Uploaded Image' : 'AI Generated'}
+                                                                className="w-full h-full object-contain"
+                                                                onLoad={(e) => {
+                                                                    const img = e.currentTarget;
+                                                                    setImageDimensions({
+                                                                        width: img.offsetWidth,
+                                                                        height: img.offsetHeight
+                                                                    });
+                                                                }}
+                                                            />
+                                                            {/* Interactive Labels Overlay */}
+                                                            {imageActivityLabels.length > 0 && imageDimensions.width > 0 && (
+                                                                <svg
+                                                                    className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                                                                    style={{ width: '100%', height: '100%' }}
+                                                                >
+                                                                    {imageActivityLabels.map((label, idx) => {
+                                                                        const isSelected = selectedImageLabel?.term === label.term;
+                                                                        const isCorrect = imageQuizCorrect.includes(label.term);
+                                                                        const isWrong = imageQuizWrong === label.term;
+                                                                        const isRevealed = imageRevealedLabels.includes(label.term);
+
+                                                                        // Convert normalized coordinates (0-1000) to percentage
+                                                                        const x = (label.coordinates.xmin / 1000) * 100;
+                                                                        const y = (label.coordinates.ymin / 1000) * 100;
+                                                                        const width = ((label.coordinates.xmax - label.coordinates.xmin) / 1000) * 100;
+                                                                        const height = ((label.coordinates.ymax - label.coordinates.ymin) / 1000) * 100;
+
+                                                                        let fillColor = 'rgba(59, 130, 246, 0.15)';
+                                                                        let strokeColor = '#3b82f6';
+                                                                        let textColor = '#1e40af';
+                                                                        let strokeWidth = 2;
+
+                                                                        if (isSelected) {
+                                                                            fillColor = 'rgba(16, 185, 129, 0.25)';
+                                                                            strokeColor = '#10b981';
+                                                                            textColor = '#059669';
+                                                                            strokeWidth = 3;
+                                                                        } else if (isCorrect) {
+                                                                            fillColor = 'rgba(34, 197, 94, 0.25)';
+                                                                            strokeColor = '#22c55e';
+                                                                            textColor = '#16a34a';
+                                                                            strokeWidth = 2.5;
+                                                                        } else if (isWrong) {
+                                                                            fillColor = 'rgba(239, 68, 68, 0.25)';
+                                                                            strokeColor = '#ef4444';
+                                                                            textColor = '#dc2626';
+                                                                            strokeWidth = 2.5;
+                                                                        }
+
+                                                                        return (
+                                                                            <g key={idx} className="pointer-events-auto">
+                                                                                <rect
+                                                                                    x={`${x}%`}
+                                                                                    y={`${y}%`}
+                                                                                    width={`${width}%`}
+                                                                                    height={`${height}%`}
+                                                                                    fill={fillColor}
+                                                                                    stroke={strokeColor}
+                                                                                    strokeWidth={strokeWidth}
+                                                                                    strokeDasharray={isSelected ? "6,4" : "none"}
+                                                                                    rx="2"
+                                                                                    className="cursor-pointer hover:opacity-90 transition-all"
+                                                                                    onClick={() => handleImageLabelClick(label)}
+                                                                                />
+                                                                                {(!imageQuizMode || (imageQuizMode && (isRevealed || isCorrect || isSelected))) && (
+                                                                                    <g>
+                                                                                        <text
+                                                                                            x={`${x + width / 2}%`}
+                                                                                            y={`${y - 8}%`}
+                                                                                            fill="white"
+                                                                                            fontSize="11"
+                                                                                            fontWeight="700"
+                                                                                            textAnchor="middle"
+                                                                                            className="pointer-events-none"
+                                                                                            style={{
+                                                                                                textShadow: '0 2px 4px rgba(0,0,0,0.5), 0 0 8px rgba(0,0,0,0.3)',
+                                                                                                pointerEvents: 'none'
+                                                                                            }}
+                                                                                        >
+                                                                                            {label.term}
+                                                                                        </text>
+                                                                                        <text
+                                                                                            x={`${x + width / 2}%`}
+                                                                                            y={`${y - 8}%`}
+                                                                                            fill={textColor}
+                                                                                            fontSize="11"
+                                                                                            fontWeight="700"
+                                                                                            textAnchor="middle"
+                                                                                            className="pointer-events-none"
+                                                                                            style={{
+                                                                                                pointerEvents: 'none'
+                                                                                            }}
+                                                                                        >
+                                                                                            {label.term}
+                                                                                        </text>
+                                                                                    </g>
+                                                                                )}
+                                                                            </g>
+                                                                        );
+                                                                    })}
+                                                                </svg>
+                                                            )}
+                                                            {/* Clickable areas for labels */}
+                                                            {imageActivityLabels.length > 0 && imageDimensions.width > 0 && (
+                                                                <div className="absolute inset-0 pointer-events-none">
+                                                                    {imageActivityLabels.map((label, idx) => {
+                                                                        const x = (label.coordinates.xmin / 1000) * 100;
+                                                                        const y = (label.coordinates.ymin / 1000) * 100;
+                                                                        const width = ((label.coordinates.xmax - label.coordinates.xmin) / 1000) * 100;
+                                                                        const height = ((label.coordinates.ymax - label.coordinates.ymin) / 1000) * 100;
+
+                                                                        return (
+                                                                            <div
+                                                                                key={idx}
+                                                                                className="absolute pointer-events-auto cursor-pointer hover:bg-blue-500/10 transition-colors"
+                                                                                style={{
+                                                                                    left: `${x}%`,
+                                                                                    top: `${y}%`,
+                                                                                    width: `${width}%`,
+                                                                                    height: `${height}%`,
+                                                                                }}
+                                                                                onClick={() => handleImageLabelClick(label)}
+                                                                            />
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Quiz Instructions */}
+                                                        {imageQuizMode && (
+                                                            <div className="mt-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl shadow-sm">
+                                                                {imageQuizType === 'find' ? (
+                                                                    <div className="space-y-3">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Target className="w-5 h-5 text-blue-600" />
+                                                                            <p className="text-base font-bold text-blue-900">
+                                                                                Find the Label
+                                                                            </p>
+                                                                        </div>
+                                                                        {selectedImageLabel ? (
+                                                                            <div className="bg-white rounded-lg p-3 border-2 border-blue-300">
+                                                                                <p className="text-sm text-slate-600 mb-1">Click on:</p>
+                                                                                <p className="text-lg font-bold text-blue-700">{selectedImageLabel.term}</p>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <p className="text-sm text-blue-700">
+                                                                                Select a label from the list below to find it on the image
+                                                                            </p>
+                                                                        )}
+                                                                        {imageQuizCorrect.length > 0 && (
+                                                                            <div className="flex items-center gap-2 bg-green-100 rounded-lg px-3 py-2 border border-green-300">
+                                                                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                                                                <p className="text-sm font-semibold text-green-700">
+                                                                                    Progress: {imageQuizCorrect.length} / {imageActivityLabels.length} correct
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="space-y-3">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <HelpCircle className="w-5 h-5 text-blue-600" />
+                                                                            <p className="text-base font-bold text-blue-900">
+                                                                                Name the Label
+                                                                            </p>
+                                                                        </div>
+                                                                        {selectedImageLabel ? (
+                                                                            <div className="space-y-3">
+                                                                                <p className="text-sm text-blue-700 font-medium">
+                                                                                    What is this highlighted part called?
+                                                                                </p>
+                                                                                <div className="flex gap-2">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        value={imageUserGuess}
+                                                                                        onChange={(e) => setImageUserGuess(e.target.value)}
+                                                                                        onKeyDown={(e) => {
+                                                                                            if (e.key === 'Enter') {
+                                                                                                submitImageGuess();
+                                                                                            }
+                                                                                        }}
+                                                                                        placeholder="Type the name here..."
+                                                                                        className={`flex-1 px-4 py-2.5 border-2 rounded-lg text-sm font-medium transition-all ${imageGuessError
+                                                                                            ? 'border-red-400 focus:ring-red-500 bg-red-50'
+                                                                                            : 'border-slate-300 focus:ring-blue-500 focus:border-blue-400'
+                                                                                            } focus:outline-none focus:ring-2`}
+                                                                                        autoFocus
+                                                                                    />
+                                                                                    <button
+                                                                                        onClick={submitImageGuess}
+                                                                                        className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium text-sm shadow-sm"
+                                                                                    >
+                                                                                        Submit
+                                                                                    </button>
+                                                                                </div>
+                                                                                {imageGuessError && (
+                                                                                    <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 border border-red-200">
+                                                                                        <X className="w-4 h-4" />
+                                                                                        <span>Incorrect. Try again!</span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <p className="text-sm text-blue-700">
+                                                                                Click on a highlighted area on the image to name it
+                                                                            </p>
+                                                                        )}
+                                                                        {imageRevealedLabels.length > 0 && (
+                                                                            <div className="flex items-center gap-2 bg-green-100 rounded-lg px-3 py-2 border border-green-300">
+                                                                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                                                                <p className="text-sm font-semibold text-green-700">
+                                                                                    Revealed: {imageRevealedLabels.length} / {imageActivityLabels.length}
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Information Panel */}
+                                                    {selectedImageLabel && (
+                                                        <div className="lg:col-span-1">
+                                                            <div className="bg-white border-2 border-slate-200 rounded-xl shadow-xl p-6 space-y-5 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
+                                                                <div className="flex items-start justify-between pb-4 border-b border-slate-200 sticky top-0 bg-white z-10">
+                                                                    <div>
+                                                                        <h4 className="text-2xl font-bold text-slate-900 mb-1">
+                                                                            {selectedImageLabel.term}
+                                                                        </h4>
+                                                                        <p className="text-xs text-slate-500 uppercase tracking-wider">Selected Label</p>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedImageLabel(null);
+                                                                            setEnhancedLabelInfo(null);
+                                                                        }}
+                                                                        className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg p-1 transition-all"
+                                                                        title="Close panel"
+                                                                    >
+                                                                        <X className="w-5 h-5" />
+                                                                    </button>
+                                                                </div>
+
+                                                                {isLoadingEnhancedInfo ? (
+                                                                    <div className="flex flex-col items-center justify-center py-8">
+                                                                        <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-3" />
+                                                                        <p className="text-sm text-slate-600">Loading intelligent information...</p>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="space-y-5">
+                                                                        {/* Definition */}
+                                                                        <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                                                                            <h5 className="text-sm font-bold text-blue-900 mb-3 flex items-center gap-2 uppercase tracking-wide">
+                                                                                <Info className="w-4 h-4" />
+                                                                                Definition
+                                                                            </h5>
+                                                                            <p className="text-sm text-slate-700 leading-relaxed">
+                                                                                {enhancedLabelInfo?.definition || selectedImageLabel.definition}
+                                                                            </p>
+                                                                        </div>
+
+                                                                        {/* Visual Description */}
+                                                                        {enhancedLabelInfo?.visualDescription && (
+                                                                            <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                                                                                <h5 className="text-sm font-bold text-purple-900 mb-3 flex items-center gap-2 uppercase tracking-wide">
+                                                                                    <Eye className="w-4 h-4" />
+                                                                                    Visual Description
+                                                                                </h5>
+                                                                                <p className="text-sm text-slate-700 leading-relaxed">
+                                                                                    {enhancedLabelInfo.visualDescription}
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Equations */}
+                                                                        {enhancedLabelInfo?.equations && enhancedLabelInfo.equations.length > 0 && (
+                                                                            <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+                                                                                <h5 className="text-sm font-bold text-green-900 mb-3 flex items-center gap-2 uppercase tracking-wide">
+                                                                                    <Zap className="w-4 h-4" />
+                                                                                    Related Equations
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {enhancedLabelInfo.equations.map((eq, idx) => {
+                                                                                        // Format equation for LaTeX rendering
+                                                                                        const formattedEq = eq.startsWith('$') ? eq : eq.startsWith('$$') ? eq : `$$${eq}$$`;
+                                                                                        return (
+                                                                                            <div key={idx} className="bg-white rounded-md p-3 border border-green-200">
+                                                                                                <div className="text-sm">
+                                                                                                    <ReactMarkdown
+                                                                                                        remarkPlugins={[remarkMath]}
+                                                                                                        rehypePlugins={[rehypeKatex]}
+                                                                                                    >
+                                                                                                        {formattedEq}
+                                                                                                    </ReactMarkdown>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Relationships */}
+                                                                        {enhancedLabelInfo?.relationships && enhancedLabelInfo.relationships.length > 0 && (
+                                                                            <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
+                                                                                <h5 className="text-sm font-bold text-indigo-900 mb-3 flex items-center gap-2 uppercase tracking-wide">
+                                                                                    <GitBranch className="w-4 h-4" />
+                                                                                    Relationships
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {enhancedLabelInfo.relationships.map((rel, idx) => (
+                                                                                        <div key={idx} className="bg-white rounded-md p-3 border border-indigo-200">
+                                                                                            <p className="text-sm font-semibold text-slate-900 mb-1">
+                                                                                                {rel.relatedTo}
+                                                                                            </p>
+                                                                                            <p className="text-xs text-slate-600 leading-relaxed">
+                                                                                                {rel.relationship}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Key Concepts */}
+                                                                        {enhancedLabelInfo?.keyConcepts && enhancedLabelInfo.keyConcepts.length > 0 && (
+                                                                            <div className="bg-cyan-50 rounded-lg p-4 border border-cyan-100">
+                                                                                <h5 className="text-sm font-bold text-cyan-900 mb-3 flex items-center gap-2 uppercase tracking-wide">
+                                                                                    <Brain className="w-4 h-4" />
+                                                                                    Key Concepts
+                                                                                </h5>
+                                                                                <div className="flex flex-wrap gap-2">
+                                                                                    {enhancedLabelInfo.keyConcepts.map((concept, idx) => (
+                                                                                        <span key={idx} className="px-3 py-1 bg-white rounded-full text-xs font-medium text-slate-700 border border-cyan-200">
+                                                                                            {concept}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Applications */}
+                                                                        {enhancedLabelInfo?.applications && enhancedLabelInfo.applications.length > 0 && (
+                                                                            <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
+                                                                                <h5 className="text-sm font-bold text-orange-900 mb-3 flex items-center gap-2 uppercase tracking-wide">
+                                                                                    <Globe className="w-4 h-4" />
+                                                                                    Applications
+                                                                                </h5>
+                                                                                <ul className="space-y-2">
+                                                                                    {enhancedLabelInfo.applications.map((app, idx) => (
+                                                                                        <li key={idx} className="text-sm text-slate-700 leading-relaxed flex items-start gap-2">
+                                                                                            <span className="text-orange-500 mt-1">•</span>
+                                                                                            <span>{app}</span>
+                                                                                        </li>
+                                                                                    ))}
+                                                                                </ul>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Fun Fact */}
+                                                                        <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
+                                                                            <h5 className="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2 uppercase tracking-wide">
+                                                                                <Lightbulb className="w-4 h-4" />
+                                                                                Fun Fact
+                                                                            </h5>
+                                                                            <p className="text-sm text-slate-700 leading-relaxed italic">
+                                                                                {enhancedLabelInfo?.funFact || selectedImageLabel.funFact}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Labels List (for Quiz Mode) */}
+                                                {imageQuizMode && imageQuizType === 'find' && imageActivityLabels.length > 0 && (
+                                                    <div className="bg-white border-2 border-slate-200 rounded-xl shadow-xl p-6">
+                                                        <div className="flex items-center justify-between mb-5 pb-4 border-b border-slate-200">
+                                                            <h4 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                                                                <Target className="w-5 h-5 text-blue-600" />
+                                                                Labels to Find
+                                                            </h4>
+                                                            <div className="text-sm text-slate-500">
+                                                                {imageQuizCorrect.length} / {imageActivityLabels.length} completed
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                                            {imageActivityLabels.map((label) => {
+                                                                const isCorrect = imageQuizCorrect.includes(label.term);
+                                                                const isSelected = selectedImageLabel?.term === label.term;
+
+                                                                return (
+                                                                    <button
+                                                                        key={label.term}
+                                                                        onClick={() => {
+                                                                            if (!isCorrect) {
+                                                                                setSelectedImageLabel(label);
+                                                                                setImageQuizWrong(null);
+                                                                            }
+                                                                        }}
+                                                                        disabled={isCorrect}
+                                                                        className={`px-4 py-3 rounded-lg text-sm font-medium transition-all ${isCorrect
+                                                                            ? 'bg-green-100 text-green-700 cursor-not-allowed border-2 border-green-300 shadow-sm'
+                                                                            : isSelected
+                                                                                ? 'bg-blue-100 text-blue-700 border-2 border-blue-500 shadow-md transform scale-105'
+                                                                                : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-2 border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                                                                            }`}
+                                                                    >
+                                                                        {isCorrect ? (
+                                                                            <span className="flex items-center justify-center gap-2">
+                                                                                <CheckCircle2 className="w-5 h-5" />
+                                                                                <span className="line-through opacity-75">{label.term}</span>
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className={isSelected ? 'font-bold' : ''}>{label.term}</span>
+                                                                        )}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
                                                 )}
                                             </div>
-                                        </div>
-
-                                        {/* Mode indicator */}
-                                        <div
-                                            className="absolute top-4 right-16 px-3 py-1.5 text-white text-[12px] font-medium flex items-center gap-2"
-                                            style={{ backgroundColor: getModeColor(viewer3dInteractionMode) }}
-                                        >
-                                            {viewer3dInteractionMode === 'drag' && <Move className="w-4 h-4" />}
-                                            {viewer3dInteractionMode === 'rotate' && <RefreshCw className="w-4 h-4" />}
-                                            {viewer3dInteractionMode === 'scale' && <Maximize2 className="w-4 h-4" />}
-                                            {viewer3dInteractionMode === 'animate' && <Film className="w-4 h-4" />}
-                                            {viewer3dInteractionMode.charAt(0).toUpperCase() + viewer3dInteractionMode.slice(1)} Mode
-                                        </div>
-
-                                        {/* Animation Index (for animate mode) */}
-                                        {viewer3dInteractionMode === 'animate' && (
-                                            <div className="absolute top-14 right-16 px-3 py-1.5 bg-black/50 text-white text-[12px]">
-                                                Animation: {viewer3dAnimationIndex + 1}/6
+                                        ) : isGeneratingImageActivity ? (
+                                            <div className="flex flex-col items-center gap-6 text-center max-w-md">
+                                                <div className="relative w-16 h-16">
+                                                    <div className="absolute inset-0 bg-slate-300 opacity-40 blur-xl"></div>
+                                                    <Loader2 className="w-16 h-16 animate-spin text-[#2c4066] relative" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-lg font-bold text-slate-700 mb-2">Generating Image</p>
+                                                    <p className="text-sm text-slate-500 mb-4">AI is crafting your image using Gemini 3 Pro Image Preview (Nano Banana Pro)...</p>
+                                                    <p className="text-xs text-slate-400">This usually takes 5-10 seconds</p>
+                                                </div>
+                                            </div>
+                                        ) : imageActivityError ? (
+                                            <div className="flex flex-col items-center gap-6 text-center max-w-xl">
+                                                <div className="w-24 h-24 bg-red-100 flex items-center justify-center rounded-full">
+                                                    <X className="w-12 h-12 text-red-600" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-2xl font-bold text-slate-700 mb-2">Generation Failed</h3>
+                                                    <p className="text-red-600 mb-4">{imageActivityError}</p>
+                                                    <button
+                                                        onClick={handleGenerateImageActivity}
+                                                        className="px-4 py-2 bg-[#2c4066] text-white hover:bg-[#34507c] transition-all font-medium text-sm rounded"
+                                                    >
+                                                        Try Again
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center gap-6 text-center max-w-xl">
+                                                <div className="w-24 h-24 bg-[#e4e9f2] flex items-center justify-center">
+                                                    <ImageIcon className="w-12 h-12 text-[#2c4066]" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-2xl font-bold text-slate-700 mb-2">Ready to Generate</h3>
+                                                    <p className="text-slate-500 mb-6">
+                                                        Describe any concept, scene, or diagram, and AI will generate a high-quality educational illustration for you.
+                                                    </p>
+                                                    <div className="flex items-center justify-center gap-4 text-sm text-slate-500">
+                                                        <div className="flex items-center gap-2">
+                                                            <ImageIcon className="w-4 h-4" />
+                                                            <span>Describe your image</span>
+                                                        </div>
+                                                        <div className="w-1 h-1 bg-slate-300"></div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Sparkles className="w-4 h-4" />
+                                                            <span>Generate</span>
+                                                        </div>
+                                                        <div className="w-1 h-1 bg-slate-300"></div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Download className="w-4 h-4" />
+                                                            <span>Download</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
-
-                                        {/* Model Name Badge */}
-                                        <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/50 text-white text-[13px] flex items-center gap-2">
-                                            <Atom className="w-4 h-4 text-[#7c3aed]" />
-                                            {viewer3dModelName}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            /* 3D Explorer Tab */
+                            <div className="flex flex-col h-full w-full bg-[#eef2f7] overflow-hidden" style={{ height: '100vh', width: '100vw' }}>
+                                {/* Header */}
+                                <div className="flex items-center justify-between px-3 py-2 bg-white/50 backdrop-blur-sm border-b border-slate-200 flex-shrink-0">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-[#1F1F1F] flex items-center justify-center">
+                                            <Viewer3DIcon active />
                                         </div>
-
-                                        {/* Close Model Button */}
+                                        <div>
+                                            <h2 className="text-[16px] font-medium text-slate-800">3D Object Viewer</h2>
+                                            <p className="text-[12px] text-slate-600">Hand gesture controls for 3D models</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {/* Voice Command Toggle */}
+                                        <button
+                                            onClick={() => setViewer3dVoiceActive(!viewer3dVoiceActive)}
+                                            className={`p-1.5 transition-colors flex items-center gap-1 rounded-md ${viewer3dVoiceActive
+                                                ? 'bg-[#2c4066] text-white shadow-md'
+                                                : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 shadow-sm'
+                                                }`}
+                                            title={viewer3dVoiceActive ? 'Stop Voice Commands' : 'Start Voice Commands'}
+                                        >
+                                            <Mic className="w-3.5 h-3.5" />
+                                            {viewer3dVoiceActive && <span className="text-[10px] font-medium">Listening...</span>}
+                                        </button>
+                                        {/* Interaction Mode Selector */}
+                                        <div className="flex bg-white border border-slate-300 rounded-md p-0.5 shadow-sm">
+                                            {(['drag', 'rotate', 'scale', 'animate'] as const).map(mode => (
+                                                <button
+                                                    key={mode}
+                                                    onClick={() => setViewer3dInteractionMode(mode)}
+                                                    className={`px-2 py-1 text-[11px] font-medium transition-colors rounded ${viewer3dInteractionMode === mode
+                                                        ? 'bg-[#2c4066] text-white shadow-sm'
+                                                        : 'bg-transparent text-slate-700 hover:bg-slate-100'
+                                                        }`}
+                                                >
+                                                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                                                </button>
+                                            ))}
+                                        </div>
                                         <button
                                             onClick={() => {
-                                                setViewer3dModelUrl(null);
-                                                setViewer3dModelName('');
                                                 setViewer3dRotation({ x: 0, y: 0, z: 0 });
                                                 setViewer3dPosition({ x: 0, y: 0, z: 0 });
                                                 setViewer3dScale(1);
-                                                setViewer3dAnimationIndex(0);
                                             }}
-                                            className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 text-white transition-colors"
+                                            className="px-2 py-1 text-[12px] text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors flex items-center gap-1 rounded-md shadow-sm font-medium"
                                         >
-                                            <X className="w-4 h-4" />
+                                            <RefreshCw className="w-3.5 h-3.5" />
+                                            Reset
                                         </button>
+                                    </div>
+                                </div>
 
-                                        {/* Transform Info */}
-                                        <div className="absolute bottom-4 left-4 px-3 py-2 bg-black/50 text-white text-[11px] font-mono">
-                                            <div>Rotation: X:{Math.round(viewer3dRotation.x)}° Y:{Math.round(viewer3dRotation.y)}° Z:{Math.round(viewer3dRotation.z)}°</div>
-                                            <div>Position: X:{Math.round(viewer3dPosition.x)} Y:{Math.round(viewer3dPosition.y)}</div>
-                                            <div>Scale: {viewer3dScale.toFixed(2)}x</div>
-                                            {viewer3dIsGrabbing && <div className="text-[#00ff88]">● Grabbing</div>}
-                                        </div>
+                                {/* Voice Command Transcript */}
+                                {viewer3dVoiceActive && viewer3dVoiceTranscript && (
+                                    <div className="px-4 py-2 bg-blue-50 border border-blue-200 text-[13px] text-slate-800 flex items-center gap-2 flex-shrink-0 rounded-md mx-3 mt-2 shadow-sm">
+                                        <Mic className="w-4 h-4 text-blue-600" />
+                                        <span className="font-medium">"{viewer3dVoiceTranscript}"</span>
                                     </div>
                                 )}
-                            </div>
 
-                            {/* Right: Hand Tracking Panel */}
-                            <div className="w-96 flex-shrink-0 min-h-0 flex flex-col gap-4 bg-[#1F1F1F] p-4">
-                                {/* Webcam View */}
-                                <div className="relative border border-slate-700 overflow-hidden bg-black flex-1 min-h-0">
-                                    {!viewer3dWebcamActive ? (
-                                        <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
-                                            <div className="text-center px-4">
-                                                <div className="w-16 h-16 mx-auto mb-4 bg-white/5 border border-white/10 flex items-center justify-center">
-                                                    <Hand className="w-8 h-8 text-slate-300" />
+                                {/* Main Content - Split View */}
+                                <div className="flex-1 min-h-0 flex gap-2 overflow-hidden">
+                                    {/* Left: 3D Viewer */}
+                                    <div
+                                        className={`flex-1 min-h-0 min-w-0 relative border-2 overflow-hidden bg-[#eef2f7] transition-colors ${viewer3dIsDraggingFile ? 'border-[#7c3aed] border-dashed' : 'border-slate-300'
+                                            }`}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setViewer3dIsDraggingFile(true);
+                                        }}
+                                        onDragLeave={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setViewer3dIsDraggingFile(false);
+                                        }}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setViewer3dIsDraggingFile(false);
+
+                                            const files = e.dataTransfer.files;
+                                            if (files.length > 0) {
+                                                const file = files[0];
+                                                const ext = file.name.split('.').pop()?.toLowerCase();
+                                                if (ext === 'glb' || ext === 'gltf') {
+                                                    const url = URL.createObjectURL(file);
+                                                    setViewer3dModelUrl(url);
+                                                    setViewer3dModelName(file.name);
+                                                } else {
+                                                    alert('Please drop a GLB or GLTF file');
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        {/* Drag overlay */}
+                                        {viewer3dIsDraggingFile && (
+                                            <div className="absolute inset-0 bg-[#7c3aed]/20 flex items-center justify-center z-50 pointer-events-none">
+                                                <div className="text-center">
+                                                    <Upload className="w-16 h-16 text-[#7c3aed] mx-auto mb-4" />
+                                                    <p className="text-slate-800 text-lg font-medium">Drop GLB/GLTF file here</p>
                                                 </div>
-                                                <p className="text-[14px] text-slate-200 mb-4 font-medium">Enable hand tracking for gesture controls</p>
-                                                <button
-                                                    onClick={async () => {
-                                                        try {
-                                                            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                                                            setViewer3dWebcamStream(stream);
-                                                            setViewer3dWebcamActive(true);
-                                                        } catch (err) {
-                                                            console.error('Webcam error:', err);
-                                                        }
-                                                    }}
-                                                    className="px-5 py-2.5 bg-[#2c4066] hover:bg-[#34507c] text-white text-sm font-semibold transition-all flex items-center gap-2 mx-auto shadow-md hover:shadow-lg"
-                                                >
-                                                    <Play className="w-4 h-4" />
-                                                    Start Hand Tracking
-                                                </button>
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <video
-                                                ref={viewer3dVideoRef}
-                                                className="w-full h-full object-cover"
-                                                autoPlay
-                                                playsInline
-                                                muted
-                                                style={{ transform: 'scaleX(-1)' }}
-                                            />
-                                            {/* Hand Overlay */}
-                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ transform: 'scaleX(-1)' }}>
-                                                {viewer3dHandLandmarks.map((hand, handIdx) => (
-                                                    <g key={handIdx}>
-                                                        {/* Draw connections */}
-                                                        {HAND_CONNECTIONS.map(([start, end], idx) => {
-                                                            const startPoint = hand[start];
-                                                            const endPoint = hand[end];
-                                                            if (!startPoint || !endPoint) return null;
-                                                            return (
-                                                                <line
-                                                                    key={`conn-${handIdx}-${idx}`}
-                                                                    x1={`${startPoint.x * 100}%`}
-                                                                    y1={`${startPoint.y * 100}%`}
-                                                                    x2={`${endPoint.x * 100}%`}
-                                                                    y2={`${endPoint.y * 100}%`}
-                                                                    stroke={handIdx === 0 ? '#00ff88' : '#ff8800'}
-                                                                    strokeWidth="2"
-                                                                    strokeLinecap="round"
-                                                                />
-                                                            );
-                                                        })}
-                                                        {/* Draw landmarks */}
-                                                        {hand.map((lm, idx) => (
-                                                            <circle
-                                                                key={`lm-${handIdx}-${idx}`}
-                                                                cx={`${lm.x * 100}%`}
-                                                                cy={`${lm.y * 100}%`}
-                                                                r={idx === 4 || idx === 8 ? 6 : 4}
-                                                                fill={idx === 4 || idx === 8 ? '#ff4081' : (handIdx === 0 ? '#00ff88' : '#ff8800')}
-                                                            />
-                                                        ))}
-                                                        {/* Pinch indicator */}
-                                                        {viewer3dIsPinching[handIdx] && hand[4] && hand[8] && (
-                                                            <circle
-                                                                cx={`${((hand[4].x + hand[8].x) / 2) * 100}%`}
-                                                                cy={`${((hand[4].y + hand[8].y) / 2) * 100}%`}
-                                                                r="15"
-                                                                fill="none"
-                                                                stroke="#ffff00"
-                                                                strokeWidth="3"
-                                                                className="animate-pulse"
-                                                            />
+                                        )}
+
+                                        {!viewer3dModelUrl ? (
+                                            <div className="flex items-center justify-center h-full">
+                                                <div className="text-center max-w-md px-6">
+                                                    <div className="w-20 h-20 mx-auto mb-6 bg-[#1F1F1F] flex items-center justify-center">
+                                                        <Box className="w-10 h-10 text-slate-300" />
+                                                    </div>
+                                                    <h3 className="text-[22px] font-medium text-slate-800 mb-3">Load a 3D Model</h3>
+                                                    <p className="text-[15px] text-slate-600 mb-6">
+                                                        Drag & drop a GLB/GLTF file, upload from your computer, or try a demo shape to interact with using hand gestures.
+                                                    </p>
+                                                    <div className="flex flex-col gap-3">
+                                                        <input
+                                                            ref={viewer3dFileInputRef}
+                                                            type="file"
+                                                            accept=".glb,.gltf"
+                                                            className="hidden"
+                                                            onChange={(e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (file) {
+                                                                    const url = URL.createObjectURL(file);
+                                                                    setViewer3dModelUrl(url);
+                                                                    setViewer3dModelName(file.name);
+                                                                }
+                                                            }}
+                                                        />
+                                                        <button
+                                                            onClick={() => viewer3dFileInputRef.current?.click()}
+                                                            className="px-6 py-3 bg-[#2c4066] hover:bg-[#34507c] text-white font-medium transition-colors flex items-center gap-2 mx-auto"
+                                                        >
+                                                            <Upload className="w-5 h-5" />
+                                                            Upload 3D Model (GLB/GLTF)
+                                                        </button>
+                                                        {/* Quick Load Demo Shapes */}
+                                                        <div className="space-y-3 mt-4">
+                                                            <div>
+                                                                <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2">Basic Shapes</p>
+                                                                <div className="flex flex-wrap gap-2 justify-center">
+                                                                    {[
+                                                                        { name: 'Cube', shape: 'cube', icon: '⬜' },
+                                                                        { name: 'Sphere', shape: 'sphere', icon: '⚪' },
+                                                                        { name: 'Torus', shape: 'torus', icon: '⭕' },
+                                                                        { name: 'Pyramid', shape: 'pyramid', icon: '🔺' },
+                                                                    ].map(shape => (
+                                                                        <button
+                                                                            key={shape.shape}
+                                                                            onClick={() => {
+                                                                                setViewer3dModelUrl(`demo:${shape.shape}`);
+                                                                                setViewer3dModelName(shape.name);
+                                                                            }}
+                                                                            className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[12px] transition-colors rounded-md flex items-center gap-1.5"
+                                                                        >
+                                                                            <span>{shape.icon}</span>
+                                                                            {shape.name}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2">Atomic Models</p>
+                                                                <div className="flex flex-wrap gap-2 justify-center">
+                                                                    {[
+                                                                        { name: 'Hydrogen Atom', shape: 'atom-hydrogen', icon: '⚛️' },
+                                                                        { name: 'Helium Atom', shape: 'atom-helium', icon: '⚛️' },
+                                                                        { name: 'Carbon Atom', shape: 'atom-carbon', icon: '⚛️' },
+                                                                        { name: 'Water (H₂O)', shape: 'molecule-water', icon: '💧' },
+                                                                        { name: 'Methane (CH₄)', shape: 'molecule-methane', icon: '🔥' },
+                                                                        { name: 'Benzene Ring', shape: 'molecule-benzene', icon: '⭕' },
+                                                                        { name: 'Ammonia (NH₃)', shape: 'molecule-ammonia', icon: '☁️' },
+                                                                        { name: 'DNA Helix', shape: 'molecule-dna', icon: '🧬' },
+                                                                    ].map(shape => (
+                                                                        <button
+                                                                            key={shape.shape}
+                                                                            onClick={() => {
+                                                                                setViewer3dModelUrl(`demo:${shape.shape}`);
+                                                                                setViewer3dModelName(shape.name);
+                                                                            }}
+                                                                            className="px-3 py-2 bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-200 hover:from-purple-100 hover:to-blue-100 text-slate-700 text-[12px] transition-colors rounded-md flex items-center gap-1.5"
+                                                                        >
+                                                                            <span>{shape.icon}</span>
+                                                                            {shape.name}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2">NIH 3D Models (Load from URL)</p>
+                                                                <div className="flex flex-col gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Paste GLB/GLTF URL here and press Enter..."
+                                                                        className="px-3 py-2 text-[12px] border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2c4066] focus:border-transparent"
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === 'Enter') {
+                                                                                const url = (e.target as HTMLInputElement).value.trim();
+                                                                                if (url && (url.endsWith('.glb') || url.endsWith('.gltf') || url.includes('glb') || url.includes('gltf'))) {
+                                                                                    setViewer3dModelUrl(url);
+                                                                                    setViewer3dModelName(url.split('/').pop() || 'External Model');
+                                                                                    (e.target as HTMLInputElement).value = '';
+                                                                                } else if (url) {
+                                                                                    alert('Please enter a valid GLB or GLTF file URL');
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    <div className="text-[10px] text-slate-500 text-center px-2">
+                                                                        <p className="mb-1">💡 How to get GLB files from NIH 3D:</p>
+                                                                        <ol className="list-decimal list-inside text-left space-y-0.5">
+                                                                            <li>Visit <a href="https://3d.nih.gov/discover" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">3d.nih.gov/discover</a></li>
+                                                                            <li>Click on any model (especially biomacromolecules or small molecules)</li>
+                                                                            <li>Click "Download" → Select "glb" format</li>
+                                                                            <li>Copy the download URL and paste it above</li>
+                                                                        </ol>
+                                                                        <p className="mt-2 text-[9px]">Popular models: Proteins, DNA structures, Small molecules, Viruses</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-[12px] text-slate-500 mt-2">
+                                                            Or drag and drop a .glb or .gltf file anywhere on this viewer
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="relative w-full h-full">
+                                                {/* Check if it's a GLB/GLTF file (not a demo shape) */}
+                                                {viewer3dModelUrl && !viewer3dModelUrl.startsWith('demo:') ? (
+                                                    /* Three.js Canvas for GLB/GLTF files */
+                                                    <div className="relative w-full h-full">
+                                                        {viewer3dModelLoading && (
+                                                            <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-10">
+                                                                <div className="flex flex-col items-center gap-3">
+                                                                    <Loader2 className="w-8 h-8 text-[#2c4066] animate-spin" />
+                                                                    <p className="text-slate-700 text-sm font-medium">Loading 3D model...</p>
+                                                                </div>
+                                                            </div>
                                                         )}
-                                                    </g>
-                                                ))}
-                                            </svg>
-                                            {/* Stop Button */}
-                                            <button
-                                                onClick={() => {
-                                                    if (viewer3dWebcamStream) {
-                                                        viewer3dWebcamStream.getTracks().forEach(t => t.stop());
-                                                    }
-                                                    setViewer3dWebcamActive(false);
-                                                    setViewer3dWebcamStream(null);
-                                                    setViewer3dHandLandmarks([]);
-                                                }}
-                                                className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white transition-colors shadow-lg"
-                                            >
-                                                <X className="w-4 h-4" />
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
+                                                        <canvas
+                                                            ref={viewer3dThreeCanvasRef}
+                                                            className="w-full h-full"
+                                                            style={{
+                                                                cursor: viewer3dIsGrabbing ? 'grabbing' : 'grab',
+                                                            }}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    /* CSS3D Demo Shapes */
+                                                    <div
+                                                        className="w-full h-full flex items-center justify-center"
+                                                        style={{ perspective: '1000px' }}
+                                                    >
+                                                        {/* CSS3D 3D Object with grabbing pulse effect */}
+                                                        <div
+                                                            style={{
+                                                                width: '200px',
+                                                                height: '200px',
+                                                                transformStyle: 'preserve-3d',
+                                                                transform: `
+                                                            translateX(${viewer3dPosition.x}px)
+                                                            translateY(${viewer3dPosition.y}px)
+                                                            scale(${viewer3dScale * (viewer3dIsGrabbing ? (1 + Math.sin(viewer3dGrabPulse * Math.PI / 180) * 0.03) : 1)})
+                                                            rotateX(${viewer3dRotation.x}deg)
+                                                            rotateY(${viewer3dRotation.y}deg)
+                                                            rotateZ(${viewer3dRotation.z}deg)
+                                                        `,
+                                                                transition: viewer3dIsGrabbing ? 'none' : 'transform 0.05s ease-out',
+                                                                filter: viewer3dIsGrabbing ? `drop-shadow(0 0 20px ${getModeColor(viewer3dInteractionMode)})` : 'none',
+                                                            }}
+                                                        >
+                                                            {/* Render different shapes based on model URL */}
+                                                            {viewer3dModelUrl?.startsWith('demo:sphere') ? (
+                                                                // Improved Sphere with better lighting
+                                                                <div
+                                                                    style={{
+                                                                        width: '200px',
+                                                                        height: '200px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 25% 25%, #ffffff, #a78bfa 30%, #7c3aed 60%, #4c1d95 100%)',
+                                                                        boxShadow: 'inset -30px -30px 60px rgba(0,0,0,0.4), inset 20px 20px 40px rgba(255,255,255,0.2), 0 0 60px rgba(124, 58, 237, 0.4)',
+                                                                        border: '2px solid rgba(255,255,255,0.1)',
+                                                                    }}
+                                                                />
+                                                            ) : viewer3dModelUrl?.startsWith('demo:torus') ? (
+                                                                // Improved Torus with better 3D effect
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    <div
+                                                                        style={{
+                                                                            width: '200px',
+                                                                            height: '200px',
+                                                                            borderRadius: '50%',
+                                                                            border: '35px solid',
+                                                                            borderImage: 'linear-gradient(135deg, #ec4899, #f472b6, #ec4899) 1',
+                                                                            boxShadow: 'inset 0 0 40px rgba(236, 72, 153, 0.6), 0 0 40px rgba(236, 72, 153, 0.4), 10px 10px 30px rgba(0,0,0,0.4)',
+                                                                            background: 'radial-gradient(circle at center, rgba(236, 72, 153, 0.3), transparent)',
+                                                                            borderColor: '#ec4899',
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:pyramid') ? (
+                                                                // Improved Pyramid with better 3D structure
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* Base */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '160px',
+                                                                        height: '160px',
+                                                                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.9))',
+                                                                        transform: 'translateX(20px) translateY(120px) rotateX(90deg)',
+                                                                        boxShadow: '0 0 20px rgba(59, 130, 246, 0.5)',
+                                                                        border: '2px solid rgba(255,255,255,0.2)',
+                                                                    }} />
+                                                                    {/* Front face */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: 0,
+                                                                        height: 0,
+                                                                        borderLeft: '80px solid transparent',
+                                                                        borderRight: '80px solid transparent',
+                                                                        borderBottom: '140px solid rgba(124, 58, 237, 0.9)',
+                                                                        transform: 'translateX(20px) translateY(-20px)',
+                                                                        filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.3))',
+                                                                    }} />
+                                                                    {/* Left face */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: 0,
+                                                                        height: 0,
+                                                                        borderLeft: '80px solid transparent',
+                                                                        borderRight: '80px solid transparent',
+                                                                        borderBottom: '140px solid rgba(124, 58, 237, 0.7)',
+                                                                        transform: 'translateX(20px) translateY(-20px) rotateY(-45deg) translateZ(80px)',
+                                                                    }} />
+                                                                    {/* Right face */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: 0,
+                                                                        height: 0,
+                                                                        borderLeft: '80px solid transparent',
+                                                                        borderRight: '80px solid transparent',
+                                                                        borderBottom: '140px solid rgba(124, 58, 237, 0.7)',
+                                                                        transform: 'translateX(20px) translateY(-20px) rotateY(45deg) translateZ(80px)',
+                                                                    }} />
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:atom-hydrogen') ? (
+                                                                // Hydrogen Atom - 1 electron orbiting
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* Nucleus */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '40px',
+                                                                        height: '40px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #ef4444)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                        boxShadow: '0 0 30px rgba(239, 68, 68, 0.8), inset -5px -5px 10px rgba(0,0,0,0.3)',
+                                                                        zIndex: 10,
+                                                                    }} />
+                                                                    {/* Electron orbit path */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '160px',
+                                                                        height: '160px',
+                                                                        borderRadius: '50%',
+                                                                        border: '2px dashed rgba(59, 130, 246, 0.3)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                    }} />
+                                                                    {/* Electron */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '16px',
+                                                                        height: '16px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #3b82f6)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: `translate(-50%, -50%) translateX(80px) rotateZ(${viewer3dRotation.y * 2}deg)`,
+                                                                        boxShadow: '0 0 15px rgba(59, 130, 246, 0.8)',
+                                                                        animation: 'spin 3s linear infinite',
+                                                                    }} />
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:atom-helium') ? (
+                                                                // Helium Atom - 2 electrons
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* Nucleus */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '50px',
+                                                                        height: '50px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #f59e0b)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                        boxShadow: '0 0 30px rgba(245, 158, 11, 0.8)',
+                                                                        zIndex: 10,
+                                                                    }} />
+                                                                    {/* Electron 1 */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '16px',
+                                                                        height: '16px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #3b82f6)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: `translate(-50%, -50%) translateX(70px) rotateZ(${viewer3dRotation.y * 2}deg)`,
+                                                                        boxShadow: '0 0 15px rgba(59, 130, 246, 0.8)',
+                                                                    }} />
+                                                                    {/* Electron 2 */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '16px',
+                                                                        height: '16px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #3b82f6)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: `translate(-50%, -50%) translateX(-70px) rotateZ(${viewer3dRotation.y * 2 + 180}deg)`,
+                                                                        boxShadow: '0 0 15px rgba(59, 130, 246, 0.8)',
+                                                                    }} />
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:atom-carbon') ? (
+                                                                // Carbon Atom - 6 electrons in 2 shells
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* Nucleus */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '60px',
+                                                                        height: '60px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #10b981)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                        boxShadow: '0 0 40px rgba(16, 185, 129, 0.8)',
+                                                                        zIndex: 10,
+                                                                    }} />
+                                                                    {/* Inner shell - 2 electrons */}
+                                                                    {[0, 180].map((angle, i) => (
+                                                                        <div key={i} style={{
+                                                                            position: 'absolute',
+                                                                            width: '14px',
+                                                                            height: '14px',
+                                                                            borderRadius: '50%',
+                                                                            background: 'radial-gradient(circle at 30% 30%, #ffffff, #3b82f6)',
+                                                                            left: '50%',
+                                                                            top: '50%',
+                                                                            transform: `translate(-50%, -50%) translateX(50px) rotateZ(${viewer3dRotation.y * 2 + angle}deg)`,
+                                                                            boxShadow: '0 0 12px rgba(59, 130, 246, 0.8)',
+                                                                        }} />
+                                                                    ))}
+                                                                    {/* Outer shell - 4 electrons */}
+                                                                    {[0, 90, 180, 270].map((angle, i) => (
+                                                                        <div key={i} style={{
+                                                                            position: 'absolute',
+                                                                            width: '14px',
+                                                                            height: '14px',
+                                                                            borderRadius: '50%',
+                                                                            background: 'radial-gradient(circle at 30% 30%, #ffffff, #8b5cf6)',
+                                                                            left: '50%',
+                                                                            top: '50%',
+                                                                            transform: `translate(-50%, -50%) translateX(80px) rotateZ(${viewer3dRotation.y * 1.5 + angle}deg)`,
+                                                                            boxShadow: '0 0 12px rgba(139, 92, 246, 0.8)',
+                                                                        }} />
+                                                                    ))}
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:molecule-water') ? (
+                                                                // Water Molecule H₂O - bent structure
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* Oxygen atom */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '50px',
+                                                                        height: '50px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #ef4444)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                        boxShadow: '0 0 25px rgba(239, 68, 68, 0.8)',
+                                                                        zIndex: 10,
+                                                                    }} />
+                                                                    {/* Hydrogen 1 */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '30px',
+                                                                        height: '30px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #3b82f6)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%) translateX(-60px) translateY(-30px)',
+                                                                        boxShadow: '0 0 15px rgba(59, 130, 246, 0.8)',
+                                                                    }} />
+                                                                    {/* Hydrogen 2 */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '30px',
+                                                                        height: '30px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #3b82f6)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%) translateX(60px) translateY(-30px)',
+                                                                        boxShadow: '0 0 15px rgba(59, 130, 246, 0.8)',
+                                                                    }} />
+                                                                    {/* Bonds */}
+                                                                    <svg style={{ position: 'absolute', width: '200px', height: '200px', top: 0, left: 0, pointerEvents: 'none' }}>
+                                                                        <line x1="100" y1="100" x2="40" y2="70" stroke="rgba(255,255,255,0.6)" strokeWidth="3" />
+                                                                        <line x1="100" y1="100" x2="160" y2="70" stroke="rgba(255,255,255,0.6)" strokeWidth="3" />
+                                                                    </svg>
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:molecule-methane') ? (
+                                                                // Methane CH₄ - tetrahedral
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* Carbon atom */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '50px',
+                                                                        height: '50px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #10b981)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                        boxShadow: '0 0 25px rgba(16, 185, 129, 0.8)',
+                                                                        zIndex: 10,
+                                                                    }} />
+                                                                    {/* 4 Hydrogen atoms in tetrahedral arrangement */}
+                                                                    {[
+                                                                        { x: 0, y: -70, z: 0 },
+                                                                        { x: 60, y: 40, z: -40 },
+                                                                        { x: -60, y: 40, z: -40 },
+                                                                        { x: 0, y: 40, z: 60 },
+                                                                    ].map((pos, i) => (
+                                                                        <div key={i} style={{
+                                                                            position: 'absolute',
+                                                                            width: '30px',
+                                                                            height: '30px',
+                                                                            borderRadius: '50%',
+                                                                            background: 'radial-gradient(circle at 30% 30%, #ffffff, #3b82f6)',
+                                                                            left: '50%',
+                                                                            top: '50%',
+                                                                            transform: `translate(-50%, -50%) translateX(${pos.x}px) translateY(${pos.y}px) translateZ(${pos.z}px)`,
+                                                                            boxShadow: '0 0 15px rgba(59, 130, 246, 0.8)',
+                                                                        }} />
+                                                                    ))}
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:molecule-benzene') ? (
+                                                                // Benzene Ring C₆H₆
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* 6 Carbon atoms in ring */}
+                                                                    {[0, 60, 120, 180, 240, 300].map((angle, i) => {
+                                                                        const rad = angle * Math.PI / 180;
+                                                                        const x = Math.cos(rad) * 60;
+                                                                        const y = Math.sin(rad) * 60;
+                                                                        return (
+                                                                            <div key={i} style={{
+                                                                                position: 'absolute',
+                                                                                width: '35px',
+                                                                                height: '35px',
+                                                                                borderRadius: '50%',
+                                                                                background: 'radial-gradient(circle at 30% 30%, #ffffff, #10b981)',
+                                                                                left: '50%',
+                                                                                top: '50%',
+                                                                                transform: `translate(-50%, -50%) translateX(${x}px) translateY(${y}px)`,
+                                                                                boxShadow: '0 0 20px rgba(16, 185, 129, 0.8)',
+                                                                            }} />
+                                                                        );
+                                                                    })}
+                                                                    {/* Ring bond visualization */}
+                                                                    <svg style={{ position: 'absolute', width: '200px', height: '200px', top: 0, left: 0, pointerEvents: 'none' }}>
+                                                                        {[0, 60, 120, 180, 240, 300].map((angle, i) => {
+                                                                            const nextAngle = (angle + 60) % 360;
+                                                                            const rad1 = angle * Math.PI / 180;
+                                                                            const rad2 = nextAngle * Math.PI / 180;
+                                                                            const x1 = 100 + Math.cos(rad1) * 60;
+                                                                            const y1 = 100 + Math.sin(rad1) * 60;
+                                                                            const x2 = 100 + Math.cos(rad2) * 60;
+                                                                            const y2 = 100 + Math.sin(rad2) * 60;
+                                                                            return (
+                                                                                <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.5)" strokeWidth="2" />
+                                                                            );
+                                                                        })}
+                                                                    </svg>
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:molecule-ammonia') ? (
+                                                                // Ammonia NH₃ - pyramidal
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* Nitrogen atom */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        width: '50px',
+                                                                        height: '50px',
+                                                                        borderRadius: '50%',
+                                                                        background: 'radial-gradient(circle at 30% 30%, #ffffff, #8b5cf6)',
+                                                                        left: '50%',
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%) translateY(-20px)',
+                                                                        boxShadow: '0 0 25px rgba(139, 92, 246, 0.8)',
+                                                                        zIndex: 10,
+                                                                    }} />
+                                                                    {/* 3 Hydrogen atoms */}
+                                                                    {[0, 120, 240].map((angle, i) => {
+                                                                        const rad = angle * Math.PI / 180;
+                                                                        const x = Math.cos(rad) * 50;
+                                                                        const y = Math.sin(rad) * 50 + 30;
+                                                                        return (
+                                                                            <div key={i} style={{
+                                                                                position: 'absolute',
+                                                                                width: '30px',
+                                                                                height: '30px',
+                                                                                borderRadius: '50%',
+                                                                                background: 'radial-gradient(circle at 30% 30%, #ffffff, #3b82f6)',
+                                                                                left: '50%',
+                                                                                top: '50%',
+                                                                                transform: `translate(-50%, -50%) translateX(${x}px) translateY(${y}px)`,
+                                                                                boxShadow: '0 0 15px rgba(59, 130, 246, 0.8)',
+                                                                            }} />
+                                                                        );
+                                                                    })}
+                                                                    {/* Bonds */}
+                                                                    <svg style={{ position: 'absolute', width: '200px', height: '200px', top: 0, left: 0, pointerEvents: 'none' }}>
+                                                                        {[0, 120, 240].map((angle, i) => {
+                                                                            const rad = angle * Math.PI / 180;
+                                                                            const x = Math.cos(rad) * 50;
+                                                                            const y = Math.sin(rad) * 50 + 30;
+                                                                            return (
+                                                                                <line key={i} x1="100" y1="80" x2={100 + x} y2={100 + y} stroke="rgba(255,255,255,0.6)" strokeWidth="3" />
+                                                                            );
+                                                                        })}
+                                                                    </svg>
+                                                                </div>
+                                                            ) : viewer3dModelUrl?.startsWith('demo:molecule-dna') ? (
+                                                                // DNA Double Helix (simplified)
+                                                                <div style={{ transformStyle: 'preserve-3d', width: '200px', height: '200px', position: 'relative' }}>
+                                                                    {/* Helix strands */}
+                                                                    {[0, 180].map((phase, strand) => (
+                                                                        <div key={strand} style={{
+                                                                            position: 'absolute',
+                                                                            width: '4px',
+                                                                            height: '200px',
+                                                                            background: strand === 0 ? 'linear-gradient(to bottom, #3b82f6, #8b5cf6, #3b82f6)' : 'linear-gradient(to bottom, #10b981, #059669, #10b981)',
+                                                                            left: strand === 0 ? '40%' : '60%',
+                                                                            top: '0%',
+                                                                            transform: `rotateZ(${viewer3dRotation.y * 0.5 + phase}deg)`,
+                                                                            borderRadius: '2px',
+                                                                            boxShadow: '0 0 10px rgba(59, 130, 246, 0.6)',
+                                                                        }} />
+                                                                    ))}
+                                                                    {/* Base pairs */}
+                                                                    {[0, 40, 80, 120, 160].map((y, i) => (
+                                                                        <div key={i} style={{
+                                                                            position: 'absolute',
+                                                                            width: '60px',
+                                                                            height: '2px',
+                                                                            background: 'rgba(255, 255, 255, 0.4)',
+                                                                            left: '50%',
+                                                                            top: `${y}px`,
+                                                                            transform: 'translateX(-50%)',
+                                                                            boxShadow: '0 0 5px rgba(255, 255, 255, 0.3)',
+                                                                        }} />
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                // Improved Cube with better colors and lighting
+                                                                <>
+                                                                    {/* Cube Faces with improved gradients */}
+                                                                    {[
+                                                                        { transform: 'translateZ(100px)', bg: 'linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95))', label: 'Front', border: 'rgba(255,255,255,0.3)' },
+                                                                        { transform: 'translateZ(-100px) rotateY(180deg)', bg: 'linear-gradient(135deg, rgba(124, 58, 237, 0.7), rgba(109, 40, 217, 0.7))', label: 'Back', border: 'rgba(255,255,255,0.2)' },
+                                                                        { transform: 'translateX(100px) rotateY(90deg)', bg: 'linear-gradient(135deg, rgba(236, 72, 153, 0.9), rgba(219, 39, 119, 0.9))', label: 'Right', border: 'rgba(255,255,255,0.25)' },
+                                                                        { transform: 'translateX(-100px) rotateY(-90deg)', bg: 'linear-gradient(135deg, rgba(236, 72, 153, 0.7), rgba(219, 39, 119, 0.7))', label: 'Left', border: 'rgba(255,255,255,0.2)' },
+                                                                        { transform: 'translateY(-100px) rotateX(90deg)', bg: 'linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.9))', label: 'Top', border: 'rgba(255,255,255,0.3)' },
+                                                                        { transform: 'translateY(100px) rotateX(-90deg)', bg: 'linear-gradient(135deg, rgba(59, 130, 246, 0.6), rgba(37, 99, 235, 0.6))', label: 'Bottom', border: 'rgba(255,255,255,0.2)' },
+                                                                    ].map((face, idx) => (
+                                                                        <div
+                                                                            key={idx}
+                                                                            className="absolute flex items-center justify-center text-white font-bold text-lg"
+                                                                            style={{
+                                                                                width: '200px',
+                                                                                height: '200px',
+                                                                                transform: face.transform,
+                                                                                background: face.bg,
+                                                                                border: `2px solid ${face.border}`,
+                                                                                backfaceVisibility: 'visible',
+                                                                                boxShadow: idx === 0 ? 'inset 0 0 30px rgba(255,255,255,0.2), 0 0 20px rgba(59, 130, 246, 0.4)' : 'inset 0 0 20px rgba(0,0,0,0.2)',
+                                                                            }}
+                                                                        >
+                                                                            {face.label}
+                                                                        </div>
+                                                                    ))}
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
 
-                                {/* Gesture Guide */}
-                                <div className="p-4 bg-black border border-slate-700">
-                                    <h3 className="text-sm font-semibold text-slate-200 mb-4 uppercase tracking-wide">Gesture Controls</h3>
-                                    <div className="space-y-2.5">
-                                        <div
-                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'drag'
-                                                ? 'border-cyan-400 bg-cyan-500/10 shadow-md shadow-cyan-500/20'
-                                                : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
-                                            onClick={() => setViewer3dInteractionMode('drag')}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'drag' ? 'bg-cyan-400 scale-110' : 'bg-slate-700'}`}>
-                                                    <Move className={`w-4 h-4 ${viewer3dInteractionMode === 'drag' ? 'text-black' : 'text-slate-300'}`} />
+                                                {/* Mode indicator */}
+                                                <div
+                                                    className="absolute top-4 right-16 px-3 py-1.5 text-white text-[12px] font-medium flex items-center gap-2 rounded-lg shadow-lg"
+                                                    style={{ backgroundColor: getModeColor(viewer3dInteractionMode) }}
+                                                >
+                                                    {viewer3dInteractionMode === 'drag' && <Move className="w-4 h-4" />}
+                                                    {viewer3dInteractionMode === 'rotate' && <RefreshCw className="w-4 h-4" />}
+                                                    {viewer3dInteractionMode === 'scale' && <Maximize2 className="w-4 h-4" />}
+                                                    {viewer3dInteractionMode === 'animate' && <Film className="w-4 h-4" />}
+                                                    {viewer3dInteractionMode.charAt(0).toUpperCase() + viewer3dInteractionMode.slice(1)} Mode
                                                 </div>
-                                                <div className="flex-1">
-                                                    <span className={`text-sm font-semibold block ${viewer3dInteractionMode === 'drag' ? 'text-cyan-300' : 'text-slate-200'}`}>Drag</span>
-                                                    <span className="text-[11px] text-slate-400">Pinch + move</span>
+
+                                                {/* Animation Index (for animate mode) */}
+                                                {viewer3dInteractionMode === 'animate' && (
+                                                    <div className="absolute top-14 right-16 px-3 py-1.5 bg-black/50 text-white text-[12px]">
+                                                        Animation: {viewer3dAnimationIndex + 1}/6
+                                                    </div>
+                                                )}
+
+                                                {/* Model Name Badge */}
+                                                <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/50 text-white text-[13px] flex items-center gap-2">
+                                                    <Atom className="w-4 h-4 text-[#7c3aed]" />
+                                                    {viewer3dModelName}
                                                 </div>
-                                            </div>
-                                        </div>
-                                        <div
-                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'rotate'
-                                                ? 'border-purple-400 bg-purple-500/10 shadow-md shadow-purple-500/20'
-                                                : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
-                                            onClick={() => setViewer3dInteractionMode('rotate')}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'rotate' ? 'bg-purple-400 scale-110' : 'bg-slate-700'}`}>
-                                                    <RefreshCw className={`w-4 h-4 ${viewer3dInteractionMode === 'rotate' ? 'text-white' : 'text-slate-300'}`} />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <span className={`text-sm font-semibold block ${viewer3dInteractionMode === 'rotate' ? 'text-purple-300' : 'text-slate-200'}`}>Rotate</span>
-                                                    <span className="text-[11px] text-slate-400">Pinch + slide L/R</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div
-                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'scale'
-                                                ? 'border-yellow-400 bg-yellow-500/10 shadow-md shadow-yellow-500/20'
-                                                : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
-                                            onClick={() => setViewer3dInteractionMode('scale')}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'scale' ? 'bg-yellow-400 scale-110' : 'bg-slate-700'}`}>
-                                                    <Maximize2 className={`w-4 h-4 ${viewer3dInteractionMode === 'scale' ? 'text-black' : 'text-slate-300'}`} />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <span className={`text-sm font-semibold block ${viewer3dInteractionMode === 'scale' ? 'text-yellow-300' : 'text-slate-200'}`}>Scale</span>
-                                                    <span className="text-[11px] text-slate-400">2 hands pinch</span>
+
+                                                {/* Close Model Button */}
+                                                <button
+                                                    onClick={() => {
+                                                        setViewer3dModelUrl(null);
+                                                        setViewer3dModelName('');
+                                                        setViewer3dRotation({ x: 0, y: 0, z: 0 });
+                                                        setViewer3dPosition({ x: 0, y: 0, z: 0 });
+                                                        setViewer3dScale(1);
+                                                        setViewer3dAnimationIndex(0);
+                                                    }}
+                                                    className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 text-white transition-colors"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+
+                                                {/* Transform Info */}
+                                                <div className="absolute bottom-4 left-4 px-3 py-2 bg-black/50 text-white text-[11px] font-mono">
+                                                    <div>Rotation: X:{Math.round(viewer3dRotation.x)}° Y:{Math.round(viewer3dRotation.y)}° Z:{Math.round(viewer3dRotation.z)}°</div>
+                                                    <div>Position: X:{Math.round(viewer3dPosition.x)} Y:{Math.round(viewer3dPosition.y)}</div>
+                                                    <div>Scale: {viewer3dScale.toFixed(2)}x</div>
+                                                    {viewer3dIsGrabbing && <div className="text-[#00ff88]">● Grabbing</div>}
                                                 </div>
                                             </div>
-                                        </div>
-                                        <div
-                                            className={`p-3 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'animate'
-                                                ? 'border-orange-400 bg-orange-500/10 shadow-md shadow-orange-500/20'
-                                                : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
-                                            onClick={() => setViewer3dInteractionMode('animate')}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'animate' ? 'bg-orange-400 scale-110' : 'bg-slate-700'}`}>
-                                                    <Film className={`w-4 h-4 ${viewer3dInteractionMode === 'animate' ? 'text-white' : 'text-slate-300'}`} />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <span className={`text-sm font-semibold block ${viewer3dInteractionMode === 'animate' ? 'text-orange-300' : 'text-slate-200'}`}>Animate</span>
-                                                    <span className="text-[11px] text-slate-400">Pinch + U/D</span>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        )}
                                     </div>
 
-                                    {/* Voice Commands Info */}
-                                    <div className="mt-4 pt-4 border-t border-slate-700">
-                                        <div className="flex items-center gap-2 px-2 py-2 bg-white/5 border border-white/10">
-                                            <Mic className="w-4 h-4 text-slate-400" />
-                                            <span className="text-[11px] text-slate-400">Say "drag", "rotate", "scale", "animate", or "reset"</span>
+                                    {/* Right: Hand Tracking Panel */}
+                                    <div className="w-96 flex-shrink-0 h-full flex flex-col gap-3 bg-[#1F1F1F] p-4 overflow-y-auto">
+                                        {/* Webcam View */}
+                                        <div className="relative border border-slate-700 overflow-hidden bg-black flex-shrink-0" style={{ height: '300px', minHeight: '300px' }}>
+                                            {!viewer3dWebcamActive ? (
+                                                <div className="flex items-center justify-center h-full bg-[#1F1F1F]">
+                                                    <div className="text-center px-4">
+                                                        <div className="w-16 h-16 mx-auto mb-4 bg-white/5 border border-white/10 flex items-center justify-center">
+                                                            <Hand className="w-8 h-8 text-slate-300" />
+                                                        </div>
+                                                        <p className="text-[14px] text-slate-200 mb-4 font-medium">Enable hand tracking for gesture controls</p>
+                                                        <button
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                                                                    setViewer3dWebcamStream(stream);
+                                                                    setViewer3dWebcamActive(true);
+                                                                } catch (err) {
+                                                                    console.error('Webcam error:', err);
+                                                                }
+                                                            }}
+                                                            className="px-5 py-2.5 bg-[#2c4066] hover:bg-[#34507c] text-white text-sm font-semibold transition-all flex items-center gap-2 mx-auto shadow-md hover:shadow-lg"
+                                                        >
+                                                            <Play className="w-4 h-4" />
+                                                            Start Hand Tracking
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <video
+                                                        ref={viewer3dVideoRef}
+                                                        className="w-full h-full object-cover"
+                                                        autoPlay
+                                                        playsInline
+                                                        muted
+                                                        style={{ transform: 'scaleX(-1)' }}
+                                                    />
+                                                    {/* Hand Overlay */}
+                                                    <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ transform: 'scaleX(-1)' }}>
+                                                        {viewer3dHandLandmarks.map((hand, handIdx) => (
+                                                            <g key={handIdx}>
+                                                                {/* Draw connections */}
+                                                                {HAND_CONNECTIONS.map(([start, end], idx) => {
+                                                                    const startPoint = hand[start];
+                                                                    const endPoint = hand[end];
+                                                                    if (!startPoint || !endPoint) return null;
+                                                                    return (
+                                                                        <line
+                                                                            key={`conn-${handIdx}-${idx}`}
+                                                                            x1={`${startPoint.x * 100}%`}
+                                                                            y1={`${startPoint.y * 100}%`}
+                                                                            x2={`${endPoint.x * 100}%`}
+                                                                            y2={`${endPoint.y * 100}%`}
+                                                                            stroke={handIdx === 0 ? '#00ff88' : '#ff8800'}
+                                                                            strokeWidth="2"
+                                                                            strokeLinecap="round"
+                                                                        />
+                                                                    );
+                                                                })}
+                                                                {/* Draw landmarks */}
+                                                                {hand.map((lm, idx) => (
+                                                                    <circle
+                                                                        key={`lm-${handIdx}-${idx}`}
+                                                                        cx={`${lm.x * 100}%`}
+                                                                        cy={`${lm.y * 100}%`}
+                                                                        r={idx === 4 || idx === 8 ? 6 : 4}
+                                                                        fill={idx === 4 || idx === 8 ? '#ff4081' : (handIdx === 0 ? '#00ff88' : '#ff8800')}
+                                                                    />
+                                                                ))}
+                                                                {/* Pinch indicator */}
+                                                                {viewer3dIsPinching[handIdx] && hand[4] && hand[8] && (
+                                                                    <circle
+                                                                        cx={`${((hand[4].x + hand[8].x) / 2) * 100}%`}
+                                                                        cy={`${((hand[4].y + hand[8].y) / 2) * 100}%`}
+                                                                        r="15"
+                                                                        fill="none"
+                                                                        stroke="#ffff00"
+                                                                        strokeWidth="3"
+                                                                        className="animate-pulse"
+                                                                    />
+                                                                )}
+                                                            </g>
+                                                        ))}
+                                                    </svg>
+                                                    {/* Stop Button */}
+                                                    <button
+                                                        onClick={() => {
+                                                            if (viewer3dWebcamStream) {
+                                                                viewer3dWebcamStream.getTracks().forEach(t => t.stop());
+                                                            }
+                                                            setViewer3dWebcamActive(false);
+                                                            setViewer3dWebcamStream(null);
+                                                            setViewer3dHandLandmarks([]);
+                                                        }}
+                                                        className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white transition-colors shadow-lg"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
-                                    </div>
-                                </div>
 
-                                {/* Status */}
-                                <div className="p-4 bg-black border border-slate-700">
-                                    <h3 className="text-sm font-semibold text-slate-200 mb-3 uppercase tracking-wide">Status</h3>
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-slate-300">Hand Tracking</span>
-                                            <div className="flex items-center gap-2">
-                                                <div className={`w-2 h-2 ${viewer3dWebcamActive ? 'bg-green-500' : 'bg-slate-500'} ${viewer3dWebcamActive ? 'animate-pulse' : ''}`}></div>
-                                                <span className={`text-sm font-semibold ${viewer3dWebcamActive ? 'text-green-400' : 'text-slate-400'}`}>
-                                                    {viewer3dWebcamActive ? 'Active' : 'Inactive'}
-                                                </span>
+                                        {/* Gesture Guide */}
+                                        <div className="p-3 bg-black border border-slate-700">
+                                            <h3 className="text-xs font-semibold text-slate-200 mb-3 uppercase tracking-wide">Gesture Controls</h3>
+                                            <div className="space-y-1.5">
+                                                <div
+                                                    className={`p-2 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'drag'
+                                                        ? 'border-cyan-400 bg-cyan-500/10 shadow-md shadow-cyan-500/20'
+                                                        : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
+                                                    onClick={() => setViewer3dInteractionMode('drag')}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-7 h-7 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'drag' ? 'bg-cyan-400 scale-110' : 'bg-slate-700'}`}>
+                                                            <Move className={`w-3.5 h-3.5 ${viewer3dInteractionMode === 'drag' ? 'text-black' : 'text-slate-300'}`} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className={`text-xs font-semibold block ${viewer3dInteractionMode === 'drag' ? 'text-cyan-300' : 'text-slate-200'}`}>Drag</span>
+                                                            <span className="text-[10px] text-slate-400">Pinch + move</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div
+                                                    className={`p-2 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'rotate'
+                                                        ? 'border-purple-400 bg-purple-500/10 shadow-md shadow-purple-500/20'
+                                                        : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
+                                                    onClick={() => setViewer3dInteractionMode('rotate')}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-7 h-7 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'rotate' ? 'bg-purple-400 scale-110' : 'bg-slate-700'}`}>
+                                                            <RefreshCw className={`w-3.5 h-3.5 ${viewer3dInteractionMode === 'rotate' ? 'text-white' : 'text-slate-300'}`} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className={`text-xs font-semibold block ${viewer3dInteractionMode === 'rotate' ? 'text-purple-300' : 'text-slate-200'}`}>Rotate</span>
+                                                            <span className="text-[10px] text-slate-400">Pinch + slide L/R</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div
+                                                    className={`p-2 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'scale'
+                                                        ? 'border-yellow-400 bg-yellow-500/10 shadow-md shadow-yellow-500/20'
+                                                        : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
+                                                    onClick={() => setViewer3dInteractionMode('scale')}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-7 h-7 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'scale' ? 'bg-yellow-400 scale-110' : 'bg-slate-700'}`}>
+                                                            <Maximize2 className={`w-3.5 h-3.5 ${viewer3dInteractionMode === 'scale' ? 'text-black' : 'text-slate-300'}`} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className={`text-xs font-semibold block ${viewer3dInteractionMode === 'scale' ? 'text-yellow-300' : 'text-slate-200'}`}>Scale</span>
+                                                            <span className="text-[10px] text-slate-400">2 hands pinch</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div
+                                                    className={`p-2 border-2 transition-all cursor-pointer ${viewer3dInteractionMode === 'animate'
+                                                        ? 'border-orange-400 bg-orange-500/10 shadow-md shadow-orange-500/20'
+                                                        : 'border-slate-600 bg-white/5 hover:bg-white/10 hover:border-slate-500'}`}
+                                                    onClick={() => setViewer3dInteractionMode('animate')}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-7 h-7 flex items-center justify-center transition-all ${viewer3dInteractionMode === 'animate' ? 'bg-orange-400 scale-110' : 'bg-slate-700'}`}>
+                                                            <Film className={`w-3.5 h-3.5 ${viewer3dInteractionMode === 'animate' ? 'text-white' : 'text-slate-300'}`} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className={`text-xs font-semibold block ${viewer3dInteractionMode === 'animate' ? 'text-orange-300' : 'text-slate-200'}`}>Animate</span>
+                                                            <span className="text-[10px] text-slate-400">Pinch + U/D</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Voice Commands Info */}
+                                            <div className="mt-3 pt-3 border-t border-slate-700">
+                                                <div className="flex items-center gap-2 px-2 py-1.5 bg-white/5 border border-white/10">
+                                                    <Mic className="w-3.5 h-3.5 text-slate-400" />
+                                                    <span className="text-[10px] text-slate-400">Say "drag", "rotate", "scale", "animate", or "reset"</span>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-slate-300">Hands Detected</span>
-                                            <span className="text-sm font-semibold text-slate-200 bg-white/5 px-2 py-1 border border-white/10">
-                                                {viewer3dHandLandmarks.length}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-slate-300">Pinching</span>
-                                            <div className="flex gap-2">
-                                                <span className={`px-3 py-1 text-xs font-semibold transition-all ${viewer3dIsPinching[0]
-                                                    ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20'
-                                                    : 'bg-white/5 text-slate-400 border border-slate-600'
-                                                    }`}>L</span>
-                                                <span className={`px-3 py-1 text-xs font-semibold transition-all ${viewer3dIsPinching[1]
-                                                    ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20'
-                                                    : 'bg-white/5 text-slate-400 border border-slate-600'
-                                                    }`}>R</span>
+
+                                        {/* Status */}
+                                        <div className="p-3 bg-black border border-slate-700">
+                                            <h3 className="text-xs font-semibold text-slate-200 mb-2 uppercase tracking-wide">Status</h3>
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-slate-300">Hand Tracking</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-2 h-2 ${viewer3dWebcamActive ? 'bg-green-500' : 'bg-slate-500'} ${viewer3dWebcamActive ? 'animate-pulse' : ''}`}></div>
+                                                        <span className={`text-sm font-semibold ${viewer3dWebcamActive ? 'text-green-400' : 'text-slate-400'}`}>
+                                                            {viewer3dWebcamActive ? 'Active' : 'Inactive'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-slate-300">Hands Detected</span>
+                                                    <span className="text-sm font-semibold text-slate-200 bg-white/5 px-2 py-1 border border-white/10">
+                                                        {viewer3dHandLandmarks.length}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-slate-300">Pinching</span>
+                                                    <div className="flex gap-2">
+                                                        <span className={`px-3 py-1 text-xs font-semibold transition-all ${viewer3dIsPinching[0]
+                                                            ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20'
+                                                            : 'bg-white/5 text-slate-400 border border-slate-600'
+                                                            }`}>L</span>
+                                                        <span className={`px-3 py-1 text-xs font-semibold transition-all ${viewer3dIsPinching[1]
+                                                            ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-md shadow-green-500/20'
+                                                            : 'bg-white/5 text-slate-400 border border-slate-600'
+                                                            }`}>R</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 );
 
             case 'code-lab':
-                return <CodeLabView />;
-
-            case 'assignment':
-                return <InteractiveAssignmentWorkspace />;
+                return (
+                    <CodeLabView
+                        codeLabFiles={codeLabFiles}
+                        setCodeLabFiles={setCodeLabFiles}
+                        codeLabActiveFileId={codeLabActiveFileId}
+                        setCodeLabActiveFileId={setCodeLabActiveFileId}
+                        codeLabCode={codeLabCode}
+                        setCodeLabCode={setCodeLabCode}
+                        codeLabLanguage={codeLabLanguage}
+                        setCodeLabLanguage={setCodeLabLanguage}
+                        codeLabTheme={codeLabTheme}
+                        setCodeLabTheme={setCodeLabTheme}
+                        codeLabOutput={codeLabOutput}
+                        setCodeLabOutput={setCodeLabOutput}
+                        codeLabIsRunning={codeLabIsRunning}
+                        setCodeLabIsRunning={setCodeLabIsRunning}
+                        codeLabAiPrompt={codeLabAiPrompt}
+                        setCodeLabAiPrompt={setCodeLabAiPrompt}
+                        codeLabAiResponse={codeLabAiResponse}
+                        setCodeLabAiResponse={setCodeLabAiResponse}
+                        codeLabAiLoading={codeLabAiLoading}
+                        codeLabAiStreaming={codeLabAiStreaming}
+                        codeLabAiReasoning={codeLabAiReasoning}
+                        codeLabAiError={codeLabAiError}
+                        handleAskCodeLabAi={handleAskCodeLabAi}
+                        handleInsertAiCode={handleInsertAiCode}
+                        loadPyodide={loadPyodide}
+                        codeLabExtensions={codeLabExtensions}
+                        codeLabBasicSetup={codeLabBasicSetup}
+                    />
+                );
 
             case 'latex-assignment':
-                return <LaTeXAssignmentPrep />;
+            case 'assignment':
+                return renderAssignmentWorkspace();
 
-            case 'notebook':
-                // Notebook Panel - HyperBookLM-inspired research workspace
-                if (isLoading) {
-                    const terminalStages = [
-                        {
-                            name: 'Uploading',
-                            status: processingStage === 'uploading' ? 'loading' :
-                                ['extracting', 'analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
-                        },
-                        {
-                            name: 'Extracting Content',
-                            status: processingStage === 'extracting' ? 'loading' :
-                                ['analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
-                        },
-                        {
-                            name: 'Analyzing Structure',
-                            status: processingStage === 'analyzing' ? 'loading' :
-                                processingStage === 'generating' ? 'complete' : 'pending' as const
-                        },
-                        {
-                            name: 'Generating Experience',
-                            status: processingStage === 'generating' ? 'loading' : 'pending' as const
-                        }
-                    ];
+            case 'notebook': {
+                const initialText = (documentTextRef.current || standaloneNotes || '').trim();
+                const initialTitle =
+                    (uploadedFileName && uploadedFileName.trim()) ||
+                    (immersiveContent?.title && immersiveContent.title.trim()) ||
+                    (standaloneNotesName && standaloneNotesName.trim()) ||
+                    'Notebook Draft';
 
-                    const stageProgress = {
-                        'idle': 0,
-                        'uploading': 15,
-                        'extracting': 40,
-                        'analyzing': 65,
-                        'generating': 90
-                    };
+                return (
+                    <div className="flex h-full w-full min-h-0">
+                        <HyperbookNotebook
+                            className="flex-1 min-h-0"
+                            initialSource={initialText ? { title: initialTitle, text: initialText } : null}
+                        />
+                    </div>
+                );
+            }
 
-                    return (
-                        <div className="flex flex-col items-center justify-center h-full space-y-6 p-8 bg-[#f8f9fa]">
-                            <div className="w-full max-w-2xl">
-                                {uploadedFileName && (
-                                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white rounded-full w-fit mx-auto mb-6 shadow-sm border border-slate-100">
-                                        <FileText className="w-4 h-4 text-violet-600" />
-                                        <span className="text-sm text-slate-600 truncate max-w-[200px]">{uploadedFileName}</span>
-                                    </div>
-                                )}
-                                <ProgressTerminal
-                                    stages={terminalStages}
-                                    progress={stageProgress[processingStage]}
-                                    subSteps={terminalSubSteps}
-                                    title="processing-notebook"
-                                />
-                                <div className="mt-4 text-center">
-                                    <p className="text-sm text-slate-500">{loadingMessage}</p>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                }
+            case 'socratic': {
+                const topic = standaloneTopic || (immersiveContent?.title) || 'General Topic';
+                return (
+                    <div className="flex h-full w-full min-h-0 bg-white dark:bg-slate-900">
+                        <SocraticLearningMode
+                            topic={topic}
+                            onBack={() => setActiveMode('source')}
+                            onSwitchToFeynman={(t) => {
+                                setStandaloneTopic(t);
+                                setActiveMode('feynman-enhanced');
+                            }}
+                        />
+                    </div>
+                );
+            }
 
-                const documentText = documentTextRef.current || standaloneNotes || '';
-                const hasDocument = documentText.length > 0;
+            case 'feynman-enhanced': {
+                const topic = standaloneTopic || (immersiveContent?.title) || 'General Topic';
+                return (
+                    <div className="flex h-full w-full min-h-0 bg-white dark:bg-slate-900">
+                        <FeynmanLearningMode
+                            topic={topic}
+                            onBack={() => setActiveMode('source')}
+                            onSwitchToSocratic={(t) => {
+                                setStandaloneTopic(t);
+                                setActiveMode('socratic');
+                            }}
+                        />
+                    </div>
+                );
+            }
 
-                // Generate notebook content when tab is selected
-                const handleGenerateNotebookContent = async (tab: 'summary' | 'mindmap' | 'audio') => {
-                    if (!hasDocument) return;
-
-                    if (tab === 'summary' && !notebookContent?.summary && !isGeneratingNotebookSummary) {
-                        setIsGeneratingNotebookSummary(true);
-                        try {
-                            const summary = await generateNotebookSummary(documentText);
-                            setNotebookContent(prev => ({ ...(prev || createEmptyNotebookContent()), summary }));
-                        } catch (e) {
-                            console.error('Failed to generate notebook summary:', e);
-                        } finally {
-                            setIsGeneratingNotebookSummary(false);
-                        }
+            case 'learning-theories':
+                const handleAnalyzeLearningTheory = async () => {
+                    // Use topic input first, fall back to uploaded document
+                    const textToAnalyze = learningTheoryTopicInput.trim() || documentTextRef.current;
+                    if (!textToAnalyze) {
+                        setLearningTheoryError('Please enter a topic or paste content to analyze.');
+                        return;
                     }
 
-                    if (tab === 'mindmap' && !notebookContent?.mindmapData && !isGeneratingNotebookMindmap) {
-                        setIsGeneratingNotebookMindmap(true);
-                        try {
-                            const mindmapData = await generateNotebookMindmap(documentText);
-                            setNotebookContent(prev => ({ ...(prev || createEmptyNotebookContent()), mindmapData }));
-                        } catch (e) {
-                            console.error('Failed to generate notebook mindmap:', e);
-                        } finally {
-                            setIsGeneratingNotebookMindmap(false);
-                        }
-                    }
+                    setIsAnalyzingLearningTheory(true);
+                    setLearningTheoryError(null);
 
-                    if (tab === 'audio' && !notebookContent?.audioBuffer && !isGeneratingNotebookAudio) {
-                        setIsGeneratingNotebookAudio(true);
-                        try {
-                            const topic = immersiveContent?.title || uploadedFileName || 'Document Overview';
-                            const script = await generateNotebookAudioScript(topic, documentText);
-                            const audioBuffer = await generateNotebookAudio(script);
-                            setNotebookContent(prev => ({ ...(prev || createEmptyNotebookContent()), audioScript: script, audioBuffer }));
-                        } catch (e) {
-                            console.error('Failed to generate notebook audio:', e);
-                        } finally {
-                            setIsGeneratingNotebookAudio(false);
+                    try {
+                        const result = await selectLearningTheory(textToAnalyze);
+                        setLearningTheoriesResult(result);
+                        setSelectedLearningTheory(result.selectedTheory);
+
+                        // If Feynman is selected, prepare the Live config
+                        if (result.selectedTheory === 'feynman') {
+                            const concepts = result.tree
+                                .find(n => n.theory === 'feynman')?.implementation?.features || [];
+                            const config = getFeynmanLiveConfig(
+                                result.contentSummary,
+                                concepts,
+                                'curious-student'
+                            );
+                            setFeynmanLiveConfig(config);
                         }
+                    } catch (error) {
+                        setLearningTheoryError(error instanceof Error ? error.message : 'Failed to analyze');
+                    } finally {
+                        setIsAnalyzingLearningTheory(false);
                     }
                 };
 
-                // Handle chat submission
-                const handleNotebookChatSubmit = async () => {
-                    if (!notebookChatInput.trim() || !hasDocument || isNotebookChatLoading) return;
-
-                    const userMessage: NotebookChatMessage = {
-                        role: 'user',
-                        content: notebookChatInput,
-                        timestamp: Date.now()
-                    };
-
-                    const history = notebookContent?.chatHistory || [];
-                    setNotebookContent(prev => ({
-                        ...(prev || createEmptyNotebookContent()),
-                        chatHistory: [...history, userMessage]
-                    }));
-                    setNotebookChatInput('');
-                    setIsNotebookChatLoading(true);
-
-                    try {
-                        const response = await chatAboutNotebook(history, notebookChatInput, documentText);
-                        const assistantMessage: NotebookChatMessage = {
-                            role: 'assistant',
-                            content: response,
-                            timestamp: Date.now()
-                        };
-                        setNotebookContent(prev => ({
-                            ...(prev || createEmptyNotebookContent()),
-                            chatHistory: [...(prev?.chatHistory || []), assistantMessage]
-                        }));
-                    } catch (e) {
-                        console.error('Failed to get chat response:', e);
-                    } finally {
-                        setIsNotebookChatLoading(false);
-                    }
+                const theoryColors: Record<LearningTheoryType, string> = {
+                    'feynman': 'bg-purple-600',
+                    'active-learning': 'bg-blue-600',
+                    'visual-learning': 'bg-green-600',
+                    'spaced-repetition': 'bg-orange-600',
+                    'elaborative': 'bg-red-600',
+                    'scaffolded': 'bg-teal-600'
                 };
 
                 return (
-                    <div className="flex flex-col h-full bg-[#eef2f7]">
+                    <div className="flex flex-col w-full bg-[#0f172a]" style={{ height: 'calc(100vh - 50px)', marginTop: '50px' }}>
                         {/* Header */}
-                        <div className="p-4 border-b border-slate-200 bg-white">
+                        <div className="px-6 py-4 bg-white dark:bg-[#1e293b] border-b border-slate-200 dark:border-slate-800">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center">
-                                    <NotebookIcon active />
+                                <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                                    <LearningTheoriesIcon active />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-semibold text-slate-800">Research Notebook</h2>
-                                    <p className="text-sm text-slate-500">AI-powered research workspace inspired by HyperBookLM</p>
+                                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Learning Theories</h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                        AI selects the optimal learning approach for your content
+                                    </p>
                                 </div>
-                            </div>
-
-                            {/* Tabs */}
-                            <div className="flex gap-2 mt-4">
-                                {(['summary', 'mindmap', 'audio', 'chat'] as const).map(tab => (
-                                    <button
-                                        key={tab}
-                                        onClick={() => {
-                                            setNotebookActiveTab(tab);
-                                            if (tab !== 'chat') handleGenerateNotebookContent(tab);
-                                        }}
-                                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${notebookActiveTab === tab
-                                            ? 'bg-violet-600 text-white'
-                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                            }`}
-                                    >
-                                        {tab === 'summary' && '📝 Summary'}
-                                        {tab === 'mindmap' && '🧠 Mindmap'}
-                                        {tab === 'audio' && '🎙️ Audio'}
-                                        {tab === 'chat' && '💬 Chat'}
-                                    </button>
-                                ))}
                             </div>
                         </div>
 
-                        {/* Content Area */}
-                        <div className="flex-1 overflow-auto p-6">
-                            {!hasDocument ? (
-                                <div className="flex flex-col items-center justify-center h-full text-center">
-                                    <div className="w-20 h-20 bg-slate-200 rounded-2xl flex items-center justify-center mb-4">
-                                        <FileText className="w-10 h-10 text-slate-400" />
-                                    </div>
-                                    <h3 className="text-xl font-semibold text-slate-700 mb-2">No Document Loaded</h3>
-                                    <p className="text-slate-500 max-w-md">
-                                        Upload a document in the Source tab first, then return here to explore your research notebook.
-                                    </p>
-                                </div>
-                            ) : notebookActiveTab === 'summary' ? (
-                                isGeneratingNotebookSummary ? (
-                                    <div className="flex flex-col items-center justify-center h-full">
-                                        <Loader2 className="w-12 h-12 animate-spin text-violet-600 mb-4" />
-                                        <p className="text-slate-600">Generating AI summary...</p>
-                                    </div>
-                                ) : notebookContent?.summary ? (
-                                    <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm p-8">
-                                        <h3 className="text-2xl font-bold text-slate-800 mb-4">{notebookContent.summary.title}</h3>
-                                        <p className="text-slate-600 leading-relaxed mb-6">{notebookContent.summary.overview}</p>
+                        {/* Content */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <div className="max-w-4xl mx-auto">
+                                {/* Analysis Button */}
+                                {!learningTheoriesResult && (
+                                    <div className="text-center py-12">
+                                        <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                                            <span className="text-4xl">🎓</span>
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-3">
+                                            Discover Your Optimal Learning Path
+                                        </h2>
+                                        <p className="text-slate-500 dark:text-slate-400 mb-6 max-w-md mx-auto">
+                                            Enter a topic or paste content, and our AI will recommend the best learning approach.
+                                        </p>
 
-                                        <h4 className="text-lg font-semibold text-slate-700 mb-3">Key Insights</h4>
-                                        <div className="space-y-2 mb-6">
-                                            {notebookContent.summary.keyInsights.map((item, i) => (
-                                                <div key={i} className={`p-3 rounded-lg border-l-4 ${item.importance === 'high' ? 'bg-red-50 border-red-500' :
-                                                    item.importance === 'medium' ? 'bg-yellow-50 border-yellow-500' :
-                                                        'bg-green-50 border-green-500'
-                                                    }`}>
-                                                    <p className="text-slate-700">{item.insight}</p>
-                                                </div>
-                                            ))}
+                                        {/* Standalone Topic Input */}
+                                        <div className="max-w-lg mx-auto mb-6">
+                                            <textarea
+                                                value={learningTheoryTopicInput}
+                                                onChange={(e) => setLearningTheoryTopicInput(e.target.value)}
+                                                placeholder="Enter a topic (e.g., 'Quantum Mechanics', 'Photosynthesis') or paste content to analyze..."
+                                                className="w-full h-32 p-4 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                                            />
+                                            <p className="text-xs text-slate-400 mt-2 text-left">
+                                                💡 You can enter a simple topic name or paste detailed content for more accurate analysis
+                                            </p>
                                         </div>
 
-                                        <h4 className="text-lg font-semibold text-slate-700 mb-3">Main Topics</h4>
-                                        <div className="grid grid-cols-2 gap-3 mb-6">
-                                            {notebookContent.summary.mainTopics.map((topic, i) => (
-                                                <div key={i} className="p-3 bg-slate-50 rounded-lg">
-                                                    <p className="font-medium text-slate-800">{topic.topic}</p>
-                                                    <p className="text-sm text-slate-500">{topic.description}</p>
-                                                </div>
-                                            ))}
-                                        </div>
+                                        {learningTheoryError && (
+                                            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg text-sm max-w-lg mx-auto">
+                                                {learningTheoryError}
+                                            </div>
+                                        )}
 
-                                        <h4 className="text-lg font-semibold text-slate-700 mb-3">Suggested Questions</h4>
-                                        <div className="flex flex-wrap gap-2">
-                                            {notebookContent.summary.suggestedQuestions.map((q, i) => (
-                                                <button
-                                                    key={i}
-                                                    onClick={() => {
-                                                        setNotebookChatInput(q);
-                                                        setNotebookActiveTab('chat');
-                                                    }}
-                                                    className="px-3 py-1.5 bg-violet-100 text-violet-700 rounded-full text-sm hover:bg-violet-200 transition"
-                                                >
-                                                    {q}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full">
                                         <button
-                                            onClick={() => handleGenerateNotebookContent('summary')}
-                                            className="px-6 py-3 bg-violet-600 text-white rounded-xl font-medium hover:bg-violet-700 transition flex items-center gap-2"
+                                            onClick={handleAnalyzeLearningTheory}
+                                            disabled={isAnalyzingLearningTheory || (!learningTheoryTopicInput.trim() && !documentTextRef.current)}
+                                            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg disabled:opacity-50 flex items-center gap-2 mx-auto"
                                         >
-                                            <Sparkles className="w-5 h-5" />
-                                            Generate Summary
+                                            {isAnalyzingLearningTheory ? (
+                                                <>
+                                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                                    Analyzing with Tree of Thoughts...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Sparkles className="w-5 h-5" />
+                                                    Find My Optimal Learning Path
+                                                </>
+                                            )}
                                         </button>
                                     </div>
-                                )
-                            ) : notebookActiveTab === 'mindmap' ? (
-                                isGeneratingNotebookMindmap ? (
-                                    <div className="flex flex-col items-center justify-center h-full">
-                                        <Loader2 className="w-12 h-12 animate-spin text-violet-600 mb-4" />
-                                        <p className="text-slate-600">Building concept mindmap...</p>
-                                    </div>
-                                ) : notebookContent?.mindmapData ? (
-                                    <div className="h-full bg-white rounded-2xl shadow-sm overflow-hidden">
-                                        <ReactFlowMindMap data={notebookContent.mindmapData} />
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full">
-                                        <button
-                                            onClick={() => handleGenerateNotebookContent('mindmap')}
-                                            className="px-6 py-3 bg-violet-600 text-white rounded-xl font-medium hover:bg-violet-700 transition flex items-center gap-2"
-                                        >
-                                            <Brain className="w-5 h-5" />
-                                            Generate Mindmap
-                                        </button>
-                                    </div>
-                                )
-                            ) : notebookActiveTab === 'audio' ? (
-                                isGeneratingNotebookAudio ? (
-                                    <div className="flex flex-col items-center justify-center h-full">
-                                        <Loader2 className="w-12 h-12 animate-spin text-violet-600 mb-4" />
-                                        <p className="text-slate-600">Generating audio overview with Gemini TTS...</p>
-                                    </div>
-                                ) : notebookContent?.audioBuffer ? (
-                                    <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-sm p-8">
-                                        <div className="flex items-center gap-4 mb-6">
+                                )}
+
+                                {/* Results Display */}
+                                {learningTheoriesResult && (
+                                    <div className="space-y-6">
+                                        {/* Selected Theory Banner */}
+                                        <div className={`p-6 rounded-2xl ${theoryColors[learningTheoriesResult.selectedTheory]} text-white`}>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-4xl">
+                                                    {getLearningTheoryDisplayInfo(learningTheoriesResult.selectedTheory).icon}
+                                                </span>
+                                                <div className="flex-1">
+                                                    <div className="text-xs uppercase tracking-wide opacity-80 mb-1">
+                                                        Recommended Approach
+                                                    </div>
+                                                    <h3 className="text-2xl font-bold">
+                                                        {getLearningTheoryDisplayInfo(learningTheoriesResult.selectedTheory).name}
+                                                    </h3>
+                                                    <p className="text-sm opacity-90 mt-1">
+                                                        {learningTheoriesResult.reasoning}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* General Start Learning Button */}
                                             <button
-                                                onClick={() => {
-                                                    if (notebookAudioRef.current) {
-                                                        if (notebookAudioPlaying) {
-                                                            notebookAudioRef.current.pause();
-                                                        } else {
-                                                            notebookAudioRef.current.play();
-                                                        }
-                                                        setNotebookAudioPlaying(!notebookAudioPlaying);
+                                                onClick={async () => {
+                                                    // Generate content in-place based on selected theory
+                                                    const topic = learningTheoryTopicInput.trim() || learningTheoriesResult.contentSummary;
+                                                    const theoryInfo = getLearningTheoryDisplayInfo(learningTheoriesResult.selectedTheory);
+
+                                                    setIsGeneratingTheoryContent(true);
+                                                    setLearningTheoryPhase('learning');
+                                                    setLearningTheoryContent('');
+
+                                                    try {
+                                                        // Build a learning-theory-specific prompt
+                                                        const theoryPrompts: Record<LearningTheoryType, string> = {
+                                                            'feynman': `You are a curious 10-year-old student. The user will teach you about "${topic}". Ask simple questions, show confusion when concepts are complex, and help them realize gaps in their understanding. Start by saying "Can you teach me about this? I don't know anything about it!"`,
+                                                            'active-learning': `Create an interactive learning experience about "${topic}". Include hands-on exercises, practice problems, and immediate feedback opportunities. Format as a step-by-step workshop with [EXERCISE] blocks.`,
+                                                            'visual-learning': `Create a highly visual explanation of "${topic}". Use ASCII diagrams, flowcharts, and visual metaphors. Describe images that would help understanding. Use plenty of formatting and bullet points.`,
+                                                            'spaced-repetition': `Create a spaced repetition study guide for "${topic}". Include:\n1. Key concepts with mnemonics\n2. Flashcard-style Q&A pairs\n3. Review schedule suggestions\n4. Self-test questions`,
+                                                            'elaborative': `Create an elaborative interrogation learning session about "${topic}". For each concept, include:\n- WHY is this true?\n- HOW does this work?\n- WHAT IF scenarios\n- Connection questions to prior knowledge`,
+                                                            'scaffolded': `Create a scaffolded learning experience for "${topic}".\n\n**Level 1 - Foundation:**\nBasic concepts with simple examples\n\n**Level 2 - Building:**\nIntermediate concepts with guided practice\n\n**Level 3 - Mastery:**\nAdvanced concepts with independent challenges\n\nInclude hints and checkpoints at each level.`
+                                                        };
+
+                                                        const prompt = theoryPrompts[learningTheoriesResult.selectedTheory];
+
+                                                        // Stream the content
+                                                        await generateStreamingContent(
+                                                            prompt,
+                                                            (chunk) => {
+                                                                setLearningTheoryContent(prev => prev + chunk);
+                                                            },
+                                                            (fullContent) => {
+                                                                setLearningTheoryContent(fullContent);
+                                                                setIsGeneratingTheoryContent(false);
+                                                            },
+                                                            (error) => {
+                                                                setLearningTheoryError(error.message);
+                                                                setIsGeneratingTheoryContent(false);
+                                                            }
+                                                        );
+                                                    } catch (error) {
+                                                        setLearningTheoryError(error instanceof Error ? error.message : 'Failed to generate content');
+                                                        setIsGeneratingTheoryContent(false);
                                                     }
                                                 }}
-                                                className="w-16 h-16 bg-violet-600 rounded-full flex items-center justify-center hover:bg-violet-700 transition"
+                                                disabled={isGeneratingTheoryContent}
+                                                className="mt-4 w-full py-3 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 border border-white/30 disabled:opacity-50"
                                             >
-                                                {notebookAudioPlaying ? (
-                                                    <div className="w-4 h-4 bg-white rounded-sm" />
+                                                {isGeneratingTheoryContent ? (
+                                                    <>
+                                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                                        Generating Learning Experience...
+                                                    </>
                                                 ) : (
-                                                    <Play className="w-8 h-8 text-white ml-1" />
+                                                    <>
+                                                        <Sparkles className="w-5 h-5" />
+                                                        Start Learning with {getLearningTheoryDisplayInfo(learningTheoriesResult.selectedTheory).name}
+                                                    </>
                                                 )}
                                             </button>
-                                            <div>
-                                                <h3 className="text-lg font-semibold text-slate-800">Audio Overview</h3>
-                                                <p className="text-sm text-slate-500">Podcast-style discussion about your document</p>
+                                        </div>
+
+                                        {/* Content Info */}
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Content Type</div>
+                                                <div className="font-semibold text-slate-800 dark:text-slate-100 capitalize">
+                                                    {learningTheoriesResult.contentType}
+                                                </div>
+                                            </div>
+                                            <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Complexity</div>
+                                                <div className="font-semibold text-slate-800 dark:text-slate-100 capitalize">
+                                                    {learningTheoriesResult.complexityLevel}
+                                                </div>
+                                            </div>
+                                            <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Approaches Analyzed</div>
+                                                <div className="font-semibold text-slate-800 dark:text-slate-100">
+                                                    {learningTheoriesResult.tree.length}
+                                                </div>
                                             </div>
                                         </div>
-                                        <audio
-                                            ref={(el) => {
-                                                if (el && notebookContent?.audioBuffer) {
-                                                    const blob = new Blob([notebookContent.audioBuffer], { type: 'audio/wav' });
-                                                    el.src = URL.createObjectURL(blob);
-                                                    notebookAudioRef.current = el;
-                                                }
+
+                                        {/* ToT Tree Visualization Header */}
+                                        <div className="bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20 rounded-xl p-4 border border-emerald-200 dark:border-emerald-800">
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
+                                                    <span className="text-xl">🌳</span>
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-semibold text-emerald-800 dark:text-emerald-200">
+                                                        Tree of Thoughts Analysis
+                                                    </h4>
+                                                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                                                        AI evaluated {learningTheoriesResult.tree.length} learning approaches
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Tree Diagram */}
+                                            <div className="relative">
+                                                {/* Root Node */}
+                                                <div className="flex justify-center mb-4">
+                                                    <div className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium shadow-lg">
+                                                        📊 Content Analysis: "{learningTheoriesResult.contentSummary.slice(0, 50)}..."
+                                                    </div>
+                                                </div>
+
+                                                {/* Connector Lines */}
+                                                <div className="flex justify-center mb-2">
+                                                    <div className="w-0.5 h-6 bg-emerald-400"></div>
+                                                </div>
+                                                <div className="flex justify-center mb-4">
+                                                    <div className="h-0.5 w-3/4 bg-emerald-400"></div>
+                                                </div>
+
+                                                {/* Theory Nodes */}
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    {learningTheoriesResult.tree
+                                                        .sort((a, b) => b.score - a.score)
+                                                        .map((node, idx) => {
+                                                            const info = getLearningTheoryDisplayInfo(node.theory);
+                                                            const isSelected = node.theory === learningTheoriesResult.selectedTheory;
+                                                            const scoreColor = node.score >= 8 ? 'bg-green-500' : node.score >= 6 ? 'bg-amber-500' : 'bg-slate-400';
+
+                                                            return (
+                                                                <div key={node.id} className="relative">
+                                                                    {/* Connector to node */}
+                                                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-4 w-0.5 h-4 bg-emerald-400"></div>
+
+                                                                    <div className={`p-4 rounded-xl border-2 transition-all ${isSelected
+                                                                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20'
+                                                                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'
+                                                                        }`}>
+                                                                        {/* Rank Badge */}
+                                                                        <div className="absolute -top-2 -right-2">
+                                                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-slate-400' : idx === 2 ? 'bg-amber-700' : 'bg-slate-300'
+                                                                                }`}>
+                                                                                #{idx + 1}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        {/* Header */}
+                                                                        <div className="flex items-center gap-2 mb-3">
+                                                                            <span className="text-2xl">{info.icon}</span>
+                                                                            <div className="flex-1">
+                                                                                <div className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
+                                                                                    {info.name}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2 mt-1">
+                                                                                    <div className={`h-2 flex-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden`}>
+                                                                                        <div
+                                                                                            className={`h-full ${scoreColor} transition-all`}
+                                                                                            style={{ width: `${node.score * 10}%` }}
+                                                                                        />
+                                                                                    </div>
+                                                                                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                                                                                        {node.score.toFixed(1)}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                            {isSelected && (
+                                                                                <span className="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                                                                                    ✓ Best
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Rationale */}
+                                                                        <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 line-clamp-2">
+                                                                            {node.rationale}
+                                                                        </p>
+
+                                                                        {/* Pros/Cons */}
+                                                                        <div className="space-y-2">
+                                                                            {node.pros && node.pros.length > 0 && (
+                                                                                <div className="flex items-start gap-1">
+                                                                                    <span className="text-green-500 text-xs">✓</span>
+                                                                                    <span className="text-xs text-green-700 dark:text-green-400">
+                                                                                        {node.pros[0]}
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+                                                                            {node.cons && node.cons.length > 0 && (
+                                                                                <div className="flex items-start gap-1">
+                                                                                    <span className="text-red-500 text-xs">✗</span>
+                                                                                    <span className="text-xs text-red-700 dark:text-red-400">
+                                                                                        {node.cons[0]}
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Implementation */}
+                                                                        {node.implementation && (
+                                                                            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700">
+                                                                                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                                                                                    Uses: {node.implementation.primaryTool}
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Generated Learning Content */}
+                                        {(learningTheoryContent || isGeneratingTheoryContent) && (
+                                            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                                <div className="px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex items-center gap-3">
+                                                    <span className="text-xl">{getLearningTheoryDisplayInfo(learningTheoriesResult.selectedTheory).icon}</span>
+                                                    <div>
+                                                        <h4 className="font-semibold">
+                                                            {getLearningTheoryDisplayInfo(learningTheoriesResult.selectedTheory).name} Experience
+                                                        </h4>
+                                                        <p className="text-xs opacity-80">
+                                                            {isGeneratingTheoryContent ? 'Generating...' : 'Learning content ready'}
+                                                        </p>
+                                                    </div>
+                                                    {isGeneratingTheoryContent && (
+                                                        <Loader2 className="w-5 h-5 animate-spin ml-auto" />
+                                                    )}
+                                                </div>
+                                                <div className="p-6 max-h-[60vh] overflow-y-auto">
+                                                    <div className="prose prose-slate dark:prose-invert max-w-none">
+                                                        {learningTheoryContent.split('\n').map((line, idx) => (
+                                                            <p key={idx} className="mb-2 text-sm text-slate-700 dark:text-slate-300">
+                                                                {line || '\u00A0'}
+                                                            </p>
+                                                        ))}
+                                                        {isGeneratingTheoryContent && (
+                                                            <span className="inline-block w-2 h-4 bg-purple-500 animate-pulse" />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Reset Button */}
+                                        <button
+                                            onClick={() => {
+                                                setLearningTheoriesResult(null);
+                                                setSelectedLearningTheory(null);
+                                                setFeynmanLiveConfig(null);
                                             }}
-                                            onEnded={() => setNotebookAudioPlaying(false)}
-                                            className="w-full"
-                                            controls
-                                        />
-                                        {notebookContent?.audioScript && (
-                                            <div className="mt-6 p-4 bg-slate-50 rounded-xl">
-                                                <h4 className="text-sm font-semibold text-slate-700 mb-2">Transcript</h4>
-                                                <pre className="text-sm text-slate-600 whitespace-pre-wrap font-sans">{notebookContent.audioScript}</pre>
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full">
-                                        <button
-                                            onClick={() => handleGenerateNotebookContent('audio')}
-                                            className="px-6 py-3 bg-violet-600 text-white rounded-xl font-medium hover:bg-violet-700 transition flex items-center gap-2"
+                                            className="text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1"
                                         >
-                                            <Volume2 className="w-5 h-5" />
-                                            Generate Audio Overview
+                                            <RefreshCw className="w-4 h-4" />
+                                            Analyze Again
                                         </button>
                                     </div>
-                                )
-                            ) : (
-                                /* Chat Tab */
-                                <div className="flex flex-col h-full max-w-3xl mx-auto">
-                                    <div className="flex-1 overflow-auto space-y-4 mb-4">
-                                        {(notebookContent?.chatHistory || []).map((msg, i) => (
-                                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`max-w-[80%] p-4 rounded-2xl ${msg.role === 'user'
-                                                    ? 'bg-violet-600 text-white'
-                                                    : 'bg-white text-slate-700 shadow-sm'
-                                                    }`}>
-                                                    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                                        {msg.content}
-                                                    </ReactMarkdown>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {isNotebookChatLoading && (
-                                            <div className="flex justify-start">
-                                                <div className="bg-white p-4 rounded-2xl shadow-sm">
-                                                    <Loader2 className="w-5 h-5 animate-spin text-violet-600" />
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={notebookChatInput}
-                                            onChange={(e) => setNotebookChatInput(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleNotebookChatSubmit()}
-                                            placeholder="Ask a question about your document..."
-                                            className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
-                                        />
-                                        <button
-                                            onClick={handleNotebookChatSubmit}
-                                            disabled={!notebookChatInput.trim() || isNotebookChatLoading}
-                                            className="px-4 py-3 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition disabled:opacity-50"
-                                        >
-                                            <Send className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     </div>
                 );
@@ -9620,7 +12092,7 @@ sys.stderr = StringIO()
     };
 
     return (
-        <div ref={containerRef} className="fixed inset-0 z-50 bg-[#0b0d12] text-slate-100 flex flex-col" style={{ fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>
+        <div ref={containerRef} className="fixed inset-0 z-50 bg-[#0b0d12] text-slate-100 flex flex-col w-screen h-screen overflow-hidden" style={{ fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>
             {/* Laser Cursor for Hand Tracking */}
             <LaserCursor
                 handPosition={handPosition}
@@ -9722,7 +12194,8 @@ sys.stderr = StringIO()
             {/* Navigation Tabs - Enhanced with Magic UI styling */}
             <nav className="px-8 py-4 flex items-center justify-center gap-2 border-b relative overflow-x-auto" style={{ backgroundColor: '#1F1F1F', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
                 <div className="flex items-center gap-2">
-                    {learningModes.map((mode) => {
+                    {console.log('Rendering allLearningModes:', allLearningModes.map(m => m.id))}
+                    {allLearningModes.map((mode) => {
                         const isActive = activeMode === mode.id;
                         return (
                             <button
@@ -9783,7 +12256,7 @@ sys.stderr = StringIO()
             </nav>
 
             {/* Main Content Area - 3 Column Layout */}
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 min-h-0 overflow-hidden">
                 {/* Left Sidebar - Table of Contents - Exact Google Style with LEFT BORDER */}
                 {activeMode === 'immersive-text' && immersiveContent && (
                     <div className="w-[220px] bg-[#0f1117] border-r border-[#1f2430] py-6 overflow-y-auto flex-shrink-0">
@@ -9794,11 +12267,17 @@ sys.stderr = StringIO()
                                     <div key={section.id}>
                                         <button
                                             onClick={() => {
+                                                console.log('Section clicked:', section.id, section.title);
                                                 setActiveSectionId(section.id);
                                                 setCurrentSectionIndex(idx);
+                                                // Scroll to section in main content
+                                                const sectionEl = document.getElementById(`section-${section.id}`);
+                                                if (sectionEl) {
+                                                    sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                }
                                             }}
                                             className={`
-                                                w-full flex items-center gap-3 pl-6 pr-4 py-3 text-left transition-all duration-150
+                                                w-full flex items-center gap-3 pl-6 pr-4 py-3 text-left transition-all duration-150 cursor-pointer
                                                  ${isActive
                                                     ? 'bg-[#1a1e27]'
                                                     : 'hover:bg-[#151924]'
@@ -9872,15 +12351,15 @@ sys.stderr = StringIO()
                 {/* Main Content Card */}
                 <div className={`flex-1 ${activeMode === 'source'
                     ? 'bg-[#131314] overflow-hidden p-0'
-                    : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity' || activeMode === 'viewer3d' || activeMode === 'audio-lesson' || activeMode === 'slides-narration' || activeMode === 'simulation'
+                    : activeMode === 'mindmap' || activeMode === 'notebook' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'visual-activity' || activeMode === 'audio-video' || activeMode === 'simulation'
                         ? 'bg-[#eef2f7] overflow-hidden p-0'
-                        : 'bg-[#0b0d12] overflow-y-auto p-4'
+                        : 'bg-[#0b0d12] overflow-y-auto p-0'
                     }`}>
                     <div className={`${activeMode === 'source'
                         ? 'h-full'
-                        : activeMode === 'mindmap' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'image-activity' || activeMode === 'viewer3d' || activeMode === 'audio-lesson' || activeMode === 'slides-narration' || activeMode === 'simulation'
+                        : activeMode === 'mindmap' || activeMode === 'notebook' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'visual-activity' || activeMode === 'audio-video' || activeMode === 'simulation'
                             ? 'h-full rounded-none shadow-none'
-                            : 'min-h-full rounded-[24px] shadow-sm bg-[#0f1117]'
+                            : 'min-h-full rounded-none shadow-none bg-[#0f1117]'
                         } overflow-hidden`}>
                         {renderContent()}
                     </div>
@@ -10030,6 +12509,7 @@ sys.stderr = StringIO()
             {/* Message Dock - Fixed at bottom */}
             <MessageDock
                 characters={dockCharacters}
+                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999]"
                 onMessageSend={(message, character) => {
                     console.log('Message:', message, 'to', character.name);
                 }}
@@ -10061,4 +12541,4 @@ sys.stderr = StringIO()
     );
 };
 
-export default ImmersiveLearning;
+export default YouTubeVideos;

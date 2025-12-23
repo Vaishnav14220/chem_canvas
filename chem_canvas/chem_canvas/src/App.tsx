@@ -8,8 +8,8 @@ import Canvas, {
   type CanvasReactionInsertionHandler
 } from './components/Canvas';
 
-import AIElementsChat from './components/AIElementsChat';
 import CommandPalette from './components/CommandPalette';
+import AIElementsChat from './components/AIElementsChat';
 import InlineMoleculeSearch from './components/InlineMoleculeSearch';
 
 import MoldrawEmbed from './components/MoldrawEmbed';
@@ -59,11 +59,15 @@ import 'react-toastify/dist/ReactToastify.css';
 import AIWord from './components/AIWord';
 
 import { ExcalidrawCanvas, type ExcalidrawCanvasRef } from './components/ExcalidrawCanvas';
+import LearningTutorChat from './components/LearningTutorChat';
 import GeminiLiveWorkspace from './components/GeminiLiveWorkspace';
 import SrlCoachWorkspace from './components/SrlCoachWorkspace';
 import YouTubeVideos from './components/ImmersiveLearning';
 import DrawingToolsDock, { type DrawingTool } from './components/DrawingToolsDock';
 import FeynmanCoachPanel, { type FeynmanGuide } from './components/FeynmanCoachPanel';
+import { SocraticLearningMode } from './components/SocraticLearningMode';
+import { FeynmanLearningMode } from './components/FeynmanLearningMode';
+import { LearningModeTopicSelector } from './components/LearningModeTopicSelector';
 import {
   createWorkspace,
   getWorkspaces,
@@ -197,6 +201,15 @@ const App: React.FC = () => {
   // Sources state
   const [sources, setSources] = useState<SourceEntry[]>([]);
   const youtubeSources = useMemo(() => sources.filter(source => source.type === 'youtube'), [sources]);
+  const tutorSources = useMemo(() => {
+    return sources
+      .filter(source => source.content && source.content.trim())
+      .map((source, index) => ({
+        id: source.id || `source-${index + 1}`,
+        title: source.title || `Source ${index + 1}`,
+        content: source.content || ''
+      }));
+  }, [sources]);
   const [videoSummaryLoadingId, setVideoSummaryLoadingId] = useState<string | null>(null);
   const [summarizingAll, setSummarizingAll] = useState(false);
   const [inlineVideoSourceId, setInlineVideoSourceId] = useState<string | null>(null);
@@ -236,6 +249,13 @@ const App: React.FC = () => {
   const [showAIWord, setShowAIWord] = useState(false);
   const [showYouTubeVideos, setShowYouTubeVideos] = useState(false);
   const [showExcalidrawCanvas, setShowExcalidrawCanvas] = useState(false);
+  const [showSocraticLearning, setShowSocraticLearning] = useState(false);
+  const [showFeynmanLearning, setShowFeynmanLearning] = useState(false);
+  const [learningModeTopic, setLearningModeTopic] = useState('');
+  const [learningModeDocumentData, setLearningModeDocumentData] = useState<{ mimeType: string; data: string } | undefined>(undefined);
+  const [showTopicSelector, setShowTopicSelector] = useState(false);
+  const [pendingLearningMode, setPendingLearningMode] = useState<'socratic' | 'feynman' | null>(null);
+  const [pendingCanvasNote, setPendingCanvasNote] = useState<string | null>(null);
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [showQuickActionsPopup, setShowQuickActionsPopup] = useState(false);
@@ -412,6 +432,27 @@ const App: React.FC = () => {
     };
   }, [stopWebcamShare]);
 
+  const handleCanvasNote = useCallback((note: string) => {
+    if (!note.trim()) return;
+    setShowExcalidrawCanvas(true);
+    if (excalidrawCanvasRef.current) {
+      excalidrawCanvasRef.current.startNewSection();
+      void excalidrawCanvasRef.current.addHandwrittenText(note);
+      setPendingCanvasNote(null);
+      return;
+    }
+    setPendingCanvasNote(note);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingCanvasNote || !showExcalidrawCanvas || !excalidrawCanvasRef.current) {
+      return;
+    }
+    excalidrawCanvasRef.current.startNewSection();
+    void excalidrawCanvasRef.current.addHandwrittenText(pendingCanvasNote);
+    setPendingCanvasNote(null);
+  }, [pendingCanvasNote, showExcalidrawCanvas]);
+
   const buildFallbackFeynmanGuide = useCallback((topic: string): FeynmanGuide => ({
     topic,
     openingPrompt: `Teach me ${topic} from scratch. Start with a plain-language overview.`,
@@ -547,8 +588,47 @@ const App: React.FC = () => {
   const handleChatModeChange = useCallback((mode: SegmentedOption) => {
     setChatMode(mode);
 
-    if (mode === 'feynman') {
+    // Close any existing learning mode overlays first
+    setShowSocraticLearning(false);
+    setShowFeynmanLearning(false);
+    setShowTopicSelector(false);
+
+    if (mode === 'socratic') {
+      // Show topic selector popup for Socratic mode
+      setPendingLearningMode('socratic');
+      setShowTopicSelector(true);
       setShowChatPanel(false);
+      return;
+    }
+
+    if (mode === 'feynman') {
+      // Show topic selector popup for Feynman mode
+      setPendingLearningMode('feynman');
+      setShowTopicSelector(true);
+      setShowChatPanel(false);
+      return;
+    }
+
+    // Auto mode - close overlays and stop screen share
+    setPendingLearningMode(null);
+    if (feynmanAutoScreenShareRef.current) {
+      handleFeynmanStopScreenShare();
+    }
+  }, [
+    handleFeynmanStopScreenShare
+  ]);
+
+  // Handler for when user confirms topic in the selector
+  const handleTopicSelected = useCallback((topic: string, documentData?: { mimeType: string; data: string }) => {
+    setLearningModeTopic(topic);
+    setLearningModeDocumentData(documentData);
+    setShowTopicSelector(false);
+
+    if (pendingLearningMode === 'socratic') {
+      setShowSocraticLearning(true);
+      setShowExcalidrawCanvas(false);
+    } else if (pendingLearningMode === 'feynman') {
+      setShowFeynmanLearning(true);
       setShowExcalidrawCanvas(true);
       if (!feynmanGuide && !isFeynmanGuideLoading) {
         void generateFeynmanGuide();
@@ -557,17 +637,13 @@ const App: React.FC = () => {
       if (!isScreenSharing) {
         handleFeynmanStartScreenShare();
       }
-      return;
-    }
-
-    if (feynmanAutoScreenShareRef.current) {
-      handleFeynmanStopScreenShare();
     }
   }, [
+    pendingLearningMode,
     feynmanGuide,
     generateFeynmanGuide,
+    handleFeynmanConnect,
     handleFeynmanStartScreenShare,
-    handleFeynmanStopScreenShare,
     isFeynmanGuideLoading,
     isScreenSharing
   ]);
@@ -2419,6 +2495,48 @@ Here is the learner's question: ${message}`;
                   <span className="relative z-10 drop-shadow-md font-medium">Immersive Learning</span>
                 </button>
 
+                {/* Socratic Learning Button */}
+                <button
+                  onClick={() => {
+                    setShowSocraticLearning(true);
+                    setShowFeynmanLearning(false);
+                    setShowYouTubeVideos(false);
+                    void captureToolClick('socratic_learning');
+                    startFeature('socratic_learning');
+                  }}
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                  style={{
+                    background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%)',
+                    boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                  }}
+                  title="Guided discovery through questions (hint ladder)"
+                >
+                  <MessageSquare className="h-5 w-5 relative z-10 drop-shadow-lg" />
+                  <span className="relative z-10 drop-shadow-md font-medium">Socratic</span>
+                </button>
+
+                {/* Feynman Learning Button */}
+                <button
+                  onClick={() => {
+                    setShowFeynmanLearning(true);
+                    setShowSocraticLearning(false);
+                    setShowYouTubeVideos(false);
+                    void captureToolClick('feynman_learning');
+                    startFeature('feynman_learning');
+                  }}
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                  style={{
+                    background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #c084fc 100%)',
+                    boxShadow: '0 4px 16px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                  }}
+                  title="Teach back to learn - with visual canvas"
+                >
+                  <Palette className="h-5 w-5 relative z-10 drop-shadow-lg" />
+                  <span className="relative z-10 drop-shadow-md font-medium">Feynman</span>
+                </button>
+
                 <div className="inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900/50 backdrop-blur-sm p-0.5 text-xs font-semibold shadow-lg">
                   <button
                     onClick={() => {
@@ -2994,7 +3112,7 @@ Here is the learner's question: ${message}`;
                 )}
 
                 {/* Chat Start Button - Floating Right Corner */}
-                {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && !isFeynmanMode && (
+                {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
                   <div className="absolute top-16 right-8 z-10 flex flex-col gap-3 items-end">
                     {/* Gemini Live Share Canvas Button */}
                     {connectionState === ConnectionState.CONNECTED && (
@@ -3026,7 +3144,7 @@ Here is the learner's question: ${message}`;
                 )}
 
                 {/* Chat Panel */}
-                {showChatPanel && !isFeynmanMode && (
+                {showChatPanel && (
                   <>
                     <div
                       className="border-l-2 border-border flex flex-col shadow-lg"
@@ -3035,7 +3153,7 @@ Here is the learner's question: ${message}`;
                       {/* Chat Header */}
                       <div className="px-4 py-3 border-b border-border bg-muted/70 flex items-center justify-between" style={{ backgroundColor: '#171717' }}>
                         <div className="flex items-center space-x-3">
-                          <h3 className="text-sm font-semibold">AI Chat</h3>
+                          <h3 className="text-sm font-semibold">Learning Tutor</h3>
                         </div>
                         <button
                           onClick={() => setShowChatPanel(false)}
@@ -3047,9 +3165,24 @@ Here is the learner's question: ${message}`;
                       </div>
                       {/* Chat Content */}
                       <div className="flex-1 min-h-[240px] overflow-hidden">
-                        <AIElementsChat onRequireApiKey={() => setShowSettings(true)} onRequestVideoSearch={(query) => {
-                          // Handle video search if needed
-                        }} showHeader={false} />
+                        <LearningTutorChat
+                          mode={chatMode}
+                          onRequireApiKey={() => setShowSettings(true)}
+                          groundingSources={tutorSources}
+                          onOpenCanvas={() => setShowExcalidrawCanvas(true)}
+                          onCanvasNote={handleCanvasNote}
+                          audioConnectionState={connectionState}
+                          isListening={isListening}
+                          isSpeaking={isSpeaking}
+                          onAudioConnect={() => {
+                            if (connectionState === ConnectionState.CONNECTED || connectionState === ConnectionState.CONNECTING) {
+                              return;
+                            }
+                            setShowExcalidrawCanvas(true);
+                            connect();
+                          }}
+                          onAudioDisconnect={() => disconnect()}
+                        />
                       </div>
                     </div>
 
@@ -3067,7 +3200,7 @@ Here is the learner's question: ${message}`;
                   </>
                 )}
 
-                {isFeynmanMode && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
+                {isFeynmanMode && !showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
                   <FeynmanCoachPanel
                     topic={feynmanTopic}
                     onTopicChange={setFeynmanTopic}
@@ -3266,6 +3399,17 @@ Here is the learner's question: ${message}`;
       </div>
 
 
+      {/* Learning Mode Topic Selector Popup */}
+      <LearningModeTopicSelector
+        isOpen={showTopicSelector}
+        onClose={() => {
+          setShowTopicSelector(false);
+          setPendingLearningMode(null);
+          setChatMode('auto');
+        }}
+        onStart={handleTopicSelected}
+        mode={pendingLearningMode || 'socratic'}
+      />
 
       {/* YouTube Videos */}
       {
@@ -3280,11 +3424,56 @@ Here is the learner's question: ${message}`;
         )
       }
 
+      {/* Socratic Learning Mode - Side Panel */}
+      {
+        showSocraticLearning && (
+          <div
+            className="fixed right-0 top-0 bottom-0 z-[55] bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-700"
+            style={{ width: '480px', maxWidth: '100vw' }}
+          >
+            <SocraticLearningMode
+              topic={learningModeTopic || 'General Chemistry'}
+              onBack={() => {
+                setShowSocraticLearning(false);
+                setChatMode('auto');
+                endCurrentFeature();
+              }}
+              onSwitchToFeynman={(topic: string) => {
+                setLearningModeTopic(topic);
+                setShowSocraticLearning(false);
+                setShowFeynmanLearning(true);
+              }}
+            />
+          </div>
+        )
+      }
+
+      {/* Feynman Learning Mode - Full Screen */}
+      {
+        showFeynmanLearning && (
+          <div className="fixed inset-0 z-[60] bg-white dark:bg-slate-900">
+            <FeynmanLearningMode
+              topic={learningModeTopic || 'General Chemistry'}
+              onBack={() => {
+                setShowFeynmanLearning(false);
+                setChatMode('auto');
+                endCurrentFeature();
+              }}
+              onSwitchToSocratic={(topic: string) => {
+                setLearningModeTopic(topic);
+                setShowFeynmanLearning(false);
+                setShowSocraticLearning(true);
+              }}
+            />
+          </div>
+        )
+      }
+
       {/* Quick Actions Popup */}
       {showQuickActionsPopup && quickActionHandlers && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowQuickActionsPopup(false)}>
-          <div 
-            className="flex flex-col gap-4 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg bg-slate-900/95 max-w-2xl w-full" 
+          <div
+            className="flex flex-col gap-4 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg bg-slate-900/95 max-w-2xl w-full"
             style={{ borderColor: 'rgba(6, 182, 212, 0.2)' }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -3298,7 +3487,7 @@ Here is the learner's question: ${message}`;
                 <X size={18} />
               </button>
             </div>
-            
+
             {/* Molecule Search Bar */}
             <div className="w-full">
               <InlineMoleculeSearch
@@ -3335,11 +3524,10 @@ Here is the learner's question: ${message}`;
                   quickActionHandlers.onOpenReactions();
                   setShowQuickActionsPopup(false);
                 }}
-                className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${
-                  quickActionHandlers.getReactionSearchActive()
-                    ? 'bg-slate-800/95 text-white border-slate-500/80 shadow-lg ring-1 ring-orange-500/40 border-orange-500/60'
-                    : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
-                }`}
+                className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${quickActionHandlers.getReactionSearchActive()
+                  ? 'bg-slate-800/95 text-white border-slate-500/80 shadow-lg ring-1 ring-orange-500/40 border-orange-500/60'
+                  : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
+                  }`}
                 title="Search Reactions"
               >
                 <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-orange-500/15 text-orange-300">
@@ -3366,11 +3554,10 @@ Here is the learner's question: ${message}`;
                   setShowQuickActionsPopup(false);
                 }}
                 disabled={!quickActionHandlers.getSelectedMoleculeCid()}
-                className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${
-                  !quickActionHandlers.getSelectedMoleculeCid()
-                    ? 'opacity-50 cursor-not-allowed pointer-events-none'
-                    : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
-                }`}
+                className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${!quickActionHandlers.getSelectedMoleculeCid()
+                  ? 'opacity-50 cursor-not-allowed pointer-events-none'
+                  : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
+                  }`}
                 title={quickActionHandlers.getSelectedMoleculeCid()
                   ? 'View selected molecule in AR'
                   : 'Select a molecule on the canvas to enable AR viewer'}

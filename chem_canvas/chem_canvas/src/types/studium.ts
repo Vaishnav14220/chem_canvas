@@ -35,6 +35,20 @@ export interface InteractiveLabel {
     };
 }
 
+export interface EnhancedLabelInfo {
+    term: string;
+    definition: string;
+    funFact: string;
+    equations?: string[]; // LaTeX formatted equations
+    relationships?: {
+        relatedTo: string;
+        relationship: string;
+    }[];
+    keyConcepts?: string[];
+    applications?: string[];
+    visualDescription?: string;
+}
+
 export interface GroundingChunk {
     web?: {
         uri: string;

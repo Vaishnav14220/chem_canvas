@@ -570,6 +570,15 @@ interface CanvasProps {
   onShapesChange?: (shapes: any[]) => void;
   initialShapes?: any[];
   isFullscreen?: boolean;
+  // Quick action handlers for external use
+  onRegisterQuickActionHandlers?: (handlers: {
+    onOpenMinerals: () => void;
+    onOpenReactions: () => void;
+    onOpenProteins: () => void;
+    onOpenAR: () => void;
+    getSelectedMoleculeCid: () => string | null;
+    getReactionSearchActive: () => boolean;
+  }) => void;
 }
 
 export type CanvasCommand =
@@ -601,7 +610,8 @@ export default function Canvas({
   onRegisterSetShapesHandler,
   onShapesChange,
   initialShapes,
-  isFullscreen = false
+  isFullscreen = false,
+  onRegisterQuickActionHandlers
 }: CanvasProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -616,6 +626,7 @@ export default function Canvas({
   const onRegisterMarkdownInjectionHandlerRef = useRef(onRegisterMarkdownInjectionHandler);
   const onRegisterGetShapesHandlerRef = useRef(onRegisterGetShapesHandler);
   const onRegisterSetShapesHandlerRef = useRef(onRegisterSetShapesHandler);
+  const onRegisterQuickActionHandlersRef = useRef(onRegisterQuickActionHandlers);
   
   // Update refs when props change (but don't trigger re-renders)
   useEffect(() => {
@@ -628,6 +639,7 @@ export default function Canvas({
     onRegisterMarkdownInjectionHandlerRef.current = onRegisterMarkdownInjectionHandler;
     onRegisterGetShapesHandlerRef.current = onRegisterGetShapesHandler;
     onRegisterSetShapesHandlerRef.current = onRegisterSetShapesHandler;
+    onRegisterQuickActionHandlersRef.current = onRegisterQuickActionHandlers;
   });
 
   useEffect(() => {
@@ -646,6 +658,8 @@ export default function Canvas({
       });
     }
   }, []); // Only run once on mount
+
+  // Register quick action handlers - will be set up after openArViewer is defined
 
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -1693,6 +1707,15 @@ export default function Canvas({
   const [isRotating3DShape, setIsRotating3DShape] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const canvasHistoryRef = useRef<Shape[]>([]);
+  const canvasRectRef = useRef<DOMRect | null>(null);
+  const canvasSizeRef = useRef({ width: 0, height: 0, dpr: 1 });
+  const redrawRafRef = useRef<number | null>(null);
+  const redrawPendingRef = useRef(false);
+  const drawFrameRef = useRef<() => void>(() => {});
+  const gridCacheRef = useRef<{ key: string; canvas: HTMLCanvasElement | null }>({ key: '', canvas: null });
+  const hoveredShapeIdRef = useRef<string | null>(null);
+  const pendingHoverIdRef = useRef<string | null>(null);
+  const hoverRafRef = useRef<number | null>(null);
   const rotate3DStateRef = useRef<{
     startClientX: number;
     startClientY: number;
@@ -1700,6 +1723,26 @@ export default function Canvas({
     baseY: number;
   } | null>(null);
   const externalTextPlacementRef = useRef<{ index: number }>({ index: 0 });
+  const requestRedraw = useCallback(() => {
+    redrawPendingRef.current = true;
+    if (redrawRafRef.current !== null) {
+      return;
+    }
+    redrawRafRef.current = window.requestAnimationFrame(() => {
+      redrawRafRef.current = null;
+      if (redrawPendingRef.current) {
+        redrawPendingRef.current = false;
+        drawFrameRef.current();
+      }
+    });
+  }, []);
+  const commitShapes = useCallback(() => {
+    setShapes([...canvasHistoryRef.current]);
+  }, []);
+
+  useEffect(() => {
+    hoveredShapeIdRef.current = hoveredShapeId;
+  }, [hoveredShapeId]);
 
   useEffect(() => {
     if (!arQrCid) {
@@ -1752,7 +1795,11 @@ export default function Canvas({
     setChemistryColor(color);
   };
 
-  const updateShapeById = (id: string, updater: (shape: Shape) => Shape) => {
+  const updateShapeById = (
+    id: string,
+    updater: (shape: Shape) => Shape,
+    options?: { commit?: boolean }
+  ) => {
     let didUpdate = false;
     const updated = canvasHistoryRef.current.map(shape => {
       if (shape.id === id) {
@@ -1764,7 +1811,10 @@ export default function Canvas({
 
     if (didUpdate) {
       canvasHistoryRef.current = updated;
-      setShapes(updated);
+      if (options?.commit !== false) {
+        setShapes(updated);
+      }
+      requestRedraw();
     }
   };
 
@@ -1812,6 +1862,21 @@ export default function Canvas({
     setArQrCid(null);
     setArQrLabel('');
   };
+
+  // Register quick action handlers
+  useEffect(() => {
+    if (onRegisterQuickActionHandlersRef.current) {
+      onRegisterQuickActionHandlersRef.current({
+        onOpenMinerals: () => setShowMineralSearch(true),
+        onOpenReactions: () => setShowInlineReactionSearch((prev) => !prev),
+        onOpenProteins: () => setShowProteinSearch(true),
+        onOpenAR: openArViewer,
+        getSelectedMoleculeCid: () => selectedMoleculeCid,
+        getReactionSearchActive: () => showInlineReactionSearch
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMoleculeCid, showInlineReactionSearch]); // Re-register when these change
 
   const toggleSelectedMolecule3D = (enabled: boolean) => {
     if (!selectedShapeId || selectedShape?.type !== 'molecule') {
@@ -2656,6 +2721,7 @@ export default function Canvas({
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
+    canvasRectRef.current = rect;
     const clickX = (e.clientX - rect.left) / zoom;
     const clickY = (e.clientY - rect.top) / zoom;
 
@@ -2687,43 +2753,6 @@ export default function Canvas({
       setIsTextInputVisible(true);
     }
   };
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const redraw = async () => {
-      // Set canvas size
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-
-      // Fill canvas with background color
-      ctx.fillStyle = canvasBackground === 'dark' ? '#1F1F1F' : '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw grid if enabled
-      if (showGrid) {
-        drawGrid(ctx, canvas.width, canvas.height);
-      }
-
-      // Redraw all saved shapes
-      await redrawAllShapes(ctx);
-
-      if (areaEraseSelection?.isActive) {
-        drawAreaEraseOverlay(ctx, areaEraseSelection);
-      }
-
-      // Draw lasso selection if active
-      if (lassoSelection.isActive && lassoSelection.points.length > 0) {
-        drawLassoOverlay(ctx, lassoSelection.points);
-      }
-    };
-
-    redraw();
-  }, [showGrid, canvasBackground, shapes, forceRedraw, areaEraseSelection, lassoSelection]);
 
   // Delete selected shape
   const deleteSelectedShape = () => {
@@ -2766,22 +2795,37 @@ export default function Canvas({
     // Professional dot grid pattern like tldraw and other drawing apps
     const gridSize = 20; // Spacing between dots
     const dotRadius = 1; // Size of each dot
-    
+
     // Adjust dot color based on canvas background - subtle but visible
-    const dotColor = canvasBackground === 'dark' 
+    const dotColor = canvasBackground === 'dark'
       ? 'rgba(148, 163, 184, 0.3)' // Slate-400 with opacity for dark mode
       : 'rgba(148, 163, 184, 0.4)'; // Slightly more visible for light mode
 
-    ctx.fillStyle = dotColor;
-    
-    // Draw dots in a grid pattern
-    // Start from gridSize to avoid dots at the very edge
-    for (let x = gridSize; x < width; x += gridSize) {
-      for (let y = gridSize; y < height; y += gridSize) {
-        ctx.beginPath();
-        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-        ctx.fill();
+    const cacheKey = `${width}x${height}:${dotColor}`;
+    const cache = gridCacheRef.current;
+
+    if (cache.key !== cacheKey || !cache.canvas) {
+      const gridCanvas = document.createElement('canvas');
+      gridCanvas.width = width;
+      gridCanvas.height = height;
+      const gridCtx = gridCanvas.getContext('2d');
+      if (gridCtx) {
+        gridCtx.fillStyle = dotColor;
+        // Start from gridSize to avoid dots at the very edge
+        for (let x = gridSize; x < width; x += gridSize) {
+          for (let y = gridSize; y < height; y += gridSize) {
+            gridCtx.beginPath();
+            gridCtx.arc(x, y, dotRadius, 0, Math.PI * 2);
+            gridCtx.fill();
+          }
+        }
       }
+      cache.key = cacheKey;
+      cache.canvas = gridCanvas;
+    }
+
+    if (cache.canvas) {
+      ctx.drawImage(cache.canvas, 0, 0);
     }
   };
 
@@ -3749,7 +3793,7 @@ export default function Canvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRectRef.current ?? canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
 
@@ -3993,7 +4037,7 @@ export default function Canvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRectRef.current ?? canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
 
@@ -4016,8 +4060,19 @@ export default function Canvas({
           break;
         }
       }
-      if (hoveredShapeId !== foundHoveredId) {
-        setHoveredShapeId(foundHoveredId);
+      if (hoveredShapeIdRef.current !== foundHoveredId) {
+        pendingHoverIdRef.current = foundHoveredId;
+        if (hoverRafRef.current === null) {
+          hoverRafRef.current = window.requestAnimationFrame(() => {
+            hoverRafRef.current = null;
+            const nextId = pendingHoverIdRef.current ?? null;
+            if (hoveredShapeIdRef.current !== nextId) {
+              hoveredShapeIdRef.current = nextId;
+              setHoveredShapeId(nextId);
+              requestRedraw();
+            }
+          });
+        }
       }
     }
 
@@ -4034,24 +4089,28 @@ export default function Canvas({
       const nextRotationX = start.baseX + deltaY * sensitivity;
       const nextRotationY = start.baseY + deltaX * sensitivity;
 
-      updateShapeById(selectedShapeId, shape => ({
-        ...shape,
-        rotation3D: {
-          x: Math.max(-180, Math.min(180, nextRotationX)),
-          y: ((nextRotationY % 360) + 360) % 360
-        }
-      }));
+      updateShapeById(
+        selectedShapeId,
+        shape => ({
+          ...shape,
+          rotation3D: {
+            x: Math.max(-180, Math.min(180, nextRotationX)),
+            y: ((nextRotationY % 360) + 360) % 360
+          }
+        }),
+        { commit: false }
+      );
 
       return;
     }
 
     // Handle lasso selection for eraser
     if (lassoSelection.isActive) {
-      console.log('Lasso point added:', { x, y }, 'Total points:', lassoSelection.points.length + 1);
       setLassoSelection(prev => ({
         ...prev,
         points: [...prev.points, { x, y }]
       }));
+      requestRedraw();
       return;
     }
 
@@ -4059,6 +4118,7 @@ export default function Canvas({
       setAreaEraseSelection(prev =>
         prev ? { ...prev, currentX: x, currentY: y } : prev
       );
+      requestRedraw();
       return;
     }
 
@@ -4093,8 +4153,8 @@ export default function Canvas({
         return shape;
       });
 
-      setShapes(updatedShapes);
       canvasHistoryRef.current = updatedShapes;
+      requestRedraw();
       return;
     }
 
@@ -4122,8 +4182,8 @@ export default function Canvas({
           return s;
         });
 
-        setShapes(updatedShapes);
         canvasHistoryRef.current = updatedShapes;
+        requestRedraw();
       }
       return;
     }
@@ -4236,7 +4296,7 @@ export default function Canvas({
         const updatedShapes = [...canvasHistoryRef.current];
         updatedShapes[shapeIndex] = updatedShape;
         canvasHistoryRef.current = updatedShapes;
-        setShapes(updatedShapes);
+        requestRedraw();
       }
       return;
     }
@@ -4249,7 +4309,7 @@ export default function Canvas({
 
       // Redraw grid if needed
       if (showGrid) {
-        drawGrid(ctx, canvas.width, canvas.height);
+        drawGrid(ctx, canvas.offsetWidth, canvas.offsetHeight);
       }
 
       // Update shape end position
@@ -5840,7 +5900,6 @@ export default function Canvas({
   const stopDrawing = () => {
     // Handle lasso selection for eraser
     if (lassoSelection.isActive && lassoSelection.points.length > 3) {
-      console.log('Lasso selection complete with', lassoSelection.points.length, 'points');
       const updatedShapes = canvasHistoryRef.current.filter(shape => {
         const dx = shape.endX - shape.startX;
         const dy = shape.endY - shape.startY;
@@ -5852,19 +5911,9 @@ export default function Canvas({
         const boundsIntersect = doesPolygonIntersectRect(lassoSelection.points, bounds);
         const shouldErase = centerInside || boundsIntersect;
 
-        console.log(
-          'Shape at',
-          centerX,
-          centerY,
-          'removed by lasso:',
-          shouldErase,
-          { centerInside, boundsIntersect }
-        );
-
         return !shouldErase;
       });
 
-      console.log('Shapes before:', canvasHistoryRef.current.length, 'Shapes after:', updatedShapes.length);
       if (updatedShapes.length !== canvasHistoryRef.current.length) {
         setShapes(updatedShapes);
         canvasHistoryRef.current = updatedShapes;
@@ -5916,17 +5965,20 @@ export default function Canvas({
     if (isRotating3DShape) {
       setIsRotating3DShape(false);
       rotate3DStateRef.current = null;
+      commitShapes();
       return;
     }
 
     if (isRotatingShape) {
       setIsRotatingShape(false);
+      commitShapes();
       return;
     }
 
     // Stop dragging shape
     if (isDraggingShape) {
       setIsDraggingShape(false);
+      commitShapes();
       return;
     }
 
@@ -5935,6 +5987,7 @@ export default function Canvas({
       setIsResizing(false);
       setResizeHandle(null);
       // Keep selected for next operation
+      commitShapes();
       return;
     }
 
@@ -5964,9 +6017,10 @@ export default function Canvas({
       };
 
       // Add to shapes history
-      const updatedShapes = [...shapes, newShape];
+      const updatedShapes = [...canvasHistoryRef.current, newShape];
       setShapes(updatedShapes);
       canvasHistoryRef.current = updatedShapes;
+      requestRedraw();
 
       setArrowState({
         ...arrowState,
@@ -6215,6 +6269,22 @@ export default function Canvas({
     ctx.restore();
   };
 
+  const correctionsByTextShapeId = useMemo(() => {
+    const grouped = new Map<string, Correction[]>();
+    for (const correction of corrections) {
+      if (!correction.textShapeId) {
+        continue;
+      }
+      const entry = grouped.get(correction.textShapeId);
+      if (entry) {
+        entry.push(correction);
+      } else {
+        grouped.set(correction.textShapeId, [correction]);
+      }
+    }
+    return grouped;
+  }, [corrections]);
+
   const textCorrectionOverlays = useMemo(() => {
     if (!showCorrections) {
       return [] as Array<{
@@ -6236,18 +6306,10 @@ export default function Canvas({
       isDrawn: boolean;
     }> = [];
 
-    const groupedByTextShape = new Map<string, Correction[]>();
-    corrections.forEach((correction) => {
-      if (!correction.textShapeId) return;
-      const existing = groupedByTextShape.get(correction.textShapeId) || [];
-      existing.push(correction);
-      groupedByTextShape.set(correction.textShapeId, existing);
-    });
-
     const textShapes = shapes.filter((shape) => shape.type === 'text');
     const textShapeMap = new Map(textShapes.map((shape) => [shape.id, shape]));
 
-    groupedByTextShape.forEach((groupCorrections, textShapeId) => {
+    correctionsByTextShapeId.forEach((groupCorrections, textShapeId) => {
       if (groupCorrections.length === 0) return;
 
       const baseCorrection = groupCorrections[0];
@@ -6289,7 +6351,7 @@ export default function Canvas({
     });
 
     return overlays;
-  }, [showCorrections, corrections, shapes, zoom]);
+  }, [showCorrections, correctionsByTextShapeId, shapes, zoom]);
 
   // Function to redraw all saved shapes
   const redrawAllShapes = async (ctx: CanvasRenderingContext2D) => {
@@ -6338,7 +6400,7 @@ export default function Canvas({
         drawReaction(ctx, shape);
       } else if (shape.type === 'text') {
         // Check if there are corrections for this text shape
-        const textCorrections = corrections.filter(c => c.textShapeId === shape.id);
+        const textCorrections = correctionsByTextShapeId.get(shape.id) ?? [];
         // Only show box when this shape is being dragged or resized
         const showTextBox = (selectedShapeId === shape.id) && (isDraggingShape || isResizing);
         if (textCorrections.length > 0) {
@@ -6414,12 +6476,91 @@ export default function Canvas({
     }
   };
 
+  const drawFrame = useCallback(async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = Math.max(1, Math.floor(canvas.offsetWidth));
+    const displayHeight = Math.max(1, Math.floor(canvas.offsetHeight));
+    const pixelWidth = Math.max(1, Math.floor(displayWidth * dpr));
+    const pixelHeight = Math.max(1, Math.floor(displayHeight * dpr));
+
+    const size = canvasSizeRef.current;
+    if (pixelWidth !== size.width || pixelHeight !== size.height || dpr !== size.dpr) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+      size.width = pixelWidth;
+      size.height = pixelHeight;
+      size.dpr = dpr;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = canvasBackground === 'dark' ? '#1F1F1F' : '#ffffff';
+    ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+    if (showGrid) {
+      drawGrid(ctx, displayWidth, displayHeight);
+    }
+
+    await redrawAllShapes(ctx);
+
+    if (areaEraseSelection?.isActive) {
+      drawAreaEraseOverlay(ctx, areaEraseSelection);
+    }
+
+    if (lassoSelection.isActive && lassoSelection.points.length > 0) {
+      drawLassoOverlay(ctx, lassoSelection.points);
+    }
+  }, [canvasBackground, showGrid, areaEraseSelection, lassoSelection, redrawAllShapes]);
+
+  useEffect(() => {
+    drawFrameRef.current = () => {
+      void drawFrame();
+    };
+  }, [drawFrame]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      canvasRectRef.current = canvas.getBoundingClientRect();
+      requestRedraw();
+    });
+    observer.observe(canvas);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [requestRedraw]);
+
+  useEffect(() => {
+    requestRedraw();
+  }, [
+    requestRedraw,
+    showGrid,
+    canvasBackground,
+    shapes,
+    forceRedraw,
+    areaEraseSelection,
+    lassoSelection,
+    correctionsByTextShapeId,
+    selectedShapeId,
+    hoveredShapeId
+  ]);
+
   // Touch event handlers
   const getTouchPos = (e: React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
 
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRectRef.current ?? canvas.getBoundingClientRect();
     const touch = e.touches[0];
     return {
       x: (touch.clientX - rect.left) / zoom,
@@ -6431,6 +6572,7 @@ export default function Canvas({
     e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
+    canvasRectRef.current = canvas.getBoundingClientRect();
 
     const { x, y } = getTouchPos(e);
 
@@ -6523,17 +6665,22 @@ export default function Canvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const displayWidth = Math.max(1, Math.floor(canvas.offsetWidth));
+    const displayHeight = Math.max(1, Math.floor(canvas.offsetHeight));
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
 
     if (showGrid) {
-      drawGrid(ctx, canvas.width, canvas.height);
+      drawGrid(ctx, displayWidth, displayHeight);
     }
 
     setCorrections([]);
     setShowCorrections(false);
     setAnalysisResult(null);
     resetExternalTextPlacement();
-  }, [resetExternalTextPlacement, showGrid]);
+    requestRedraw();
+  }, [resetExternalTextPlacement, showGrid, requestRedraw]);
 
   const exportCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -7150,50 +7297,6 @@ export default function Canvas({
         </div>
       )}
 
-      {/* Canvas Controls - Compact Header Layout */}
-      <div className="absolute top-4 left-1/2 z-50 w-full max-w-4xl -translate-x-1/2 px-3">
-        <div className="flex flex-col gap-3 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg lg:flex-row lg:items-center lg:gap-4" style={{ backgroundColor: '#171717', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
-          <div className="flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:overflow-x-auto">
-            {quickActionButtons.map((button) => {
-              const IconComponent = button.icon;
-              const baseClasses = 'group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200';
-              const activeClasses = button.active
-                ? `bg-slate-800/95 text-white border-slate-500/80 shadow-lg ${button.activeClass ?? ''}`
-                : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white';
-              const disabledClasses = button.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '';
-
-              return (
-                <button
-                  key={button.id}
-                  onClick={button.onClick}
-                  title={button.title}
-                  className={`${baseClasses} ${activeClasses} ${disabledClasses}`}
-                >
-                  <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[11px] ${button.badgeClass}`}>
-                    <IconComponent size={14} />
-                  </span>
-                  <span>{button.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex-1 min-w-[220px]">
-            <InlineMoleculeSearch
-              className="w-full"
-              onSelectMolecule={(moleculeData) => {
-                void (async () => {
-                  try {
-                    await insertMoleculeToCanvas(moleculeData);
-                  } catch (error) {
-                    console.error('Failed to insert molecule from search:', error);
-                  }
-                })();
-              }}
-            />
-          </div>
-        </div>
-      </div>
 
       {/* Reaction Search - Below Header */}
       {showInlineReactionSearch && (

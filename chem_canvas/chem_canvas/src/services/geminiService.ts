@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { GoogleGenAI, Type } from '@google/genai';
-import { AspectRatio, ImageSize, InteractiveLabel, EducationalSchema, ImageGenerationPromptSchema, ImageGenerationPrompt } from '../types/studium';
+import { AspectRatio, ImageSize, InteractiveLabel, EnhancedLabelInfo, EducationalSchema, ImageGenerationPromptSchema, ImageGenerationPrompt } from '../types/studium';
 import { fetchCanonicalSmiles } from './pubchemService';
 import { setStructuredReactionApiKey } from './structuredReactionService';
 import { apiKeyRotation, clearUserProvidedApiKey, executeWithRotation, registerUserProvidedApiKey, addApiKeyToRotation } from './apiKeyRotation';
@@ -388,6 +388,201 @@ export const generateVisionContent = async (
       if (e instanceof SafetyError) throw e;
     }
     console.error('❌ Vision request failed:', error);
+    throw error;
+  }
+};
+
+/**
+ * Annotates an uploaded image or PDF with feedback marks using Gemini 3 Pro Image.
+ * - RED checkmarks (✗) for incorrect answers
+ * - GREEN checkmarks (✓) for correct answers
+ * - GREEN comments in normal handwriting style
+ * @param imageBase64 Base64-encoded image or PDF data
+ * @param mimeType MIME type (e.g., 'image/png', 'image/jpeg', 'application/pdf')
+ * @param analysisPrompt Optional additional context about what to check
+ * @returns Object containing annotated image as base64 and text feedback
+ */
+export const annotateImageWithFeedback = async (
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+  analysisPrompt?: string
+): Promise<{ annotatedImageBase64: string; feedback: string; mimeType: string }> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  const modelName = 'gemini-3-pro-image-preview';
+  const isPdf = mimeType === 'application/pdf';
+
+  const annotationPrompt = `You are a teacher grading student work on an exam or assignment.
+
+Analyze the student's work in this ${isPdf ? 'PDF document' : 'image'}. For EACH answer or solution shown:
+1. Determine if it is CORRECT or INCORRECT
+2. Generate an annotated version with your feedback marks
+
+ANNOTATION STYLE REQUIREMENTS:
+- For CORRECT answers: Add a GREEN checkmark (✓) next to the answer
+- For INCORRECT answers: Add a RED X mark (✗) next to the answer
+- Add GREEN comments in NORMAL HANDWRITING style (not cursive!) with a FINE TIP pen look
+- Write corrections and feedback in GREEN ink with clear, legible print-style handwriting
+- Place annotations near the relevant work, not overlapping the original text
+- If there are calculation errors, show the correct steps in green
+
+IMPORTANT: 
+- Preserve the original content completely
+- Only ADD annotations on top - never remove or obscure the student's work
+- Use realistic handwriting that looks like a real teacher's marks
+- Keep comments concise but helpful
+
+${analysisPrompt ? `Additional context: ${analysisPrompt}` : ''}
+
+After annotating, also provide a text summary of your feedback.`;
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      console.log(`✏️ Annotating image with feedback using ${modelName}`);
+
+      const response = await genAI!.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inlineData: { mimeType, data: imageBase64 } },
+              { text: annotationPrompt }
+            ]
+          }
+        ],
+        config: {
+          imageConfig: {
+            aspectRatio: '16:9', // Preserve aspect ratio as closely as possible
+          }
+        }
+      });
+
+      // Extract both text and image from response
+      let feedback = '';
+      let annotatedImageBase64 = '';
+      let responseMimeType = 'image/png';
+
+      const parts = response.candidates?.[0]?.content?.parts;
+      if (parts) {
+        for (const part of parts) {
+          if (part.text) {
+            feedback += part.text;
+          }
+          if (part.inlineData) {
+            annotatedImageBase64 = part.inlineData.data;
+            responseMimeType = part.inlineData.mimeType || 'image/png';
+          }
+        }
+      }
+
+      if (!annotatedImageBase64) {
+        throw new Error('No annotated image was generated');
+      }
+
+      return {
+        annotatedImageBase64,
+        feedback,
+        mimeType: responseMimeType
+      };
+    });
+  } catch (error: any) {
+    try {
+      handleGeminiError(error);
+    } catch (e) {
+      if (e instanceof SafetyError) throw e;
+    }
+    console.error('❌ Image annotation failed:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate an image from a text prompt using Gemini Nano Banana image models
+ * Uses gemini-2.5-flash-image (Nano Banana) or gemini-3-pro-image-preview (Nano Banana Pro)
+ */
+export const generateNanoBananaImage = async (
+  prompt: string,
+  options?: {
+    model?: 'nano-banana' | 'nano-banana-pro';
+    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+    imageSize?: '1K' | '2K' | '4K';
+  }
+): Promise<{ imageBase64: string; mimeType: string; text?: string }> => {
+  await ensureInitializedAsync();
+
+  if (!genAI) {
+    throw new Error('Gemini API not initialized');
+  }
+
+  // Select model based on option
+  const modelName = options?.model === 'nano-banana-pro'
+    ? 'gemini-3-pro-image-preview'
+    : 'gemini-2.5-flash-image';
+
+  console.log(`[generateImage] Using model: ${modelName}`);
+  console.log(`[generateImage] Prompt: ${prompt}`);
+
+  try {
+    // Build generation config
+    const generationConfig: any = {
+      responseModalities: ['Image', 'Text'],
+    };
+
+    // Add image config for aspect ratio and size
+    if (options?.aspectRatio || options?.imageSize) {
+      generationConfig.imageConfig = {};
+      if (options.aspectRatio) {
+        generationConfig.imageConfig.aspectRatio = options.aspectRatio;
+      }
+      if (options.imageSize && options.model === 'nano-banana-pro') {
+        generationConfig.imageConfig.imageSize = options.imageSize;
+      }
+    }
+
+    const response = await genAI.models.generateContent({
+      model: modelName,
+      contents: prompt,
+      config: generationConfig,
+    });
+
+    // Extract image from response
+    const candidates = response.candidates;
+    if (!candidates || candidates.length === 0) {
+      throw new Error('No response candidates from image generation');
+    }
+
+    const parts = candidates[0].content?.parts || [];
+    let imageBase64: string | null = null;
+    let mimeType: string = 'image/png';
+    let text: string | undefined;
+
+    for (const part of parts) {
+      if (part.text) {
+        text = part.text;
+      } else if (part.inlineData) {
+        imageBase64 = part.inlineData.data;
+        mimeType = part.inlineData.mimeType || 'image/png';
+      }
+    }
+
+    if (!imageBase64) {
+      throw new Error('No image generated in response');
+    }
+
+    console.log(`[generateImage] Successfully generated image (${mimeType})`);
+    return { imageBase64, mimeType, text };
+  } catch (error) {
+    console.error('[generateImage] Error:', error);
     throw error;
   }
 };
@@ -1739,19 +1934,33 @@ Output Format: return ONLY the raw JSON object. Do not wrap it in markdown code 
       // Step 2: Image Generation with Gemini 3 Pro Image Preview
       const imagePrompt = `${promptData.generation_parameters.final_prompt} --no ${promptData.generation_parameters.negative_prompt}`;
 
+      // Use official API format as per documentation: https://ai.google.dev/gemini-api/docs/image-generation
+      // Map ImageSize enum to string format ('1K', '2K', '4K')
+      const imageSizeStr = imageSize === ImageSize.K1 ? '1K' :
+        imageSize === ImageSize.K2 ? '2K' :
+          imageSize === ImageSize.K4 ? '4K' : '1K';
+
+      // Map AspectRatio enum to string format
+      const aspectRatioStr = aspectRatio === AspectRatio.SQUARE ? '1:1' :
+        aspectRatio === AspectRatio.PORTRAIT_2_3 ? '2:3' :
+          aspectRatio === AspectRatio.PORTRAIT_3_4 ? '3:4' :
+            aspectRatio === AspectRatio.PORTRAIT_9_16 ? '9:16' :
+              aspectRatio === AspectRatio.LANDSCAPE_3_2 ? '3:2' :
+                aspectRatio === AspectRatio.LANDSCAPE_4_3 ? '4:3' :
+                  aspectRatio === AspectRatio.LANDSCAPE_16_9 ? '16:9' :
+                    aspectRatio === AspectRatio.CINEMATIC_21_9 ? '21:9' : '16:9';
+
       let response;
       const maxRetries = 3;
       for (let retry = 0; retry < maxRetries; retry++) {
         try {
           response = await genAI!.models.generateContent({
             model: 'gemini-3-pro-image-preview',
-            contents: {
-              parts: [{ text: imagePrompt }],
-            },
+            contents: [imagePrompt], // Simple array format as per official documentation
             config: {
               imageConfig: {
-                aspectRatio: aspectRatio,
-                imageSize: imageSize,
+                aspectRatio: aspectRatioStr,
+                imageSize: imageSizeStr, // '1K', '2K', or '4K' as per documentation
               },
             },
           });
@@ -1791,6 +2000,119 @@ Output Format: return ONLY the raw JSON object. Do not wrap it in markdown code 
   } catch (error) {
     console.error("Image Gen Error:", error);
     throw error;
+  }
+};
+
+/**
+ * Generates enhanced intelligent information for a label including equations, relationships, and more.
+ */
+export const generateEnhancedLabelInfo = async (
+  label: InteractiveLabel,
+  imageContext?: string,
+  allLabels?: InteractiveLabel[]
+): Promise<EnhancedLabelInfo> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      // Build context about related labels
+      const relatedLabels = allLabels?.filter(l => l.term !== label.term).map(l => l.term).join(', ') || '';
+
+      const prompt = `You are an expert educational content creator. Analyze the label "${label.term}" from an educational diagram.
+
+Label Definition: "${label.definition}"
+Fun Fact: "${label.funFact}"
+${relatedLabels ? `Other labels in the diagram: ${relatedLabels}` : ''}
+${imageContext ? `Image context: ${imageContext.substring(0, 500)}` : ''}
+
+Generate comprehensive educational information for this label. Return a JSON object with:
+{
+  "term": "${label.term}",
+  "definition": "Enhanced, clear definition",
+  "funFact": "Interesting fact",
+  "equations": ["LaTeX formatted equation 1", "LaTeX formatted equation 2"], // Include relevant mathematical/physical equations. Use LaTeX format with $ for inline and $$ for display math
+  "relationships": [
+    {"relatedTo": "Related term name", "relationship": "How this relates to the label (e.g., 'is proportional to', 'depends on', 'affects')"}
+  ], // Relationships with other labels or concepts
+  "keyConcepts": ["Concept 1", "Concept 2"], // Key concepts related to this label
+  "applications": ["Real-world application 1", "Application 2"], // Practical applications
+  "visualDescription": "Description of what this label represents visually in the diagram"
+}
+
+IMPORTANT:
+- Include equations ONLY if they are relevant to this label (e.g., physics formulas, mathematical relationships)
+- Use proper LaTeX notation: $E = mc^2$ for inline, $$F = ma$$ for display
+- Relationships should explain HOW this label connects to other elements in the diagram
+- Be specific and educational, not generic`;
+
+      const response = await genAI!.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: [prompt],
+        config: {
+          responseMimeType: 'application/json',
+          tools: [{ googleSearch: {} }], // Enable grounding for accurate equations
+          thinkingConfig: { thinkingBudget: 2048 }
+        }
+      });
+
+      const text = response.text;
+      if (!text) {
+        return {
+          term: label.term,
+          definition: label.definition,
+          funFact: label.funFact,
+          equations: [],
+          relationships: [],
+          keyConcepts: [],
+          applications: []
+        };
+      }
+
+      try {
+        const data = JSON.parse(text);
+        return {
+          term: data.term || label.term,
+          definition: data.definition || label.definition,
+          funFact: data.funFact || label.funFact,
+          equations: data.equations || [],
+          relationships: data.relationships || [],
+          keyConcepts: data.keyConcepts || [],
+          applications: data.applications || [],
+          visualDescription: data.visualDescription
+        };
+      } catch (parseError) {
+        console.error('Failed to parse enhanced label info:', parseError);
+        return {
+          term: label.term,
+          definition: label.definition,
+          funFact: label.funFact,
+          equations: [],
+          relationships: [],
+          keyConcepts: [],
+          applications: []
+        };
+      }
+    });
+  } catch (error) {
+    console.error('Failed to generate enhanced label info:', error);
+    return {
+      term: label.term,
+      definition: label.definition,
+      funFact: label.funFact,
+      equations: [],
+      relationships: [],
+      keyConcepts: [],
+      applications: []
+    };
   }
 };
 

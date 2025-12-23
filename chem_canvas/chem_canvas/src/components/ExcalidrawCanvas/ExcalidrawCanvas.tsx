@@ -15,14 +15,51 @@ const loadConvertToExcalidrawElements = async () => {
   return module.convertToExcalidrawElements;
 };
 
+// Load export utilities
+const loadExportUtils = async () => {
+  const module = await import("@excalidraw/excalidraw");
+  return {
+    exportToBlob: module.exportToBlob,
+    exportToCanvas: module.exportToCanvas
+  };
+};
+
+// Load mermaid-to-excalidraw parser
+const loadMermaidParser = async () => {
+  const module = await import("@excalidraw/mermaid-to-excalidraw");
+  return module.parseMermaidToExcalidraw;
+};
+
 // Types for Excalidraw API - use any to avoid strict type conflicts
 type ExcalidrawAPI = any;
+
+// Diagram element types for programmatic drawing
+export interface DiagramElement {
+  type: 'rectangle' | 'ellipse' | 'arrow' | 'line' | 'text';
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  text?: string;
+  endX?: number; // For arrows/lines
+  endY?: number;
+  strokeColor?: string;
+  backgroundColor?: string;
+}
 
 export interface ExcalidrawCanvasRef {
   addHandwrittenText: (text: string) => Promise<void>;
   startNewSection: () => void;
   clearCanvas: () => void;
   getElements: () => any[];
+  exportToImage: () => Promise<string | null>; // Returns base64 PNG
+  drawDiagram: (elements: DiagramElement[]) => Promise<void>; // Draw shapes programmatically
+  setActiveTool: (tool: 'freedraw' | 'eraser' | 'text' | 'selection') => void; // Set drawing tool
+  setStrokeColor: (color: string) => void; // Set stroke color
+  drawMermaid: (mermaidSyntax: string) => Promise<void>; // Draw Mermaid diagram
+  loadLibrary: (category: string) => Promise<boolean>; // Load external library
+  insertLibraryItem: (itemNameOrKeyword: string) => Promise<boolean>; // Insert library item onto canvas
+  generateAndInsertImage: (prompt: string, options?: { model?: 'nano-banana' | 'nano-banana-pro' }) => Promise<boolean>; // Generate AI image and insert onto canvas
 }
 
 interface ExcalidrawCanvasProps {
@@ -30,16 +67,17 @@ interface ExcalidrawCanvasProps {
   onClose: () => void;
   className?: string;
   title?: string;
+  embedded?: boolean; // When true, renders inline without modal wrapper
 }
 
 // Track position for adding new text elements
 let currentYPosition = 50;
-const LINE_HEIGHT = 36; // compact but readable
-const X_POSITION = 32; // shift left for more usable width
-const MAX_Y_BEFORE_RESET = 2200;
-const EXTRA_CHUNK_SPACING = 20; // modest spacing between streamed chunks
-const MAX_CHARS_PER_LINE = 60; // wrap by characters for stability
-const MIN_CHARS_PER_LINE = 24;
+const LINE_HEIGHT = 28; // compact for more content
+const X_POSITION = 50; // centered start
+const MAX_Y_BEFORE_RESET = 3000;
+const EXTRA_CHUNK_SPACING = 15; // modest spacing between streamed chunks
+const MAX_CHARS_PER_LINE = 100; // wider text to use full canvas width
+const MIN_CHARS_PER_LINE = 40;
 
 // Helper to format LaTeX to readable text
 const formatLatex = (text: string): string => {
@@ -94,6 +132,30 @@ const formatLatex = (text: string): string => {
   // e.g. {Δ x} -> Δ x
   clean = clean.replace(/\{([^{}]+)\}/g, '$1');
 
+  // 5. Strip Markdown formatting
+  // Bold: **text** or __text__ -> text
+  clean = clean.replace(/\*\*([^*]+)\*\*/g, '$1');
+  clean = clean.replace(/__([^_]+)__/g, '$1');
+
+  // Italic: *text* or _text_ -> text
+  clean = clean.replace(/\*([^*]+)\*/g, '$1');
+  clean = clean.replace(/_([^_]+)_/g, '$1');
+
+  // Headers: # Header -> HEADER (with underline effect)
+  clean = clean.replace(/^#{1,6}\s*(.+)$/gm, '═══ $1 ═══');
+
+  // Inline code: `code` -> code
+  clean = clean.replace(/`([^`]+)`/g, '$1');
+
+  // Links: [text](url) -> text
+  clean = clean.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+
+  // Bullet points: - or * at start of line -> •
+  clean = clean.replace(/^[\s]*[-*]\s+/gm, '• ');
+
+  // Clean up extra asterisks that might be leftover
+  clean = clean.replace(/\*+/g, '');
+
   return clean;
 };
 
@@ -129,7 +191,7 @@ const wrapText = (text: string, maxChars: number): string => {
 };
 
 export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvasProps>(
-  ({ isOpen, onClose, className = '', title = 'Gemini Live Canvas' }, ref) => {
+  ({ isOpen, onClose, className = '', title = 'Gemini Live Canvas', embedded = false }, ref) => {
     const excalidrawAPIRef = useRef<ExcalidrawAPI | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [elementsCount, setElementsCount] = useState(0);
@@ -366,6 +428,413 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
       getElements: () => {
         return excalidrawAPIRef.current?.getSceneElements() || [];
       },
+
+      exportToImage: async () => {
+        if (!excalidrawAPIRef.current) {
+          console.warn('[ExcalidrawCanvas] API not ready for export');
+          return null;
+        }
+
+        try {
+          const { exportToBlob } = await loadExportUtils();
+          const elements = excalidrawAPIRef.current.getSceneElements();
+          const appState = excalidrawAPIRef.current.getAppState();
+
+          if (!elements || elements.length === 0) {
+            console.warn('[ExcalidrawCanvas] No elements to export');
+            return null;
+          }
+
+          const blob = await exportToBlob({
+            elements,
+            appState: {
+              ...appState,
+              exportWithDarkMode: false,
+              exportBackground: true,
+            },
+            files: null,
+            mimeType: 'image/png',
+          });
+
+          // Convert blob to base64
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              const base64 = result.split(',')[1]; // Remove data:image/png;base64, prefix
+              resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Export to image failed:', error);
+          return null;
+        }
+      },
+
+      // Draw programmatic diagram elements (shapes, arrows, text)
+      drawDiagram: async (elements: DiagramElement[]) => {
+        if (!excalidrawAPIRef.current) {
+          console.warn('[ExcalidrawCanvas] API not ready for drawing');
+          return;
+        }
+
+        try {
+          const convertToExcalidrawElements = await loadConvertToExcalidrawElements();
+          const newElements: any[] = [];
+
+          for (const el of elements) {
+            const id = `${el.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+            if (el.type === 'rectangle') {
+              newElements.push({
+                type: 'rectangle',
+                id,
+                x: el.x,
+                y: el.y,
+                width: el.width || 100,
+                height: el.height || 50,
+                strokeColor: el.strokeColor || '#1e40af',
+                backgroundColor: el.backgroundColor || '#dbeafe',
+                fillStyle: 'solid',
+                strokeWidth: 2,
+                roundness: { type: 3, value: 8 },
+              });
+            } else if (el.type === 'ellipse') {
+              newElements.push({
+                type: 'ellipse',
+                id,
+                x: el.x,
+                y: el.y,
+                width: el.width || 80,
+                height: el.height || 60,
+                strokeColor: el.strokeColor || '#7c3aed',
+                backgroundColor: el.backgroundColor || '#ede9fe',
+                fillStyle: 'solid',
+                strokeWidth: 2,
+              });
+            } else if (el.type === 'arrow' && el.endX !== undefined && el.endY !== undefined) {
+              newElements.push({
+                type: 'arrow',
+                id,
+                x: el.x,
+                y: el.y,
+                width: el.endX - el.x,
+                height: el.endY - el.y,
+                strokeColor: el.strokeColor || '#1f2937',
+                strokeWidth: 2,
+                points: [[0, 0], [el.endX - el.x, el.endY - el.y]],
+              });
+            } else if (el.type === 'line' && el.endX !== undefined && el.endY !== undefined) {
+              newElements.push({
+                type: 'line',
+                id,
+                x: el.x,
+                y: el.y,
+                width: el.endX - el.x,
+                height: el.endY - el.y,
+                strokeColor: el.strokeColor || '#1f2937',
+                strokeWidth: 2,
+                points: [[0, 0], [el.endX - el.x, el.endY - el.y]],
+              });
+            } else if (el.type === 'text' && el.text) {
+              newElements.push({
+                type: 'text',
+                id,
+                x: el.x,
+                y: el.y,
+                text: el.text,
+                fontSize: 18,
+                fontFamily: 1,
+                strokeColor: el.strokeColor || '#1f2937',
+                textAlign: 'left',
+              });
+            }
+          }
+
+          // Convert and add to scene
+          const convertedElements = convertToExcalidrawElements(newElements);
+          const existingElements = excalidrawAPIRef.current.getSceneElements();
+
+          excalidrawAPIRef.current.updateScene({
+            elements: [...existingElements, ...convertedElements],
+          });
+
+          console.log(`[ExcalidrawCanvas] Drew ${elements.length} diagram elements`);
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Error drawing diagram:', error);
+        }
+      },
+
+      // Set the active drawing tool
+      setActiveTool: (tool: 'freedraw' | 'eraser' | 'text' | 'selection') => {
+        if (!excalidrawAPIRef.current) {
+          console.warn('[ExcalidrawCanvas] API not ready for tool change');
+          return;
+        }
+        try {
+          excalidrawAPIRef.current.setActiveTool({ type: tool });
+          console.log(`[ExcalidrawCanvas] Set active tool to: ${tool}`);
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Error setting tool:', error);
+        }
+      },
+
+      // Set the stroke color
+      setStrokeColor: (color: string) => {
+        if (!excalidrawAPIRef.current) {
+          console.warn('[ExcalidrawCanvas] API not ready for color change');
+          return;
+        }
+        try {
+          excalidrawAPIRef.current.updateScene({
+            appState: {
+              currentItemStrokeColor: color,
+            },
+          });
+          console.log(`[ExcalidrawCanvas] Set stroke color to: ${color}`);
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Error setting color:', error);
+        }
+      },
+
+      // Draw Mermaid diagram
+      drawMermaid: async (mermaidSyntax: string) => {
+        if (!excalidrawAPIRef.current) {
+          console.warn('[ExcalidrawCanvas] API not ready for Mermaid diagram');
+          return;
+        }
+        try {
+          console.log('[ExcalidrawCanvas] Parsing Mermaid diagram...');
+          const parseMermaidToExcalidraw = await loadMermaidParser();
+          const convertToExcalidrawElements = await loadConvertToExcalidrawElements();
+
+          const { elements: skeletonElements, files } = await parseMermaidToExcalidraw(mermaidSyntax, {
+            themeVariables: {
+              fontSize: '16px',
+            },
+          });
+
+          console.log(`[ExcalidrawCanvas] Parsed ${skeletonElements.length} skeleton elements from Mermaid`);
+
+          // Debug: Log first element structure
+          if (skeletonElements.length > 0) {
+            console.log('[ExcalidrawCanvas] First skeleton element:', JSON.stringify(skeletonElements[0], null, 2));
+          }
+
+          // Convert skeleton elements to proper Excalidraw elements
+          const excalidrawElements = convertToExcalidrawElements(skeletonElements);
+          console.log(`[ExcalidrawCanvas] Converted to ${excalidrawElements.length} Excalidraw elements`);
+
+          // Debug: Log first converted element
+          if (excalidrawElements.length > 0) {
+            const first = excalidrawElements[0] as any;
+            console.log(`[ExcalidrawCanvas] First element: type=${first.type}, x=${first.x}, y=${first.y}`);
+          }
+
+          // Find bounding box
+          let minX = Infinity, minY = Infinity;
+          excalidrawElements.forEach((el: any) => {
+            if (typeof el.x === 'number' && el.x < minX) minX = el.x;
+            if (typeof el.y === 'number' && el.y < minY) minY = el.y;
+          });
+          console.log(`[ExcalidrawCanvas] Bounds: minX=${minX}, minY=${minY}`);
+
+          // Offset elements to visible position
+          const offsetX = 100 - (isFinite(minX) ? minX : 0);
+          const offsetY = 100 - (isFinite(minY) ? minY : 0);
+          const positionedElements = excalidrawElements.map((el: any) => ({
+            ...el,
+            x: (el.x || 0) + offsetX,
+            y: (el.y || 0) + offsetY,
+          }));
+
+          // Update scene with elements and files
+          excalidrawAPIRef.current.updateScene({
+            elements: positionedElements,
+            appState: {
+              scrollX: 0,
+              scrollY: 0,
+              zoom: { value: 1 },
+            },
+          });
+
+          // Add any files (like images from mermaid)
+          if (files && Object.keys(files).length > 0) {
+            excalidrawAPIRef.current.addFiles(Object.values(files));
+          }
+
+          console.log('[ExcalidrawCanvas] Mermaid diagram rendered successfully');
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Error rendering Mermaid diagram:', error);
+          throw error;
+        }
+      },
+
+      // Load external library
+      loadLibrary: async (category: string): Promise<boolean> => {
+        try {
+          const { fetchLibrary } = await import('../../services/excalidrawLibraryService');
+          const items = await fetchLibrary(category);
+          if (items && excalidrawAPIRef.current) {
+            excalidrawAPIRef.current.updateLibrary({
+              libraryItems: items,
+              merge: true,
+            });
+            console.log(`[ExcalidrawCanvas] Loaded library: ${category}`);
+            return true;
+          }
+          return false;
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Failed to load library:', error);
+          return false;
+        }
+      },
+
+      // Insert library item onto canvas
+      insertLibraryItem: async (itemNameOrKeyword: string): Promise<boolean> => {
+        if (!excalidrawAPIRef.current) return false;
+
+        try {
+          const { findLibraryCategory, fetchLibrary, searchLibrary, createFallbackElements } =
+            await import('../../services/excalidrawLibraryService');
+
+          // Find matching category
+          const category = findLibraryCategory(itemNameOrKeyword);
+
+          if (category) {
+            // Fetch library and find item
+            const items = await fetchLibrary(category);
+            if (items) {
+              const item = searchLibrary(items, itemNameOrKeyword);
+              if (item && item.elements) {
+                // Position elements at visible location
+                const positionedElements = item.elements.map((el: any, i: number) => ({
+                  ...el,
+                  id: `lib-${Date.now()}-${i}`,
+                  x: (el.x || 0) + 100,
+                  y: (el.y || 0) + 100,
+                }));
+
+                const existingElements = excalidrawAPIRef.current!.getSceneElements();
+                excalidrawAPIRef.current!.updateScene({
+                  elements: [...existingElements, ...positionedElements],
+                });
+
+                console.log(`[ExcalidrawCanvas] Inserted library item: ${item.name || itemNameOrKeyword}`);
+                return true;
+              }
+            }
+          }
+
+          // Fallback: create basic elements
+          const fallbackElements = createFallbackElements(itemNameOrKeyword);
+          if (fallbackElements) {
+            const existingElements = excalidrawAPIRef.current.getSceneElements();
+            excalidrawAPIRef.current.updateScene({
+              elements: [...existingElements, ...fallbackElements],
+            });
+            console.log('[ExcalidrawCanvas] Used fallback elements');
+            return true;
+          }
+
+          return false;
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Failed to insert library item:', error);
+          return false;
+        }
+      },
+
+      // Generate AI image and insert onto canvas
+      generateAndInsertImage: async (prompt: string, options?: { model?: 'nano-banana' | 'nano-banana-pro' }): Promise<boolean> => {
+        if (!excalidrawAPIRef.current) return false;
+
+        try {
+          console.log(`[ExcalidrawCanvas] Generating image with prompt: ${prompt}`);
+
+          // Import and call generateNanoBananaImage
+          const { generateNanoBananaImage } = await import('../../services/geminiService');
+          const result = await generateNanoBananaImage(prompt, {
+            model: options?.model || 'nano-banana',
+            aspectRatio: '1:1',
+          });
+
+          // Create a file ID for the image
+          const fileId = `ai-image-${Date.now()}`;
+          const dataURL = `data:${result.mimeType};base64,${result.imageBase64}`;
+
+          console.log('[ExcalidrawCanvas] Adding file with ID:', fileId);
+          console.log('[ExcalidrawCanvas] Data URL length:', dataURL.length);
+
+          // Add the image as a file to Excalidraw - use proper BinaryFileData format
+          const imageFile = {
+            id: fileId,
+            dataURL: dataURL,
+            mimeType: result.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+            created: Date.now(),
+            lastRetrieved: Date.now(),
+          };
+
+          excalidrawAPIRef.current.addFiles([imageFile as any]);
+
+          // Create an image element with all required Excalidraw properties
+          const now = Date.now();
+          const imageElement = {
+            id: `img-${now}`,
+            type: 'image' as const,
+            x: 50,
+            y: 50,
+            width: 400,
+            height: 400,
+            angle: 0,
+            strokeColor: '#000000',
+            backgroundColor: 'transparent',
+            fillStyle: 'solid' as const,
+            strokeWidth: 1,
+            strokeStyle: 'solid' as const,
+            roughness: 0,
+            opacity: 100,
+            groupIds: [] as string[],
+            frameId: null,
+            roundness: null,
+            seed: Math.floor(Math.random() * 2147483647),
+            version: 1,
+            versionNonce: Math.floor(Math.random() * 2147483647),
+            isDeleted: false,
+            boundElements: null,
+            updated: now,
+            link: null,
+            locked: false,
+            fileId: fileId,
+            status: 'saved' as const,
+            scale: [1, 1] as [number, number],
+          };
+
+          console.log('[ExcalidrawCanvas] Image element:', imageElement);
+
+          const existingElements = excalidrawAPIRef.current.getSceneElements();
+          excalidrawAPIRef.current.updateScene({
+            elements: [...existingElements, imageElement as any],
+          });
+
+          // Scroll to the new image after a delay
+          setTimeout(() => {
+            if (excalidrawAPIRef.current) {
+              excalidrawAPIRef.current.scrollToContent(imageElement as any, {
+                fitToContent: true,
+                viewportZoomFactor: 0.8
+              });
+            }
+          }, 200);
+
+          console.log('[ExcalidrawCanvas] AI image inserted successfully');
+          return true;
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Failed to generate/insert AI image:', error);
+          return false;
+        }
+      },
     }));
 
     const handleExcalidrawAPIReady = useCallback((api: ExcalidrawAPI) => {
@@ -373,6 +842,92 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
       console.log('[ExcalidrawCanvas] Excalidraw API ready');
     }, []);
 
+    // Shared Excalidraw component
+    const ExcalidrawComponent = (
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-full bg-slate-50 dark:bg-slate-900">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-slate-500">Loading canvas...</span>
+            </div>
+          </div>
+        }
+      >
+        <Excalidraw
+          excalidrawAPI={handleExcalidrawAPIReady}
+          theme="light"
+          initialData={{
+            appState: {
+              viewBackgroundColor: '#ffffff',
+              currentItemFontFamily: 1, // Virgil (handwriting)
+              currentItemFontSize: 24,
+              zenModeEnabled: false,
+              gridSize: undefined,
+            },
+          }}
+          UIOptions={{
+            canvasActions: {
+              loadScene: false,
+              saveToActiveFile: false,
+              export: false,
+            },
+          }}
+        />
+      </Suspense>
+    );
+
+    // Embedded mode Excalidraw with minimal UI (no toolbar)
+    const EmbeddedExcalidrawComponent = (
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-full bg-white">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-gray-500">Loading canvas...</span>
+            </div>
+          </div>
+        }
+      >
+        <Excalidraw
+          excalidrawAPI={handleExcalidrawAPIReady}
+          theme="light"
+          initialData={{
+            appState: {
+              viewBackgroundColor: '#ffffff',
+              currentItemFontFamily: 1,
+              currentItemFontSize: 24,
+              zenModeEnabled: true, // Hide most UI
+              gridSize: undefined,
+              activeTool: { type: 'freedraw', lastActiveTool: null, locked: false, customType: null },
+            },
+          }}
+          UIOptions={{
+            canvasActions: {
+              loadScene: false,
+              saveToActiveFile: false,
+              export: false,
+              clearCanvas: false,
+              changeViewBackgroundColor: false,
+            },
+            tools: {
+              image: false,
+            },
+          }}
+        />
+      </Suspense>
+    );
+
+    // Embedded mode: render just the canvas without modal wrapper
+    if (embedded && isOpen) {
+      return (
+        <div className={`w-full h-full ${className}`}>
+          {EmbeddedExcalidrawComponent}
+        </div>
+      );
+    }
+
+    // Modal mode: original behavior
     return (
       <AnimatePresence>
         {isOpen && (
@@ -430,37 +985,7 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
 
             {/* Excalidraw Canvas */}
             <div className="flex-1 h-[calc(100%-52px)]">
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center h-full bg-slate-50 dark:bg-slate-900">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-sm text-slate-500">Loading canvas...</span>
-                    </div>
-                  </div>
-                }
-              >
-                <Excalidraw
-                  excalidrawAPI={handleExcalidrawAPIReady}
-                  theme="light"
-                  initialData={{
-                    appState: {
-                      viewBackgroundColor: '#ffffff',
-                      currentItemFontFamily: 1, // Virgil (handwriting)
-                      currentItemFontSize: 24,
-                      zenModeEnabled: false,
-                      gridSize: undefined,
-                    },
-                  }}
-                  UIOptions={{
-                    canvasActions: {
-                      loadScene: false,
-                      saveToActiveFile: false,
-                      export: false,
-                    },
-                  }}
-                />
-              </Suspense>
+              {ExcalidrawComponent}
             </div>
 
             {/* Footer hint */}
