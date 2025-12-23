@@ -62,9 +62,7 @@ export interface FeynmanLiveConfig {
     systemInstruction: string;
     voicePersona: 'curious-student' | 'challenging-student' | 'peer-learner';
     topic: string;
-    systemInstruction: string;
-    voicePersona: 'curious-student' | 'challenging-student' | 'peer-learner';
-    topic: string;
+
     keyConcepts: string[];
 }
 
@@ -501,12 +499,7 @@ export function getLearningTheoryDisplayInfo(theory: LearningTheoryType): {
             description: 'Inclusive learning with multiple explanations and choice',
             color: 'indigo'
         },
-        'active-learning': {
-            name: 'Active Learning',
-            icon: '⚡',
-            description: 'Learn by doing through scenarios and problem solving',
-            color: 'rose'
-        }
+
     };
     return info[theory];
 }
