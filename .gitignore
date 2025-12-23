@@ -1,4 +1,26 @@
-*.md
+# Dependencies
 node_modules
+.netlify
+
+# Build Output
+dist/
+
+# Environment Variables & Secrets
+.env
+*.env.local
+
+# Editor Directories
+.vscode/
+.cursor/
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# References
 _ref_next_ai_draw_io/
 _ref_notebook/
