@@ -16,7 +16,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src')
+      '@': path.resolve(__dirname, 'src'),
+      'os': path.resolve(__dirname, 'src/shims/os.ts')
     }
   },
   server: {

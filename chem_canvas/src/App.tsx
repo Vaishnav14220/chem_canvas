@@ -41,6 +41,7 @@ import SegmentedControl, { type SegmentedOption } from './components/SegmentedCo
 
 import AdaptivePlan from './components/AdaptivePlan';
 import FlippingInfo from './components/FlippingInfo';
+import PlannerTab from './components/PlannerTab';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import GeminiLiveOverlay from './components/GeminiLive/GeminiLiveOverlay';
 import GeminiLiveImageLightbox from './components/GeminiLive/GeminiLiveImageLightbox';
@@ -68,6 +69,7 @@ import FeynmanCoachPanel, { type FeynmanGuide } from './components/FeynmanCoachP
 import { SocraticLearningMode } from './components/SocraticLearningMode';
 import { FeynmanLearningMode } from './components/FeynmanLearningMode';
 import { LearningModeTopicSelector } from './components/LearningModeTopicSelector';
+import { CanvasPlanner } from './components/CanvasPlanner';
 import {
   createWorkspace,
   getWorkspaces,
@@ -256,6 +258,7 @@ const App: React.FC = () => {
   const [showTopicSelector, setShowTopicSelector] = useState(false);
   const [pendingLearningMode, setPendingLearningMode] = useState<'socratic' | 'feynman' | null>(null);
   const [pendingCanvasNote, setPendingCanvasNote] = useState<string | null>(null);
+  const [showCanvasPlanner, setShowCanvasPlanner] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [showQuickActionsPopup, setShowQuickActionsPopup] = useState(false);
@@ -327,6 +330,7 @@ const App: React.FC = () => {
     setCanvasProteinInsertionHandler,
     setCanvasReactionInsertionHandler,
     setCanvasHandwritingHandler,
+    setCanvasStickyNoteHandler,
     setCanvasSurfaceActive,
     setExcalidrawOnlyMode
   } = geminiLiveState;
@@ -718,6 +722,7 @@ const App: React.FC = () => {
   }, []);
   const [canvasWorkspaces, setCanvasWorkspaces] = useState<CanvasWorkspace[]>(() => [{ id: INITIAL_WORKSPACE_ID, title: 'Workspace 1' }]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(INITIAL_WORKSPACE_ID);
+  const [activeCanvasTab, setActiveCanvasTab] = useState<'workspace' | 'planner'>('workspace');
   const workspaceHandlersRef = useRef<Record<string, CanvasWorkspaceHandlers>>({});
   const [handlersVersion, setHandlersVersion] = useState(0); // Trigger for handler updates
   const currentFeatureRef = useRef<{ id: string; start: number } | null>(null);
@@ -738,6 +743,7 @@ const App: React.FC = () => {
 
 
   const isMainCanvasSurfaceActive =
+    activeCanvasTab === 'workspace' &&
     !isMolecularMode &&
     !showSrlCoachWorkspace &&
     !showNmrFullscreen &&
@@ -754,6 +760,7 @@ const App: React.FC = () => {
   const noopProteinHandler = useCallback(async () => false, []);
   const noopReactionHandler = useCallback(async () => false, []);
   const noopHandwritingHandler = useCallback(() => { }, []);
+  const noopStickyNoteHandler = useCallback(() => { }, []);
 
   const updateGeminiHandlers = useCallback(() => {
     const handlers = workspaceHandlersRef.current[activeWorkspaceId];
@@ -765,6 +772,7 @@ const App: React.FC = () => {
     setCanvasMoleculeInsertionHandler(noopMoleculeHandler);
     setCanvasProteinInsertionHandler(noopProteinHandler);
     setCanvasReactionInsertionHandler(noopReactionHandler);
+    setCanvasStickyNoteHandler(noopStickyNoteHandler);
 
     // Handwriting goes to Excalidraw if available, otherwise noop
     setCanvasHandwritingHandler(() => handlers?.handwriting ?? noopHandwritingHandler);
@@ -776,12 +784,14 @@ const App: React.FC = () => {
     noopProteinHandler,
     noopReactionHandler,
     noopSnapshotHandler,
+    noopStickyNoteHandler,
     noopTextHandler,
     noopHandwritingHandler,
     setCanvasMarkdownInsertionHandler,
     setCanvasMoleculeInsertionHandler,
     setCanvasProteinInsertionHandler,
     setCanvasReactionInsertionHandler,
+    setCanvasStickyNoteHandler,
     setCanvasTextInsertionHandler,
     setCanvasHandwritingHandler,
     setRequestCanvasSnapshot,
@@ -812,6 +822,10 @@ const App: React.FC = () => {
         console.log('[App] Routing handwriting to Excalidraw:', text.substring(0, 50) + '...');
         excalidrawCanvasRef.current?.addHandwrittenText(text);
       });
+      setCanvasStickyNoteHandler((payload) => {
+        if (!payload?.text?.trim()) return;
+        excalidrawCanvasRef.current?.addStickyNote(payload);
+      });
       // Enable excalidraw-only mode - skip other canvas outputs
       setExcalidrawOnlyMode(true);
     } else {
@@ -820,7 +834,13 @@ const App: React.FC = () => {
       // Keep excalidraw-only mode forced on so outputs stay on Excalidraw
       setExcalidrawOnlyMode(true);
     }
-  }, [showExcalidrawCanvas, setCanvasHandwritingHandler, setExcalidrawOnlyMode, updateGeminiHandlers]);
+  }, [
+    showExcalidrawCanvas,
+    setCanvasHandwritingHandler,
+    setCanvasStickyNoteHandler,
+    setExcalidrawOnlyMode,
+    updateGeminiHandlers
+  ]);
 
   // Force Excalidraw-only mode globally to bypass learning canvas
   useEffect(() => {
@@ -853,6 +873,7 @@ const App: React.FC = () => {
   );
 
   const handleAddWorkspace = useCallback(() => {
+    setActiveCanvasTab('workspace');
     setCanvasWorkspaces(prev => {
       const newWorkspace: CanvasWorkspace = {
         id: generateWorkspaceId(),
@@ -889,6 +910,7 @@ const App: React.FC = () => {
   );
 
   const handleSelectWorkspace = useCallback((workspaceId: string) => {
+    setActiveCanvasTab('workspace');
     setActiveWorkspaceId(workspaceId);
   }, []);
 
@@ -1071,6 +1093,7 @@ const App: React.FC = () => {
   const handleOpenSavedWorkspace = useCallback(async (firebaseId: string, name: string) => {
     const userId = getCurrentUserId();
     if (!userId) return;
+    setActiveCanvasTab('workspace');
 
     try {
       // Load canvas state from Firebase
@@ -2442,23 +2465,10 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('ai_word');
                     startFeature('ai_word');
                   }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(135deg, #0e7490 0%, #0891b2 25%, #06b6d4 50%, #22d3ee 75%, #67e8f9 100%)',
-                    boxShadow: '0 4px 16px rgba(8, 145, 178, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(0, 0, 0, 0.1)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                  }}
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-cyan-500 hover:bg-cyan-400 shadow-lg shadow-cyan-500/25 border border-cyan-400/20"
                 >
-                  {/* Enhanced shimmer effect */}
-                  <div className="absolute inset-0 -z-10 blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                    <div className="absolute inset-0 animate-shimmer-slide bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-                  </div>
-                  {/* Shimmer border effect */}
-                  <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-400/50 via-white/50 to-cyan-400/50 animate-shimmer-slide" style={{ mask: 'linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)', WebkitMask: 'linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)', padding: '1px' }} />
-                  </div>
-                  <PenLine className="h-5 w-5 relative z-10 drop-shadow-lg" />
-                  <span className="relative z-10 drop-shadow-md font-medium">Doc Studio</span>
+                  <PenLine className="h-5 w-5 relative z-10" />
+                  <span className="relative z-10 font-medium">Doc Studio</span>
                 </button>
 
                 <button
@@ -2476,23 +2486,10 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('immersive_learning');
                     startFeature('immersive_learning');
                   }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 25%, #8b5cf6 50%, #a78bfa 75%, #c4b5fd 100%)',
-                    boxShadow: '0 4px 16px rgba(124, 58, 237, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(0, 0, 0, 0.1)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                  }}
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-violet-600 hover:bg-violet-500 shadow-lg shadow-violet-600/25 border border-violet-500/20"
                 >
-                  {/* Enhanced shimmer effect */}
-                  <div className="absolute inset-0 -z-10 blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                    <div className="absolute inset-0 animate-shimmer-slide bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-                  </div>
-                  {/* Shimmer border effect */}
-                  <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-r from-purple-400/50 via-white/50 to-purple-400/50 animate-shimmer-slide" style={{ mask: 'linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)', WebkitMask: 'linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)', padding: '1px' }} />
-                  </div>
-                  <BookOpen className="h-5 w-5 relative z-10 drop-shadow-lg" />
-                  <span className="relative z-10 drop-shadow-md font-medium">Immersive Learning</span>
+                  <BookOpen className="h-5 w-5 relative z-10" />
+                  <span className="relative z-10 font-medium">Immersive Learning</span>
                 </button>
 
                 {/* Socratic Learning Button */}
@@ -2504,16 +2501,11 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('socratic_learning');
                     startFeature('socratic_learning');
                   }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%)',
-                    boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                  }}
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-600/25 border border-blue-500/20"
                   title="Guided discovery through questions (hint ladder)"
                 >
-                  <MessageSquare className="h-5 w-5 relative z-10 drop-shadow-lg" />
-                  <span className="relative z-10 drop-shadow-md font-medium">Socratic</span>
+                  <MessageSquare className="h-5 w-5 relative z-10" />
+                  <span className="relative z-10 font-medium">Socratic</span>
                 </button>
 
                 {/* Feynman Learning Button */}
@@ -2525,16 +2517,29 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('feynman_learning');
                     startFeature('feynman_learning');
                   }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #c084fc 100%)',
-                    boxShadow: '0 4px 16px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                  }}
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-pink-600 hover:bg-pink-500 shadow-lg shadow-pink-600/25 border border-pink-500/20"
                   title="Teach back to learn - with visual canvas"
                 >
-                  <Palette className="h-5 w-5 relative z-10 drop-shadow-lg" />
-                  <span className="relative z-10 drop-shadow-md font-medium">Feynman</span>
+                  <Palette className="h-5 w-5 relative z-10" />
+                  <span className="relative z-10 font-medium">Feynman</span>
+                </button>
+
+                {/* Canvas Planner Button - AFFiNE-style */}
+                <button
+                  onClick={() => {
+                    setShowCanvasPlanner(true);
+                    setShowYouTubeVideos(false);
+                    setShowSocraticLearning(false);
+                    setShowFeynmanLearning(false);
+                    setShowAIWord(false);
+                    void captureToolClick('canvas_planner');
+                    startFeature('canvas_planner');
+                  }}
+                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-600/25 border border-emerald-500/20"
+                  title="AFFiNE-style infinite canvas planner"
+                >
+                  <Layers3 className="h-5 w-5 relative z-10" />
+                  <span className="relative z-10 font-medium">Canvas Planner</span>
                 </button>
 
                 <div className="inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900/50 backdrop-blur-sm p-0.5 text-xs font-semibold shadow-lg">
@@ -2907,7 +2912,7 @@ Here is the learner's question: ${message}`;
               <div className="flex-1 flex relative">
                 {/* Canvas */}
                 <div className="flex-1 relative flex flex-col">
-                  {isMolecularMode ? (
+                  {isMolecularMode && activeCanvasTab !== 'planner' ? (
                     <MoldrawEmbed />
                   ) : (
                     <>
@@ -2924,7 +2929,7 @@ Here is the learner's question: ${message}`;
                         {!isWorkspaceTabsCollapsed && (
                           <>
                             {canvasWorkspaces.map(workspace => {
-                              const isActive = workspace.id === activeWorkspaceId;
+                              const isActive = activeCanvasTab === 'workspace' && workspace.id === activeWorkspaceId;
                               return (
                                 <button
                                   key={workspace.id}
@@ -2952,6 +2957,20 @@ Here is the learner's question: ${message}`;
                               );
                             })}
                             <button
+                              onClick={() => {
+                                setActiveCanvasTab('planner');
+                                setIsMolecularMode(false);
+                              }}
+                              className={`inline-flex items-center gap-2 rounded-2xl px-3 py-1.5 transition ${activeCanvasTab === 'planner'
+                                ? 'border border-emerald-400/50 bg-emerald-500/20 text-emerald-100 shadow-sm'
+                                : 'text-slate-400 border border-transparent hover:border-emerald-500/50 hover:text-emerald-100'
+                                }`}
+                              title="Planner"
+                            >
+                              <Target size={14} />
+                              <span className="font-medium">Planner</span>
+                            </button>
+                            <button
                               onClick={handleAddWorkspace}
                               className="inline-flex items-center justify-center rounded-2xl border border-dashed border-slate-700 px-2.5 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
                               title="Add workspace tab"
@@ -2959,13 +2978,47 @@ Here is the learner's question: ${message}`;
                               <Plus size={14} />
                             </button>
 
+                            {/* Learning Mode Selector */}
+                            <div className="flex items-center gap-1 mx-auto">
+                              <span className="text-xs text-slate-500 font-medium mr-2 hidden lg:inline">LEARNING MODE</span>
+                              <div className="inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900/80 backdrop-blur-sm p-0.5 text-xs font-semibold shadow-lg">
+                                <button
+                                  onClick={() => setChatMode('auto')}
+                                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${chatMode === 'auto'
+                                    ? 'bg-slate-700 text-white shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                >
+                                  Auto
+                                </button>
+                                <button
+                                  onClick={() => handleChatModeChange('socratic')}
+                                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${chatMode === 'socratic'
+                                    ? 'bg-blue-600 text-white shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                >
+                                  Socratic
+                                </button>
+                                <button
+                                  onClick={() => handleChatModeChange('feynman')}
+                                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${chatMode === 'feynman'
+                                    ? 'bg-purple-600 text-white shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                >
+                                  Feynman
+                                </button>
+                              </div>
+                            </div>
+
                             {/* Workspace Save/Load Controls */}
                             <div className="ml-auto flex items-center gap-2">
                               {/* Load saved workspaces */}
                               <button
                                 onClick={handleLoadSavedWorkspaces}
                                 disabled={isLoadingWorkspaces}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/50 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition disabled:opacity-50"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition disabled:opacity-50"
                                 title="Open saved workspace"
                               >
                                 {isLoadingWorkspaces ? (
@@ -2973,29 +3026,46 @@ Here is the learner's question: ${message}`;
                                 ) : (
                                   <FolderOpen size={14} />
                                 )}
-                                <span className="hidden sm:inline">Open</span>
+                                <span>Open</span>
                               </button>
 
                               {/* Save current workspace */}
                               <button
                                 onClick={handleSaveWorkspace}
                                 disabled={isSavingWorkspace}
-                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition ${canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.hasUnsavedChanges
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.hasUnsavedChanges
                                   ? 'bg-emerald-600 text-white hover:bg-emerald-500 border border-emerald-500'
-                                  : 'border border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-700 hover:text-white'
+                                  : 'border border-slate-600 bg-slate-800/80 text-slate-200 hover:bg-slate-700 hover:text-white'
                                   } disabled:opacity-50`}
                                 title={canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? "Save changes" : "Save workspace to cloud"}
                               >
                                 {isSavingWorkspace ? (
                                   <LoaderIcon size={14} className="animate-spin" />
-                                ) : canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? (
-                                  <Cloud size={14} />
                                 ) : (
                                   <Save size={14} />
                                 )}
-                                <span className="hidden sm:inline">
-                                  {canvasWorkspaces.find(ws => ws.id === activeWorkspaceId)?.firebaseId ? 'Saved' : 'Save'}
-                                </span>
+                                <span>Save</span>
+                              </button>
+
+                              {/* Start Chat Button */}
+                              <button
+                                onClick={() => {
+                                  setShowChatPanel(true);
+                                  startFeature('chat');
+                                }}
+                                className="group relative inline-flex items-center gap-1.5 rounded-lg overflow-hidden px-3 py-1.5 text-xs font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                                style={{
+                                  background: 'linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%)',
+                                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                                }}
+                                title="Open AI Chat"
+                              >
+                                <div className="absolute inset-0 -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                                  <div className="absolute inset-0 animate-shimmer-slide bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                                </div>
+                                <MessageSquare size={14} className="relative z-10" />
+                                <span className="relative z-10">Start Chat</span>
                               </button>
                             </div>
                           </>
@@ -3045,49 +3115,57 @@ Here is the learner's question: ${message}`;
                         </div>
                       )}
                       <div className="flex-1 relative">
-                        {canvasWorkspaces.map(workspace => (
-                          <div
-                            key={workspace.id}
-                            className={`${workspace.id === activeWorkspaceId ? 'block' : 'hidden'} h-full w-full`}
-                          >
-                            <Canvas
-                              currentTool={currentTool}
-                              strokeWidth={strokeWidth}
-                              strokeColor={strokeColor}
-                              onOpenCalculator={handleOpenCalculator}
-                              onOpenMolView={handleOpenMolView}
-                              onOpenPeriodicTable={handleOpenPeriodicTable}
-                              onDocumentCaptured={handleDocumentInsightsGeneration}
-                              onDocumentAddToChat={handleAddDocumentToChat}
-                              onRegisterSnapshotHandler={(handler) => registerWorkspaceHandler(workspace.id, 'snapshot', handler)}
-                              onRegisterTextInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'text', handler)}
-                              onRegisterHandwritingHandler={(handler) => registerWorkspaceHandler(workspace.id, 'handwriting', handler)}
-                              onRegisterMarkdownInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'markdown', handler)}
-                              onRegisterMoleculeInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'molecule', handler)}
-                              onRegisterProteinInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'protein', handler)}
-                              onRegisterReactionInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'reaction', handler)}
-                              onRegisterGetShapesHandler={(handler) => registerWorkspaceHandler(workspace.id, 'getShapes', handler)}
-                              onRegisterSetShapesHandler={(handler) => registerWorkspaceHandler(workspace.id, 'setShapes', handler)}
-                              onShapesChange={(shapes) => handleShapesChange(workspace.id, shapes)}
-                              initialShapes={workspace.shapes}
-                              onRegisterQuickActionHandlers={(handlers) => {
-                                if (workspace.id === activeWorkspaceId) {
-                                  setQuickActionHandlers(handlers);
-                                }
-                              }}
-                            />
-                          </div>
-                        ))}
+                        {activeCanvasTab === 'planner' ? (
+                          <PlannerTab
+                            initialTopic={sources.length > 0 ? sources.map(s => s.title).join(', ') : ''}
+                          />
+                        ) : (
+                          <>
+                            {canvasWorkspaces.map(workspace => (
+                              <div
+                                key={workspace.id}
+                                className={`${workspace.id === activeWorkspaceId ? 'block' : 'hidden'} h-full w-full`}
+                              >
+                                <Canvas
+                                  currentTool={currentTool}
+                                  strokeWidth={strokeWidth}
+                                  strokeColor={strokeColor}
+                                  onOpenCalculator={handleOpenCalculator}
+                                  onOpenMolView={handleOpenMolView}
+                                  onOpenPeriodicTable={handleOpenPeriodicTable}
+                                  onDocumentCaptured={handleDocumentInsightsGeneration}
+                                  onDocumentAddToChat={handleAddDocumentToChat}
+                                  onRegisterSnapshotHandler={(handler) => registerWorkspaceHandler(workspace.id, 'snapshot', handler)}
+                                  onRegisterTextInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'text', handler)}
+                                  onRegisterHandwritingHandler={(handler) => registerWorkspaceHandler(workspace.id, 'handwriting', handler)}
+                                  onRegisterMarkdownInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'markdown', handler)}
+                                  onRegisterMoleculeInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'molecule', handler)}
+                                  onRegisterProteinInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'protein', handler)}
+                                  onRegisterReactionInjectionHandler={(handler) => registerWorkspaceHandler(workspace.id, 'reaction', handler)}
+                                  onRegisterGetShapesHandler={(handler) => registerWorkspaceHandler(workspace.id, 'getShapes', handler)}
+                                  onRegisterSetShapesHandler={(handler) => registerWorkspaceHandler(workspace.id, 'setShapes', handler)}
+                                  onShapesChange={(shapes) => handleShapesChange(workspace.id, shapes)}
+                                  initialShapes={workspace.shapes}
+                                  onRegisterQuickActionHandlers={(handlers) => {
+                                    if (workspace.id === activeWorkspaceId) {
+                                      setQuickActionHandlers(handlers);
+                                    }
+                                  }}
+                                />
+                              </div>
+                            ))}
 
-                        {/* Drawing Tools Dock - Floating on canvas */}
-                        <DrawingToolsDock
-                          currentTool={currentTool}
-                          onToolChange={setCurrentTool}
-                          position="left"
-                          enableKeyboardShortcuts={true}
-                          forceCollapsed={documentViewerOpen}
-                          onChemistryToolsClick={() => setShowQuickActionsPopup(true)}
-                        />
+                            {/* Drawing Tools Dock - Floating on canvas */}
+                            <DrawingToolsDock
+                              currentTool={currentTool}
+                              onToolChange={setCurrentTool}
+                              position="left"
+                              enableKeyboardShortcuts={true}
+                              forceCollapsed={documentViewerOpen}
+                              onChemistryToolsClick={() => setShowQuickActionsPopup(true)}
+                            />
+                          </>
+                        )}
                       </div>
                     </>
                   )}
@@ -3469,129 +3547,147 @@ Here is the learner's question: ${message}`;
         )
       }
 
+      {/* Canvas Planner - AFFiNE-style infinite canvas */}
+      {
+        showCanvasPlanner && (
+          <div className="fixed inset-0 z-[60] bg-slate-950">
+            <CanvasPlanner
+              onClose={() => {
+                setShowCanvasPlanner(false);
+                endCurrentFeature();
+              }}
+            />
+          </div>
+        )
+      }
+
       {/* Quick Actions Popup */}
-      {showQuickActionsPopup && quickActionHandlers && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowQuickActionsPopup(false)}>
-          <div
-            className="flex flex-col gap-4 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg bg-slate-900/95 max-w-2xl w-full"
-            style={{ borderColor: 'rgba(6, 182, 212, 0.2)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-100">Chemistry Tools</h3>
-              <button
-                onClick={() => setShowQuickActionsPopup(false)}
-                className="rounded-full p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
+      {
+        showQuickActionsPopup && quickActionHandlers && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowQuickActionsPopup(false)}>
+            <div
+              className="flex flex-col gap-4 rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-lg bg-slate-900/95 max-w-2xl w-full"
+              style={{ borderColor: 'rgba(6, 182, 212, 0.2)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-100">Chemistry Tools</h3>
+                <button
+                  onClick={() => setShowQuickActionsPopup(false)}
+                  className="rounded-full p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                  aria-label="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-            {/* Molecule Search Bar */}
-            <div className="w-full">
-              <InlineMoleculeSearch
-                className="w-full"
-                onSelectMolecule={async (moleculeData) => {
-                  if (currentMoleculeHandler) {
-                    try {
-                      await currentMoleculeHandler(moleculeData);
-                      setShowQuickActionsPopup(false);
-                    } catch (error) {
-                      console.error('Failed to insert molecule from search:', error);
+              {/* Molecule Search Bar */}
+              <div className="w-full">
+                <InlineMoleculeSearch
+                  className="w-full"
+                  onSelectMolecule={async (moleculeData) => {
+                    if (currentMoleculeHandler) {
+                      try {
+                        await currentMoleculeHandler(moleculeData);
+                        setShowQuickActionsPopup(false);
+                      } catch (error) {
+                        console.error('Failed to insert molecule from search:', error);
+                      }
                     }
-                  }
-                }}
-              />
-            </div>
+                  }}
+                />
+              </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                onClick={() => {
-                  quickActionHandlers.onOpenMinerals();
-                  setShowQuickActionsPopup(false);
-                }}
-                className="group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white"
-                title="Search Minerals (COD 3D)"
-              >
-                <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-emerald-500/15 text-emerald-300">
-                  <Gem size={14} />
-                </span>
-                <span>Minerals</span>
-              </button>
-              <button
-                onClick={() => {
-                  quickActionHandlers.onOpenReactions();
-                  setShowQuickActionsPopup(false);
-                }}
-                className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${quickActionHandlers.getReactionSearchActive()
-                  ? 'bg-slate-800/95 text-white border-slate-500/80 shadow-lg ring-1 ring-orange-500/40 border-orange-500/60'
-                  : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
-                  }`}
-                title="Search Reactions"
-              >
-                <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-orange-500/15 text-orange-300">
-                  <FlaskConical size={14} />
-                </span>
-                <span>Reactions</span>
-              </button>
-              <button
-                onClick={() => {
-                  quickActionHandlers.onOpenProteins();
-                  setShowQuickActionsPopup(false);
-                }}
-                className="group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white"
-                title="Browse PDB Proteins"
-              >
-                <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-rose-500/15 text-rose-300">
-                  <Atom size={14} />
-                </span>
-                <span>Proteins</span>
-              </button>
-              <button
-                onClick={() => {
-                  quickActionHandlers.onOpenAR();
-                  setShowQuickActionsPopup(false);
-                }}
-                disabled={!quickActionHandlers.getSelectedMoleculeCid()}
-                className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${!quickActionHandlers.getSelectedMoleculeCid()
-                  ? 'opacity-50 cursor-not-allowed pointer-events-none'
-                  : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
-                  }`}
-                title={quickActionHandlers.getSelectedMoleculeCid()
-                  ? 'View selected molecule in AR'
-                  : 'Select a molecule on the canvas to enable AR viewer'}
-              >
-                <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-purple-500/15 text-purple-300">
-                  <Scan size={14} />
-                </span>
-                <span>AR</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  onClick={() => {
+                    quickActionHandlers.onOpenMinerals();
+                    setShowQuickActionsPopup(false);
+                  }}
+                  className="group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white"
+                  title="Search Minerals (COD 3D)"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-emerald-500/15 text-emerald-300">
+                    <Gem size={14} />
+                  </span>
+                  <span>Minerals</span>
+                </button>
+                <button
+                  onClick={() => {
+                    quickActionHandlers.onOpenReactions();
+                    setShowQuickActionsPopup(false);
+                  }}
+                  className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${quickActionHandlers.getReactionSearchActive()
+                    ? 'bg-slate-800/95 text-white border-slate-500/80 shadow-lg ring-1 ring-orange-500/40 border-orange-500/60'
+                    : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
+                    }`}
+                  title="Search Reactions"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-orange-500/15 text-orange-300">
+                    <FlaskConical size={14} />
+                  </span>
+                  <span>Reactions</span>
+                </button>
+                <button
+                  onClick={() => {
+                    quickActionHandlers.onOpenProteins();
+                    setShowQuickActionsPopup(false);
+                  }}
+                  className="group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white"
+                  title="Browse PDB Proteins"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-rose-500/15 text-rose-300">
+                    <Atom size={14} />
+                  </span>
+                  <span>Proteins</span>
+                </button>
+                <button
+                  onClick={() => {
+                    quickActionHandlers.onOpenAR();
+                    setShowQuickActionsPopup(false);
+                  }}
+                  disabled={!quickActionHandlers.getSelectedMoleculeCid()}
+                  className={`group inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${!quickActionHandlers.getSelectedMoleculeCid()
+                    ? 'opacity-50 cursor-not-allowed pointer-events-none'
+                    : 'bg-slate-900/40 text-slate-200 border-slate-700/60 hover:border-slate-500/50 hover:bg-slate-800/70 hover:text-white'
+                    }`}
+                  title={quickActionHandlers.getSelectedMoleculeCid()
+                    ? 'View selected molecule in AR'
+                    : 'Select a molecule on the canvas to enable AR viewer'}
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] bg-purple-500/15 text-purple-300">
+                    <Scan size={14} />
+                  </span>
+                  <span>AR</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Webcam Preview - Small floating video when sharing */}
-      {isWebcamSharing && (
-        <div className="fixed bottom-24 left-6 z-50 w-48 h-36 bg-black rounded-lg overflow-hidden border-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]">
-          <video
-            ref={(el) => {
-              if (el && webcamStreamRef.current) {
-                el.srcObject = webcamStreamRef.current;
-              }
-            }}
-            autoPlay
-            muted
-            playsInline
-            className="w-full h-full object-cover transform scale-x-[-1]" // Mirror effect
-          />
-          <div className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-          <div className="absolute bottom-1 left-2 text-[10px] font-mono text-white/80 bg-black/40 px-1 rounded">
-            LIVE INPUT
+      {
+        isWebcamSharing && (
+          <div className="fixed bottom-24 left-6 z-50 w-48 h-36 bg-black rounded-lg overflow-hidden border-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+            <video
+              ref={(el) => {
+                if (el && webcamStreamRef.current) {
+                  el.srcObject = webcamStreamRef.current;
+                }
+              }}
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-cover transform scale-x-[-1]" // Mirror effect
+            />
+            <div className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+            <div className="absolute bottom-1 left-2 text-[10px] font-mono text-white/80 bg-black/40 px-1 rounded">
+              LIVE INPUT
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Toast Container */}
       <ToastContainer

@@ -29,7 +29,7 @@ import MonitoringDashboard from './MonitoringDashboard';
 import ReflectionTimeline from './ReflectionTimeline';
 import HelpHub from './HelpHub';
 import ArMoleculePreview from './ArMoleculePreview';
-import FlashCardDeck from './FlashCardDeck';
+import { FlashcardDeck } from './ChemistryFlashcardDeck';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { MagicCard } from './ui/magic-card';
 import { db } from '../firebase/config';
@@ -1085,11 +1085,11 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
         Math.round(
           (monitoringCheckins.reduce((sum, entry) => sum + entry.rating, 0) /
             monitoringCheckins.length) *
-            10
+          10
         ) / 10;
       averageEngagement = Math.round(
         monitoringCheckins.reduce((sum, entry) => sum + (entry.engagementScore ?? coachEnergy), 0) /
-          monitoringCheckins.length
+        monitoringCheckins.length
       );
       tasksTotal = monitoringCheckins.reduce(
         (sum, entry) => sum + (entry.tasksCompleted ?? 0),
@@ -1169,12 +1169,12 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
 
     const tasks = planNodesState.length
       ? planNodesState.slice(0, 4).map((node) => ({
-          id: node.id,
-          title: node.title,
-          status: node.status,
-          eta: node.durationMinutes ? `${node.durationMinutes}m` : '20m block',
-          tool: node.toolId ?? 'ChemCanvas'
-        }))
+        id: node.id,
+        title: node.title,
+        status: node.status,
+        eta: node.durationMinutes ? `${node.durationMinutes}m` : '20m block',
+        tool: node.toolId ?? 'ChemCanvas'
+      }))
       : [];
 
     const alerts: Array<{
@@ -1555,13 +1555,13 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
       ? selectedToolLabels.join(', ')
       : 'MolView visualizations, the NMR viewer, and adaptive chemistry quizzes';
 
-  const prompt = [
-    'You are ChemCanvas\'s self-regulated learning coach for chemistry students.',
-    `The learner wants support creating a SMART goal about "${trimmedTopic}".`,
-    `Draft a SMART goal that fits a ${goalTimeframe} horizon and weave in ChemCanvas features such as ${toolSummary}.`,
-    'Reference prior struggles only if relevant and keep the learner in the driver seat by offering choices, not mandates.',
-    'Close by asking the learner to confirm or tweak the goal.'
-  ].join(' ');
+    const prompt = [
+      'You are ChemCanvas\'s self-regulated learning coach for chemistry students.',
+      `The learner wants support creating a SMART goal about "${trimmedTopic}".`,
+      `Draft a SMART goal that fits a ${goalTimeframe} horizon and weave in ChemCanvas features such as ${toolSummary}.`,
+      'Reference prior struggles only if relevant and keep the learner in the driver seat by offering choices, not mandates.',
+      'Close by asking the learner to confirm or tweak the goal.'
+    ].join(' ');
 
     setInsightBulletin('SMART goal drafted - hop into planning to turn it into checkpoints.');
     void sendCoachPrompt('goal', prompt, `SMART goal drafted for ${trimmedTopic}`, 28);
@@ -1582,14 +1582,14 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
       ? selectedToolLabels.join(', ')
       : 'MolView, NMR viewer, virtual lab activities, and quick AI check-ins';
 
-  const prompt = [
-    'Act as the ChemCanvas SRL planning coach.',
-    `Design a branching learning pathway for the topic "${focus}" tailored to a ${planLevel} learner.`,
-    `Prioritize a ${preferenceDescriptor}.`,
-    `Use ChemCanvas assets like ${toolSummary} and note when to leverage the AI chat versus hands-on tools.`,
-    'Include 3-4 checkpoints with self-monitoring cues and optional extension challenges.',
-    'End by inviting the learner to choose their next step.'
-  ].join(' ');
+    const prompt = [
+      'Act as the ChemCanvas SRL planning coach.',
+      `Design a branching learning pathway for the topic "${focus}" tailored to a ${planLevel} learner.`,
+      `Prioritize a ${preferenceDescriptor}.`,
+      `Use ChemCanvas assets like ${toolSummary} and note when to leverage the AI chat versus hands-on tools.`,
+      'Include 3-4 checkpoints with self-monitoring cues and optional extension challenges.',
+      'End by inviting the learner to choose their next step.'
+    ].join(' ');
 
     setInsightBulletin(`Adaptive pathway ready - start activating milestones for ${focus}.`);
     void sendCoachPrompt('plan', prompt, `Adaptive pathway generated for ${focus}`, 24);
@@ -1609,16 +1609,16 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
       return;
     }
 
-  const prompt = [
-    'Respond as the ChemCanvas SRL self-monitoring coach.',
-    `The learner rated their understanding of "${trimmedFocus}" as ${monitorRating}/5.`,
-    `Notes from the learner: ${monitorNotes.trim() || 'No additional notes provided.'}`,
-    selectedToolLabels.length
-      ? `Preferred tools at the moment: ${selectedToolLabels.join(', ')}.`
-      : 'Use relevant ChemCanvas tools such as MolView, the NMR viewer, and AI-generated quizzes as needed.',
-    'Acknowledge their self-assessment, highlight what the rating suggests, and recommend one short action plus a follow-up checkpoint.',
-    'Close with a metacognitive question that encourages tracking progress without taking agency away.'
-  ].join(' ');
+    const prompt = [
+      'Respond as the ChemCanvas SRL self-monitoring coach.',
+      `The learner rated their understanding of "${trimmedFocus}" as ${monitorRating}/5.`,
+      `Notes from the learner: ${monitorNotes.trim() || 'No additional notes provided.'}`,
+      selectedToolLabels.length
+        ? `Preferred tools at the moment: ${selectedToolLabels.join(', ')}.`
+        : 'Use relevant ChemCanvas tools such as MolView, the NMR viewer, and AI-generated quizzes as needed.',
+      'Acknowledge their self-assessment, highlight what the rating suggests, and recommend one short action plus a follow-up checkpoint.',
+      'Close with a metacognitive question that encourages tracking progress without taking agency away.'
+    ].join(' ');
 
     setInsightBulletin('Monitoring insight queued - check the dashboard for coach nudges.');
     void sendCoachPrompt(
@@ -1634,13 +1634,13 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
       return;
     }
 
-  const prompt = [
-    'You are wrapping up a chemistry study session as the ChemCanvas SRL reflection coach.',
-    `Learner emotion: ${reflectionEmotion}.`,
-    `Learner reflection: ${reflectionNotes.trim()}.`,
-    'Summarise key insights, connect them back to earlier goals or checkpoints when possible, and suggest one actionable carry-over goal for the next session.',
-    'Offer an optional advanced extension and remind the learner they can revisit their AI chat history for continuity.'
-  ].join(' ');
+    const prompt = [
+      'You are wrapping up a chemistry study session as the ChemCanvas SRL reflection coach.',
+      `Learner emotion: ${reflectionEmotion}.`,
+      `Learner reflection: ${reflectionNotes.trim()}.`,
+      'Summarise key insights, connect them back to earlier goals or checkpoints when possible, and suggest one actionable carry-over goal for the next session.',
+      'Offer an optional advanced extension and remind the learner they can revisit their AI chat history for continuity.'
+    ].join(' ');
 
     setInsightBulletin('Reflection summary queued - capture a highlight reel if you want to share it forward.');
     void sendCoachPrompt('reflect', prompt, 'Reflection synthesized for current session', 20);
@@ -1953,830 +1953,822 @@ const SrlCoach: React.FC<SrlCoachProps> = ({
   };
   return (
     <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
-            {/* Left Sidebar - Momentum & Stats */}
-            <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
-                <div className="flex-1 overflow-y-auto flex flex-col p-6 md:p-8 gap-6 md:gap-8">
-                    {/* Momentum Score Display */}
+      {/* Left Sidebar - Momentum & Stats */}
+      <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
+        <div className="flex-1 overflow-y-auto flex flex-col p-6 md:p-8 gap-6 md:gap-8">
+          {/* Momentum Score Display */}
+          <div>
+            <div
+              className={`relative rounded-2xl border border-blue-700/40 p-5 md:p-6 text-white shadow-lg bg-gradient-to-br ${([...SRL_MOMENTUM_LEVELS].reverse().find((level) => momentumScore >= level.min) ?? SRL_MOMENTUM_LEVELS[0]).gradient
+                }`}
+            >
+              <div className="absolute -top-10 -right-6 h-32 w-32 rounded-full bg-white/10 blur-3xl" />
+              <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-2 max-w-xl">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+                    {(() => {
+                      const tier =
+                        [...SRL_MOMENTUM_LEVELS].reverse().find((level) => momentumScore >= level.min) ??
+                        SRL_MOMENTUM_LEVELS[0];
+                      const TierIcon = tier.icon;
+                      return (
+                        <>
+                          <TierIcon size={14} className="text-yellow-200" />
+                          {tier.label} Momentum
+                        </>
+                      );
+                    })()}
+                  </div>
+                  <h3 className="text-xl font-bold flex items-center gap-2">
+                    Momentum Score <span className="text-amber-200">{momentumScore}</span>
+                  </h3>
+                  <p className="text-sm text-white/80">
+                    {
+                      (
+                        [...SRL_MOMENTUM_LEVELS].reverse().find((level) => momentumScore >= level.min) ??
+                        SRL_MOMENTUM_LEVELS[0]
+                      ).vibe
+                    }
+                  </p>
+                  <p className="text-xs text-white/70">{SRL_PHASES[activePhase].description}</p>
+                  <div className="space-y-2 pt-2">
                     <div>
-          <div
-            className={`relative rounded-2xl border border-blue-700/40 p-5 md:p-6 text-white shadow-lg bg-gradient-to-br ${
-              ([...SRL_MOMENTUM_LEVELS].reverse().find((level) => momentumScore >= level.min) ?? SRL_MOMENTUM_LEVELS[0]).gradient
-            }`}
-          >
-            <div className="absolute -top-10 -right-6 h-32 w-32 rounded-full bg-white/10 blur-3xl" />
-            <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-2 max-w-xl">
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
-                  {(() => {
-                    const tier =
-                      [...SRL_MOMENTUM_LEVELS].reverse().find((level) => momentumScore >= level.min) ??
-                      SRL_MOMENTUM_LEVELS[0];
-                    const TierIcon = tier.icon;
+                      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-white/70">
+                        <span>Momentum Progress</span>
+                        <span>{Math.min(100, Math.round(momentumScore))}%</span>
+                      </div>
+                      <div className="mt-1 h-2 w-full rounded-full bg-white/20">
+                        <div
+                          className="h-full rounded-full bg-amber-300 transition-all"
+                          style={{ width: `${Math.min(100, Math.round(momentumScore))}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-white/70">
+                        <span>Energy</span>
+                        <span>{Math.min(100, Math.round(coachEnergy))}%</span>
+                      </div>
+                      <div className="mt-1 h-2 w-full rounded-full bg-white/20">
+                        <div
+                          className="h-full rounded-full bg-emerald-300 transition-all"
+                          style={{ width: `${Math.min(100, Math.round(coachEnergy))}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <label className="mt-4 inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={shareCoachData}
+                      onChange={(event) => setShareCoachData(event.target.checked)}
+                      className="h-4 w-4 rounded border-white/40 bg-transparent text-amber-200 focus:ring-amber-200"
+                    />
+                    Share anonymous progress for Goal Buddy insights
+                  </label>
+                  <div className="pt-3 space-y-2">
+                    <p className="text-[11px] uppercase tracking-wide text-white/70">Learning Journey Map</p>
+                    <div className="flex flex-wrap gap-2">
+                      {learningJourney.map(({ phase, count }) => (
+                        <span
+                          key={phase}
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] uppercase tracking-wide ${count > 0 ? 'border-white/35 bg-white/15 text-white' : 'border-white/15 text-white/60'
+                            }`}
+                        >
+                          {SRL_PHASES[phase].label}
+                          <span className="font-semibold text-amber-200">{count}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-3 rounded-2xl bg-white/10 p-4 backdrop-blur min-w-[220px]">
+                  <div className="flex items-center justify-between text-sm font-semibold uppercase tracking-wide text-white/80">
+                    <span>XP Tracker</span>
+                    <Trophy size={18} className="text-yellow-200" />
+                  </div>
+                  <div className="text-3xl font-bold text-yellow-100">
+                    {Math.min(999, experiencePoints)}
+                  </div>
+                  <p className="text-xs text-white/70">
+                    Streak: <strong className="text-white">{phaseStreak}</strong> phases | Actions logged: <strong className="text-white">{coachLog.length}</strong>
+                  </p>
+                  <p className="text-[11px] text-white/60">
+                    Streak bonus {streakBonus}% | Coach energy {Math.min(100, Math.round(coachEnergy))}%
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleEnergyBoost}
+                    className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-white/30"
+                  >
+                    <Sparkle size={14} />
+                    Boost Energy
+                  </button>
+                </div>
+              </div>
+              {insightBulletin && (
+                <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/80">
+                  {insightBulletin}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Panel - Main Content */}
+          <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
+            <div className="flex-1 w-full h-full min-h-0 overflow-auto p-6 md:p-8 lg:p-10">
+              <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto">
+                {documentName && (
+                  <MagicCard className="relative overflow-hidden border border-blue-200 bg-blue-50/50 backdrop-blur-sm rounded-xl" gradientFrom="#3b82f6" gradientTo="#8b5cf6">
+                    <CardContent className="p-4 md:p-6 relative z-10">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-blue-100">
+                            <FileText size={18} className="text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              Reference: <span className="text-blue-700">{documentName}</span>
+                            </p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Coach outputs will include citations when document context is used.
+                            </p>
+                          </div>
+                        </div>
+                        {onOpenDocument && (
+                          <button
+                            onClick={onOpenDocument}
+                            className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-blue-700 hover:shadow-md"
+                          >
+                            Open
+                          </button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </MagicCard>
+                )}
+                <div className="flex flex-wrap items-center justify-between gap-4 md:gap-6">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">SRL Coach Phases</p>
+                    <p className="text-sm text-slate-600">Choose your focus lane and launch a fresh interaction.</p>
+                  </div>
+                  <div className="text-xs text-blue-700 bg-blue-100 px-4 py-2 rounded-full border border-blue-200 uppercase tracking-wide font-semibold shadow-sm">
+                    Current vibe: {SRL_PHASES[activePhase].label}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {(Object.keys(SRL_PHASES) as SrlPhase[]).map((phase) => {
+                    const meta = SRL_PHASES[phase];
+                    const Icon = meta.icon;
+                    const isActivePhase = phase === activePhase;
                     return (
-                      <>
-                        <TierIcon size={14} className="text-yellow-200" />
-                        {tier.label} Momentum
-                      </>
+                      <button
+                        key={phase}
+                        type="button"
+                        onClick={() => setActivePhase(phase)}
+                        className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-semibold transition-all ${isActivePhase
+                          ? 'border-blue-600 bg-blue-600 text-white shadow-md scale-105'
+                          : 'border-blue-200 bg-blue-50 text-slate-700 hover:border-blue-400 hover:bg-blue-100 hover:shadow-sm'
+                          }`}
+                      >
+                        <Icon size={16} className={isActivePhase ? 'text-white' : meta.accent} />
+                        <span>{meta.label}</span>
+                      </button>
                     );
+                  })}
+                </div>
+                <MagicCard className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50/50 p-4 md:p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-blue-100">
+                      <Sparkle size={16} className="text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-2">Hype Tip</p>
+                      <p className="text-sm md:text-base text-slate-700 leading-relaxed">{hypeTip}</p>
+                    </div>
+                  </div>
+                </MagicCard>
+                <div className="space-y-6 md:space-y-8">
+                  {(() => {
+                    switch (activePhase) {
+                      case 'goal':
+                        return (
+                          <div className="space-y-6 md:space-y-8">
+                            <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+                              <label className="flex flex-col gap-2 text-xs text-slate-600 uppercase tracking-wide font-semibold">
+                                Focus Area
+                                <input
+                                  value={goalTopic}
+                                  onChange={(event) => setGoalTopic(event.target.value)}
+                                  placeholder="e.g., Alkane reaction mechanisms or NMR peak assignments"
+                                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-2 text-xs text-slate-600 uppercase tracking-wide font-semibold">
+                                Timeframe
+                                <select
+                                  value={goalTimeframe}
+                                  onChange={(event) => setGoalTimeframe(event.target.value)}
+                                  className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                                >
+                                  <option value="today">Today</option>
+                                  <option value="this week">This week</option>
+                                  <option value="this month">This month</option>
+                                  <option value="before my next exam">Before my next exam</option>
+                                </select>
+                              </label>
+                            </div>
+                            <div className="space-y-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                                ChemCanvas Tools to Highlight
+                              </p>
+                              <div className="flex flex-wrap gap-3">
+                                {SRL_TOOL_OPTIONS.map((option) => {
+                                  const isActive = preferredTools.includes(option.id);
+                                  return (
+                                    <button
+                                      key={option.id}
+                                      type="button"
+                                      onClick={() => togglePreferredTool(option.id)}
+                                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${isActive
+                                        ? 'border-blue-600 bg-blue-600 text-white'
+                                        : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50'
+                                        }`}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleGenerateGoal}
+                              disabled={isLoading || !goalTopic.trim()}
+                              className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-6 py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-[#34507c] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-md"
+                            >
+                              <Target size={18} />
+                              Draft SMART Goal with AI
+                            </button>
+                            <PriorKnowledgePanel
+                              selectedMode={selectedAssessmentMode}
+                              onSelectMode={handleAssessmentModeSelect}
+                              onGenerateGoalBuddy={handleGenerateGoalBuddy}
+                              snapshots={priorKnowledgeSnapshots}
+                              isBusy={isLoading || isAssessmentRunning}
+                            />
+                            {selectedAssessmentMode === 'flashcards' ? (
+                              <FlashcardDeck
+                                cards={flashcardDeck}
+                                activeIndex={activeFlashcardIndex}
+                                isFlipped={isFlashcardFlipped}
+                                isLoading={isGeneratingFlashcards}
+                                error={flashcardError}
+                                topic={goalTopic.trim() || planFocus.trim() || 'Chemistry focus'}
+                                onFlip={handleFlashcardFlip}
+                                onNext={handleFlashcardNext}
+                                onPrevious={handleFlashcardPrevious}
+                                onRegenerate={handleFlashcardRegenerate}
+                                onCancel={handleAssessmentCancel}
+                              />
+                            ) : assessmentState && !assessmentState.completed && currentAssessmentQuestion && currentAssessmentQuestions ? (
+                              <div className="rounded-2xl border border-amber-500/30 bg-amber-900/15 p-4 space-y-4">
+                                <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Baseline Assessment</p>
+                                    <h4 className="text-sm font-semibold text-slate-800">
+                                      {ASSESSMENT_MODE_LABEL[assessmentState.mode]}
+                                    </h4>
+                                  </div>
+                                  <span className="text-[11px] uppercase tracking-wide text-amber-600">
+                                    Question {assessmentState.questionIndex + 1} of {currentAssessmentQuestions.length}
+                                  </span>
+                                </div>
+                                <div className="text-sm text-slate-700">
+                                  {currentAssessmentQuestion.prompt}
+                                </div>
+                                <div className="grid gap-2">
+                                  {currentAssessmentQuestion.options.map((option, index) => {
+                                    const isSelected = currentAssessmentChoice === index;
+                                    return (
+                                      <button
+                                        key={`${currentAssessmentQuestion.id}-option-${index}`}
+                                        type="button"
+                                        onClick={() => handleAssessmentOptionSelect(index)}
+                                        className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${isSelected
+                                          ? 'border-amber-500 bg-amber-100 text-amber-900 shadow-sm'
+                                          : 'border-amber-200 bg-white text-slate-700 hover:border-amber-400 hover:bg-amber-50'
+                                          }`}
+                                      >
+                                        <span className="mt-[3px] inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+                                        <span>{option}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                {assessmentError ? (
+                                  <p className="text-xs text-rose-600">{assessmentError}</p>
+                                ) : null}
+                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                  <button
+                                    type="button"
+                                    onClick={handleAssessmentCancel}
+                                    className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 transition hover:border-amber-400 hover:bg-amber-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleAssessmentSubmit}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c]"
+                                  >
+                                    {assessmentState.questionIndex >= currentAssessmentQuestions.length - 1
+                                      ? 'Finish Assessment'
+                                      : 'Next Question'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                            {assessmentFeedback && assessmentState?.completed && assessmentReview ? (
+                              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Assessment Summary</p>
+                                    <h4 className="text-sm font-semibold text-slate-800">
+                                      {ASSESSMENT_MODE_LABEL[assessmentState.mode]}
+                                    </h4>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-2xl font-bold text-amber-700">{assessmentFeedback.score}%</p>
+                                    <p className="text-[11px] uppercase tracking-wide text-amber-600">
+                                      {assessmentFeedback.correct} / {assessmentFeedback.total} correct
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  {assessmentReview.map((item) => (
+                                    <div
+                                      key={item.id}
+                                      className="rounded-xl border border-amber-200 bg-white p-3 text-xs text-slate-700"
+                                    >
+                                      <p className="font-semibold text-slate-900">{item.prompt}</p>
+                                      <p
+                                        className={`mt-2 font-semibold ${item.isCorrect ? 'text-emerald-700' : 'text-rose-700'
+                                          }`}
+                                      >
+                                        {item.isCorrect ? 'Correct' : 'Needs Review'}
+                                      </p>
+                                      <p className="text-slate-600">You chose: {item.chosenOption}</p>
+                                      {!item.isCorrect ? (
+                                        <p className="text-slate-600">Correct answer: {item.correctOption}</p>
+                                      ) : null}
+                                      {item.explanation ? (
+                                        <p className="mt-1 text-slate-500">Why: {item.explanation}</p>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                            {assessmentGoalHint ? (
+                              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                <p className="font-semibold uppercase tracking-wide text-amber-700">Goal Guidance</p>
+                                <p className="mt-1 text-amber-800">{assessmentGoalHint}</p>
+                              </div>
+                            ) : null}
+                            {goalBuddySummary ? (
+                              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                                <p className="font-semibold uppercase tracking-wide text-blue-700">Goal Buddy Insight</p>
+                                <p className="mt-1 text-blue-800">{goalBuddySummary}</p>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      case 'plan':
+                        return (
+                          <div className="space-y-4">
+                            <div className="grid md:grid-cols-3 gap-3">
+                              <label className="md:col-span-2 flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                                Topic to Map
+                                <input
+                                  value={planFocus}
+                                  onChange={(event) => setPlanFocus(event.target.value)}
+                                  placeholder="e.g., Resonance in benzene or acid-base titrations"
+                                  className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                                Learner Level
+                                <select
+                                  value={planLevel}
+                                  onChange={(event) => setPlanLevel(event.target.value as PlanLevel)}
+                                  className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                >
+                                  <option value="beginner">Beginner</option>
+                                  <option value="intermediate">Intermediate</option>
+                                  <option value="advanced">Advanced</option>
+                                </select>
+                              </label>
+                            </div>
+                            <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                              Preferred Format
+                              <select
+                                value={planPreference}
+                                onChange={(event) => setPlanPreference(event.target.value)}
+                                className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                              >
+                                {SRL_PLAN_PREFERENCES.map((option) => (
+                                  <option key={option.id} value={option.id}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={handleBuildPlan}
+                              disabled={isLoading || (!planFocus.trim() && !goalTopic.trim())}
+                              className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Route size={16} />
+                              Generate Adaptive Pathway
+                            </button>
+
+                            {/* AI-Generated Adaptive Plan */}
+                            <div className="mt-6">
+                              <AdaptivePlan
+                                onPlanGenerated={(nodes, edges) => {
+                                  setPlanNodesState(nodes);
+                                  setPlanEdgesState(edges);
+                                  setPlanFocus(planFocus || goalTopic || 'AI-Generated Plan');
+                                }}
+                                initialTopic={planFocus || goalTopic}
+                              />
+                            </div>
+
+                            {/* Manual Planning Mind Map */}
+                            <div className="mt-6">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="h-px bg-gray-700 flex-1"></div>
+                                <span className="text-xs text-gray-500 uppercase tracking-wide">Or Build Manually</span>
+                                <div className="h-px bg-gray-700 flex-1"></div>
+                              </div>
+                              <PlanningMindMap
+                                nodes={planNodesState}
+                                edges={planEdgesState}
+                                scenarios={planScenariosState}
+                                onAddStep={handleAddPlanNode}
+                                onUpdateStatus={handleUpdatePlanNodeStatus}
+                                onRunSimulation={handleRunPlanSimulation}
+                                onNewPlan={handleNewPlan}
+                                isBusy={isLoading}
+                              />
+                            </div>
+                          </div>
+                        );
+                      case 'monitor':
+                        return (
+                          <div className="space-y-4">
+                            <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                              Concept or Skill
+                              <input
+                                value={monitorFocus}
+                                onChange={(event) => setMonitorFocus(event.target.value)}
+                                placeholder="e.g., Predicting NMR splitting patterns"
+                                className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                              />
+                            </label>
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                                Confidence Rating
+                              </p>
+                              <div className="mt-2 flex gap-2">
+                                {[1, 2, 3, 4, 5].map((rating) => (
+                                  <button
+                                    key={rating}
+                                    type="button"
+                                    onClick={() => setMonitorRating(rating)}
+                                    className={`h-9 w-9 rounded-lg border text-xs font-semibold transition ${monitorRating === rating
+                                      ? 'border-sky-600 bg-sky-600 text-white'
+                                      : 'border-slate-300 bg-white text-slate-700 hover:border-sky-400 hover:bg-sky-50'
+                                      }`}
+                                  >
+                                    {rating}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                              Notes
+                              <textarea
+                                value={monitorNotes}
+                                onChange={(event) => setMonitorNotes(event.target.value)}
+                                rows={3}
+                                placeholder="Where exactly did confidence dip or spike?"
+                                className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={handleMonitoringFeedback}
+                              disabled={isLoading || monitorRating === null || !monitorFocus.trim()}
+                              className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Activity size={16} />
+                              Generate Monitoring Feedback
+                            </button>
+                            <MonitoringDashboard
+                              momentumScore={momentumScore}
+                              phaseStreak={phaseStreak}
+                              coachEnergy={coachEnergy}
+                              experiencePoints={experiencePoints}
+                              streakBonus={streakBonus}
+                              checkins={monitoringCheckins}
+                              progressTrend={monitoringAnalytics.trend}
+                              progressSummary={monitoringAnalytics.summary}
+                              engagementBreakdown={monitoringAnalytics.breakdown}
+                              activeTasks={monitoringAnalytics.tasks}
+                              feedbackHighlights={monitoringAnalytics.feedback}
+                              goalAlerts={monitoringAnalytics.alerts}
+                              activityCalendar={monitoringAnalytics.calendarDays}
+                              onRequestCheckin={handleRequestCheckin}
+                              onOpenInsights={handleOpenMonitoringInsights}
+                              isBusy={isLoading}
+                            />
+                          </div>
+                        );
+                      case 'reflect':
+                        return (
+                          <div className="space-y-4">
+                            <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                              Session Emotion
+                              <select
+                                value={reflectionEmotion}
+                                onChange={(event) => setReflectionEmotion(event.target.value)}
+                                className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                              >
+                                {SRL_REFLECTION_EMOTIONS.map((emotion) => (
+                                  <option key={emotion} value={emotion}>
+                                    {emotion}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                              Reflection Notes
+                              <textarea
+                                value={reflectionNotes}
+                                onChange={(event) => setReflectionNotes(event.target.value)}
+                                rows={4}
+                                placeholder="What clicked, what still feels fuzzy, and what surprised you?"
+                                className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={handleReflectionSummary}
+                              disabled={isLoading || !reflectionNotes.trim()}
+                              className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <PenLine size={16} />
+                              Synthesize Reflection
+                            </button>
+                            <ReflectionTimeline
+                              entries={reflectionEntries}
+                              onCreateReflection={handleCreateReflectionEntry}
+                              onGenerateHighlightReel={handleGenerateHighlightReel}
+                              isBusy={isLoading}
+                            />
+                          </div>
+                        );
+                      case 'help':
+                        return (
+                          <div className="space-y-4">
+                            <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                              Topic
+                              <input
+                                value={helpTopic}
+                                onChange={(event) => setHelpTopic(event.target.value)}
+                                placeholder="e.g., Assigning stereochemistry for 2-bromobutane"
+                                className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                              Attempts Made
+                              <input
+                                type="number"
+                                min={1}
+                                value={helpAttempts}
+                                onChange={(event) => setHelpAttempts(Math.max(1, Number(event.target.value) || 1))}
+                                className="mt-1 w-24 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-rose-500 focus:outline-none focus:ring-2  focus:ring-rose-500/30"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
+                              Support Level
+                              <select
+                                value={helpLevel}
+                                onChange={(event) => setHelpLevel(event.target.value as HelpLevel)}
+                                className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+                              >
+                                <option value="hint">Hint</option>
+                                <option value="guided">Guided Step</option>
+                                <option value="explanation">Explanation</option>
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={handleHelpRequest}
+                              disabled={isLoading || !helpTopic.trim()}
+                              className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <LifeBuoy size={16} />
+                              Request Tiered Support
+                            </button>
+                            <HelpHub
+                              requests={helpRequests}
+                              onRequestHelp={handleRequestHelp}
+                              onResolve={handleResolveHelpRequest}
+                              onForecastSupport={handleHelpForecast}
+                              isBusy={isLoading}
+                            />
+                          </div>
+                        );
+                      default:
+                        return null;
+                    }
                   })()}
                 </div>
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  Momentum Score <span className="text-amber-200">{momentumScore}</span>
-                </h3>
-                <p className="text-sm text-white/80">
-                  {
-                    (
-                      [...SRL_MOMENTUM_LEVELS].reverse().find((level) => momentumScore >= level.min) ??
-                      SRL_MOMENTUM_LEVELS[0]
-                    ).vibe
-                  }
-                </p>
-                <p className="text-xs text-white/70">{SRL_PHASES[activePhase].description}</p>
-                <div className="space-y-2 pt-2">
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-white/70">
-                      <span>Momentum Progress</span>
-                      <span>{Math.min(100, Math.round(momentumScore))}%</span>
-                    </div>
-                    <div className="mt-1 h-2 w-full rounded-full bg-white/20">
-                      <div
-                        className="h-full rounded-full bg-amber-300 transition-all"
-                        style={{ width: `${Math.min(100, Math.round(momentumScore))}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-white/70">
-                      <span>Energy</span>
-                      <span>{Math.min(100, Math.round(coachEnergy))}%</span>
-                    </div>
-                    <div className="mt-1 h-2 w-full rounded-full bg-white/20">
-                      <div
-                        className="h-full rounded-full bg-emerald-300 transition-all"
-                        style={{ width: `${Math.min(100, Math.round(coachEnergy))}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <label className="mt-4 inline-flex items-center gap-2 text-[11px] uppercase tracking-wide text-white/70">
-                  <input
-                    type="checkbox"
-                    checked={shareCoachData}
-                    onChange={(event) => setShareCoachData(event.target.checked)}
-                    className="h-4 w-4 rounded border-white/40 bg-transparent text-amber-200 focus:ring-amber-200"
-                  />
-                  Share anonymous progress for Goal Buddy insights
-                </label>
-                <div className="pt-3 space-y-2">
-                  <p className="text-[11px] uppercase tracking-wide text-white/70">Learning Journey Map</p>
-                  <div className="flex flex-wrap gap-2">
-                    {learningJourney.map(({ phase, count }) => (
-                      <span
-                        key={phase}
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] uppercase tracking-wide ${
-                          count > 0 ? 'border-white/35 bg-white/15 text-white' : 'border-white/15 text-white/60'
-                        }`}
-                      >
-                        {SRL_PHASES[phase].label}
-                        <span className="font-semibold text-amber-200">{count}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
               </div>
-              <div className="space-y-3 rounded-2xl bg-white/10 p-4 backdrop-blur min-w-[220px]">
-                <div className="flex items-center justify-between text-sm font-semibold uppercase tracking-wide text-white/80">
-                  <span>XP Tracker</span>
-                  <Trophy size={18} className="text-yellow-200" />
-                </div>
-                <div className="text-3xl font-bold text-yellow-100">
-                  {Math.min(999, experiencePoints)}
-                </div>
-                <p className="text-xs text-white/70">
-                  Streak: <strong className="text-white">{phaseStreak}</strong> phases | Actions logged: <strong className="text-white">{coachLog.length}</strong>
-                </p>
-                <p className="text-[11px] text-white/60">
-                  Streak bonus {streakBonus}% | Coach energy {Math.min(100, Math.round(coachEnergy))}%
-                </p>
-                <button
-                  type="button"
-                  onClick={handleEnergyBoost}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-white/30"
-                >
-                  <Sparkle size={14} />
-                  Boost Energy
-                </button>
-              </div>
-            </div>
-                    {insightBulletin && (
-                        <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/80">
-                            {insightBulletin}
+
+              {coachLog.length > 0 && (
+                <div className="bg-slate-50 border border-indigo-200 rounded-xl p-4 md:p-5">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    <Clock size={14} className="text-indigo-600" />
+                    Coach Activity Log
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {coachLog.map((entry) => {
+                      const meta = SRL_PHASES[entry.phase];
+                      const Icon = meta.icon;
+                      return (
+                        <div
+                          key={entry.id}
+                          className="flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-slate-700"
+                        >
+                          <Icon size={16} className={`${meta.accent} mt-[2px]`} />
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-semibold">{meta.label}</span>
+                              <span className="text-[11px] text-slate-500">{formatCoachTimestamp(entry.timestamp)}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-600">{entry.note}</p>
+                          </div>
                         </div>
-                    )}
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
             </div>
 
-            {/* Right Panel - Main Content */}
-            <div className="flex-1 bg-[#f6f8fc] w-full h-screen max-h-screen min-h-0 overflow-hidden flex flex-col relative">
-                <div className="flex-1 w-full h-full min-h-0 overflow-auto p-6 md:p-8 lg:p-10">
-                    <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto">
-            {documentName && (
-              <MagicCard className="relative overflow-hidden border border-blue-200 bg-blue-50/50 backdrop-blur-sm rounded-xl" gradientFrom="#3b82f6" gradientTo="#8b5cf6">
-                <CardContent className="p-4 md:p-6 relative z-10">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-blue-100">
-                        <FileText size={18} className="text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          Reference: <span className="text-blue-700">{documentName}</span>
-                        </p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          Coach outputs will include citations when document context is used.
-                        </p>
-                      </div>
+            <div className="flex flex-col gap-4">
+              <div className="bg-gray-800/70 border border-indigo-700/40 rounded-xl p-4 md:p-5 flex flex-col gap-3 min-h-[280px] xl:max-h-[620px]">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-indigo-200">
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={14} />
+                    Coach Output
+                  </span>
+                  {isLoading && (
+                    <div className="inline-flex items-center gap-2 text-indigo-100">
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Generating...</span>
                     </div>
-                    {onOpenDocument && (
-                      <button
-                        onClick={onOpenDocument}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-blue-700 hover:shadow-md"
-                      >
-                        Open
-                      </button>
-                    )}
-                  </div>
-                </CardContent>
-              </MagicCard>
-            )}
-            <div className="flex flex-wrap items-center justify-between gap-4 md:gap-6">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">SRL Coach Phases</p>
-                <p className="text-sm text-slate-600">Choose your focus lane and launch a fresh interaction.</p>
-              </div>
-              <div className="text-xs text-blue-700 bg-blue-100 px-4 py-2 rounded-full border border-blue-200 uppercase tracking-wide font-semibold shadow-sm">
-                Current vibe: {SRL_PHASES[activePhase].label}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {(Object.keys(SRL_PHASES) as SrlPhase[]).map((phase) => {
-                const meta = SRL_PHASES[phase];
-                const Icon = meta.icon;
-                const isActivePhase = phase === activePhase;
-                return (
-                  <button
-                    key={phase}
-                    type="button"
-                    onClick={() => setActivePhase(phase)}
-                    className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-semibold transition-all ${
-                      isActivePhase
-                        ? 'border-blue-600 bg-blue-600 text-white shadow-md scale-105'
-                        : 'border-blue-200 bg-blue-50 text-slate-700 hover:border-blue-400 hover:bg-blue-100 hover:shadow-sm'
-                    }`}
-                  >
-                    <Icon size={16} className={isActivePhase ? 'text-white' : meta.accent} />
-                    <span>{meta.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <MagicCard className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50/50 p-4 md:p-5">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-blue-100">
-                  <Sparkle size={16} className="text-blue-600" />
+                  )}
                 </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-2">Hype Tip</p>
-                  <p className="text-sm md:text-base text-slate-700 leading-relaxed">{hypeTip}</p>
+                <div className="text-[11px] text-indigo-100/80">
+                  Gemini responses for the SRL coach appear here. They are independent from the main chat assistant.
                 </div>
-              </div>
-            </MagicCard>
-            <div className="space-y-6 md:space-y-8">
-              {(() => {
-                switch (activePhase) {
-                  case 'goal':
-                    return (
-                      <div className="space-y-6 md:space-y-8">
-                        <div className="grid md:grid-cols-2 gap-4 md:gap-6">
-                          <label className="flex flex-col gap-2 text-xs text-slate-600 uppercase tracking-wide font-semibold">
-                            Focus Area
-                            <input
-                              value={goalTopic}
-                              onChange={(event) => setGoalTopic(event.target.value)}
-                              placeholder="e.g., Alkane reaction mechanisms or NMR peak assignments"
-                              className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                            />
-                          </label>
-                          <label className="flex flex-col gap-2 text-xs text-slate-600 uppercase tracking-wide font-semibold">
-                            Timeframe
-                            <select
-                              value={goalTimeframe}
-                              onChange={(event) => setGoalTimeframe(event.target.value)}
-                              className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                            >
-                              <option value="today">Today</option>
-                              <option value="this week">This week</option>
-                              <option value="this month">This month</option>
-                              <option value="before my next exam">Before my next exam</option>
-                            </select>
-                          </label>
-                        </div>
-                        <div className="space-y-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            ChemCanvas Tools to Highlight
-                          </p>
-                          <div className="flex flex-wrap gap-3">
-                            {SRL_TOOL_OPTIONS.map((option) => {
-                              const isActive = preferredTools.includes(option.id);
-                              return (
-                                <button
-                                  key={option.id}
-                                  type="button"
-                                  onClick={() => togglePreferredTool(option.id)}
-                                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                                    isActive
-                                      ? 'border-blue-600 bg-blue-600 text-white'
-                                      : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50'
-                                  }`}
-                                >
-                                  {option.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleGenerateGoal}
-                          disabled={isLoading || !goalTopic.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-6 py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-[#34507c] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-md"
-                        >
-                          <Target size={18} />
-                          Draft SMART Goal with AI
-                        </button>
-                        <PriorKnowledgePanel
-                          selectedMode={selectedAssessmentMode}
-                          onSelectMode={handleAssessmentModeSelect}
-                          onGenerateGoalBuddy={handleGenerateGoalBuddy}
-                          snapshots={priorKnowledgeSnapshots}
-                          isBusy={isLoading || isAssessmentRunning}
-                        />
-                        {selectedAssessmentMode === 'flashcards' ? (
-                          <FlashCardDeck
-                            cards={flashcardDeck}
-                            activeIndex={activeFlashcardIndex}
-                            isFlipped={isFlashcardFlipped}
-                            isLoading={isGeneratingFlashcards}
-                            error={flashcardError}
-                            topic={goalTopic.trim() || planFocus.trim() || 'Chemistry focus'}
-                            onFlip={handleFlashcardFlip}
-                            onNext={handleFlashcardNext}
-                            onPrevious={handleFlashcardPrevious}
-                            onRegenerate={handleFlashcardRegenerate}
-                            onCancel={handleAssessmentCancel}
-                          />
-                        ) : assessmentState && !assessmentState.completed && currentAssessmentQuestion && currentAssessmentQuestions ? (
-                          <div className="rounded-2xl border border-amber-500/30 bg-amber-900/15 p-4 space-y-4">
-                            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                              <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Baseline Assessment</p>
-                                <h4 className="text-sm font-semibold text-slate-800">
-                                  {ASSESSMENT_MODE_LABEL[assessmentState.mode]}
-                                </h4>
-                              </div>
-                              <span className="text-[11px] uppercase tracking-wide text-amber-600">
-                                Question {assessmentState.questionIndex + 1} of {currentAssessmentQuestions.length}
-                              </span>
-                            </div>
-                            <div className="text-sm text-slate-700">
-                              {currentAssessmentQuestion.prompt}
-                            </div>
-                            <div className="grid gap-2">
-                              {currentAssessmentQuestion.options.map((option, index) => {
-                                const isSelected = currentAssessmentChoice === index;
-                                return (
-                                  <button
-                                    key={`${currentAssessmentQuestion.id}-option-${index}`}
-                                    type="button"
-                                    onClick={() => handleAssessmentOptionSelect(index)}
-                                    className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${
-                                      isSelected
-                                        ? 'border-amber-500 bg-amber-100 text-amber-900 shadow-sm'
-                                        : 'border-amber-200 bg-white text-slate-700 hover:border-amber-400 hover:bg-amber-50'
-                                    }`}
-                                  >
-                                    <span className="mt-[3px] inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
-                                    <span>{option}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            {assessmentError ? (
-                              <p className="text-xs text-rose-600">{assessmentError}</p>
-                            ) : null}
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                              <button
-                                type="button"
-                                onClick={handleAssessmentCancel}
-                                className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 transition hover:border-amber-400 hover:bg-amber-50"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleAssessmentSubmit}
-                                className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c]"
-                              >
-                                {assessmentState.questionIndex >= currentAssessmentQuestions.length - 1
-                                  ? 'Finish Assessment'
-                                  : 'Next Question'}
-                              </button>
+                <div className="flex-1 overflow-y-auto rounded-lg border border-indigo-700/30 bg-indigo-900/10 p-3 space-y-4">
+                  {coachInteractions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center text-indigo-200/70">
+                      <Wand size={28} className="mb-2 text-indigo-200" />
+                      <p className="text-sm font-semibold">Ready when you are!</p>
+                      <p className="text-xs text-indigo-100/70">Pick a phase and launch an AI-powered coaching move to see the response here.</p>
+                    </div>
+                  ) : (
+                    coachInteractions.map((interaction) => (
+                      <div key={interaction.id} className="space-y-2">
+                        {interaction.prompt?.trim() && (
+                          <div className="flex justify-end">
+                            <div className="bg-gradient-to-br from-indigo-600 to-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[70ch] shadow-lg text-sm">
+                              <p className="text-xs font-semibold mb-1 opacity-80">Coach Prompt</p>
+                              <p>{interaction.prompt}</p>
                             </div>
                           </div>
-                        ) : null}
-                        {assessmentFeedback && assessmentState?.completed && assessmentReview ? (
-                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                              <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Assessment Summary</p>
-                                <h4 className="text-sm font-semibold text-slate-800">
-                                  {ASSESSMENT_MODE_LABEL[assessmentState.mode]}
-                                </h4>
+                        )}
+                        {(interaction.response?.trim() || interaction.toolResponses?.length) && (
+                          <div className="flex justify-start">
+                            <div className="bg-indigo-950/70 border border-indigo-700/50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[70ch] shadow-md space-y-3 text-sm text-indigo-100">
+                              <div className="flex items-center gap-2 text-xs font-semibold text-indigo-200 uppercase tracking-wide">
+                                <Sparkles size={14} className="text-indigo-300" />
+                                Gemini SRL Coach
                               </div>
-                              <div className="text-right">
-                                <p className="text-2xl font-bold text-amber-700">{assessmentFeedback.score}%</p>
-                                <p className="text-[11px] uppercase tracking-wide text-amber-600">
-                                  {assessmentFeedback.correct} / {assessmentFeedback.total} correct
-                                </p>
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              {assessmentReview.map((item) => (
-                                <div
-                                  key={item.id}
-                                  className="rounded-xl border border-amber-200 bg-white p-3 text-xs text-slate-700"
-                                >
-                                  <p className="font-semibold text-slate-900">{item.prompt}</p>
-                                  <p
-                                    className={`mt-2 font-semibold ${
-                                      item.isCorrect ? 'text-emerald-700' : 'text-rose-700'
-                                    }`}
-                                  >
-                                    {item.isCorrect ? 'Correct' : 'Needs Review'}
-                                  </p>
-                                  <p className="text-slate-600">You chose: {item.chosenOption}</p>
-                                  {!item.isCorrect ? (
-                                    <p className="text-slate-600">Correct answer: {item.correctOption}</p>
-                                  ) : null}
-                                  {item.explanation ? (
-                                    <p className="mt-1 text-slate-500">Why: {item.explanation}</p>
-                                  ) : null}
+                              {interaction.toolResponses?.length ? (
+                                <div className="space-y-3">
+                                  {interaction.toolResponses.map(tool => (
+                                    <AIToolResponseCard key={tool.id} response={tool} />
+                                  ))}
                                 </div>
-                              ))}
+                              ) : null}
+                              {interaction.response?.trim() && (
+                                <>
+                                  <LLMMessage content={interaction.response} onCitationClick={onOpenDocument} />
+                                  <VerifiedSmilesBlock sourceText={interaction.response} />
+                                </>
+                              )}
                             </div>
                           </div>
-                        ) : null}
-                        {assessmentGoalHint ? (
-                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                            <p className="font-semibold uppercase tracking-wide text-amber-700">Goal Guidance</p>
-                            <p className="mt-1 text-amber-800">{assessmentGoalHint}</p>
-                          </div>
-                        ) : null}
-                        {goalBuddySummary ? (
-                          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
-                            <p className="font-semibold uppercase tracking-wide text-blue-700">Goal Buddy Insight</p>
-                            <p className="mt-1 text-blue-800">{goalBuddySummary}</p>
-                          </div>
-                        ) : null}
+                        )}
                       </div>
-                    );
-                  case 'plan':
-                    return (
-                      <div className="space-y-4">
-                        <div className="grid md:grid-cols-3 gap-3">
-                          <label className="md:col-span-2 flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                            Topic to Map
-                            <input
-                              value={planFocus}
-                              onChange={(event) => setPlanFocus(event.target.value)}
-                              placeholder="e.g., Resonance in benzene or acid-base titrations"
-                              className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                            />
-                          </label>
-                          <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                            Learner Level
-                            <select
-                              value={planLevel}
-                              onChange={(event) => setPlanLevel(event.target.value as PlanLevel)}
-                              className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                            >
-                              <option value="beginner">Beginner</option>
-                              <option value="intermediate">Intermediate</option>
-                              <option value="advanced">Advanced</option>
-                            </select>
-                          </label>
-                        </div>
-                        <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                          Preferred Format
-                          <select
-                            value={planPreference}
-                            onChange={(event) => setPlanPreference(event.target.value)}
-                            className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                          >
-                            {SRL_PLAN_PREFERENCES.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleBuildPlan}
-                          disabled={isLoading || (!planFocus.trim() && !goalTopic.trim())}
-                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Route size={16} />
-                          Generate Adaptive Pathway
-                        </button>
-
-                        {/* AI-Generated Adaptive Plan */}
-                        <div className="mt-6">
-                          <AdaptivePlan
-                            onPlanGenerated={(nodes, edges) => {
-                              setPlanNodesState(nodes);
-                              setPlanEdgesState(edges);
-                              setPlanFocus(planFocus || goalTopic || 'AI-Generated Plan');
-                            }}
-                            initialTopic={planFocus || goalTopic}
-                          />
-                        </div>
-
-                        {/* Manual Planning Mind Map */}
-                        <div className="mt-6">
-                          <div className="flex items-center gap-2 mb-4">
-                            <div className="h-px bg-gray-700 flex-1"></div>
-                            <span className="text-xs text-gray-500 uppercase tracking-wide">Or Build Manually</span>
-                            <div className="h-px bg-gray-700 flex-1"></div>
-                          </div>
-                          <PlanningMindMap
-                            nodes={planNodesState}
-                            edges={planEdgesState}
-                            scenarios={planScenariosState}
-                            onAddStep={handleAddPlanNode}
-                            onUpdateStatus={handleUpdatePlanNodeStatus}
-                            onRunSimulation={handleRunPlanSimulation}
-                            onNewPlan={handleNewPlan}
-                            isBusy={isLoading}
-                          />
-                        </div>
-                      </div>
-                    );
-                  case 'monitor':
-                    return (
-                      <div className="space-y-4">
-                        <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                          Concept or Skill
-                          <input
-                            value={monitorFocus}
-                            onChange={(event) => setMonitorFocus(event.target.value)}
-                            placeholder="e.g., Predicting NMR splitting patterns"
-                            className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                          />
-                        </label>
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            Confidence Rating
-                          </p>
-                          <div className="mt-2 flex gap-2">
-                            {[1, 2, 3, 4, 5].map((rating) => (
-                              <button
-                                key={rating}
-                                type="button"
-                                onClick={() => setMonitorRating(rating)}
-                                className={`h-9 w-9 rounded-lg border text-xs font-semibold transition ${
-                                  monitorRating === rating
-                                    ? 'border-sky-600 bg-sky-600 text-white'
-                                    : 'border-slate-300 bg-white text-slate-700 hover:border-sky-400 hover:bg-sky-50'
-                                }`}
-                              >
-                                {rating}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                          Notes
-                          <textarea
-                            value={monitorNotes}
-                            onChange={(event) => setMonitorNotes(event.target.value)}
-                            rows={3}
-                            placeholder="Where exactly did confidence dip or spike?"
-                            className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleMonitoringFeedback}
-                          disabled={isLoading || monitorRating === null || !monitorFocus.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Activity size={16} />
-                          Generate Monitoring Feedback
-                        </button>
-                        <MonitoringDashboard
-                          momentumScore={momentumScore}
-                          phaseStreak={phaseStreak}
-                          coachEnergy={coachEnergy}
-                          experiencePoints={experiencePoints}
-                          streakBonus={streakBonus}
-                          checkins={monitoringCheckins}
-                          progressTrend={monitoringAnalytics.trend}
-                          progressSummary={monitoringAnalytics.summary}
-                          engagementBreakdown={monitoringAnalytics.breakdown}
-                          activeTasks={monitoringAnalytics.tasks}
-                          feedbackHighlights={monitoringAnalytics.feedback}
-                          goalAlerts={monitoringAnalytics.alerts}
-                          activityCalendar={monitoringAnalytics.calendarDays}
-                          onRequestCheckin={handleRequestCheckin}
-                          onOpenInsights={handleOpenMonitoringInsights}
-                          isBusy={isLoading}
-                        />
-                      </div>
-                    );
-                  case 'reflect':
-                    return (
-                      <div className="space-y-4">
-                        <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                          Session Emotion
-                          <select
-                            value={reflectionEmotion}
-                            onChange={(event) => setReflectionEmotion(event.target.value)}
-                            className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                          >
-                            {SRL_REFLECTION_EMOTIONS.map((emotion) => (
-                              <option key={emotion} value={emotion}>
-                                {emotion}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                          Reflection Notes
-                          <textarea
-                            value={reflectionNotes}
-                            onChange={(event) => setReflectionNotes(event.target.value)}
-                            rows={4}
-                            placeholder="What clicked, what still feels fuzzy, and what surprised you?"
-                            className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleReflectionSummary}
-                          disabled={isLoading || !reflectionNotes.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <PenLine size={16} />
-                          Synthesize Reflection
-                        </button>
-                        <ReflectionTimeline
-                          entries={reflectionEntries}
-                          onCreateReflection={handleCreateReflectionEntry}
-                          onGenerateHighlightReel={handleGenerateHighlightReel}
-                          isBusy={isLoading}
-                        />
-                      </div>
-                    );
-                  case 'help':
-                    return (
-                      <div className="space-y-4">
-                        <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                          Topic
-                          <input
-                            value={helpTopic}
-                            onChange={(event) => setHelpTopic(event.target.value)}
-                            placeholder="e.g., Assigning stereochemistry for 2-bromobutane"
-                            className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                          Attempts Made
-                          <input
-                            type="number"
-                            min={1}
-                            value={helpAttempts}
-                            onChange={(event) => setHelpAttempts(Math.max(1, Number(event.target.value) || 1))}
-                            className="mt-1 w-24 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-rose-500 focus:outline-none focus:ring-2  focus:ring-rose-500/30"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs text-gray-400 uppercase tracking-wide">
-                          Support Level
-                          <select
-                            value={helpLevel}
-                            onChange={(event) => setHelpLevel(event.target.value as HelpLevel)}
-                            className="mt-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
-                          >
-                            <option value="hint">Hint</option>
-                            <option value="guided">Guided Step</option>
-                            <option value="explanation">Explanation</option>
-                          </select>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleHelpRequest}
-                          disabled={isLoading || !helpTopic.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-[#2c4066] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#34507c] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <LifeBuoy size={16} />
-                          Request Tiered Support
-                        </button>
-                        <HelpHub
-                          requests={helpRequests}
-                          onRequestHelp={handleRequestHelp}
-                          onResolve={handleResolveHelpRequest}
-                          onForecastSupport={handleHelpForecast}
-                          isBusy={isLoading}
-                        />
-                      </div>
-                    );
-                  default:
-                    return null;
-                }
-              })()}
-            </div>
-          </div>
-
-          {coachLog.length > 0 && (
-            <div className="bg-slate-50 border border-indigo-200 rounded-xl p-4 md:p-5">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                <Clock size={14} className="text-indigo-600" />
-                Coach Activity Log
-              </div>
-              <div className="mt-3 space-y-3">
-                {coachLog.map((entry) => {
-                  const meta = SRL_PHASES[entry.phase];
-                  const Icon = meta.icon;
-                  return (
-                    <div
-                      key={entry.id}
-                      className="flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-slate-700"
-                    >
-                      <Icon size={16} className={`${meta.accent} mt-[2px]`} />
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-semibold">{meta.label}</span>
-                          <span className="text-[11px] text-slate-500">{formatCoachTimestamp(entry.timestamp)}</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">{entry.note}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <div className="bg-gray-800/70 border border-indigo-700/40 rounded-xl p-4 md:p-5 flex flex-col gap-3 min-h-[280px] xl:max-h-[620px]">
-            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-indigo-200">
-              <span className="flex items-center gap-2">
-                <Sparkles size={14} />
-                Coach Output
-              </span>
-              {isLoading && (
-                <div className="inline-flex items-center gap-2 text-indigo-100">
-                  <Loader2 size={14} className="animate-spin" />
-                  <span>Generating...</span>
+                    ))
+                  )}
+                  <div ref={outputEndRef} />
                 </div>
-              )}
-            </div>
-            <div className="text-[11px] text-indigo-100/80">
-              Gemini responses for the SRL coach appear here. They are independent from the main chat assistant.
-            </div>
-            <div className="flex-1 overflow-y-auto rounded-lg border border-indigo-700/30 bg-indigo-900/10 p-3 space-y-4">
-              {coachInteractions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center text-indigo-200/70">
-                  <Wand size={28} className="mb-2 text-indigo-200" />
-                  <p className="text-sm font-semibold">Ready when you are!</p>
-                  <p className="text-xs text-indigo-100/70">Pick a phase and launch an AI-powered coaching move to see the response here.</p>
-                </div>
-              ) : (
-                coachInteractions.map((interaction) => (
-                  <div key={interaction.id} className="space-y-2">
-                    {interaction.prompt?.trim() && (
-                      <div className="flex justify-end">
-                        <div className="bg-gradient-to-br from-indigo-600 to-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[70ch] shadow-lg text-sm">
-                          <p className="text-xs font-semibold mb-1 opacity-80">Coach Prompt</p>
-                          <p>{interaction.prompt}</p>
-                        </div>
-                      </div>
-                    )}
-                    {(interaction.response?.trim() || interaction.toolResponses?.length) && (
-                      <div className="flex justify-start">
-                        <div className="bg-indigo-950/70 border border-indigo-700/50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[70ch] shadow-md space-y-3 text-sm text-indigo-100">
-                          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-200 uppercase tracking-wide">
-                            <Sparkles size={14} className="text-indigo-300" />
-                            Gemini SRL Coach
-                          </div>
-                          {interaction.toolResponses?.length ? (
-                            <div className="space-y-3">
-                              {interaction.toolResponses.map(tool => (
-                                <AIToolResponseCard key={tool.id} response={tool} />
-                              ))}
-                            </div>
-                          ) : null}
-                          {interaction.response?.trim() && (
-                            <>
-                              <LLMMessage content={interaction.response} onCitationClick={onOpenDocument} />
-                              <VerifiedSmilesBlock sourceText={interaction.response} />
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
+              </div>
+
+              <div className="rounded-2xl border border-emerald-600/40 bg-emerald-900/20 p-4 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">Mini Challenge</p>
+                    <h4 className="text-sm font-semibold text-emerald-100">
+                      {activeChallenge?.title ?? 'Pick a surprise quest'}
+                    </h4>
                   </div>
-                ))
-              )}
-              <div ref={outputEndRef} />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-emerald-600/40 bg-emerald-900/20 p-4 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">Mini Challenge</p>
-                <h4 className="text-sm font-semibold text-emerald-100">
-                  {activeChallenge?.title ?? 'Pick a surprise quest'}
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={handleChallengeSpin}
-                className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/60 bg-emerald-800/40 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-50 transition hover:bg-emerald-700/50"
-              >
-                <Wand2 size={14} />
-                Spin
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-emerald-100">
-              {activeChallenge?.description ?? 'Spin the wheel to get a quick quest aligned with your current phase.'}
-            </p>
-            {activeChallenge && (
-              <p className="mt-2 text-[11px] text-emerald-200 uppercase tracking-wide">
-                Focus: {activeChallenge.phase === 'wildcard' ? 'Wildcard creativity' : SRL_PHASES[activeChallenge.phase].label}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">AR Molecule Preview</p>
-                <h4 className="text-sm font-semibold text-slate-800">Bring MolView into your space</h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsArPreviewActive((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded-lg border border-blue-400 bg-blue-600 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-blue-700"
-              >
-                {isArPreviewActive ? 'Close' : 'Launch'}
-              </button>
-            </div>
-            <p className="text-xs text-slate-700">
-              Use your mobile device to project molecules onto your desk for deeper spatial reasoning while you study.
-            </p>
-            {isArPreviewActive ? <ArMoleculePreview focusTopic={goalTopic || planFocus} /> : null}
-          </div>
-
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
-              <Award size={16} />
-              Badges
-            </div>
-            <div className="grid grid-cols-1 gap-2">
-              {SRL_BADGES.map((badge) => (
-                <div
-                  key={badge.id}
-                  className={`rounded-lg border px-3 py-2 text-xs transition ${
-                    unlockedBadgeIds.includes(badge.id)
-                      ? 'border-amber-400 bg-amber-100 text-amber-900 shadow-sm'
-                      : 'border-amber-200 bg-white text-amber-700'
-                  }`}
-                >
-                  <p className="font-semibold flex items-center gap-1">
-                    {badge.label}
-                    {unlockedBadgeIds.includes(badge.id) && <Sparkle size={12} className="text-amber-600" />}
-                  </p>
-                  <p className="mt-1 text-[11px] text-amber-800">{badge.description}</p>
+                  <button
+                    type="button"
+                    onClick={handleChallengeSpin}
+                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/60 bg-emerald-800/40 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-50 transition hover:bg-emerald-700/50"
+                  >
+                    <Wand2 size={14} />
+                    Spin
+                  </button>
                 </div>
-              ))}
+                <p className="mt-2 text-xs text-emerald-100">
+                  {activeChallenge?.description ?? 'Spin the wheel to get a quick quest aligned with your current phase.'}
+                </p>
+                {activeChallenge && (
+                  <p className="mt-2 text-[11px] text-emerald-200 uppercase tracking-wide">
+                    Focus: {activeChallenge.phase === 'wildcard' ? 'Wildcard creativity' : SRL_PHASES[activeChallenge.phase].label}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">AR Molecule Preview</p>
+                    <h4 className="text-sm font-semibold text-slate-800">Bring MolView into your space</h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsArPreviewActive((prev) => !prev)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-blue-400 bg-blue-600 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-blue-700"
+                  >
+                    {isArPreviewActive ? 'Close' : 'Launch'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-700">
+                  Use your mobile device to project molecules onto your desk for deeper spatial reasoning while you study.
+                </p>
+                {isArPreviewActive ? <ArMoleculePreview focusTopic={goalTopic || planFocus} /> : null}
+              </div>
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  <Award size={16} />
+                  Badges
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {SRL_BADGES.map((badge) => (
+                    <div
+                      key={badge.id}
+                      className={`rounded-lg border px-3 py-2 text-xs transition ${unlockedBadgeIds.includes(badge.id)
+                        ? 'border-amber-400 bg-amber-100 text-amber-900 shadow-sm'
+                        : 'border-amber-200 bg-white text-amber-700'
+                        }`}
+                    >
+                      <p className="font-semibold flex items-center gap-1">
+                        {badge.label}
+                        {unlockedBadgeIds.includes(badge.id) && <Sparkle size={12} className="text-amber-600" />}
+                      </p>
+                      <p className="mt-1 text-[11px] text-amber-800">{badge.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   );

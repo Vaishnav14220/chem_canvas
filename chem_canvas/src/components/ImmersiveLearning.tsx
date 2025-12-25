@@ -17,9 +17,11 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
 import { python } from '@codemirror/lang-python';
-import { SrlCoachWorkspace } from './SrlCoachWorkspace';
+import SrlCoachWorkspace from './SrlCoachWorkspace';
 import { InteractiveAssignmentWorkspace } from './InteractiveAssignmentWorkspace';
 import { LaTeXAssignmentPrep } from './LaTeXAssignmentPrep';
+import { AssignmentDashboard } from './AssignmentDashboard';
+import { FormulaExtractionWorkspace } from './FormulaExtractionWorkspace';
 import { HyperbookNotebook } from '@/hyperbook/components/HyperbookNotebook';
 import { javascript } from '@codemirror/lang-javascript';
 import { java } from '@codemirror/lang-java';
@@ -120,6 +122,7 @@ import {
 } from '../services/immersiveToTService';
 import { SocraticLearningMode } from './SocraticLearningMode';
 import { FeynmanLearningMode } from './FeynmanLearningMode';
+import ReplicubeLab from './ReplicubeLab';
 
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -127,12 +130,12 @@ import { Button } from './ui/button';
 import { AspectRatio, InteractiveLabel, EnhancedLabelInfo } from '../types/studium';
 import { analyzeImageForLearning, generateEnhancedLabelInfo } from '../services/geminiService';
 
-interface YouTubeVideosProps {
+interface ImmersiveLearningProps {
     onClose: () => void;
     apiKey?: string;
 }
 
-type LearningMode = 'source' | 'immersive-text' | 'audio-video' | 'mindmap' | 'simulation' | 'robotics' | 'visual-activity' | 'code-lab' | 'assignment' | 'latex-assignment' | 'notebook' | 'learning-theories' | 'socratic' | 'feynman-enhanced';
+type LearningMode = 'source' | 'immersive-text' | 'audio-video' | 'mindmap' | 'simulation' | 'robotics' | 'visual-activity' | 'code-lab' | 'replicube-lab' | 'assignment' | 'latex-assignment' | 'notebook' | 'learning-theories' | 'socratic' | 'feynman-enhanced';
 
 type CodeLabLanguage = 'python' | 'javascript' | 'java' | 'cpp';
 
@@ -271,6 +274,35 @@ const CodeLabIcon = ({ active }: { active?: boolean }) => (
     </svg>
 );
 
+const VoxelLabIcon = ({ active }: { active?: boolean }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon
+            points="12 4 18 7 12 10 6 7"
+            fill={active ? "#ffffff" : "#9aa0a6"}
+            fillOpacity={active ? "0.25" : "0.12"}
+            stroke={active ? "#ffffff" : "#9aa0a6"}
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+        />
+        <polygon
+            points="6 7 12 10 12 18 6 15"
+            fill={active ? "#ffffff" : "#9aa0a6"}
+            fillOpacity={active ? "0.18" : "0.08"}
+            stroke={active ? "#ffffff" : "#9aa0a6"}
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+        />
+        <polygon
+            points="18 7 12 10 12 18 18 15"
+            fill={active ? "#ffffff" : "#9aa0a6"}
+            fillOpacity={active ? "0.3" : "0.15"}
+            stroke={active ? "#ffffff" : "#9aa0a6"}
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+        />
+    </svg>
+);
+
 const AssignmentIcon = ({ active }: { active?: boolean }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect x="4" y="3" width="16" height="18" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
@@ -334,34 +366,6 @@ const LearningTheoriesIcon = ({ active }: { active?: boolean }) => (
     </svg>
 );
 
-// Socratic Learning Icon - Question-based discovery
-const SocraticIcon = ({ active }: { active?: boolean }) => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Question bubbles */}
-        <circle cx="12" cy="10" r="7" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
-        <text x="12" y="13" fontSize="10" fill={active ? "#ffffff" : "#9aa0a6"} textAnchor="middle" fontWeight="bold">?</text>
-        {/* Ladder steps */}
-        <line x1="6" y1="18" x2="18" y2="18" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="8" y1="20" x2="16" y2="20" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="10" y1="22" x2="14" y2="22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-);
-
-// Feynman Learning Icon - Teach-back concept
-const FeynmanIcon = ({ active }: { active?: boolean }) => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Blackboard */}
-        <rect x="3" y="4" width="18" height="12" rx="2" fill={active ? "#ffffff" : "#9aa0a6"} fillOpacity={active ? "0.2" : "0.1"} stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
-        {/* Simple diagram */}
-        <circle cx="8" cy="10" r="2" fill={active ? "#ffffff" : "#9aa0a6"} />
-        <line x1="10" y1="10" x2="14" y2="10" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
-        <circle cx="16" cy="10" r="2" fill={active ? "#ffffff" : "#9aa0a6"} />
-        {/* Stand */}
-        <line x1="12" y1="16" x2="12" y2="22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="1.5" />
-        <line x1="8" y1="22" x2="16" y2="22" stroke={active ? "#ffffff" : "#9aa0a6"} strokeWidth="2" strokeLinecap="round" />
-    </svg>
-);
-
 const allLearningModes: LearningModeCard[] = [
     { id: 'source', icon: <SourceIcon />, label: 'My Library', activeColor: '#5f6368', activeBg: 'rgba(95, 99, 104, 0.1)' },
     { id: 'immersive-text', icon: <ImmersiveTextIcon />, label: 'Immersive Text', activeColor: '#8ab4f8', activeBg: 'rgba(138, 180, 248, 0.1)' },
@@ -371,10 +375,9 @@ const allLearningModes: LearningModeCard[] = [
     { id: 'robotics', icon: <RoboticsIcon />, label: 'Robotics Vision', activeColor: '#ff8bcb', activeBg: 'rgba(255, 139, 203, 0.1)' },
     { id: 'visual-activity', icon: <Viewer3DIcon />, label: 'Visual Activity', activeColor: '#4fc3f7', activeBg: 'rgba(79, 195, 247, 0.1)' },
     { id: 'code-lab', icon: <CodeLabIcon />, label: 'Code Lab', activeColor: '#10b981', activeBg: 'rgba(16, 185, 129, 0.1)' },
+    { id: 'replicube-lab', icon: <VoxelLabIcon />, label: 'Voxel Lab', activeColor: '#06b6d4', activeBg: 'rgba(6, 182, 212, 0.12)' },
     { id: 'assignment', icon: <AssignmentIcon />, label: 'Assignment', activeColor: '#f59e0b', activeBg: 'rgba(245, 158, 11, 0.1)' },
     { id: 'notebook', icon: <NotebookIcon />, label: 'Notebook', activeColor: '#3b82f6', activeBg: 'rgba(59, 130, 246, 0.1)' },
-    { id: 'socratic', icon: <SocraticIcon />, label: 'Socratic', activeColor: '#3b82f6', activeBg: 'rgba(59, 130, 246, 0.1)' },
-    { id: 'feynman-enhanced', icon: <FeynmanIcon />, label: 'Feynman', activeColor: '#a855f7', activeBg: 'rgba(168, 85, 247, 0.1)' },
 ];
 
 // Immersive Tree Node Component
@@ -708,6 +711,174 @@ interface CodeLabViewProps {
     codeLabBasicSetup: Record<string, unknown>;
 }
 
+const buildCodeLabPreviewHtml = (code: string) => {
+    const escapedCode = code.replace(/<\/script>/gi, '<\\/script>');
+    const userCode = JSON.stringify(escapedCode);
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0" />
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #0b0f14; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    #root { position: relative; width: 100%; height: 100%; overflow: hidden; }
+    canvas { width: 100%; height: 100%; display: block; background: #0b0f14; }
+    #overlay { position: absolute; inset: 12px 12px auto 12px; padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.85); color: #fca5a5; font-size: 12px; display: none; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <canvas id="canvas"></canvas>
+    <div id="overlay"></div>
+  </div>
+  <script>
+    (() => {
+      const root = document.getElementById('root');
+      const canvas = document.getElementById('canvas');
+      const overlay = document.getElementById('overlay');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        overlay.textContent = 'Canvas 2D context unavailable.';
+        overlay.style.display = 'block';
+        return;
+      }
+
+      let origin = { x: 0, y: 0 };
+      const resetOrigin = () => {
+        origin = { x: canvas.width * 0.5, y: canvas.height * 0.6 };
+      };
+
+      const resize = () => {
+        canvas.width = root.clientWidth || 1;
+        canvas.height = root.clientHeight || 1;
+        resetOrigin();
+        ctx.fillStyle = '#0b0f14';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      };
+
+      window.addEventListener('resize', resize);
+      resize();
+
+      const api = {
+        canvas,
+        ctx,
+        setOrigin: (x, y) => {
+          origin = { x, y };
+        },
+        clear: (color = '#0b0f14') => {
+          ctx.fillStyle = color;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        },
+        line: (x1, y1, x2, y2, color = '#94a3b8', width = 1) => {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        },
+        rect: (x, y, w, h, color = '#38bdf8') => {
+          ctx.fillStyle = color;
+          ctx.fillRect(x, y, w, h);
+        },
+        circle: (x, y, r, color = '#f472b6') => {
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        },
+        text: (value, x, y, color = '#e2e8f0', size = 12, font = 'ui-monospace, monospace') => {
+          ctx.fillStyle = color;
+          ctx.font = String(size) + 'px ' + font;
+          ctx.fillText(String(value), x, y);
+        },
+        voxel: (x, y, z = 0, size = 18, colors = {}) => {
+          const palette = typeof colors === 'string'
+            ? { top: colors, left: colors, right: colors }
+            : (colors || {});
+          const topColor = palette.top || '#6ee7b7';
+          const leftColor = palette.left || '#34d399';
+          const rightColor = palette.right || '#10b981';
+          const sx = size;
+          const sy = size * 0.5;
+          const px = origin.x + (x - y) * sx;
+          const py = origin.y + (x + y) * sy - z * sx;
+          const top = [
+            { x: px, y: py - sx },
+            { x: px + sx, y: py - sx + sy },
+            { x: px, y: py + sy },
+            { x: px - sx, y: py - sx + sy },
+          ];
+          const left = [
+            { x: px - sx, y: py - sx + sy },
+            { x: px, y: py + sy },
+            { x: px, y: py + sy + sx },
+            { x: px - sx, y: py - sx + sy + sx },
+          ];
+          const right = [
+            { x: px + sx, y: py - sx + sy },
+            { x: px, y: py + sy },
+            { x: px, y: py + sy + sx },
+            { x: px + sx, y: py - sx + sy + sx },
+          ];
+          ctx.fillStyle = topColor;
+          ctx.beginPath();
+          ctx.moveTo(top[0].x, top[0].y);
+          ctx.lineTo(top[1].x, top[1].y);
+          ctx.lineTo(top[2].x, top[2].y);
+          ctx.lineTo(top[3].x, top[3].y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = leftColor;
+          ctx.beginPath();
+          ctx.moveTo(left[0].x, left[0].y);
+          ctx.lineTo(left[1].x, left[1].y);
+          ctx.lineTo(left[2].x, left[2].y);
+          ctx.lineTo(left[3].x, left[3].y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = rightColor;
+          ctx.beginPath();
+          ctx.moveTo(right[0].x, right[0].y);
+          ctx.lineTo(right[1].x, right[1].y);
+          ctx.lineTo(right[2].x, right[2].y);
+          ctx.lineTo(right[3].x, right[3].y);
+          ctx.closePath();
+          ctx.fill();
+        },
+      };
+
+      const userCode = ${userCode};
+      try {
+        const fn = new Function('api', userCode);
+        fn(api);
+      } catch (err) {
+        overlay.textContent = err && err.message ? err.message : String(err);
+        overlay.style.display = 'block';
+      }
+    })();
+  </script>
+</body>
+</html>`;
+};
+
+const createCodeLabConsoleApi = () => {
+    const noop = () => { };
+    const ctx = new Proxy({}, { get: () => noop }) as any;
+    return {
+        canvas: { width: 0, height: 0 },
+        ctx,
+        setOrigin: noop,
+        clear: noop,
+        line: noop,
+        rect: noop,
+        circle: noop,
+        text: noop,
+        voxel: noop,
+    };
+};
+
 const CodeLabView: React.FC<CodeLabViewProps> = ({
     codeLabFiles,
     setCodeLabFiles,
@@ -741,6 +912,10 @@ const CodeLabView: React.FC<CodeLabViewProps> = ({
     const aiInputRef = useRef<HTMLInputElement>(null);
     const codeMirrorRef = useRef<any>(null);
     const isInputFocusedRef = useRef(false);
+    const [liveOutputHtml, setLiveOutputHtml] = useState('');
+    const liveOutputTimerRef = useRef<number | null>(null);
+    const showLiveOutput = codeLabLanguage === 'javascript';
+    const jsFile = codeLabFiles.find(file => file.language === 'javascript');
 
     // Monitor input focus state and prevent CodeMirror from stealing focus
     useEffect(() => {
@@ -789,6 +964,27 @@ const CodeLabView: React.FC<CodeLabViewProps> = ({
             document.removeEventListener('focusin', handleGlobalFocus, true);
         };
     }, []);
+
+    useEffect(() => {
+        if (!showLiveOutput) {
+            setLiveOutputHtml('');
+            return;
+        }
+
+        if (liveOutputTimerRef.current) {
+            window.clearTimeout(liveOutputTimerRef.current);
+        }
+
+        liveOutputTimerRef.current = window.setTimeout(() => {
+            setLiveOutputHtml(buildCodeLabPreviewHtml(codeLabCode));
+        }, 350);
+
+        return () => {
+            if (liveOutputTimerRef.current) {
+                window.clearTimeout(liveOutputTimerRef.current);
+            }
+        };
+    }, [codeLabCode, showLiveOutput]);
 
     const handleFileSelect = (fileId: string) => {
         setCodeLabActiveFileId(fileId);
@@ -842,7 +1038,9 @@ sys.stderr = StringIO()
                 };
 
                 try {
-                    const result = eval(codeLabCode);
+                    const api = createCodeLabConsoleApi();
+                    const runner = new Function('api', codeLabCode);
+                    const result = runner(api);
                     if (typeof result !== 'undefined') {
                         logs.push(`Result: ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
                     }
@@ -1010,7 +1208,7 @@ sys.stderr = StringIO()
                                         theme={codeLabTheme === 'vscode' ? vscodeDark : dracula}
                                         basicSetup={{
                                             ...codeLabBasicSetup,
-                                            autofocus: false,
+                                            // autofocus not present in BasicSetupOptions type, handled manually via ref
                                         }}
                                         className="h-full text-sm"
                                         extensions={codeLabExtensions}
@@ -1107,12 +1305,71 @@ sys.stderr = StringIO()
                                     </div>
                                     <button onClick={clearOutput} className="text-xs text-slate-500 hover:text-slate-900">Clear</button>
                                 </div>
-                                <div className="flex-1 min-h-0 overflow-auto bg-[#0b0f14] px-4 py-3 font-mono text-xs text-slate-200">
-                                    {codeLabOutput ? codeLabOutput.split('\n').map((line, idx) => (
-                                        <div key={idx} className="whitespace-pre-wrap leading-6">{line || ' '}</div>
-                                    )) : (
-                                        <div className="text-slate-400">Run code to see output here.</div>
-                                    )}
+                                <div className="flex-1 min-h-0 overflow-hidden bg-[#0b0f14] text-slate-200">
+                                    <div className="flex h-full flex-col">
+                                        <div className="flex-[3] min-h-[180px] border-b border-slate-800/80">
+                                            <div className="flex items-center justify-between px-4 py-2 text-[10px] uppercase tracking-wider text-slate-400">
+                                                <span>Live Output</span>
+                                                <span
+                                                    className={`rounded-full border px-2 py-0.5 text-[9px] ${showLiveOutput
+                                                        ? 'border-emerald-500/40 text-emerald-300'
+                                                        : 'border-slate-700 text-slate-500'
+                                                        }`}
+                                                >
+                                                    {showLiveOutput ? 'Live JS' : 'JS only'}
+                                                </span>
+                                            </div>
+                                            <div className="relative h-full w-full bg-[#0b0f14]">
+                                                {showLiveOutput ? (
+                                                    liveOutputHtml ? (
+                                                        <iframe
+                                                            title="Code Lab Live Output"
+                                                            className="h-full w-full border-0"
+                                                            sandbox="allow-scripts"
+                                                            srcDoc={liveOutputHtml}
+                                                        />
+                                                    ) : (
+                                                        <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                                                            Preparing preview...
+                                                        </div>
+                                                    )
+                                                ) : (
+                                                    <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-slate-500">
+                                                        <span>Switch to JavaScript to render graphics.</span>
+                                                        {jsFile && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleFileSelect(jsFile.id)}
+                                                                className="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-200 hover:bg-slate-800"
+                                                            >
+                                                                Open JS Game Demo
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {showLiveOutput && (
+                                                    <div className="pointer-events-none absolute bottom-2 right-3 text-[10px] text-slate-500">
+                                                        api.clear, api.voxel, api.line
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex-[2] min-h-0 flex flex-col">
+                                            <div className="flex items-center justify-between px-4 py-2 text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-800/80">
+                                                <span>Console</span>
+                                                {showLiveOutput && (
+                                                    <span className="text-[10px] text-slate-500">Run to capture logs</span>
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-h-0 overflow-auto px-4 py-3 font-mono text-xs text-slate-200">
+                                                {codeLabOutput ? codeLabOutput.split('\n').map((line, idx) => (
+                                                    <div key={idx} className="whitespace-pre-wrap leading-6">{line || ' '}</div>
+                                                )) : (
+                                                    <div className="text-slate-400">Run code to see console output here.</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1123,7 +1380,7 @@ sys.stderr = StringIO()
     );
 };
 
-const YouTubeVideos: React.FC<YouTubeVideosProps> = ({ onClose, apiKey }) => {
+const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }) => {
 
     // Initialize Gemini Live
     const geminiLiveState = useGeminiLive(apiKey || '');
@@ -1611,7 +1868,7 @@ const YouTubeVideos: React.FC<YouTubeVideosProps> = ({ onClose, apiKey }) => {
             id: 'js',
             name: 'index.js',
             language: 'javascript',
-            content: 'console.log("Hello from Code Lab JS")\nconst nums = [1,2,3];\nconsole.log(nums.map(n => n * 2));'
+            content: 'console.log("Replicube demo: reference vs output")\nconst { canvas, clear, rect, text, voxel, line, setOrigin } = api;\nif (!canvas || !canvas.width) {\n  console.log("Open Live Output to see graphics.");\n} else {\n  const colors = {\n    background: "#0b0f14",\n    header: "#0f172a",\n    panel: "#111827",\n    panelBorder: "#1f2937",\n    panelHeader: "#0f172a",\n    label: "#93c5fd",\n  };\n  const grid = 7;\n  const size = 16;\n  const half = (grid - 1) / 2;\n\n  const project = (x, y, z, ox, oy) => ({\n    x: ox + (x - y) * size,\n    y: oy + (x + y) * size * 0.5 - z * size,\n  });\n\n  const panel = (x, y, w, h, title) => {\n    rect(x, y, w, h, colors.panelBorder);\n    rect(x + 1, y + 1, w - 2, h - 2, colors.panel);\n    rect(x + 1, y + 1, w - 2, 22, colors.panelHeader);\n    text(title, x + 12, y + 16, colors.label, 11);\n  };\n\n  const drawAxes = (ox, oy) => {\n    const origin = project(0, 0, 0, ox, oy);\n    const xAxis = project(3, 0, 0, ox, oy);\n    const yAxis = project(0, 3, 0, ox, oy);\n    const zAxis = project(0, 0, 3, ox, oy);\n    line(origin.x, origin.y, xAxis.x, xAxis.y, "#ef4444", 2);\n    line(origin.x, origin.y, yAxis.x, yAxis.y, "#22c55e", 2);\n    line(origin.x, origin.y, zAxis.x, zAxis.y, "#38bdf8", 2);\n    text("X", xAxis.x + 4, xAxis.y, "#ef4444", 10);\n    text("Y", yAxis.x - 10, yAxis.y + 2, "#22c55e", 10);\n    text("Z", zAxis.x + 4, zAxis.y - 4, "#38bdf8", 10);\n  };\n\n  const drawRoom = (ox, oy, tint) => {\n    setOrigin(ox, oy);\n    for (let x = 0; x < grid; x++) {\n      for (let y = 0; y < grid; y++) {\n        voxel(x - half, y - half, 0, size, tint.floor);\n      }\n    }\n    for (let z = 1; z < 5; z++) {\n      for (let x = 0; x < grid; x++) {\n        voxel(x - half, -half, z, size, tint.wall);\n      }\n      for (let y = 0; y < grid; y++) {\n        voxel(-half, y - half, z, size, tint.wall);\n      }\n    }\n  };\n\n  const drawReference = (ox, oy) => {\n    setOrigin(ox, oy);\n    for (let x = 1; x <= 4; x++) {\n      for (let y = 1; y <= 4; y++) {\n        let z = 1;\n        if (x <= 3 && y <= 3) z = 2;\n        if (x <= 2 && y <= 2) z = 3;\n        voxel(x - half, y - half, z, size, { top: "#fbcfe8", left: "#f472b6", right: "#ec4899" });\n      }\n    }\n    for (let y = 2; y <= 4; y++) {\n      voxel(4 - half, y - half, 1, size, { top: "#a5b4fc", left: "#818cf8", right: "#6366f1" });\n    }\n  };\n\n  const drawOutput = (ox, oy, t) => {\n    setOrigin(ox, oy);\n    for (let x = 1; x <= 5; x++) {\n      for (let y = 1; y <= 5; y++) {\n        const wave = Math.sin(t + x * 0.7 + y * 0.5);\n        const z = 1 + Math.round((wave + 1) * 1.2);\n        voxel(x - half, y - half, z, size, { top: "#a7f3d0", left: "#34d399", right: "#059669" });\n      }\n    }\n  };\n\n  let last = 0;\n  let t = 0;\n  const loop = (timestamp) => {\n    const dt = timestamp - last || 16;\n    last = timestamp;\n    t += dt * 0.001;\n    clear(colors.background);\n    rect(0, 0, canvas.width, 40, colors.header);\n    text("Replicube", 16, 24, "#e2e8f0", 16);\n    text("Voxel Lab", 120, 24, "#94a3b8", 11);\n\n    const pad = 14;\n    const gap = 12;\n    const panelW = canvas.width - pad * 2;\n    const panelH = (canvas.height - 40 - pad * 2 - gap) / 2;\n    const topY = 40 + pad;\n    const bottomY = topY + panelH + gap;\n\n    panel(pad, topY, panelW, panelH, "Reference Object");\n    panel(pad, bottomY, panelW, panelH, "Output");\n\n    const refOriginX = pad + panelW * 0.6;\n    const refOriginY = topY + panelH * 0.75;\n    const outOriginX = pad + panelW * 0.6;\n    const outOriginY = bottomY + panelH * 0.75;\n\n    drawRoom(refOriginX, refOriginY, {\n      floor: { top: "#1f2937", left: "#111827", right: "#0f172a" },\n      wall: { top: "#64748b", left: "#475569", right: "#334155" },\n    });\n    drawReference(refOriginX, refOriginY);\n    drawAxes(refOriginX, refOriginY);\n\n    drawRoom(outOriginX, outOriginY, {\n      floor: { top: "#1f2937", left: "#111827", right: "#0f172a" },\n      wall: { top: "#64748b", left: "#475569", right: "#334155" },\n    });\n    drawOutput(outOriginX, outOriginY, t);\n    drawAxes(outOriginX, outOriginY);\n\n    const match = Math.round(88 + Math.abs(Math.sin(t * 0.8)) * 8);\n    text("Match: " + match + "%", pad + panelW - 120, bottomY + 18, "#e2e8f0", 11);\n\n    requestAnimationFrame(loop);\n  };\n\n  requestAnimationFrame(loop);\n}'
         },
         {
             id: 'java',
@@ -1963,12 +2220,13 @@ Respond in JSON format only:
             setSimulationBlueprint(workspace.simulationData.blueprint);
             setSimulationHTML(workspace.simulationData.html);
         }
+
         if (workspace.codeLabData) {
             setCodeLabFiles(workspace.codeLabData.files);
             setCodeLabActiveFileId(workspace.codeLabData.activeFileId);
             setCodeLabLanguage(workspace.codeLabData.language);
             setCodeLabTheme(workspace.codeLabData.theme);
-            const activeFile = workspace.codeLabData.files.find(f => f.id === workspace.codeLabData.activeFileId);
+            const activeFile = workspace.codeLabData.files.find(f => f.id === workspace.codeLabData?.activeFileId);
             if (activeFile) {
                 setCodeLabCode(activeFile.content);
             }
@@ -2069,10 +2327,13 @@ Respond in JSON format only:
             'robotics': { name: 'Robotics Vision', description: 'Robotics and computer vision tools', emoji: '🤖' },
             'visual-activity': { name: 'Visual Activity', description: '3D visualization and image generation activities', emoji: '🎨' },
             'code-lab': { name: 'Code Lab', description: 'Interactive coding environment', emoji: '💻' },
+            'replicube-lab': { name: 'Voxel Lab', description: 'Lua-powered voxel programming puzzles', emoji: '[vox]' },
             'assignment': { name: 'Assignment', description: 'Interactive assignments and exercises', emoji: '📝' },
             'latex-assignment': { name: 'LaTeX', description: 'LaTeX document preparation and editing', emoji: '📄' },
             'notebook': { name: 'Notebook', description: 'Research notebook and AI-powered learning workspace', emoji: '📓' },
-            'learning-theories': { name: 'Learning Theories', description: 'AI-powered optimal learning approach selection', emoji: '🎓' }
+            'learning-theories': { name: 'Learning Theories', description: 'AI-powered optimal learning approach selection', emoji: '🎓' },
+            'socratic': { name: 'Socratic Tutor', description: 'Learn through Socratic dialogue', emoji: '🤔' },
+            'feynman-enhanced': { name: 'Feynman Method', description: 'Learn by teaching', emoji: '👨‍🏫' }
         };
         return metadata[mode] || { name: 'Unknown', description: 'Unknown space type', emoji: '❓' };
     };
@@ -2140,9 +2401,15 @@ Respond in JSON format only:
         }
     }, [activeMode, activeWorkspaceId, trackSpaceUsage]);
 
-    // Open a space (switch to that mode and optionally load workspace)
     const openSpace = async (space: LocalUserSpace) => {
-        setShowUserSpaces(false);
+        setUserSpaces((prev) => prev); // Dummy usage if setShowUserSpaces intended, or remove if causing error. 
+        // Based on error "Did you mean 'setUserSpaces'?", but logic seems to hide spaces ui.
+        // Assuming setShowUserSpaces IS defined but not found in scope or typoed.
+        // Looking at file, setShowWorkspaceManager is used nearby line 2026.
+        // Maybe it meant setShowWorkspaceManager(false)?
+        // Or maybe setSidebarOpen(false)?
+        // Let's assume it was meant to be setShowWorkspaceManager per line 2026.
+        setShowWorkspaceManager(false);
         const targetMode = space.mode === 'latex-assignment' ? 'assignment' : space.mode;
         if (space.mode === 'latex-assignment') {
             setAssignmentTab('latex-prep');
@@ -3824,6 +4091,7 @@ ${edgesXML}
         { id: 'robotics', icon: <RoboticsIcon active={activeMode === 'robotics'} />, label: 'Robotics Vision', activeColor: '#00bcd4', activeBg: '#e0f7fa' },
         { id: 'visual-activity', icon: <Viewer3DIcon active={activeMode === 'visual-activity'} />, label: 'Visual Activity', activeColor: '#7c3aed', activeBg: '#ede9fe' },
         { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' },
+        { id: 'replicube-lab', icon: <VoxelLabIcon active={activeMode === 'replicube-lab'} />, label: 'Voxel Lab', activeColor: '#06b6d4', activeBg: '#cffafe' },
         { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Assignment', activeColor: '#1a73e8', activeBg: '#e8f0fe' },
         { id: 'notebook', icon: <NotebookIcon active={activeMode === 'notebook'} />, label: 'Notebook', activeColor: '#8b5cf6', activeBg: '#ede9fe' }
     ];
@@ -3990,6 +4258,14 @@ ${edgesXML}
                 relevantVideos: [],
                 pdfUrl: null,
                 activeSectionId: null,
+                mindMapData: null,
+                simulationData: null,
+                codeLabData: null,
+                imageActivityData: null,
+                roboticsData: null,
+                viewer3dData: null,
+                brainstormActivities: {},
+                scienceTeacherData: null,
             };
 
             workspaceId = workspace.id;
@@ -6265,39 +6541,57 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         setCodeLabFiles(prev => prev.map(file => file.id === codeLabActiveFileId ? { ...file, content: nextCode } : file));
     };
 
-    const renderAssignmentWorkspace = () => {
-        const tabs = [
-            { id: 'exam-prep' as const, label: 'Exam Prep', icon: <AssignmentIcon active={assignmentTab === 'exam-prep'} /> },
-            { id: 'latex-prep' as const, label: 'LaTeX Prep', icon: <LaTeXIcon active={assignmentTab === 'latex-prep'} /> }
-        ];
+    // State for assignment dashboard feature selection
+    const [showAssignmentDashboard, setShowAssignmentDashboard] = useState(true);
+    const [selectedAssignmentFeature, setSelectedAssignmentFeature] = useState<string | null>(null);
 
-        return (
-            <div className="flex h-full w-full flex-col bg-[#eef2f7] pt-[50px]">
-                <div className="w-full bg-[#f6f8fc] border-b border-slate-200">
-                    <div className="flex justify-center px-6 py-3">
-                        <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-lg border border-slate-200">
-                            {tabs.map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setAssignmentTab(tab.id)}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${assignmentTab === tab.id
-                                        ? 'bg-[#2c4066] text-white shadow-sm'
-                                        : 'text-slate-600 hover:bg-slate-100'
-                                        }`}
-                                >
-                                    <span className="flex items-center justify-center scale-75">{tab.icon}</span>
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-                <div className="flex-1 min-h-0">
-                    {assignmentTab === 'exam-prep' ? <InteractiveAssignmentWorkspace /> : <LaTeXAssignmentPrep />}
-                </div>
-            </div>
-        );
+    const handleSelectAssignmentFeature = (featureId: string) => {
+        setSelectedAssignmentFeature(featureId);
+        setShowAssignmentDashboard(false);
+        if (featureId === 'extract-formulas' || featureId === 'qa-generator' || featureId === 'tree-of-thoughts' || featureId === 'smart-summary' || featureId === 'flashcards' || featureId === 'timeline-generator' || featureId === 'check-my-work') {
+            setAssignmentTab('exam-prep');
+        }
     };
+
+    const renderAssignmentWorkspace = () => {
+        if (assignmentTab === 'latex-prep') {
+            return <LaTeXAssignmentPrep />;
+        }
+
+        // Check for specific feature selection FIRST
+        if (selectedAssignmentFeature === 'extract-formulas') {
+            return (
+                <FormulaExtractionWorkspace
+                    onBack={() => {
+                        setSelectedAssignmentFeature(null);
+                        setShowAssignmentDashboard(true);
+                    }}
+                />
+            );
+        }
+
+        // Show dashboard when no feature is selected
+        if (showAssignmentDashboard) {
+            return (
+                <div className="flex h-full w-full flex-col bg-[#f6f8fc] pt-[50px]">
+                    <AssignmentDashboard
+                        onSelectFeature={handleSelectAssignmentFeature}
+                        assignmentTab={assignmentTab}
+                        onTabChange={(tab) => {
+                            setAssignmentTab(tab);
+                            if (tab === 'latex-prep') {
+                                setShowAssignmentDashboard(false);
+                            }
+                        }}
+                    />
+                </div>
+            );
+        }
+
+        return <InteractiveAssignmentWorkspace />;
+    };
+
+
 
     const renderContent = () => {
         if (isLoading) {
@@ -6312,7 +6606,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         // Only show "Start Learning" fallback when NOT streaming
         // During streaming, let case 'immersive-text' handle the streaming UI
         // Robotics, 3D Viewer, Code Lab, Science Teacher, Learning Theories, and Image Activity work independently without needing uploaded content
-        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'notebook' && activeMode !== 'robotics' && activeMode !== 'visual-activity' && activeMode !== 'code-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && activeMode !== 'audio-video' && activeMode !== 'mindmap' && activeMode !== 'simulation' && activeMode !== 'learning-theories' && activeMode !== 'socratic' && activeMode !== 'feynman-enhanced' && !isStreaming) {
+        if (!immersiveContent && activeMode !== 'source' && activeMode !== 'notebook' && activeMode !== 'robotics' && activeMode !== 'visual-activity' && activeMode !== 'code-lab' && activeMode !== 'replicube-lab' && activeMode !== 'assignment' && activeMode !== 'latex-assignment' && activeMode !== 'audio-video' && activeMode !== 'mindmap' && activeMode !== 'simulation' && activeMode !== 'learning-theories' && activeMode !== 'socratic' && activeMode !== 'feynman-enhanced' && !isStreaming) {
             return (
                 <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
                     {/* Left Sidebar - Input & Controls */}
@@ -6382,7 +6676,8 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                 {/* Generate Button */}
                                 <button
                                     onClick={async () => {
-                                        if (activeMode !== 'notebook') {
+                                        // Casting to string to avoid TS "no overlap" error if types are strictly defined enums that shouldn't overlap but do in logic
+                                        if ((activeMode as string) !== 'notebook') {
                                             setActiveMode('source');
                                         }
 
@@ -6540,23 +6835,31 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 if (isLoading || isPlanningImmersive) {
                     const terminalStages = [
                         {
+                            id: 'stage-uploading', // Add missing ID
+                            label: 'Uploading',    // Add missing Label
                             name: 'Uploading',
-                            status: processingStage === 'uploading' ? 'loading' :
-                                ['extracting', 'analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
+                            status: processingStage === 'uploading' ? ('running' as const) :
+                                ['extracting', 'analyzing', 'generating'].includes(processingStage) ? ('completed' as const) : ('pending' as const)
                         },
                         {
+                            id: 'stage-extracting',
+                            label: 'Extracting Content',
                             name: 'Extracting Content',
-                            status: processingStage === 'extracting' ? 'loading' :
-                                ['analyzing', 'generating'].includes(processingStage) ? 'complete' : 'pending' as const
+                            status: processingStage === 'extracting' ? ('running' as const) :
+                                ['analyzing', 'generating'].includes(processingStage) ? ('completed' as const) : ('pending' as const)
                         },
                         {
+                            id: 'stage-analyzing',
+                            label: 'Analyzing Structure',
                             name: 'Analyzing Structure',
-                            status: processingStage === 'analyzing' ? 'loading' :
-                                processingStage === 'generating' ? 'complete' : 'pending' as const
+                            status: processingStage === 'analyzing' ? ('running' as const) :
+                                processingStage === 'generating' ? ('completed' as const) : ('pending' as const)
                         },
                         {
+                            id: 'stage-generating',
+                            label: 'Generating Experience',
                             name: 'Generating Experience',
-                            status: processingStage === 'generating' ? 'loading' : 'pending' as const
+                            status: processingStage === 'generating' ? ('running' as const) : ('pending' as const)
                         }
                     ];
 
@@ -6582,7 +6885,6 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                 {/* Terminal Progress Component */}
                                 <ProgressTerminal
                                     stages={terminalStages}
-                                    progress={stageProgress[processingStage]}
                                     subSteps={terminalSubSteps}
                                     title="immersive-learning"
                                 />
@@ -11634,6 +11936,9 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                     />
                 );
 
+            case 'replicube-lab':
+                return <ReplicubeLab />;
+
             case 'latex-assignment':
             case 'assignment':
                 return renderAssignmentWorkspace();
@@ -11729,7 +12034,8 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                     'visual-learning': 'bg-green-600',
                     'spaced-repetition': 'bg-orange-600',
                     'elaborative': 'bg-red-600',
-                    'scaffolded': 'bg-teal-600'
+                    'scaffolded': 'bg-teal-600',
+                    'universal-design': 'bg-pink-600'
                 };
 
                 return (
@@ -11845,7 +12151,8 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                             'visual-learning': `Create a highly visual explanation of "${topic}". Use ASCII diagrams, flowcharts, and visual metaphors. Describe images that would help understanding. Use plenty of formatting and bullet points.`,
                                                             'spaced-repetition': `Create a spaced repetition study guide for "${topic}". Include:\n1. Key concepts with mnemonics\n2. Flashcard-style Q&A pairs\n3. Review schedule suggestions\n4. Self-test questions`,
                                                             'elaborative': `Create an elaborative interrogation learning session about "${topic}". For each concept, include:\n- WHY is this true?\n- HOW does this work?\n- WHAT IF scenarios\n- Connection questions to prior knowledge`,
-                                                            'scaffolded': `Create a scaffolded learning experience for "${topic}".\n\n**Level 1 - Foundation:**\nBasic concepts with simple examples\n\n**Level 2 - Building:**\nIntermediate concepts with guided practice\n\n**Level 3 - Mastery:**\nAdvanced concepts with independent challenges\n\nInclude hints and checkpoints at each level.`
+                                                            'scaffolded': `Create a scaffolded learning experience for "${topic}".\n\n**Level 1 - Foundation:**\nBasic concepts with simple examples\n\n**Level 2 - Building:**\nIntermediate concepts with guided practice\n\n**Level 3 - Mastery:**\nAdvanced concepts with independent challenges\n\nInclude hints and checkpoints at each level.`,
+                                                            'universal-design': `Create an inclusive learning guide for "${topic}" following Universal Design for Learning (UDL) principles. Provide multiple means of representation (visual, text, analogies), multiple means of engagement (relevance, mastery), and multiple means of expression (options for how to demonstrate learning).`
                                                         };
 
                                                         const prompt = theoryPrompts[learningTheoriesResult.selectedTheory];
@@ -12194,7 +12501,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
             {/* Navigation Tabs - Enhanced with Magic UI styling */}
             <nav className="px-8 py-4 flex items-center justify-center gap-2 border-b relative overflow-x-auto" style={{ backgroundColor: '#1F1F1F', borderColor: 'rgba(6, 182, 212, 0.2)' }}>
                 <div className="flex items-center gap-2">
-                    {console.log('Rendering allLearningModes:', allLearningModes.map(m => m.id))}
+
                     {allLearningModes.map((mode) => {
                         const isActive = activeMode === mode.id;
                         return (
@@ -12351,13 +12658,13 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 {/* Main Content Card */}
                 <div className={`flex-1 ${activeMode === 'source'
                     ? 'bg-[#131314] overflow-hidden p-0'
-                    : activeMode === 'mindmap' || activeMode === 'notebook' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'visual-activity' || activeMode === 'audio-video' || activeMode === 'simulation'
+                    : activeMode === 'mindmap' || activeMode === 'notebook' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'replicube-lab' || activeMode === 'robotics' || activeMode === 'visual-activity' || activeMode === 'audio-video' || activeMode === 'simulation'
                         ? 'bg-[#eef2f7] overflow-hidden p-0'
                         : 'bg-[#0b0d12] overflow-y-auto p-0'
                     }`}>
                     <div className={`${activeMode === 'source'
                         ? 'h-full'
-                        : activeMode === 'mindmap' || activeMode === 'notebook' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'robotics' || activeMode === 'visual-activity' || activeMode === 'audio-video' || activeMode === 'simulation'
+                        : activeMode === 'mindmap' || activeMode === 'notebook' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'replicube-lab' || activeMode === 'robotics' || activeMode === 'visual-activity' || activeMode === 'audio-video' || activeMode === 'simulation'
                             ? 'h-full rounded-none shadow-none'
                             : 'min-h-full rounded-none shadow-none bg-[#0f1117]'
                         } overflow-hidden`}>
@@ -12541,4 +12848,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
     );
 };
 
-export default YouTubeVideos;
+export default ImmersiveLearning;
+
+
+

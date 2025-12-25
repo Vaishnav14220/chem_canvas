@@ -30,6 +30,12 @@ export interface TutorResponse {
 
     /** RAG citations if any */
     citations?: Citation[];
+
+    /** Request to trigger an interactive activity */
+    activity_request?: {
+        type: 'flashcards' | 'quiz';
+        topic: string;
+    };
 }
 
 export type TutorMode = 'socratic' | 'feynman';
@@ -312,4 +318,58 @@ export interface TutorChatMessage {
 
     /** Gap map if generated (for Feynman mode) */
     gap_map?: GapMapAnalysis;
+
+    /** Embedded interactive content */
+    interactive_content?: InteractiveContentResponse;
+}
+
+// =============================================================================
+// Interactive Content Types
+// =============================================================================
+
+export interface Flashcard {
+    id: string;
+    front: string;
+    back: string;
+}
+
+export interface QuizQuestion {
+    id: string;
+    question: string;
+    options: string[];
+    correctIndex: number;
+    explanation: string;
+}
+
+export interface FillBlankQuestion {
+    id: string;
+    sentence: string; // "The process of _____ converts light energy"
+    blanks: string[]; // ["photosynthesis"]
+    hint?: string;
+}
+
+export interface MatchingPair {
+    id: string;
+    left: string;
+    right: string;
+}
+
+export interface MatchingActivity {
+    id: string;
+    title: string;
+    pairs: MatchingPair[];
+}
+
+export type ActivityType = 'quiz' | 'flashcards' | 'fill_blank' | 'matching' | 'visualization';
+
+export interface InteractiveContentResponse {
+    flashcards?: Flashcard[];
+    quiz?: QuizQuestion;
+    fill_blank?: FillBlankQuestion;
+    matching?: MatchingActivity;
+    visualization?: {
+        topic: string;
+        description: string;
+        imageUrl?: string;
+    };
 }

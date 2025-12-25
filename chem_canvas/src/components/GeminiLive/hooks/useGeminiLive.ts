@@ -45,6 +45,13 @@ interface CanvasProteinToolArgs extends CanvasProteinPlacementRequest { }
 
 interface CanvasReactionToolArgs extends CanvasReactionPlacementRequest { }
 
+type StickyNotePayload = {
+  id: string;
+  text: string;
+  speaker?: 'user' | 'model';
+  isFinal?: boolean;
+};
+
 const THEORETICAL_KEYWORDS = [
   'math', 'algebra', 'calculus', 'geometry', 'equation', 'proof', 'theorem', 'derivation',
   'physics', 'chemistry', 'reaction', 'thermodynamics', 'quantum', 'formula', 'analysis',
@@ -806,6 +813,7 @@ export const useGeminiLive = (
   const canvasTextInsertionHandlerRef = useRef<((text: string) => void) | null>(null);
   const canvasMarkdownInsertionHandlerRef = useRef<((payload: { text: string; heading?: string }) => void) | null>(null);
   const canvasHandwritingHandlerRef = useRef<((text: string) => void) | null>(null);
+  const canvasStickyNoteHandlerRef = useRef<((payload: StickyNotePayload) => void) | null>(null);
   const canvasNewSectionHandlerRef = useRef<(() => void) | null>(null);
   const canvasMoleculeInsertionHandlerRef = useRef<((payload: CanvasMoleculePlacementRequest) => Promise<boolean> | boolean) | null>(null);
   const canvasProteinInsertionHandlerRef = useRef<((payload: CanvasProteinPlacementRequest) => Promise<boolean> | boolean) | null>(null);
@@ -823,6 +831,11 @@ export const useGeminiLive = (
   const canvasWritePerformedThisTurnRef = useRef<boolean>(false);
   const lastAutoShareRef = useRef<{ text: string; timestamp: number }>({ text: '', timestamp: 0 });
   const isHandwritingRequestRef = useRef<boolean>(false);
+  const lastStickyNoteUpdateRef = useRef<{ id: string | null; length: number; timestamp: number }>({
+    id: null,
+    length: 0,
+    timestamp: 0,
+  });
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -859,6 +872,10 @@ export const useGeminiLive = (
 
   const setCanvasHandwritingHandler = useCallback((handler: (text: string) => void) => {
     canvasHandwritingHandlerRef.current = handler;
+  }, []);
+
+  const setCanvasStickyNoteHandler = useCallback((handler: (payload: StickyNotePayload) => void) => {
+    canvasStickyNoteHandlerRef.current = handler;
   }, []);
 
   const setCanvasNewSectionHandler = useCallback((handler: () => void) => {
@@ -2033,16 +2050,16 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 // }
               }
 
-              setTranscripts(prev => {
-                const id = currentModelIdRef.current || uuidv4();
-                currentModelIdRef.current = id;
+              const noteId = currentModelIdRef.current || uuidv4();
+              currentModelIdRef.current = noteId;
 
-                const existing = prev.find(m => m.id === id);
+              setTranscripts(prev => {
+                const existing = prev.find(m => m.id === noteId);
                 if (existing) {
-                  return prev.map(m => m.id === id ? { ...m, text: currentOutputRef.current } : m);
+                  return prev.map(m => m.id === noteId ? { ...m, text: currentOutputRef.current } : m);
                 } else {
                   return [...prev, {
-                    id,
+                    id: noteId,
                     text: currentOutputRef.current,
                     sender: 'model',
                     timestamp: new Date(),
@@ -2050,6 +2067,23 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                   }];
                 }
               });
+
+              const liveNoteText = currentOutputRef.current.trim();
+              if (liveNoteText && canvasStickyNoteHandlerRef.current) {
+                const now = Date.now();
+                const lastUpdate = lastStickyNoteUpdateRef.current;
+                const lengthDelta = noteId === lastUpdate.id ? liveNoteText.length - lastUpdate.length : liveNoteText.length;
+                const shouldUpdate = lengthDelta >= 12 || now - lastUpdate.timestamp >= 500;
+                if (shouldUpdate) {
+                  canvasStickyNoteHandlerRef.current({
+                    id: noteId,
+                    text: liveNoteText,
+                    speaker: 'model',
+                    isFinal: false
+                  });
+                  lastStickyNoteUpdateRef.current = { id: noteId, length: liveNoteText.length, timestamp: now };
+                }
+              }
             } else if (message.serverContent?.inputTranscription) {
               const text = message.serverContent.inputTranscription.text;
               currentInputRef.current += text;
@@ -2100,6 +2134,20 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
                 learningCanvasUpdatedThisTurnRef.current = false;
 
                 const trimmedResponse = completedText.trim();
+
+                if (trimmedResponse && canvasStickyNoteHandlerRef.current) {
+                  canvasStickyNoteHandlerRef.current({
+                    id,
+                    text: trimmedResponse,
+                    speaker: 'model',
+                    isFinal: true
+                  });
+                  lastStickyNoteUpdateRef.current = {
+                    id,
+                    length: trimmedResponse.length,
+                    timestamp: Date.now()
+                  };
+                }
 
                 // Always push structured text to canvas (markdown handler if available)
                 const pendingWrite = pendingCanvasWriteRef.current;
@@ -2321,6 +2369,7 @@ Please remember: Only discuss topics that are actually in this PDF document. Do 
     setCanvasTextInsertionHandler,
     setCanvasMarkdownInsertionHandler,
     setCanvasHandwritingHandler,
+    setCanvasStickyNoteHandler,
     setCanvasNewSectionHandler,
     setCanvasMoleculeInsertionHandler,
     setCanvasProteinInsertionHandler,

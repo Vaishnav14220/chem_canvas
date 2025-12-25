@@ -18,6 +18,9 @@ import {
     HINT_LEVEL_LABELS,
     DEFAULT_AUTO_MODE_POLICY,
     AutoModeTrigger,
+    InteractiveContentResponse,
+    Flashcard,
+    QuizQuestion
 } from '../types/tutorTypes';
 
 // Model to use for tutor responses
@@ -53,6 +56,28 @@ const SOCRATIC_SYSTEM_PROMPT = `You are an expert Socratic tutor. Your role is t
 - Note missing key ideas
 - Never be discouraging - phrase gaps as opportunities
 
+## INTERACTIVE ACTIVITIES (MANDATORY - USE VARIETY):
+You MUST regularly trigger interactive activities to make learning engaging. Choose the MOST APPROPRIATE type:
+
+| Activity Type | When to Use | Example |
+|---------------|-------------|---------|
+| **flashcards** | New terms/definitions | "Atom", "Molecule", "Photosynthesis" |
+| **quiz** | Test specific knowledge | "What is the atomic number of Carbon?" |
+| **fill_blank** | Reinforce key processes | "The process of _____ converts CO2 into glucose" |
+| **matching** | Connect related concepts | Match: Atom → Building block, Molecule → Group of atoms |
+| **visualization** | Complex visual concepts | Diagrams, processes, structures |
+
+### SELECTION GUIDELINES:
+- After introducing DEFINITIONS → **flashcards**
+- After explaining RELATIONSHIPS → **matching**
+- After explaining PROCESSES → **fill_blank**
+- After 3-4 exchanges → **quiz** to test
+- For COMPLEX visual concepts → **visualization**
+- NEVER have more than 3 text-only exchanges in a row!
+
+Include "activity_request": { "type": "quiz" | "flashcards" | "fill_blank" | "matching" | "visualization", "topic": "specific concept" }
+
+
 ## RESPONSE FORMAT:
 You MUST respond with valid JSON matching this schema:
 {
@@ -76,6 +101,10 @@ You MUST respond with valid JSON matching this schema:
     "hint_level": 0-4,
     "should_switch_mode": false,
     "attempt_count": 1
+  },
+  "activity_request": {
+    "type": "flashcards" | "quiz",
+    "topic": "string"
   }
 }`;
 
@@ -864,7 +893,8 @@ function parseTutorResponse(responseText: string, expectedMode: TutorMode): Tuto
                 should_switch_mode: false,
                 attempt_count: 1
             },
-            citations: parsed.citations || []
+            citations: parsed.citations || [],
+            activity_request: parsed.activity_request
         };
 
         // Include gap_map if present (Feynman mode)
@@ -954,4 +984,49 @@ export function updateSessionState(
     }
 
     return newState;
+}
+
+/**
+ * Generate interactive content (various activity types)
+ */
+export async function generateInteractiveContent(
+    topic: string,
+    context: string,
+    type: 'flashcards' | 'quiz' | 'fill_blank' | 'matching' | 'visualization'
+): Promise<InteractiveContentResponse> {
+
+    const prompts: Record<string, string> = {
+        flashcards: `Create 5 flashcards for key terms.
+RESPOND WITH JSON: { "flashcards": [{ "id": "1", "front": "Term", "back": "Definition" }, ...] }`,
+
+        quiz: `Create 1 multiple-choice quiz question with 4 options.
+RESPOND WITH JSON: { "quiz": { "id": "q1", "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..." } }`,
+
+        fill_blank: `Create a fill-in-the-blank exercise. Use _____ for blank(s).
+RESPOND WITH JSON: { "fill_blank": { "id": "fb1", "sentence": "The process of _____ converts...", "blanks": ["photosynthesis"], "hint": "It involves sunlight" } }`,
+
+        matching: `Create a matching exercise with 4 pairs of related concepts.
+RESPOND WITH JSON: { "matching": { "id": "m1", "title": "Match the concepts", "pairs": [{ "id": "p1", "left": "Atom", "right": "Building block of matter" }, ...] } }`,
+
+        visualization: `Describe a visualization/diagram that would help explain this concept.
+RESPOND WITH JSON: { "visualization": { "topic": "...", "description": "Detailed description of the diagram..." } }`
+    };
+
+    const prompt = `You are an expert tutor creating interactive learning materials.
+
+TOPIC: ${topic}
+CONTEXT: ${context}
+
+TASK: ${prompts[type]}
+
+Generate VALID JSON ONLY, no markdown code blocks.`;
+
+    try {
+        const response = await generateTextContent(prompt, { model: TUTOR_MODEL, thinking: 'high' });
+        const jsonStr = extractJsonBlock(response) || response;
+        return JSON.parse(jsonStr) as InteractiveContentResponse;
+    } catch (error) {
+        console.error('Error generating interactive content:', error);
+        return {};
+    }
 }

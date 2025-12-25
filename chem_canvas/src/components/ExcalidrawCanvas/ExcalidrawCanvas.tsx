@@ -47,8 +47,16 @@ export interface DiagramElement {
   backgroundColor?: string;
 }
 
+type StickyNotePayload = {
+  id: string;
+  text: string;
+  speaker?: 'user' | 'model';
+  isFinal?: boolean;
+};
+
 export interface ExcalidrawCanvasRef {
   addHandwrittenText: (text: string) => Promise<void>;
+  addStickyNote: (payload: StickyNotePayload) => Promise<void>;
   startNewSection: () => void;
   clearCanvas: () => void;
   getElements: () => any[];
@@ -78,6 +86,21 @@ const MAX_Y_BEFORE_RESET = 3000;
 const EXTRA_CHUNK_SPACING = 15; // modest spacing between streamed chunks
 const MAX_CHARS_PER_LINE = 100; // wider text to use full canvas width
 const MIN_CHARS_PER_LINE = 40;
+
+const STICKY_NOTE_WIDTH = 320;
+const STICKY_NOTE_MIN_HEIGHT = 140;
+const STICKY_NOTE_PADDING = 16;
+const STICKY_NOTE_LINE_HEIGHT = 22;
+const STICKY_NOTE_GAP = 26;
+const STICKY_NOTE_X = 60;
+const STICKY_NOTE_START_Y = 60;
+const STICKY_NOTE_FONT_SIZE = 16;
+const STICKY_NOTE_CHAR_WIDTH = 8;
+const STICKY_NOTE_MIN_CHARS_PER_LINE = 22;
+const STICKY_NOTE_STYLES = {
+  model: { backgroundColor: '#FEF3C7', strokeColor: '#F59E0B', textColor: '#92400E' },
+  user: { backgroundColor: '#DBEAFE', strokeColor: '#3B82F6', textColor: '#1E40AF' },
+};
 
 // Helper to format LaTeX to readable text
 const formatLatex = (text: string): string => {
@@ -201,13 +224,43 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
     const lastContainerIdRef = useRef<string | null>(null); // Track which container we are writing in
     const currentTextBufferRef = useRef<string>('');
     const elementStartYRef = useRef<number>(50);
+    const stickyNotesRef = useRef<Record<string, {
+      rectId: string;
+      textId: string;
+      groupId: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      lastText: string;
+      speaker: 'user' | 'model';
+    }>>({});
+    const stickyNoteCursorRef = useRef<{ x: number; y: number }>({
+      x: STICKY_NOTE_X,
+      y: STICKY_NOTE_START_Y,
+    });
+    const lastStickyNoteIdRef = useRef<string | null>(null);
 
     // Reset Y position when canvas opens
     useEffect(() => {
       if (isOpen) {
         currentYPosition = 50;
+        stickyNotesRef.current = {};
+        stickyNoteCursorRef.current = { x: STICKY_NOTE_X, y: STICKY_NOTE_START_Y };
+        lastStickyNoteIdRef.current = null;
       }
     }, [isOpen]);
+
+    const formatStickyNoteText = (text: string, speaker: 'user' | 'model') => {
+      const label = speaker === 'user' ? 'You' : 'Gemini';
+      return `${label}:\n${text.trim()}`;
+    };
+
+    const getStickyNotePosition = (height: number) => {
+      const position = { x: stickyNoteCursorRef.current.x, y: stickyNoteCursorRef.current.y };
+      stickyNoteCursorRef.current.y = position.y + height + STICKY_NOTE_GAP;
+      return position;
+    };
 
     // Expose methods to parent component
     useImperativeHandle(ref, () => ({
@@ -405,6 +458,132 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
         }
       },
 
+      addStickyNote: async (payload: StickyNotePayload) => {
+        if (!excalidrawAPIRef.current) {
+          console.warn('[ExcalidrawCanvas] API not ready yet');
+          return;
+        }
+
+        const trimmedText = payload.text?.trim();
+        if (!trimmedText) {
+          return;
+        }
+
+        const speaker: 'user' | 'model' = payload.speaker === 'user' ? 'user' : 'model';
+        const noteText = formatStickyNoteText(trimmedText, speaker);
+        const maxChars = Math.max(
+          STICKY_NOTE_MIN_CHARS_PER_LINE,
+          Math.floor((STICKY_NOTE_WIDTH - STICKY_NOTE_PADDING * 2) / STICKY_NOTE_CHAR_WIDTH)
+        );
+        const wrappedText = wrapText(noteText, maxChars);
+        const lineCount = wrappedText.split('\n').length;
+        const noteHeight = Math.max(
+          STICKY_NOTE_MIN_HEIGHT,
+          lineCount * STICKY_NOTE_LINE_HEIGHT + STICKY_NOTE_PADDING * 2
+        );
+        const styles = speaker === 'user' ? STICKY_NOTE_STYLES.user : STICKY_NOTE_STYLES.model;
+
+        const existing = stickyNotesRef.current[payload.id];
+        if (existing && existing.lastText === wrappedText && !payload.isFinal) {
+          return;
+        }
+
+        const rectId = existing?.rectId ?? `sticky-rect-${payload.id}`;
+        const textId = existing?.textId ?? `sticky-text-${payload.id}`;
+        const groupId = existing?.groupId ?? `sticky-group-${payload.id}`;
+        const position = existing ? { x: existing.x, y: existing.y } : getStickyNotePosition(noteHeight);
+        const noteX = position.x;
+        const noteY = position.y;
+
+        try {
+          const convertToExcalidrawElements = await loadConvertToExcalidrawElements();
+          const rawElements = [
+            {
+              id: rectId,
+              type: 'rectangle',
+              x: noteX,
+              y: noteY,
+              width: STICKY_NOTE_WIDTH,
+              height: noteHeight,
+              strokeColor: styles.strokeColor,
+              backgroundColor: styles.backgroundColor,
+              fillStyle: 'solid',
+              strokeWidth: 2,
+              roundness: { type: 3, value: 6 },
+            },
+            {
+              id: textId,
+              type: 'text',
+              x: noteX + STICKY_NOTE_PADDING,
+              y: noteY + STICKY_NOTE_PADDING,
+              text: wrappedText,
+              fontSize: STICKY_NOTE_FONT_SIZE,
+              fontFamily: 1,
+              strokeColor: styles.textColor,
+              textAlign: 'left',
+            },
+          ];
+
+          const converted = convertToExcalidrawElements(rawElements).map((element: any) => ({
+            ...element,
+            groupIds: [groupId],
+          }));
+          const rectElement = converted.find((element: any) => element.id === rectId) || converted[0];
+          const textElement = converted.find((element: any) => element.id === textId) || converted[1];
+
+          const sceneElements = excalidrawAPIRef.current.getSceneElements();
+          const rectIndex = sceneElements.findIndex((element: any) => element.id === rectId);
+          const textIndex = sceneElements.findIndex((element: any) => element.id === textId);
+          let nextElements = sceneElements.map((element: any) => {
+            if (element.id === rectId) return rectElement;
+            if (element.id === textId) return textElement;
+            return element;
+          });
+
+          if (rectIndex === -1) {
+            nextElements = [...nextElements, rectElement];
+          }
+          if (textIndex === -1) {
+            nextElements = [...nextElements, textElement];
+          }
+
+          excalidrawAPIRef.current.updateScene({ elements: nextElements });
+
+          stickyNotesRef.current[payload.id] = {
+            rectId,
+            textId,
+            groupId,
+            x: noteX,
+            y: noteY,
+            width: STICKY_NOTE_WIDTH,
+            height: noteHeight,
+            lastText: wrappedText,
+            speaker,
+          };
+
+          if (!existing) {
+            setElementsCount(prev => prev + 2);
+            lastStickyNoteIdRef.current = payload.id;
+          }
+
+          if (lastStickyNoteIdRef.current === payload.id) {
+            const nextY = noteY + noteHeight + STICKY_NOTE_GAP;
+            if (stickyNoteCursorRef.current.y < nextY) {
+              stickyNoteCursorRef.current.y = nextY;
+            }
+          }
+
+          if (!existing || payload.isFinal) {
+            excalidrawAPIRef.current.scrollToContent([rectElement], {
+              fitToContent: false,
+              animate: Boolean(payload.isFinal),
+            });
+          }
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Error adding sticky note:', error);
+        }
+      },
+
       startNewSection: () => {
         // Force next text addition to start a new element
         lastTextElementIdRef.current = null;
@@ -421,6 +600,9 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
           setElementsCount(0);
           lastTextElementIdRef.current = null;
           currentTextBufferRef.current = '';
+          stickyNotesRef.current = {};
+          stickyNoteCursorRef.current = { x: STICKY_NOTE_X, y: STICKY_NOTE_START_Y };
+          lastStickyNoteIdRef.current = null;
           console.log('[ExcalidrawCanvas] Canvas cleared');
         }
       },
