@@ -99,9 +99,11 @@ const normalizeTags = (value: string) =>
 
 interface PlannerTabProps {
   initialTopic?: string;
+  variant?: 'full' | 'panel';
 }
 
-const PlannerTab: React.FC<PlannerTabProps> = ({ initialTopic = '' }) => {
+const PlannerTab: React.FC<PlannerTabProps> = ({ initialTopic = '', variant = 'full' }) => {
+  const isPanel = variant === 'panel';
   const [section, setSection] = useState<PlannerSection>('docs');
   const [viewMode, setViewMode] = useState<PlannerView>('list');
   const [tasks, setTasks] = useState<PlannerTask[]>([]);
@@ -340,23 +342,27 @@ const PlannerTab: React.FC<PlannerTabProps> = ({ initialTopic = '' }) => {
 
   return (
     <div className="flex-1 bg-[#0b1120] text-slate-100">
-      <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-4 px-4 py-4 lg:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Planner</h2>
-            <p className="text-xs text-slate-400">
-              AFFiNE-style planning workspace with docs, journals, collections, and tags.
-            </p>
+      <div
+        className={`flex w-full flex-col gap-4 ${isPanel ? 'px-3 py-3' : 'mx-auto max-w-screen-2xl px-4 py-4 lg:px-6'}`}
+      >
+        {!isPanel && (
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Planner</h2>
+              <p className="text-xs text-slate-400">
+                AFFiNE-style planning workspace with docs, journals, collections, and tags.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-semibold">
+              <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-slate-200">
+                {taskSummary.done}/{taskSummary.total} done
+              </span>
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+                {taskSummary.inProgress} active
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-slate-200">
-              {taskSummary.done}/{taskSummary.total} done
-            </span>
-            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-emerald-200">
-              {taskSummary.inProgress} active
-            </span>
-          </div>
-        </div>
+        )}
 
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 shadow-lg">
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-4 py-3">

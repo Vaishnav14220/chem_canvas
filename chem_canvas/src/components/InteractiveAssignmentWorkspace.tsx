@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight, X, GitBranch, FileText, CheckCircle } from 'lucide-react';
+import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight, ChevronLeft, X, GitBranch, FileText, CheckCircle } from 'lucide-react';
 import { streamTextContent, annotateImageWithFeedback } from '../services/geminiService';
+import { extractTextFromPdf } from '../utils/pdfTextExtractor';
 import {
     generateStudyPlanTree,
     expandTreeNode,
@@ -11,14 +12,40 @@ import {
 } from '../services/examPrepToTService';
 import { ExamPrepToTViewer } from './ExamPrepToTViewer';
 import { ToTLiveViewer } from './ToTLiveViewer';
+import { FormulaExtractionWorkspace, type FormulaItem } from './FormulaExtractionWorkspace';
 
-export const InteractiveAssignmentWorkspace: React.FC = () => {
-    const [fileData, setFileData] = useState<{ mimeType: string, data: string } | null>(null);
-    const [fileContent, setFileContent] = useState<string | null>(null); // Legacy text content
-    const [fileName, setFileName] = useState<string | null>(null);
-    const [topic, setTopic] = useState<string>('');
-    const [extractFormulaSheet, setExtractFormulaSheet] = useState<boolean>(false);
-    const [questionAndAnswer, setQuestionAndAnswer] = useState<boolean>(false);
+// Props interface for receiving initial file data from parent
+interface InteractiveAssignmentWorkspaceProps {
+    initialFileData?: { mimeType: string; data: string } | null;
+    initialFileContent?: string | null;
+    initialFileName?: string | null;
+    initialTopic?: string;
+    initialUseToT?: boolean;
+    selectedFeature?: string | null;
+    autoGenerate?: boolean;
+    onBack?: () => void;
+}
+
+export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorkspaceProps> = ({
+    initialFileData = null,
+    initialFileContent = null,
+    initialFileName = null,
+    initialTopic = '',
+    initialUseToT = false,
+    selectedFeature = null,
+    autoGenerate = false,
+    onBack,
+}) => {
+    // Initialize state from props
+    const [fileData, setFileData] = useState<{ mimeType: string, data: string } | null>(initialFileData);
+    const [fileContent, setFileContent] = useState<string | null>(initialFileContent); // Legacy text content
+    const [fileName, setFileName] = useState<string | null>(initialFileName);
+    const [topic, setTopic] = useState<string>(initialTopic);
+
+    // Set options based on selectedFeature prop
+    const [extractFormulaSheet, setExtractFormulaSheet] = useState<boolean>(selectedFeature === 'extract-formulas');
+    const [questionAndAnswer, setQuestionAndAnswer] = useState<boolean>(selectedFeature === 'qa-generator');
+
     const [isGenerating, setIsGenerating] = useState(false);
     const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
     const [previewHtml, setPreviewHtml] = useState<string>('');
@@ -30,16 +57,66 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
     const terminalRef = useRef<HTMLDivElement>(null);
 
     // Tree of Thoughts state
-    const [useToT, setUseToT] = useState<boolean>(true); // ToT mode enabled by default
+    const [useToT, setUseToT] = useState<boolean>(initialUseToT);
     const [totResponse, setTotResponse] = useState<ExamPrepToTResponse | null>(null);
     const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
     const [totStage, setTotStage] = useState<'analyzing' | 'generating' | 'evaluating' | 'selecting' | 'complete'>('analyzing');
     const [isToTGenerating, setIsToTGenerating] = useState(false);
+    const [isToTReviewing, setIsToTReviewing] = useState(false);
 
     // Answer checking / image annotation state
     const [isChecking, setIsChecking] = useState(false);
     const [annotatedImage, setAnnotatedImage] = useState<{ data: string; mimeType: string } | null>(null);
     const [checkingFeedback, setCheckingFeedback] = useState<string | null>(null);
+
+    // Formula extraction state
+    const [extractedFormulas, setExtractedFormulas] = useState<FormulaItem[] | null>(null);
+    const [isExtractingFormulas, setIsExtractingFormulas] = useState(false);
+    const [sourceMarkdown, setSourceMarkdown] = useState<string | null>(null);
+    const [isExtractingSource, setIsExtractingSource] = useState(false);
+    const autoGenerateRef = useRef<string | null>(null);
+
+    // Sync state from props when initial values change (from dashboard upload)
+    useEffect(() => {
+        if (initialFileData) {
+            setFileData(initialFileData);
+        }
+    }, [initialFileData]);
+
+    useEffect(() => {
+        if (initialFileContent) {
+            setFileContent(initialFileContent);
+        }
+    }, [initialFileContent]);
+
+    useEffect(() => {
+        if (initialFileName) {
+            setFileName(initialFileName);
+        }
+    }, [initialFileName]);
+
+    useEffect(() => {
+        if (initialTopic) {
+            setTopic(initialTopic);
+        }
+    }, [initialTopic]);
+
+    useEffect(() => {
+        setUseToT(initialUseToT);
+    }, [initialUseToT]);
+
+    useEffect(() => {
+        setExtractFormulaSheet(selectedFeature === 'extract-formulas');
+        setQuestionAndAnswer(selectedFeature === 'qa-generator');
+    }, [selectedFeature]);
+
+    useEffect(() => {
+        setExtractedFormulas(null);
+    }, [selectedFeature, fileName, fileContent, fileData]);
+
+    useEffect(() => {
+        setSourceMarkdown(null);
+    }, [selectedFeature, fileName, fileContent, fileData]);
 
     // Remove any external polyfill.io scripts the model might inject so previews don't fail on blocked domains
     const stripPolyfillScripts = (html: string) =>
@@ -47,6 +124,416 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
             /<script[^>]+src=[\"']https?:\/\/(?:cdn\.)?polyfill\.io\/[^\"']+[\"'][^>]*>\s*<\/script>/gi,
             ''
         );
+
+    const stripMarkdownFence = (markdown: string) =>
+        markdown.replace(/^\s*```(?:markdown)?/i, '').replace(/```\s*$/i, '').trim();
+
+    const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        try {
+            return await Promise.race([
+                promise,
+                new Promise<T>((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`));
+                    }, timeoutMs);
+                })
+            ]);
+        } finally {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+        }
+    };
+
+    const base64ToFile = (base64: string, mimeType: string, name: string): File => {
+        const byteChars = atob(base64);
+        const byteNumbers = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i += 1) {
+            byteNumbers[i] = byteChars.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new File([byteArray], name, { type: mimeType });
+    };
+
+    const toMarkdownFromExtractedText = (text: string): string =>
+        text
+            .replace(/\[Page\s+(\d+)\]/gi, '## Page $1')
+            .replace(/[ \t]{2,}/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+    const normalizeFormulaItem = (item: any, index: number): FormulaItem | null => {
+        const variables = Array.isArray(item?.variables)
+            ? item.variables
+                  .map((variable: any) => ({
+                      symbol: String(variable?.symbol || variable?.name || '').trim(),
+                      definition: String(variable?.definition || variable?.meaning || '').trim(),
+                      unit: variable?.unit ? String(variable.unit).trim() : undefined
+                  }))
+                  .filter((variable: any) => variable.symbol && variable.definition)
+            : [];
+        const latex = String(item?.latex || item?.equation || item?.formula || '').trim();
+        if (!latex) return null;
+        return {
+            id: item?.id ? String(item.id) : `${index + 1}`,
+            label: item?.label || item?.title || undefined,
+            page: typeof item?.page === 'number' ? item.page : item?.pageNumber,
+            latex,
+            variables,
+            status: item?.status === 'unknown' ? 'unknown' : 'verified'
+        };
+    };
+
+    const normalizeFormulaItems = (items: any[]): FormulaItem[] =>
+        items.map((item, index) => normalizeFormulaItem(item, index)).filter(Boolean) as FormulaItem[];
+
+    const getFormulaKey = (item: FormulaItem) => item.latex;
+
+    const mergeFormulaItem = (current: FormulaItem, incoming: FormulaItem): FormulaItem => ({
+        ...current,
+        label: current.label || incoming.label,
+        page: current.page ?? incoming.page,
+        variables: current.variables.length ? current.variables : incoming.variables,
+        status: current.status === 'verified' || incoming.status === 'verified' ? 'verified' : current.status
+    });
+
+    const mergeFormulaItems = (current: FormulaItem[], incoming: FormulaItem[]) => {
+        const map = new Map(current.map((item) => [getFormulaKey(item), item]));
+        incoming.forEach((item) => {
+            const key = getFormulaKey(item);
+            const existing = map.get(key);
+            map.set(key, existing ? mergeFormulaItem(existing, item) : item);
+        });
+        return Array.from(map.values());
+    };
+
+    const parseFormulaResponse = (raw: string): FormulaItem[] => {
+        const cleaned = raw.replace(/```json/gi, '```').replace(/```/g, '').trim();
+        const startArr = cleaned.indexOf('[');
+        const startObj = cleaned.indexOf('{');
+        let jsonPayload = cleaned;
+        if (startArr !== -1 && (startArr < startObj || startObj === -1)) {
+            const endArr = cleaned.lastIndexOf(']');
+            if (endArr !== -1) {
+                jsonPayload = cleaned.slice(startArr, endArr + 1);
+            }
+        } else if (startObj !== -1) {
+            const endObj = cleaned.lastIndexOf('}');
+            if (endObj !== -1) {
+                jsonPayload = cleaned.slice(startObj, endObj + 1);
+            }
+        }
+        const parsed = JSON.parse(jsonPayload);
+        if (Array.isArray(parsed)) {
+            return normalizeFormulaItems(parsed);
+        }
+        if (parsed && Array.isArray(parsed.formulas)) {
+            return normalizeFormulaItems(parsed.formulas);
+        }
+        return [];
+    };
+
+    const extractFormulaCandidatesFromText = (text: string): string[] => {
+        const candidates = new Set<string>();
+        const addCandidate = (value: string) => {
+            const trimmed = value.replace(/\s+/g, ' ').trim();
+            if (!trimmed || trimmed.length < 4) return;
+            const hasMath =
+                /[=≈≥≤<>]/.test(trimmed) ||
+                /\\(frac|sum|int|sqrt|Delta|Omega|mu|sigma|theta|alpha|beta|gamma|pi|lambda)/.test(trimmed) ||
+                /[±∑∫√]/.test(trimmed);
+            if (!hasMath) return;
+            candidates.add(trimmed);
+        };
+
+        const blockRegex = /\$\$([\s\S]+?)\$\$/g;
+        let blockMatch = blockRegex.exec(text);
+        while (blockMatch) {
+            addCandidate(blockMatch[1]);
+            blockMatch = blockRegex.exec(text);
+        }
+
+        const inlineRegex = /\$([^\n$]+?)\$/g;
+        let inlineMatch = inlineRegex.exec(text);
+        while (inlineMatch) {
+            addCandidate(inlineMatch[1]);
+            inlineMatch = inlineRegex.exec(text);
+        }
+
+        text.split('\n').forEach(line => {
+            const trimmed = line.trim();
+            if (trimmed.length < 4 || trimmed.length > 140) return;
+            addCandidate(trimmed);
+        });
+
+        return Array.from(candidates);
+    };
+
+    const buildFormulaItemsFromText = (text: string): FormulaItem[] =>
+        extractFormulaCandidatesFromText(text).map((latex, index) => ({
+            id: `f-${index + 1}`,
+            label: undefined,
+            latex,
+            variables: [],
+            status: 'unknown'
+        }));
+
+    const extractSourceMarkdown = async (): Promise<string | null> => {
+        if (fileContent) {
+            setSourceMarkdown(fileContent);
+            return fileContent;
+        }
+        if (!fileData) {
+            setSourceMarkdown(null);
+            return null;
+        }
+        setIsExtractingSource(true);
+        setLoadingStep('Extracting notes...');
+        setThoughtLog(prev => [...prev, 'Extracting document into markdown...']);
+
+        if (fileData.mimeType === 'application/pdf') {
+            try {
+                const file = base64ToFile(fileData.data, fileData.mimeType, fileName || 'document.pdf');
+                const extracted = await withTimeout(
+                    extractTextFromPdf(file, 6, true),
+                    30000,
+                    'PDF text extraction'
+                );
+                if (extracted && extracted.trim().length > 0) {
+                    const markdown = toMarkdownFromExtractedText(extracted);
+                    setSourceMarkdown(markdown);
+                    return markdown;
+                }
+            } catch (error) {
+                console.warn('PDF text extraction failed, falling back to Gemini markdown extraction.', error);
+            }
+        }
+
+        const prompt = `
+Extract the uploaded document into clean Markdown.
+- Preserve headings and section structure.
+- Use LaTeX for formulas (inline $...$ or block $$...$$).
+- Keep paragraphs readable and concise.
+- Return ONLY Markdown (no code fences).
+
+Topic: ${topic || fileName || 'General'}
+`;
+
+        let accumulated = '';
+        try {
+            await withTimeout(
+                streamTextContent(
+                    prompt,
+                    chunk => {
+                        accumulated += chunk;
+                    },
+                    {
+                        model: 'gemini-3-pro-preview',
+                        thinking: 'high',
+                        inlineData: fileData || undefined
+                    }
+                ),
+                45000,
+                'Markdown extraction'
+            );
+            const cleaned = stripMarkdownFence(accumulated);
+            setSourceMarkdown(cleaned || null);
+            return cleaned || null;
+        } catch (error) {
+            console.error('Markdown extraction failed:', error);
+            setThoughtLog(prev => [...prev, 'Markdown extraction failed.']);
+            setSourceMarkdown(null);
+            return null;
+        } finally {
+            setIsExtractingSource(false);
+        }
+    };
+
+    const extractFormulasFromSource = async (sourceText?: string | null) => {
+        setIsExtractingFormulas(true);
+        setLoadingStep('Extracting formulas...');
+        setThoughtLog(prev => [...prev, 'Extracting formulas from source...']);
+        const seenFormulaKeys = new Set<string>();
+        let streamIndex = 0;
+
+        const prompt = `
+You are extracting formulas from study material. Return ONLY JSON (no markdown).
+
+Output format:
+{
+  "formulas": [
+    {
+      "label": "SHORT LABEL",
+      "page": 4,
+      "latex": "\\\\Delta U = Q - W",
+      "variables": [
+        { "symbol": "\\\\Delta U", "definition": "Change in internal energy" },
+        { "symbol": "Q", "definition": "Heat added to system" }
+      ],
+      "status": "verified"
+    }
+  ]
+}
+
+Rules:
+- Include every formula/equation found in the source.
+- Use LaTeX for the formula string without surrounding $$.
+- Use "unknown" status if the formula is unclear.
+- If page number is unknown, omit it.
+
+Topic: ${topic || fileName || 'General'}
+
+${fileContent ? `Source Content:\n${fileContent.slice(0, 20000)}\n` : ''}
+${sourceText ? `Extract from this markdown:\n${sourceText.slice(0, 20000)}\n` : ''}
+`;
+
+        let accumulated = '';
+        let streamBuffer = '';
+        let scanIndex = 0;
+        let inString = false;
+        let escapeNext = false;
+        const braceStack: number[] = [];
+
+        const addFormulaItem = (item: FormulaItem) => {
+            const key = getFormulaKey(item);
+            if (!seenFormulaKeys.has(key)) {
+                seenFormulaKeys.add(key);
+            }
+            setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], [item]));
+        };
+
+        const ingestParsedValue = (value: any) => {
+            if (!value) return;
+            if (Array.isArray(value)) {
+                value.forEach((entry) => {
+                    const normalized = normalizeFormulaItem(entry, streamIndex++);
+                    if (normalized) addFormulaItem(normalized);
+                });
+                return;
+            }
+            if (Array.isArray(value.formulas)) {
+                value.formulas.forEach((entry: any) => {
+                    const normalized = normalizeFormulaItem(entry, streamIndex++);
+                    if (normalized) addFormulaItem(normalized);
+                });
+                return;
+            }
+            const normalized = normalizeFormulaItem(value, streamIndex++);
+            if (normalized) addFormulaItem(normalized);
+        };
+
+        const tryParseObject = (jsonText: string) => {
+            if (!jsonText.includes('"latex"') && !jsonText.includes('"formulas"')) {
+                return;
+            }
+            try {
+                const parsed = JSON.parse(jsonText);
+                ingestParsedValue(parsed);
+            } catch {
+                // Ignore partial/invalid JSON segments while streaming
+            }
+        };
+
+        const handleStreamChunk = (chunk: string) => {
+            accumulated += chunk;
+            streamBuffer += chunk;
+
+            for (; scanIndex < streamBuffer.length; scanIndex += 1) {
+                const char = streamBuffer[scanIndex];
+                if (escapeNext) {
+                    escapeNext = false;
+                    continue;
+                }
+                if (char === '\\' && inString) {
+                    escapeNext = true;
+                    continue;
+                }
+                if (char === '"') {
+                    inString = !inString;
+                    continue;
+                }
+                if (inString) continue;
+
+                if (char === '{') {
+                    braceStack.push(scanIndex);
+                    continue;
+                }
+                if (char === '}' && braceStack.length > 0) {
+                    const start = braceStack.pop() as number;
+                    const jsonText = streamBuffer.slice(start, scanIndex + 1);
+                    tryParseObject(jsonText);
+                }
+            }
+        };
+
+        try {
+            await withTimeout(
+                streamTextContent(
+                    prompt,
+                    handleStreamChunk,
+                    {
+                        model: 'gemini-3-pro-preview',
+                        thinking: 'high',
+                        inlineData: fileData || undefined
+                    }
+                ),
+                45000,
+                'Formula extraction'
+            );
+
+            let parsed: FormulaItem[] = [];
+            try {
+                parsed = parseFormulaResponse(accumulated);
+            } catch (parseError) {
+                console.warn('Formula JSON parse failed, falling back to markdown extraction.', parseError);
+            }
+
+            if (parsed.length === 0) {
+                const fallbackText = sourceText || sourceMarkdown || fileContent || '';
+                const fallback = fallbackText ? buildFormulaItemsFromText(fallbackText) : [];
+                setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], fallback));
+                if (fallback.length === 0) {
+                    setThoughtLog(prev => [...prev, 'No formulas detected from the source.']);
+                } else {
+                    setThoughtLog(prev => [...prev, 'Gemini response empty or invalid, using markdown-based extraction.']);
+                    setThoughtLog(prev => [...prev, `Extracted ${fallback.length} formulas from markdown.`]);
+                }
+            } else {
+                setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], parsed));
+                setThoughtLog(prev => [...prev, `Extracted ${parsed.length} formulas.`]);
+            }
+        } catch (error) {
+            console.error('Formula extraction failed:', error);
+            setThoughtLog(prev => [...prev, 'Formula extraction failed.']);
+            const fallbackText = sourceText || sourceMarkdown || fileContent || '';
+            setExtractedFormulas(fallbackText ? buildFormulaItemsFromText(fallbackText) : []);
+        } finally {
+            setIsExtractingFormulas(false);
+        }
+    };
+
+    const runFormulaExtractionFlow = async () => {
+        const markdownPromise = extractSourceMarkdown();
+        const seedText = fileContent || '';
+        if (seedText) {
+            const provisional = buildFormulaItemsFromText(seedText);
+            if (provisional.length > 0) {
+                setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], provisional));
+                setThoughtLog(prev => [...prev, `Showing ${provisional.length} formulas from fast scan...`]);
+            }
+        }
+
+        const extractionPromise = extractFormulasFromSource(fileContent);
+        const markdown = await markdownPromise;
+        if (markdown) {
+            const provisional = buildFormulaItemsFromText(markdown);
+            if (provisional.length > 0) {
+                setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], provisional));
+            }
+        }
+        await extractionPromise;
+    };
 
     // Animated cursor effect
     useEffect(() => {
@@ -68,6 +555,12 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
     }, [thoughtLog]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const canGenerate = Boolean(fileContent || fileData || topic);
+    const autoGenerateKey = `${selectedFeature || 'none'}:${fileName || ''}:${topic || ''}:${fileContent?.length || 0}:${fileData ? fileData.data.length : 0}:${useToT ? 'tot' : 'no'}`;
+    const handleToTContinue = () => {
+        setIsToTGenerating(false);
+        setIsToTReviewing(false);
+    };
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -161,28 +654,62 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
         setGeneratedHtml(null);
         setPreviewHtml('');
         setTotResponse(null);
+        setExtractedFormulas(null);
+        setSourceMarkdown(null);
         setThoughtLog([]);
         setIsStreamingThoughts(true);
+        setIsToTReviewing(false);
+
+        const resolvedMode =
+            selectedFeature === 'extract-formulas'
+                ? 'formula_extraction'
+                : selectedFeature === 'qa-generator'
+                    ? 'question_answer'
+                    : selectedFeature === 'smart-summary'
+                        ? 'smart_summary'
+                        : selectedFeature === 'flashcards'
+                            ? 'flashcards'
+                            : selectedFeature === 'timeline-generator'
+                                ? 'timeline'
+                                : selectedFeature === 'tree-of-thoughts'
+                                    ? 'tree_of_thoughts'
+                                    : selectedFeature === 'check-my-work'
+                                        ? 'check_my_work'
+                                        : extractFormulaSheet
+                                            ? 'formula_extraction'
+                                            : questionAndAnswer
+                                                ? 'question_answer'
+                                                : 'comprehensive';
+
+        const useToTPlanning = useToT || resolvedMode === 'tree_of_thoughts';
+        const isFormulaMode = resolvedMode === 'formula_extraction';
+        const isQaMode = resolvedMode === 'question_answer';
+        const isSummaryMode = resolvedMode === 'smart_summary';
+        const isFlashcardsMode = resolvedMode === 'flashcards';
+        const isTimelineMode = resolvedMode === 'timeline';
+        const isTreeMode = resolvedMode === 'tree_of_thoughts';
+        const isCheckMyWorkMode = resolvedMode === 'check_my_work';
+        const isComprehensiveMode = resolvedMode === 'comprehensive';
 
         // Tree of Thoughts Enhanced Mode: Use ToT internally for better reasoning, then generate HTML
-        if (useToT) {
+        if (useToTPlanning) {
             setIsToTGenerating(true);
             setTotStage('analyzing');
 
             // Determine mode for ToT planning
-            const mode = extractFormulaSheet
-                ? 'formula_extraction'
-                : questionAndAnswer
-                    ? 'question_answer'
-                    : 'comprehensive';
-
-            const modeLabels = {
+            const mode = resolvedMode;
+            const modeLabels: Record<string, string> = {
                 formula_extraction: 'Formula Sheet',
                 question_answer: 'Q&A Mode',
+                smart_summary: 'Smart Summary',
+                flashcards: 'Flashcards',
+                timeline: 'Study Timeline',
+                tree_of_thoughts: 'Tree of Thoughts',
+                check_my_work: 'Check My Work',
                 comprehensive: 'Interactive Lesson'
             };
 
-            setLoadingStep(`Planning best ${modeLabels[mode]} approach...`);
+            setLoadingStep(`Planning best ${modeLabels[mode] || 'Interactive'} approach...`);
 
             let totInsights = '';
 
@@ -191,7 +718,7 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
 
                 // Get mode-specific criteria
                 let criteria = getDefaultCriteria(topic || fileName || '');
-                if (extractFormulaSheet) {
+                if (mode === 'formula_extraction') {
                     criteria = [
                         'Clear organization of formulas by category',
                         'Complete variable definitions',
@@ -199,7 +726,7 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                         'Printable layout design',
                         'Worked examples for key formulas'
                     ];
-                } else if (questionAndAnswer) {
+                } else if (mode === 'question_answer') {
                     criteria = [
                         'Multiple difficulty levels (Easy/Medium/Hard)',
                         'Interactive answer reveal functionality',
@@ -207,38 +734,95 @@ export const InteractiveAssignmentWorkspace: React.FC = () => {
                         'Hint system for each question',
                         'Progress tracking and scoring'
                     ];
+                } else if (mode === 'smart_summary') {
+                    criteria = [
+                        'Concise high-signal summary',
+                        'Key definitions and formulas included',
+                        'Clear sectioning and hierarchy',
+                        'Actionable study tips',
+                        'Avoids fluff or repetition'
+                    ];
+                } else if (mode === 'flashcards') {
+                    criteria = [
+                        'Clear front/back prompts',
+                        'Mix of definitions, formulas, and applications',
+                        'Short, testable phrasing',
+                        'Consistent formatting',
+                        'Covers all major subtopics'
+                    ];
+                } else if (mode === 'timeline') {
+                    criteria = [
+                        'Week-by-week structure with milestones',
+                        'Balanced workload and review spacing',
+                        'Includes practice and checkpoint tasks',
+                        'Time estimates per session',
+                        'Aligned with topic difficulty'
+                    ];
+                } else if (mode === 'tree_of_thoughts') {
+                    criteria = [
+                        'Hierarchical breakdown of subtopics',
+                        'Prerequisites and dependencies',
+                        'Logical study order',
+                        'Clear scope for each branch',
+                        'Actionable next steps'
+                    ];
                 }
 
                 // Stage progression for animation
-                setTimeout(() => setTotStage('generating'), 800);
+                setTimeout(() => {
+                    setTotStage('generating');
+                    setThoughtLog(prev => [...prev, 'Generating candidate approaches...']);
+                }, 800);
                 setTimeout(() => {
                     setTotStage('evaluating');
                     setLoadingStep('Evaluating teaching strategies...');
+                    setThoughtLog(prev => [...prev, 'Scoring approaches against criteria...']);
                 }, 1600);
                 setTimeout(() => {
                     setTotStage('selecting');
                     setLoadingStep('Selecting optimal approach...');
+                    setThoughtLog(prev => [...prev, 'Selecting the strongest strategy...']);
                 }, 2400);
 
                 // Get ToT reasoning internally
-                const modePrefix = extractFormulaSheet
+                const modePrefix = mode === 'formula_extraction'
                     ? 'Create formula sheet for: '
-                    : questionAndAnswer
+                    : mode === 'question_answer'
                         ? 'Create Q&A practice for: '
-                        : '🔍 Exploring teaching approaches for: ';
+                        : mode === 'smart_summary'
+                            ? 'Summarize key points for: '
+                            : mode === 'flashcards'
+                                ? 'Create flashcards for: '
+                                : mode === 'timeline'
+                                    ? 'Create study timeline for: '
+                                    : mode === 'tree_of_thoughts'
+                                        ? 'Plan study tree for: '
+                                        : 'Exploring teaching approaches for: ';
                 setThoughtLog(prev => [...prev, modePrefix + (topic || fileName)]);
 
-                const problemDescription = extractFormulaSheet
+                const problemDescription = mode === 'formula_extraction'
                     ? `Extract and organize formulas for: ${topic || fileName || 'Exam preparation'}`
-                    : questionAndAnswer
+                    : mode === 'question_answer'
                         ? `Create practice questions and answers for: ${topic || fileName || 'Exam preparation'}`
-                        : topic || fileName || 'Exam preparation';
+                        : mode === 'smart_summary'
+                            ? `Summarize key concepts for: ${topic || fileName || 'Exam preparation'}`
+                            : mode === 'flashcards'
+                                ? `Create flashcards for: ${topic || fileName || 'Exam preparation'}`
+                                : mode === 'timeline'
+                                    ? `Build a study timeline for: ${topic || fileName || 'Exam preparation'}`
+                                    : mode === 'tree_of_thoughts'
+                                        ? `Generate a study plan tree for: ${topic || fileName || 'Exam preparation'}`
+                                        : topic || fileName || 'Exam preparation';
 
-                const totResult = await generateStudyPlanTree(
-                    problemDescription,
-                    constraints,
-                    criteria,
-                    fileContent || undefined
+                const totResult = await withTimeout(
+                    generateStudyPlanTree(
+                        problemDescription,
+                        constraints,
+                        criteria,
+                        fileContent || undefined
+                    ),
+                    45000,
+                    'Tree of Thoughts'
                 );
 
                 // Store the result so we can display it in the live viewer
@@ -281,14 +865,44 @@ Final Strategy: ${totResult.finalAnswer}
                 setTotStage('complete');
                 setThoughtLog(prev => [...prev, '✅ Teaching strategy selected: ' + (selectedNode?.title || 'Optimized approach')]);
 
-                // Give user time to view the reasoning tree (keep isToTGenerating true so tree stays visible)
-                setThoughtLog(prev => [...prev, '⏳ Reviewing strategy before generating content...']);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                if (!isFormulaMode) {
+                    // Give user time to view the reasoning tree (keep isToTGenerating true so tree stays visible)
+                    setThoughtLog(prev => [...prev, '? Reviewing strategy before generating content...']);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
 
             } catch (error) {
                 console.error('ToT planning failed, continuing with standard approach:', error);
                 totInsights = ''; // Continue without ToT enhancement
-                setThoughtLog(prev => [...prev, '⚠️ Planning skipped, using standard approach']);
+                setThoughtLog(prev => [...prev, 'Planning skipped or timed out, using standard approach.']);
+                setIsToTGenerating(false);
+                setTotStage('complete');
+            }
+
+            if (isTreeMode) {
+                setIsGenerating(false);
+                setIsToTGenerating(false);
+                setIsStreamingThoughts(false);
+                setLoadingStep('Complete!');
+                return;
+            }
+
+            if (isFormulaMode) {
+                setIsToTReviewing(false);
+                const extractionStart = Date.now();
+                setLoadingStep('Extracting formulas...');
+                setThoughtLog(prev => [...prev, 'Extracting source into markdown...']);
+                await runFormulaExtractionFlow();
+                const elapsed = Date.now() - extractionStart;
+                const minViewMs = 0;
+                if (elapsed < minViewMs) {
+                    await new Promise(resolve => setTimeout(resolve, minViewMs - elapsed));
+                }
+                setIsToTGenerating(false);
+                setIsGenerating(false);
+                setIsStreamingThoughts(false);
+                setLoadingStep('Complete!');
+                return;
             }
 
             // Continue generating HTML while showing the ToT tree
@@ -298,13 +912,23 @@ Final Strategy: ${totResult.finalAnswer}
 
             try {
                 // Determine generation mode based on options
-                const modeDescription = extractFormulaSheet
+                const modeDescription = isFormulaMode
                     ? 'FORMULA SHEET EXTRACTION'
-                    : questionAndAnswer
+                    : isQaMode
                         ? 'QUESTION AND ANSWER FORMAT'
-                        : 'COMPREHENSIVE LEARNING MATERIAL';
+                        : isSummaryMode
+                            ? 'SMART SUMMARY'
+                            : isFlashcardsMode
+                                ? 'FLASHCARDS'
+                                : isTimelineMode
+                                    ? 'STUDY TIMELINE'
+                                    : isTreeMode
+                                        ? 'TREE OF THOUGHTS'
+                                        : isCheckMyWorkMode
+                                            ? 'CHECK MY WORK'
+                                            : 'COMPREHENSIVE LEARNING MATERIAL';
 
-                const modeSpecificInstructions = extractFormulaSheet
+                const modeSpecificInstructions = isFormulaMode
                     ? `
 SPECIAL MODE: EXTRACT FORMULA SHEET
 Your PRIMARY TASK is to create a CLEAN, PRINTABLE FORMULA SHEET with:
@@ -318,9 +942,9 @@ Your PRIMARY TASK is to create a CLEAN, PRINTABLE FORMULA SHEET with:
 8. Create an index/table of contents at the top
 9. Make it visually clean with good spacing and clear typography
 `
-                    : questionAndAnswer
+                    : isQaMode
                         ? `
-SPECIAL MODE: QUESTION AND ANSWER FORMAT  
+SPECIAL MODE: QUESTION AND ANSWER FORMAT
 Your PRIMARY TASK is to create PRACTICE Q&A material with:
 1. Extract or generate questions based on the content
 2. Provide detailed answers with step-by-step explanations
@@ -332,7 +956,136 @@ Your PRIMARY TASK is to create PRACTICE Q&A material with:
 8. Include explanations for why wrong answers are wrong
 9. Provide a scoring/progress tracker
 `
-                        : '';
+                        : isSummaryMode
+                            ? `
+SPECIAL MODE: SMART SUMMARY
+Your PRIMARY TASK is to create a concise, high-signal summary with:
+1. Key concepts in short bullet points
+2. Essential definitions with brief explanations
+3. Formula highlights using LaTeX where needed
+4. Common mistakes or misconceptions to avoid
+5. A short list of study tips and takeaways
+`
+                            : isFlashcardsMode
+                                ? `
+SPECIAL MODE: FLASHCARDS
+Your PRIMARY TASK is to create an interactive flashcard deck with:
+1. 12-20 flashcards covering terms, formulas, and applications
+2. A front/back card layout with click-to-flip behavior
+3. Next/Previous navigation and a progress indicator
+4. Short prompts on the front and clear answers on the back
+5. A quick recap section at the end
+`
+                                : isTimelineMode
+                                    ? `
+SPECIAL MODE: STUDY TIMELINE
+Your PRIMARY TASK is to create a structured study plan with:
+1. A week-by-week schedule based on topic density
+2. Time estimates per session and review checkpoints
+3. A checklist for Week 1 to help the student start
+4. Clear milestones and revision sessions
+5. A final recap and exam readiness checklist
+`
+                                    : isTreeMode
+                                        ? `
+SPECIAL MODE: TREE OF THOUGHTS
+Your PRIMARY TASK is to create a structured study tree with:
+1. A root topic and 2-4 levels of nested subtopics
+2. Prerequisites and dependencies between nodes
+3. A suggested study order and pacing notes
+4. Key outcomes for each branch
+`
+                                        : '';
+
+                const criticalInstruction = isSummaryMode
+                    ? '- Cover all major concepts without fluff or repetition.'
+                    : isFlashcardsMode
+                        ? '- Include every essential term, formula, and relationship from the source.'
+                        : isTimelineMode
+                            ? '- Use the source density to pace the schedule and include review cycles.'
+                            : isTreeMode
+                                ? '- Focus on a clear hierarchy and prerequisites.'
+                                : isCheckMyWorkMode
+                                    ? '- If a student submission is present, focus on corrections and feedback.'
+                                    : '- If an uploaded file (PDF/Image) is provided, you MUST solve EVERY SINGLE QUESTION or concept presented in it.\\n- Do not skip any questions. Be exhaustive.';
+
+                const outputFormat = isFormulaMode
+                    ? `1. **Overview**: Brief intro and what the formula sheet covers.
+2. **Formula Index**: A table of contents with topic headings.
+3. **Formula Sections**: Grouped by topic with LaTeX equations and short usage notes.
+4. **Variable Definitions**: Bullet list of symbols and meanings for each section.
+5. **Worked Examples**: 2-4 short examples showing how to apply key formulas.
+6. **Printable Summary**: A compact recap section at the end.`
+                    : isQaMode
+                        ? `1. **Overview**: What the learner will practice.
+2. **Question Sets**: Easy, Medium, Hard sections.
+3. **Hints and Answers**: Each question includes a hint and reveal.
+4. **Practice Tracker**: Simple progress indicator or score summary.
+5. **Quick Recap**: Key takeaways and formulas.`
+                        : isSummaryMode
+                            ? `1. **Overview**: Short, clear summary title and scope.
+2. **Key Concepts**: Bullet list of the most important ideas.
+3. **Definitions**: Term -> definition pairs.
+4. **Formula Highlights**: LaTeX blocks for critical equations.
+5. **Common Pitfalls**: Mistakes to avoid.
+6. **Study Tips**: 3-5 actionable tips.`
+                            : isFlashcardsMode
+                                ? `1. **Overview**: Topic intro and card count.
+2. **Flashcard Deck**: Interactive front/back cards with navigation.
+3. **Review Mode**: Shuffle and restart controls.
+4. **Quick Recap**: Key topics covered.`
+                                : isTimelineMode
+                                    ? `1. **Overview**: Total study duration and goal.
+2. **Weekly Schedule**: Table with week, focus areas, and tasks.
+3. **Week 1 Checklist**: Daily breakdown to get started.
+4. **Milestones**: Checkpoints and review sessions.
+5. **Final Review Plan**: Exam readiness checklist.`
+                                    : isTreeMode
+                                        ? `1. **Root Topic**: Short description.
+2. **Study Tree**: Nested list of branches and sub-branches.
+3. **Prerequisites**: Dependencies and suggested order.
+4. **Branch Outcomes**: Goals for each branch.
+5. **Next Steps**: Actionable study sequence.`
+                                        : `1. **Overview/Learning Objectives**: Brief intro stating what the learner will master.
+2. **The Question/Problem**: State the core problem(s) or concept(s) clearly.
+3. **Conceptual Foundation**: Explain the underlying theory/principles BEFORE solving.
+4. **Step-by-Step Solution**: Detailed, numbered steps for EACH problem with clear reasoning.
+5. **Visual Diagrams (SVG)**: Include clear, labeled SVG diagrams to illustrate concepts.
+6. **Key Formulas Section**: Highlight all important formulas with proper LaTeX delimiters.
+7. **INTERACTIVE SIMULATION (Canvas)**:
+   - Create a FULL-FEATURED animated Canvas simulation
+   - Use 'requestAnimationFrame' for 60fps smooth animation
+   - Show the concept visually animating
+   - Include multiple interactive controls: sliders, buttons, checkboxes
+8. **Practice Problems WITH ANSWER CHECKING**:
+   - Create 3-5 practice problems with input fields
+   - Each problem should have an input/textarea for user answers
+   - Include a "Check Answer" button for each problem
+   - Reveal the correct answer after checking with explanation
+9. **Quick Reference Summary**: A compact cheat-sheet section at the end.`;
+
+                const answerCheckingSnippet = (isQaMode || isComprehensiveMode)
+                    ? `ANSWER CHECKING JAVASCRIPT (include this script):
+<script>
+function checkAnswer(problemNum, correctAnswer) {
+  const userAnswer = document.getElementById('answer' + problemNum).value.trim().toLowerCase();
+  const feedbackEl = document.getElementById('feedback' + problemNum);
+  const correct = correctAnswer.toLowerCase();
+  // Allow for numerical tolerance
+  const numUser = parseFloat(userAnswer);
+  const numCorrect = parseFloat(correct);
+  const isCorrect = userAnswer === correct || 
+    (Math.abs(numUser - numCorrect) < 0.01 * Math.abs(numCorrect));
+  if (isCorrect) {
+    feedbackEl.innerHTML = '<span class="text-green-500">Correct!</span>';
+    feedbackEl.style.display = 'inline';
+  } else {
+    feedbackEl.innerHTML = '<span class="text-red-500">Try again. Hint: ' + correctAnswer + '</span>';
+    feedbackEl.style.display = 'inline';
+  }
+}
+</script>`
+                    : '';
 
                 const enhancedPrompt = `
 ${totInsights ? `--- AI TEACHING PLAN ---
@@ -347,68 +1100,22 @@ ${modeSpecificInstructions}
 ` : ''}
 
 Content to process:
-${fileContent ? `Uploaded File Content:\n${fileContent.slice(0, 20000)}...` : ''}
+${fileContent ? `Uploaded File Content:
+${fileContent.slice(0, 20000)}...` : ''}
 ${fileData ? '[Attached File Processing Active]' : ''}
 
 Topic/Context: ${topic || 'General Science/Math'}
 
 CRITICAL INSTRUCTION:
 ${totInsights ? '- Follow the AI Teaching Plan above for the optimal learning experience.' : ''}
-- If an uploaded file (PDF/Image) is provided, you MUST solve EVERY SINGLE QUESTION or concept presented in it.
-- Do not skip any questions. Be exhaustive.
-${!extractFormulaSheet && !questionAndAnswer ? '- PRIORITIZE INTERACTIVE ANIMATED SIMULATIONS over static content.' : ''}
+${criticalInstruction}
+${isComprehensiveMode ? '- PRIORITIZE INTERACTIVE ANIMATED SIMULATIONS over static content.' : ''}
 
 STRICT OUTPUT FORMAT - The HTML must include ALL of these in sequence:
 
-1. **Overview/Learning Objectives**: Brief intro stating what the learner will master.
-2. **The Question/Problem**: State the core problem(s) or concept(s) clearly.
-3. **Conceptual Foundation**: Explain the underlying theory/principles BEFORE solving.
-4. **Step-by-Step Solution**: Detailed, numbered steps for EACH problem with clear reasoning.
-5. **Visual Diagrams (SVG)**: Include clear, labeled SVG diagrams to illustrate concepts.
-6. **Key Formulas Section**: Highlight all important formulas with proper LaTeX delimiters.
-7. **INTERACTIVE SIMULATION (Canvas) - THIS IS THE MOST IMPORTANT SECTION**:
-   - Create a FULL-FEATURED animated Canvas simulation
-   - Use 'requestAnimationFrame' for 60fps smooth animation
-   - Show the concept VISUALLY ANIMATING (moving projectile, oscillating wave, rotating object, etc.)
-   - Include MULTIPLE interactive controls: sliders, buttons, checkboxes
-   - Let the user CHANGE PARAMETERS and see immediate visual response
-   - Make it visually impressive with colors, gradients, trails
-8. **Practice Problems WITH ANSWER CHECKING**:
-   - Create 3-5 practice problems with input fields
-   - Each problem should have an input/textarea for user answers
-   - Include a "Check Answer" button for EACH problem
-   - Show instant feedback: green checkmark ✅ for correct, red X ❌ for wrong
-   - Reveal the correct answer after checking with explanation
-   - Store correct answers in JavaScript variables and compare on button click
-   - Example structure:
-     <div class="problem">
-       <p>Problem 1: Calculate...</p>
-       <input type="text" id="answer1" placeholder="Your answer">
-       <button onclick="checkAnswer(1, 'correct_value')">Check</button>
-       <span id="feedback1"></span>
-     </div>
-9. **Quick Reference Summary**: A compact cheat-sheet section at the end.
+${outputFormat}
 
-ANSWER CHECKING JAVASCRIPT (include this script):
-<script>
-function checkAnswer(problemNum, correctAnswer) {
-  const userAnswer = document.getElementById('answer' + problemNum).value.trim().toLowerCase();
-  const feedbackEl = document.getElementById('feedback' + problemNum);
-  const correct = correctAnswer.toLowerCase();
-  // Allow for numerical tolerance
-  const numUser = parseFloat(userAnswer);
-  const numCorrect = parseFloat(correct);
-  const isCorrect = userAnswer === correct || 
-    (Math.abs(numUser - numCorrect) < 0.01 * Math.abs(numCorrect));
-  if (isCorrect) {
-    feedbackEl.innerHTML = '<span class="text-green-500">✅ Correct!</span>';
-    feedbackEl.style.display = 'inline';
-  } else {
-    feedbackEl.innerHTML = '<span class="text-red-500">❌ Try again. Hint: ' + correctAnswer + '</span>';
-    feedbackEl.style.display = 'inline';
-  }
-}
-</script>
+${answerCheckingSnippet}
 
 MATHJAX SETUP - CRITICAL (put this in the <head>):
 <script>
@@ -469,7 +1176,9 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
             } finally {
                 setIsGenerating(false);
                 setIsToTGenerating(false);
-                setTotResponse(null); // Clear ToT data so HTML preview shows
+                if (!isTreeMode) {
+                    setTotResponse(null); // Clear ToT data so HTML preview shows
+                }
                 setIsStreamingThoughts(false);
             }
             return;
@@ -479,63 +1188,226 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
         setLoadingStep('Initializing Gemini 3 Pro...');
 
         try {
-            const prompt = `
-        Content to process:
-        ${fileContent ? `Uploaded File Content:\n${fileContent.slice(0, 20000)}...` : ''}
-        ${fileData ? '[Attached File Processing Active]' : ''}
-        
-        Topic/Context: ${topic || 'General Science/Math'}
+            const modeDescription = isFormulaMode
+                ? 'FORMULA SHEET EXTRACTION'
+                : isQaMode
+                    ? 'QUESTION AND ANSWER FORMAT'
+                    : isSummaryMode
+                        ? 'SMART SUMMARY'
+                        : isFlashcardsMode
+                            ? 'FLASHCARDS'
+                            : isTimelineMode
+                                ? 'STUDY TIMELINE'
+                                : isTreeMode
+                                    ? 'TREE OF THOUGHTS'
+                                    : isCheckMyWorkMode
+                                        ? 'CHECK MY WORK'
+                                        : 'COMPREHENSIVE LEARNING MATERIAL';
 
-        Create a single, self-contained HTML file to explain [${topic || fileName || 'the provided concept'}]. 
-        
-        CRITICAL INSTRUCTION:
-        If an uploaded file (PDF/Image) is provided, you MUST solve EVERY SINGLE QUESTION or concept presented in it. 
-        Do not skip any questions. Be exhaustive.
-        
-        STRICT OUTPUT FORMAT:
-        The HTML must follow this exact structure sequentially:
-        
-        1. **The Question/Problem**: State the core problem(s) or concept(s) clearly at the top. If multiple questions, list them all.
-        2. **The Answer/Explanation**: Provide a detailed, step-by-step solution or explanation for EACH question found.
-        3. **Visual Diagrams (SVG)**: Include static or semi-static SVG diagrams to illustrate the concept next.
-        4. **Interactive Simulation (Canvas)**: AFTER the answer and diagrams, you MUST provide a fully animated, high-frame-rate Canvas simulation.
-           - REQUIREMENT: Use 'requestAnimationFrame' to create a smooth animation loop.
-           - REQUIREMENT: The canvas must NOT be static. It should animate parameters over time (e.g., a wave moving, a projectile flying, a graph drawing live).
-           - Include interactive controls (sliders, run/pause buttons).
-           - The simulation should visually demonstrate the physics/math concepts in motion.
-        5. **Practice Problems WITH ANSWER CHECKING**:
-           - Create 3-5 practice problems with input fields
-           - Include a "Check Answer" button for EACH problem
-           - Show instant feedback: ✅ for correct, ❌ for wrong with hints
-           - Use this checkAnswer function:
-             function checkAnswer(problemNum, correctAnswer) {
-               const userAnswer = document.getElementById('answer' + problemNum).value.trim().toLowerCase();
-               const feedbackEl = document.getElementById('feedback' + problemNum);
-               const isCorrect = userAnswer === correctAnswer.toLowerCase() || 
-                 Math.abs(parseFloat(userAnswer) - parseFloat(correctAnswer)) < 0.01 * Math.abs(parseFloat(correctAnswer));
-               feedbackEl.innerHTML = isCorrect ? '<span class="text-green-500">✅ Correct!</span>' : 
-                 '<span class="text-red-500">❌ Try again. Answer: ' + correctAnswer + '</span>';
-             }
-        
-        MATHJAX SETUP - CRITICAL (put this in the <head>):
-        <script>
-        MathJax = {
-          tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
-          svg: { fontCache: 'global' }
-        };
-        </script>
-        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
-        
-        Tech Stack & Styling:
-        - Use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>
-        - Use MathJax 3 as shown above for LaTeX rendering.
-        - Use a dark theme with good contrast.
-        - Ensure all JavaScript is contained within the single HTML file.
-        
-        IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and ending with </html>.
+            const modeSpecificInstructions = isFormulaMode
+                ? `
+SPECIAL MODE: EXTRACT FORMULA SHEET
+Your PRIMARY TASK is to create a CLEAN, PRINTABLE FORMULA SHEET with:
+1. Extract ALL formulas, equations, and key mathematical relationships from the content
+2. Organize formulas by topic/category with clear headings
+3. Include variable definitions for each formula (what each symbol means)
+4. Use LaTeX for all mathematical notation
+5. Create a clean, structured layout suitable for printing/study
+6. Add brief descriptions of when to use each formula
+7. Include worked examples for the most important formulas
+8. Create an index/table of contents at the top
+9. Make it visually clean with good spacing and clear typography
+`
+                : isQaMode
+                    ? `
+SPECIAL MODE: QUESTION AND ANSWER FORMAT
+Your PRIMARY TASK is to create PRACTICE Q&A material with:
+1. Extract or generate questions based on the content
+2. Provide detailed answers with step-by-step explanations
+3. Include multiple difficulty levels (Easy, Medium, Hard)
+4. Add hints for each question
+5. Include "Show Answer" functionality that reveals answers on click
+6. Create flashcard-style interactive elements
+7. Add a quiz mode where users can test themselves
+8. Include explanations for why wrong answers are wrong
+9. Provide a scoring/progress tracker
+`
+                    : isSummaryMode
+                        ? `
+SPECIAL MODE: SMART SUMMARY
+Your PRIMARY TASK is to create a concise, high-signal summary with:
+1. Key concepts in short bullet points
+2. Essential definitions with brief explanations
+3. Formula highlights using LaTeX where needed
+4. Common mistakes or misconceptions to avoid
+5. A short list of study tips and takeaways
+`
+                        : isFlashcardsMode
+                            ? `
+SPECIAL MODE: FLASHCARDS
+Your PRIMARY TASK is to create an interactive flashcard deck with:
+1. 12-20 flashcards covering terms, formulas, and applications
+2. A front/back card layout with click-to-flip behavior
+3. Next/Previous navigation and a progress indicator
+4. Short prompts on the front and clear answers on the back
+5. A quick recap section at the end
+`
+                            : isTimelineMode
+                                ? `
+SPECIAL MODE: STUDY TIMELINE
+Your PRIMARY TASK is to create a structured study plan with:
+1. A week-by-week schedule based on topic density
+2. Time estimates per session and review checkpoints
+3. A checklist for Week 1 to help the student start
+4. Clear milestones and revision sessions
+5. A final recap and exam readiness checklist
+`
+                                : isTreeMode
+                                    ? `
+SPECIAL MODE: TREE OF THOUGHTS
+Your PRIMARY TASK is to create a structured study tree with:
+1. A root topic and 2-4 levels of nested subtopics
+2. Prerequisites and dependencies between nodes
+3. A suggested study order and pacing notes
+4. Key outcomes for each branch
+`
+                                    : '';
+
+            const criticalInstruction = isSummaryMode
+                ? '- Cover all major concepts without fluff or repetition.'
+                : isFlashcardsMode
+                    ? '- Include every essential term, formula, and relationship from the source.'
+                    : isTimelineMode
+                        ? '- Use the source density to pace the schedule and include review cycles.'
+                        : isTreeMode
+                            ? '- Focus on a clear hierarchy and prerequisites.'
+                            : isCheckMyWorkMode
+                                ? '- If a student submission is present, focus on corrections and feedback.'
+                                : '- If an uploaded file (PDF/Image) is provided, you MUST solve EVERY SINGLE QUESTION or concept presented in it.\\n- Do not skip any questions. Be exhaustive.';
+
+            const outputFormat = isFormulaMode
+                ? `1. **Overview**: Brief intro and what the formula sheet covers.
+2. **Formula Index**: A table of contents with topic headings.
+3. **Formula Sections**: Grouped by topic with LaTeX equations and short usage notes.
+4. **Variable Definitions**: Bullet list of symbols and meanings for each section.
+5. **Worked Examples**: 2-4 short examples showing how to apply key formulas.
+6. **Printable Summary**: A compact recap section at the end.`
+                : isQaMode
+                    ? `1. **Overview**: What the learner will practice.
+2. **Question Sets**: Easy, Medium, Hard sections.
+3. **Hints and Answers**: Each question includes a hint and reveal.
+4. **Practice Tracker**: Simple progress indicator or score summary.
+5. **Quick Recap**: Key takeaways and formulas.`
+                    : isSummaryMode
+                        ? `1. **Overview**: Short, clear summary title and scope.
+2. **Key Concepts**: Bullet list of the most important ideas.
+3. **Definitions**: Term -> definition pairs.
+4. **Formula Highlights**: LaTeX blocks for critical equations.
+5. **Common Pitfalls**: Mistakes to avoid.
+6. **Study Tips**: 3-5 actionable tips.`
+                        : isFlashcardsMode
+                            ? `1. **Overview**: Topic intro and card count.
+2. **Flashcard Deck**: Interactive front/back cards with navigation.
+3. **Review Mode**: Shuffle and restart controls.
+4. **Quick Recap**: Key topics covered.`
+                            : isTimelineMode
+                                ? `1. **Overview**: Total study duration and goal.
+2. **Weekly Schedule**: Table with week, focus areas, and tasks.
+3. **Week 1 Checklist**: Daily breakdown to get started.
+4. **Milestones**: Checkpoints and review sessions.
+5. **Final Review Plan**: Exam readiness checklist.`
+                                : isTreeMode
+                                    ? `1. **Root Topic**: Short description.
+2. **Study Tree**: Nested list of branches and sub-branches.
+3. **Prerequisites**: Dependencies and suggested order.
+4. **Branch Outcomes**: Goals for each branch.
+5. **Next Steps**: Actionable study sequence.`
+                                    : `1. **Overview/Learning Objectives**: Brief intro stating what the learner will master.
+2. **The Question/Problem**: State the core problem(s) or concept(s) clearly.
+3. **Conceptual Foundation**: Explain the underlying theory/principles BEFORE solving.
+4. **Step-by-Step Solution**: Detailed, numbered steps for EACH problem with clear reasoning.
+5. **Visual Diagrams (SVG)**: Include clear, labeled SVG diagrams to illustrate concepts.
+6. **Key Formulas Section**: Highlight all important formulas with proper LaTeX delimiters.
+7. **INTERACTIVE SIMULATION (Canvas)**:
+   - Create a FULL-FEATURED animated Canvas simulation
+   - Use 'requestAnimationFrame' for 60fps smooth animation
+   - Show the concept visually animating
+   - Include multiple interactive controls: sliders, buttons, checkboxes
+8. **Practice Problems WITH ANSWER CHECKING**:
+   - Create 3-5 practice problems with input fields
+   - Each problem should have an input/textarea for user answers
+   - Include a "Check Answer" button for each problem
+   - Reveal the correct answer after checking with explanation
+9. **Quick Reference Summary**: A compact cheat-sheet section at the end.`;
+
+            const answerCheckingSnippet = (isQaMode || isComprehensiveMode)
+                ? `ANSWER CHECKING JAVASCRIPT (include this script):
+<script>
+function checkAnswer(problemNum, correctAnswer) {
+  const userAnswer = document.getElementById('answer' + problemNum).value.trim().toLowerCase();
+  const feedbackEl = document.getElementById('feedback' + problemNum);
+  const correct = correctAnswer.toLowerCase();
+  // Allow for numerical tolerance
+  const numUser = parseFloat(userAnswer);
+  const numCorrect = parseFloat(correct);
+  const isCorrect = userAnswer === correct || 
+    (Math.abs(numUser - numCorrect) < 0.01 * Math.abs(numCorrect));
+  if (isCorrect) {
+    feedbackEl.innerHTML = '<span class="text-green-500">Correct!</span>';
+    feedbackEl.style.display = 'inline';
+  } else {
+    feedbackEl.innerHTML = '<span class="text-red-500">Try again. Hint: ' + correctAnswer + '</span>';
+    feedbackEl.style.display = 'inline';
+  }
+}
+</script>`
+                : '';
+
+            const prompt = `
+Content to process:
+${fileContent ? `Uploaded File Content:
+${fileContent.slice(0, 20000)}...` : ''}
+${fileData ? '[Attached File Processing Active]' : ''}
+
+Topic/Context: ${topic || 'General Science/Math'}
+
+Create a single, self-contained HTML file to explain [${topic || fileName || 'the provided concept'}].
+
+${modeSpecificInstructions ? `--- GENERATION MODE: ${modeDescription} ---
+${modeSpecificInstructions}
+--- END MODE INSTRUCTIONS ---
+` : ''}
+
+CRITICAL INSTRUCTION:
+${criticalInstruction}
+${isComprehensiveMode ? '- PRIORITIZE INTERACTIVE ANIMATED SIMULATIONS over static content.' : ''}
+
+STRICT OUTPUT FORMAT - The HTML must include ALL of these in sequence:
+
+${outputFormat}
+
+${answerCheckingSnippet}
+
+MATHJAX SETUP - CRITICAL (put this in the <head>):
+<script>
+MathJax = {
+  tex: { inlineMath: [['$', '$'], ['\\\\(', '\\\\)']], displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']] },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+
+Tech Stack & Styling:
+- Use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>
+- Use MathJax 3 as shown above for LaTeX rendering.
+- Use a dark theme with good contrast.
+- Ensure all JavaScript is contained within the single HTML file.
+
+IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and ending with </html>.
       `;
 
             let accumulatedHtml = '';
+
             const sanitizePartialHtml = (html: string) =>
                 stripPolyfillScripts(html.replace(/^\s*```html\s*/i, '').replace(/```$/, ''));
 
@@ -575,6 +1447,23 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
             setIsStreamingThoughts(false);
         }
     };
+
+    useEffect(() => {
+        if (!autoGenerate || !selectedFeature || !canGenerate) return;
+        if (isGenerating || isExtractingFormulas || isExtractingSource || isToTGenerating) return;
+        if (autoGenerateRef.current === autoGenerateKey) return;
+        autoGenerateRef.current = autoGenerateKey;
+        void handleGenerate();
+    }, [
+        autoGenerate,
+        selectedFeature,
+        canGenerate,
+        isGenerating,
+        isExtractingFormulas,
+        isExtractingSource,
+        isToTGenerating,
+        autoGenerateKey
+    ]);
 
     // Handle expanding a ToT node
     const handleExpandNode = async (node: TotNode) => {
@@ -619,17 +1508,221 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
     };
 
     const previewDoc = previewHtml || generatedHtml || '';
-    const canGenerate = Boolean(fileContent || fileData || topic);
+    const isFormulaFeature = selectedFeature === 'extract-formulas' || extractFormulaSheet;
+    const isTreeFeature = selectedFeature === 'tree-of-thoughts';
+    const isCheckMyWorkFeature = selectedFeature === 'check-my-work';
     const disableGenerate = isGenerating || !canGenerate;
+    const sourcePreviewUrl = fileData ? `data:${fileData.mimeType};base64,${fileData.data}` : null;
+    const isSubmissionPdf = fileData?.mimeType === 'application/pdf';
+    const isSubmissionImage = Boolean(fileData?.mimeType?.startsWith('image/'));
+
+    if (isFormulaFeature && isToTGenerating) {
+        return (
+            <div className="fixed inset-0 z-50 h-full w-full bg-slate-900">
+                <ToTLiveViewer
+                    totData={totResponse}
+                    thoughts={thoughtLog}
+                    isGenerating={isToTGenerating}
+                    stage={totStage}
+                    showContinue={isToTReviewing}
+                    onContinue={handleToTContinue}
+                    continueLabel="Continue to Extraction"
+                />
+            </div>
+        );
+    }
+
+    if (isFormulaFeature) {
+        const formulaLoading = isGenerating || isExtractingFormulas || isExtractingSource || isToTGenerating || (autoGenerate && !extractedFormulas);
+        return (
+            <FormulaExtractionWorkspace
+                onBack={onBack || (() => undefined)}
+                fileName={fileName || 'Assignment.pdf'}
+                fileData={fileData}
+                fileContent={fileContent}
+                sourceMarkdown={sourceMarkdown}
+                formulas={extractedFormulas ?? []}
+                isLoading={formulaLoading}
+            />
+        );
+    }
+
+    if (isCheckMyWorkFeature) {
+        return (
+            <div className="flex flex-1 w-full h-full min-h-0 bg-[#eef2f7] overflow-hidden text-slate-900">
+                <div className="flex-1 flex flex-col min-h-0">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white shadow-sm">
+                        <div className="flex items-center gap-3">
+                            {onBack && (
+                                <button
+                                    onClick={onBack}
+                                    className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors text-sm"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                    <span>Back to Assignment</span>
+                                </button>
+                            )}
+                            <div className="hidden sm:block">
+                                <div className="text-sm font-semibold text-slate-800">Check My Work</div>
+                                <div className="text-xs text-slate-500">Upload a PDF or image and get annotated feedback.</div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                accept="application/pdf,image/*"
+                                onChange={handleFileUpload}
+                            />
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="px-3 py-2 text-xs font-semibold uppercase tracking-wide bg-[#2c4066] text-white hover:bg-[#34507c] transition-colors"
+                            >
+                                Upload Submission
+                            </button>
+                            {fileName && (
+                                <span className="text-xs text-slate-500 truncate max-w-[220px]">{fileName}</span>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-h-0 flex bg-white">
+                        <div className="flex h-full w-1/2 flex-col border-r border-slate-200 bg-white">
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+                                <div className="text-sm font-semibold text-slate-700">Submission</div>
+                                {fileName && (
+                                    <span className="text-xs text-slate-400 truncate max-w-[200px]">{fileName}</span>
+                                )}
+                            </div>
+                            <div className="flex-1 bg-slate-50 overflow-auto">
+                                {sourcePreviewUrl ? (
+                                    isSubmissionPdf ? (
+                                        <iframe
+                                            src={sourcePreviewUrl}
+                                            className="w-full h-full border-0"
+                                            title="Submission PDF"
+                                        />
+                                    ) : isSubmissionImage ? (
+                                        <div className="w-full h-full flex items-center justify-center p-4">
+                                            <img
+                                                src={sourcePreviewUrl}
+                                                alt="Submission"
+                                                className="max-w-full max-h-full object-contain shadow-md bg-white"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-sm text-slate-400">
+                                            Unsupported file type.
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-center text-slate-400 gap-2 px-6">
+                                        <FileUp className="w-8 h-8 text-slate-300" />
+                                        <p className="text-sm font-medium text-slate-500">Upload a PDF or image to review.</p>
+                                        <p className="text-xs text-slate-400">Use the upload button above.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex h-full w-1/2 flex-col bg-white">
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+                                <div className="text-sm font-semibold text-slate-700">Corrections & Feedback</div>
+                                <div className="flex items-center gap-2">
+                                    {annotatedImage && (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    const link = document.createElement('a');
+                                                    link.href = `data:${annotatedImage.mimeType};base64,${annotatedImage.data}`;
+                                                    link.download = 'annotated-work.png';
+                                                    link.click();
+                                                }}
+                                                className="px-2 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-500"
+                                            >
+                                                Save
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setAnnotatedImage(null);
+                                                    setCheckingFeedback(null);
+                                                }}
+                                                className="px-2 py-1 text-xs bg-red-600/10 text-red-500 rounded hover:bg-red-600/20"
+                                            >
+                                                Clear
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex-1 bg-slate-50 overflow-auto p-4">
+                                {isChecking ? (
+                                    <div className="flex flex-col items-center justify-center text-center text-slate-500 gap-3 h-full">
+                                        <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+                                        <p className="text-sm font-medium">Checking your work...</p>
+                                    </div>
+                                ) : annotatedImage ? (
+                                    <div className="w-full flex flex-col items-center gap-4">
+                                        <img
+                                            src={`data:${annotatedImage.mimeType};base64,${annotatedImage.data}`}
+                                            alt="Annotated feedback"
+                                            className="max-w-full shadow-lg bg-white"
+                                        />
+                                        {checkingFeedback && (
+                                            <div className="w-full bg-white border border-slate-200 rounded-lg p-4">
+                                                <div className="text-xs font-semibold text-emerald-500 uppercase tracking-wide mb-2">
+                                                    Feedback Summary
+                                                </div>
+                                                <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                                                    {checkingFeedback}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center text-center text-slate-500 gap-4 h-full">
+                                        <CheckCircle className="w-9 h-9 text-emerald-400" />
+                                        <p className="text-sm font-medium">Run "Check My Work" to see corrections.</p>
+                                        <button
+                                            onClick={handleCheckMyWork}
+                                            disabled={isChecking || !fileData}
+                                            className={`px-4 py-2 text-xs font-semibold uppercase tracking-wide rounded
+                                                    ${isChecking || !fileData
+                                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                                : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
+                                        >
+                                            Check My Work
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-1 w-full h-full min-h-0 bg-[#eef2f7] overflow-hidden text-slate-900">
             {/* Left Sidebar - Input & Thinking Stream */}
             {sidebarOpen && (
                 <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-full" style={{ backgroundColor: '#1F1F1F' }}>
+                    {/* Back Button Header */}
+                    {onBack && (
+                        <div className="border-b border-slate-700 p-4">
+                            <button
+                                onClick={onBack}
+                                className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                                <span>Back to Dashboard</span>
+                            </button>
+                        </div>
+                    )}
                     {/* Main Content Area */}
                     <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
-                        {/* File Upload */}
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Source Material</label>
                             <div
@@ -800,12 +1893,28 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                 <div className="flex-1 w-full relative min-h-0">
                     {/* Show real ToT reasoning during planning phase */}
                     {isToTGenerating ? (
-                        <ToTLiveViewer
-                            totData={totResponse}
-                            thoughts={thoughtLog}
-                            isGenerating={isToTGenerating}
-                            stage={totStage}
-                        />
+                        <div className="absolute inset-0">
+                            <ToTLiveViewer
+                                totData={totResponse}
+                                thoughts={thoughtLog}
+                                isGenerating={isToTGenerating}
+                                stage={totStage}
+                            />
+                        </div>
+                    ) : isTreeFeature && totResponse ? (
+                        <div className="absolute inset-0 w-full h-full bg-slate-900 overflow-auto p-6">
+                            <div className="max-w-4xl mx-auto">
+                                <div className="mb-4">
+                                    <h2 className="text-xl font-bold text-white">Tree of Thoughts Plan</h2>
+                                    <p className="text-sm text-slate-400">Expand branches to explore alternate study paths.</p>
+                                </div>
+                                <ExamPrepToTViewer
+                                    data={totResponse}
+                                    onExpandNode={handleExpandNode}
+                                    expandingNodeId={expandingNodeId}
+                                />
+                            </div>
+                        </div>
                     ) : annotatedImage ? (
                         /* Enhanced annotated image viewer with zoom and navigation */
                         <div className="absolute inset-0 w-full h-full bg-slate-900 flex flex-col">
@@ -956,6 +2065,14 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                             <span className="inline-block w-2 h-2 bg-[#2c4066] animate-pulse"></span>
                                             <span>Gemini 3 Pro is thinking...</span>
                                         </div>
+                                    </div>
+                                </div>
+                            ) : autoGenerate && selectedFeature ? (
+                                <div className="flex flex-col items-center gap-4 text-center max-w-md">
+                                    <Loader2 className="w-10 h-10 animate-spin text-[#2c4066]" />
+                                    <div>
+                                        <p className="text-lg font-bold text-slate-700 mb-1">Preparing your module</p>
+                                        <p className="text-sm text-slate-500">Starting analysis and generation...</p>
                                     </div>
                                 </div>
                             ) : (

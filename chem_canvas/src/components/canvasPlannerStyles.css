@@ -18,23 +18,24 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 12px;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 16px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.85) 100%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 20px;
   box-shadow: 
-    0 4px 24px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 0 40px rgba(96, 165, 250, 0.1);
   z-index: 100;
 }
 
 .canvas-planner-toolbar-divider {
   width: 1px;
-  height: 28px;
-  background: rgba(148, 163, 184, 0.2);
-  margin: 0 6px;
+  height: 32px;
+  background: linear-gradient(to bottom, transparent, rgba(148, 163, 184, 0.3), transparent);
+  margin: 0 8px;
 }
 
 /* Toolbar Buttons */
@@ -42,37 +43,41 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   color: #94a3b8;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
 .canvas-planner-tool-btn:hover {
-  background: rgba(148, 163, 184, 0.1);
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.15) 0%, rgba(148, 163, 184, 0.1) 100%);
   color: #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .canvas-planner-tool-btn.active {
-  background: rgba(59, 130, 246, 0.2);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(37, 99, 235, 0.2) 100%);
   color: #60a5fa;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+  box-shadow: 
+    0 0 0 2px rgba(59, 130, 246, 0.4),
+    0 4px 16px rgba(59, 130, 246, 0.2);
 }
 
 .canvas-planner-tool-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
 .canvas-planner-tool-btn svg {
   width: 20px;
   height: 20px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
 }
 
 /* Dropdown for shapes */
@@ -82,19 +87,21 @@
 
 .canvas-planner-dropdown-content {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 12px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px;
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  min-width: 140px;
+  gap: 6px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  box-shadow: 
+    0 12px 48px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  min-width: 160px;
   z-index: 110;
 }
 
@@ -108,32 +115,36 @@
 }
 
 .canvas-planner-color-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .canvas-planner-color-swatch:hover {
-  transform: scale(1.1);
+  transform: scale(1.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .canvas-planner-color-palette {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 12px);
   left: 50%;
   transform: translateX(-50%);
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
-  padding: 12px;
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  gap: 8px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  box-shadow: 
+    0 12px 48px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   z-index: 110;
 }
 
@@ -142,22 +153,27 @@
 }
 
 .canvas-planner-color-option {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   border: 2px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .canvas-planner-color-option:hover {
-  transform: scale(1.15);
-  border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .canvas-planner-color-option.selected {
   border-color: #60a5fa;
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
+  box-shadow: 
+    0 0 0 3px rgba(96, 165, 250, 0.4),
+    0 4px 12px rgba(96, 165, 250, 0.3);
+  transform: scale(1.1);
 }
 
 /* Right Actions */
@@ -167,7 +183,7 @@
   right: 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   z-index: 100;
 }
 
@@ -175,52 +191,64 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.85) 100%);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
   color: #94a3b8;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .canvas-planner-action-btn:hover {
-  background: rgba(30, 41, 59, 0.9);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(51, 65, 85, 0.9) 100%);
   color: #e2e8f0;
-  border-color: rgba(148, 163, 184, 0.25);
+  border-color: rgba(148, 163, 184, 0.3);
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(96, 165, 250, 0.15);
 }
 
 .canvas-planner-action-btn.active {
-  background: rgba(59, 130, 246, 0.2);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(37, 99, 235, 0.2) 100%);
   color: #60a5fa;
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 
+    0 0 0 2px rgba(59, 130, 246, 0.4),
+    0 8px 24px rgba(59, 130, 246, 0.25);
 }
 
 .canvas-planner-action-btn svg {
   width: 18px;
   height: 18px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
 }
 
 /* Zoom Controls */
 .canvas-planner-zoom {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 10px;
+  gap: 6px;
+  padding: 6px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.85) 100%);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .canvas-planner-zoom-level {
-  min-width: 48px;
+  min-width: 52px;
   text-align: center;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: #94a3b8;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
 }
 
 /* Canvas Area */
@@ -262,8 +290,8 @@
   inset: 0;
   pointer-events: none;
   background-image: 
-    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+    linear-gradient(rgba(148, 163, 184, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.1) 1px, transparent 1px);
   background-size: 20px 20px;
   transform-origin: 0 0;
 }
@@ -283,35 +311,51 @@
 .canvas-element {
   position: absolute;
   pointer-events: all;
-  transition: box-shadow 0.15s ease;
+  transition: 
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .canvas-element.selected {
   outline: 2px solid #60a5fa;
-  outline-offset: 2px;
+  outline-offset: 3px;
+  box-shadow: 
+    0 8px 32px rgba(96, 165, 250, 0.3),
+    0 0 0 4px rgba(96, 165, 250, 0.2);
 }
 
 .canvas-element:hover:not(.selected) {
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.4);
+  box-shadow: 0 4px 16px rgba(96, 165, 250, 0.2);
+  transform: translateY(-1px);
 }
 
 /* Resize Handles */
 .canvas-element-handles {
   position: absolute;
-  inset: -6px;
+  inset: -8px;
   pointer-events: none;
 }
 
 .canvas-element-handle {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  background: #60a5fa;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
   border: 2px solid white;
-  border-radius: 3px;
+  border-radius: 4px;
   pointer-events: all;
   cursor: nwse-resize;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    0 0 0 2px rgba(96, 165, 250, 0.3);
+  transition: all 0.2s ease;
+}
+
+.canvas-element-handle:hover {
+  transform: scale(1.2);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.5),
+    0 0 0 3px rgba(96, 165, 250, 0.4);
 }
 
 .canvas-element-handle.nw { top: 0; left: 0; cursor: nwse-resize; }
@@ -326,23 +370,32 @@
 /* Sticky Notes */
 .canvas-note {
   background: #fef3c7;
-  border-radius: 4px;
+  border-radius: 8px;
   box-shadow: 
-    0 2px 8px rgba(0, 0, 0, 0.15),
-    0 1px 2px rgba(0, 0, 0, 0.1);
-  padding: 12px;
+    0 4px 16px rgba(0, 0, 0, 0.2),
+    0 1px 4px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  padding: 16px;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: #1f2937;
   overflow: hidden;
+  transition: all 0.2s ease;
 }
 
-.canvas-note.yellow { background: #fef3c7; }
-.canvas-note.pink { background: #fce7f3; }
-.canvas-note.blue { background: #dbeafe; }
-.canvas-note.green { background: #dcfce7; }
-.canvas-note.purple { background: #f3e8ff; }
-.canvas-note.orange { background: #ffedd5; }
+.canvas-note:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.25),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.canvas-note.yellow { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
+.canvas-note.pink { background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%); }
+.canvas-note.blue { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); }
+.canvas-note.green { background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); }
+.canvas-note.purple { background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); }
+.canvas-note.orange { background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%); }
 
 .canvas-note textarea {
   width: 100%;
@@ -357,29 +410,35 @@
 
 /* Frame Elements */
 .canvas-frame {
-  background: rgba(30, 41, 59, 0.4);
-  border: 2px dashed #475569;
-  border-radius: 12px;
+  background: rgba(30, 41, 59, 0.5);
+  border: 2px dashed rgba(71, 85, 105, 0.8);
+  border-radius: 16px;
   overflow: visible;
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
 }
 
 .canvas-frame-title {
   position: absolute;
-  top: -32px;
+  top: -38px;
   left: 0;
-  padding: 4px 12px;
-  background: #1e293b;
-  border-radius: 6px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   color: #94a3b8;
   white-space: nowrap;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
 }
 
 /* Text Elements */
 .canvas-text {
-  padding: 8px;
-  border-radius: 4px;
+  padding: 10px;
+  border-radius: 6px;
   background: transparent;
 }
 
@@ -412,25 +471,31 @@
 /* Selection Box */
 .canvas-selection-box {
   position: absolute;
-  border: 1px solid #60a5fa;
-  background: rgba(96, 165, 250, 0.1);
+  border: 2px solid #60a5fa;
+  background: rgba(96, 165, 250, 0.15);
   pointer-events: none;
   z-index: 1000;
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.2);
+  border-radius: 4px;
 }
 
 /* Tooltip */
 .canvas-tooltip {
   position: absolute;
-  padding: 6px 10px;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 6px;
-  font-size: 12px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  font-size: 13px;
   color: #e2e8f0;
   white-space: nowrap;
   pointer-events: none;
   z-index: 200;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  font-weight: 500;
 }
 
 /* Presentation Mode */
@@ -438,7 +503,7 @@
 .canvas-planner.presentation-mode .canvas-planner-actions {
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.4s ease;
 }
 
 .canvas-planner.presentation-mode:hover .canvas-planner-toolbar,
@@ -450,18 +515,22 @@
 /* Presentation Controls */
 .canvas-presentation-controls {
   position: absolute;
-  bottom: 24px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
-  background: rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 16px;
+  gap: 16px;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.85) 100%);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 20px;
   z-index: 100;
+  box-shadow: 
+    0 12px 48px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 0 60px rgba(96, 165, 250, 0.15);
 }
 
 .canvas-presentation-controls.hidden {
@@ -471,41 +540,50 @@
 .canvas-presentation-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .canvas-presentation-nav button {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #94a3b8;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 
-.canvas-presentation-nav button:hover {
-  background: rgba(148, 163, 184, 0.1);
+.canvas-presentation-nav button:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.15);
   color: #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.canvas-presentation-nav button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .canvas-presentation-progress {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
   color: #94a3b8;
-  min-width: 60px;
+  min-width: 70px;
   text-align: center;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 6px 12px;
+  border-radius: 8px;
 }
 
 /* Animations */
 @keyframes canvas-element-appear {
   from {
     opacity: 0;
-    transform: scale(0.9);
+    transform: scale(0.85);
   }
   to {
     opacity: 1;
@@ -514,7 +592,7 @@
 }
 
 .canvas-element-new {
-  animation: canvas-element-appear 0.2s ease-out;
+  animation: canvas-element-appear 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Responsive */
@@ -522,13 +600,13 @@
   .canvas-planner-toolbar {
     top: auto;
     bottom: 16px;
-    padding: 6px 10px;
-    gap: 2px;
+    padding: 8px 12px;
+    gap: 3px;
   }
   
   .canvas-planner-tool-btn {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
   }
   
   .canvas-planner-tool-btn svg {
@@ -538,8 +616,13 @@
   
   .canvas-planner-actions {
     top: auto;
-    bottom: 80px;
+    bottom: 100px;
     right: 8px;
     flex-direction: column;
+  }
+  
+  .canvas-planner-action-btn {
+    width: 38px;
+    height: 38px;
   }
 }

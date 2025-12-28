@@ -13,7 +13,13 @@ import {
     Layers,
     Calendar,
     Brain,
-    CheckCircle
+    CheckCircle,
+    Atom,
+    Box,
+    Headphones,
+    Video,
+    Network,
+    Eye
 } from 'lucide-react';
 
 interface AssignmentDashboardProps {
@@ -24,6 +30,8 @@ interface AssignmentDashboardProps {
     uploadedFileName?: string;
     topic?: string;
     onTopicChange?: (topic: string) => void;
+    useTreeOfThoughts?: boolean;
+    onToggleTreeOfThoughts?: (enabled: boolean) => void;
     recentSessions?: { id: string; title: string }[];
 }
 
@@ -107,6 +115,72 @@ const features = [
         iconColor: 'text-cyan-600',
         decorationColor: 'text-cyan-200',
     },
+    {
+        id: 'simulation',
+        title: 'Simulation',
+        description: 'Build an interactive simulation to explore the concept step-by-step.',
+        icon: 'simulation',
+        color: 'orange',
+        bgColor: 'bg-orange-50',
+        iconBg: 'bg-orange-100',
+        iconColor: 'text-orange-600',
+        decorationColor: 'text-orange-200',
+    },
+    {
+        id: '3d-explorer',
+        title: '3D Explorer',
+        description: 'Load and manipulate 3D models with gesture controls.',
+        icon: '3d-explorer',
+        color: 'violet',
+        bgColor: 'bg-violet-50',
+        iconBg: 'bg-violet-100',
+        iconColor: 'text-violet-600',
+        decorationColor: 'text-violet-200',
+    },
+    {
+        id: 'audio-module',
+        title: 'Audio Lesson',
+        description: 'Generate a narrated audio walkthrough of the key concepts.',
+        icon: 'audio',
+        color: 'sky',
+        bgColor: 'bg-sky-50',
+        iconBg: 'bg-sky-100',
+        iconColor: 'text-sky-600',
+        decorationColor: 'text-sky-200',
+    },
+    {
+        id: 'video-module',
+        title: 'Video Lesson',
+        description: 'Create a short visual explainer with voiceover and key frames.',
+        icon: 'video',
+        color: 'fuchsia',
+        bgColor: 'bg-fuchsia-50',
+        iconBg: 'bg-fuchsia-100',
+        iconColor: 'text-fuchsia-600',
+        decorationColor: 'text-fuchsia-200',
+    },
+    {
+        id: 'mindmap',
+        title: 'Mind Map',
+        description: 'Organize the topic into a connected visual map of ideas.',
+        icon: 'mindmap',
+        color: 'teal',
+        bgColor: 'bg-teal-50',
+        iconBg: 'bg-teal-100',
+        iconColor: 'text-teal-600',
+        decorationColor: 'text-teal-200',
+    },
+    {
+        id: 'visual-activity',
+        title: 'Visual Activity',
+        description: 'Launch a visual activity with interactive prompts and diagrams.',
+        icon: 'visual-activity',
+        color: 'indigo',
+        bgColor: 'bg-indigo-50',
+        iconBg: 'bg-indigo-100',
+        iconColor: 'text-indigo-600',
+        decorationColor: 'text-indigo-200',
+    },
 ];
 
 // Icon components for each feature
@@ -131,6 +205,18 @@ const FeatureIcon: React.FC<{ icon: string; className?: string }> = ({ icon, cla
             return <Layers className={className} />;
         case 'timeline':
             return <Calendar className={className} />;
+        case 'simulation':
+            return <Atom className={className} />;
+        case '3d-explorer':
+            return <Box className={className} />;
+        case 'audio':
+            return <Headphones className={className} />;
+        case 'video':
+            return <Video className={className} />;
+        case 'mindmap':
+            return <Network className={className} />;
+        case 'visual-activity':
+            return <Eye className={className} />;
         default:
             return <Sparkles className={className} />;
     }
@@ -178,6 +264,18 @@ const DecorationIcon: React.FC<{ icon: string; className?: string }> = ({ icon, 
                     <path d="M3 10h18M10 4v18" />
                 </svg>
             );
+        case 'simulation':
+            return <Atom className={className} />;
+        case '3d-explorer':
+            return <Box className={className} />;
+        case 'audio':
+            return <Headphones className={className} />;
+        case 'video':
+            return <Video className={className} />;
+        case 'mindmap':
+            return <Network className={className} />;
+        case 'visual-activity':
+            return <Eye className={className} />;
         default:
             return null;
     }
@@ -191,6 +289,8 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
     uploadedFileName,
     topic = '',
     onTopicChange,
+    useTreeOfThoughts = false,
+    onToggleTreeOfThoughts,
     recentSessions = [],
 }) => {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -208,6 +308,9 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
         setLocalTopic(e.target.value);
         onTopicChange?.(e.target.value);
     };
+
+    const showToTToggle = Boolean(uploadedFileName);
+    const topicLabelNumber = showToTToggle ? '3' : '2';
 
     return (
         <div className="flex h-full w-full bg-[#f6f8fc] overflow-hidden">
@@ -247,10 +350,42 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
                             </div>
                         </div>
 
+                        {/* Tree of Thoughts Toggle */}
+                        {showToTToggle && (
+                            <div className="space-y-2">
+                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                    2. Tree of Thoughts
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => onToggleTreeOfThoughts?.(!useTreeOfThoughts)}
+                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${useTreeOfThoughts
+                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <GitBranch className="w-4 h-4" />
+                                        Tree of Thoughts
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${useTreeOfThoughts
+                                        ? 'bg-amber-200 text-amber-800'
+                                        : 'bg-slate-100 text-slate-500'
+                                        }`}
+                                    >
+                                        {useTreeOfThoughts ? 'On' : 'Off'}
+                                    </span>
+                                </button>
+                                <p className="text-[11px] text-slate-500">
+                                    Plan the best approach before generating any module output.
+                                </p>
+                            </div>
+                        )}
+
                         {/* Topic Input */}
                         <div className="space-y-2">
                             <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                2. Topic / Concept
+                                {topicLabelNumber}. Topic / Concept
                             </label>
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

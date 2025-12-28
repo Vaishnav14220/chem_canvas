@@ -2041,6 +2041,8 @@ ${script}`;
 
 // ============ SIMULATION GENERATION ============
 
+type SimulationVisualStyle = 'standard' | 'voxel';
+
 /**
  * Blueprint for a 3D educational web application simulation
  */
@@ -2200,12 +2202,22 @@ const SIMULATION_BLUEPRINT_SCHEMA = {
  */
 export const generateSimulationBlueprint = async (
   documentText: string,
-  topic: string
+  topic: string,
+  options?: { visualStyle?: SimulationVisualStyle }
 ): Promise<SimulationBlueprint> => {
   console.log('🎮 Generating simulation blueprint for:', topic);
 
   const { getSharedGeminiApiKey } = await import('../firebase/apiKeys');
   const apiKey = await getSharedGeminiApiKey();
+
+  const voxelStyleRequirements = options?.visualStyle === 'voxel'
+    ? `
+VOXEL STYLE REQUIREMENTS:
+- Use a voxel aesthetic: blocky cube-based shapes, grid-aligned, low-poly look
+- Prefer "Three.js (Standard)" and primitive geometry for all entities
+- Avoid external model URLs, photo textures, or smooth meshes
+- Keep visuals clean, professional, and educational`
+    : '';
 
   const prompt = `You are an expert educational simulation designer. Analyze the following academic document and create a detailed blueprint for an interactive 3D educational simulation.
 
@@ -2220,6 +2232,7 @@ REQUIREMENTS:
 3. Design interactive controls that help students explore the concept
 4. Include educational content that explains what students will learn
 5. Make sure the simulation is engaging and scientifically accurate
+${voxelStyleRequirements}
 
 Create a blueprint that a developer could use to build a complete educational simulation.`;
 
@@ -2253,7 +2266,11 @@ Create a blueprint that a developer could use to build a complete educational si
     }
 
     console.log('✅ Blueprint generated successfully');
-    return JSON.parse(blueprintText) as SimulationBlueprint;
+    const blueprint = JSON.parse(blueprintText) as SimulationBlueprint;
+    if (options?.visualStyle === 'voxel') {
+      blueprint.simulation_logic.preferred_library = 'Three.js (Standard)';
+    }
+    return blueprint;
   } catch (error) {
     console.error('Failed to generate simulation blueprint:', error);
     throw error;
@@ -2264,7 +2281,8 @@ Create a blueprint that a developer could use to build a complete educational si
  * Generate HTML simulation code from a blueprint using Gemini 3 Pro
  */
 export const generateSimulationHTML = async (
-  blueprint: SimulationBlueprint
+  blueprint: SimulationBlueprint,
+  options?: { visualStyle?: SimulationVisualStyle }
 ): Promise<string> => {
   console.log('🔨 Generating simulation HTML from blueprint using Gemini 3 Pro...');
 
@@ -2272,18 +2290,30 @@ export const generateSimulationHTML = async (
   const apiKey = await getSharedGeminiApiKey();
 
   // Determine which library and setup to use based on blueprint
-  const librarySetup = getLibrarySetup(blueprint.simulation_logic.preferred_library);
+  const preferredLibrary = options?.visualStyle === 'voxel'
+    ? 'Three.js (Standard)'
+    : blueprint.simulation_logic.preferred_library;
+  const librarySetup = getLibrarySetup(preferredLibrary);
+  const voxelStyleRequirements = options?.visualStyle === 'voxel'
+    ? `
+VOXEL STYLE REQUIREMENTS:
+- Build all entities from BoxGeometry voxel blocks (no smooth meshes)
+- Use flat shading and a clean, limited color palette
+- Keep models grid-aligned and blocky, with readable silhouettes
+- Avoid external textures, model URLs, or image assets`
+    : '';
 
   const prompt = `You are an expert web developer. Generate a COMPLETE, working HTML file for this educational simulation.
 
 SIMULATION REQUIREMENTS:
 - Topic: ${blueprint.educational_content.title}
 - Summary: ${blueprint.educational_content.summary}
-- Library: ${blueprint.simulation_logic.preferred_library}
+- Library: ${preferredLibrary}
 - Theme: ${blueprint.visual_design.theme} (background: ${blueprint.visual_design.background_hex}, accent: ${blueprint.visual_design.accent_hex})
 - Scene: ${blueprint.simulation_logic.scene_description}
 - Entities: ${blueprint.simulation_logic.entities.map(e => `${e.name}: ${e.behavior}`).join('; ')}
 - Controls: ${blueprint.interactive_controls.map(c => `${c.label} (${c.control_type})`).join(', ')}
+${voxelStyleRequirements}
 
 CRITICAL INSTRUCTIONS:
 1. Start with <!DOCTYPE html> - output ONLY HTML, no markdown
@@ -2322,7 +2352,7 @@ Generate the complete HTML now:`;
       console.error('HTML generation error:', errorText);
       // Fallback to the same model via a simpler prompt if primary call fails
       console.log(`Falling back to ${IMMERSIVE_TEXT_MODEL}...`);
-      return await generateSimulationHTMLFallback(blueprint, apiKey);
+      return await generateSimulationHTMLFallback(blueprint, apiKey, options);
     }
 
     const data = await response.json();
@@ -2330,7 +2360,7 @@ Generate the complete HTML now:`;
 
     if (!htmlContent) {
       console.log('No HTML from Gemini 3, trying fallback...');
-      return await generateSimulationHTMLFallback(blueprint, apiKey);
+      return await generateSimulationHTMLFallback(blueprint, apiKey, options);
     }
 
     // Clean up the response - remove markdown code blocks if present
@@ -2339,7 +2369,7 @@ Generate the complete HTML now:`;
     // Validate HTML
     if (!htmlContent.includes('<html') && !htmlContent.includes('<!DOCTYPE')) {
       console.log('Invalid HTML structure, trying fallback...');
-      return await generateSimulationHTMLFallback(blueprint, apiKey);
+      return await generateSimulationHTMLFallback(blueprint, apiKey, options);
     }
 
     console.log('✅ Simulation HTML generated successfully, length:', htmlContent.length);
@@ -2348,11 +2378,11 @@ Generate the complete HTML now:`;
     console.error('Failed to generate simulation HTML:', error);
     // Try fallback
     try {
-      return await generateSimulationHTMLFallback(blueprint, apiKey);
+      return await generateSimulationHTMLFallback(blueprint, apiKey, options);
     } catch (fallbackError) {
       console.error('Fallback also failed:', fallbackError);
       // Return a basic working simulation
-      return generateBasicSimulationHTML(blueprint);
+      return generateBasicSimulationHTML(blueprint, options);
     }
   }
 };
@@ -2411,9 +2441,18 @@ const cleanHtmlResponse = (html: string): string => {
  */
 const generateSimulationHTMLFallback = async (
   blueprint: SimulationBlueprint,
-  apiKey: string
+  apiKey: string,
+  options?: { visualStyle?: SimulationVisualStyle }
 ): Promise<string> => {
   console.log(`🔄 Using fallback generation with ${IMMERSIVE_TEXT_MODEL}...`);
+
+  const voxelStyleRequirements = options?.visualStyle === 'voxel'
+    ? `
+Voxel requirements:
+- Use only BoxGeometry voxel blocks with flat shading
+- Keep a blocky, grid-aligned look with simple colors
+- Avoid external textures or model URLs`
+    : '';
 
   const prompt = `Generate a simple but working HTML simulation for: "${blueprint.educational_content.title}"
 
@@ -2422,6 +2461,7 @@ Requirements:
 - Dark background, rotating 3D shapes representing the concept
 - Info panel on the right with title and description
 - At least one slider control that affects the animation
+${voxelStyleRequirements}
 
 Output ONLY the HTML code starting with <!DOCTYPE html>:`;
 
@@ -2457,10 +2497,49 @@ Output ONLY the HTML code starting with <!DOCTYPE html>:`;
 /**
  * Generate a basic working simulation when all else fails
  */
-const generateBasicSimulationHTML = (blueprint: SimulationBlueprint): string => {
+const generateBasicSimulationHTML = (
+  blueprint: SimulationBlueprint,
+  options?: { visualStyle?: SimulationVisualStyle }
+): string => {
   const theme = blueprint.visual_design.theme;
   const bgColor = blueprint.visual_design.background_hex || (theme === 'dark' ? '#1a1a2e' : '#ffffff');
   const accentColor = blueprint.visual_design.accent_hex || '#ff6d01';
+  const useVoxel = options?.visualStyle === 'voxel';
+  const meshSetup = useVoxel
+    ? `    // Create voxel objects
+    const voxelGroup = new THREE.Group();
+    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const palette = ['${accentColor}', '#5b8cff', '#4ade80', '#f59e0b'];
+    const positions = [
+      [0, 0, 0],
+      [1.1, 0, 0],
+      [-1.1, 0, 0],
+      [0, 1.1, 0],
+      [0, -1.1, 0],
+      [0, 0, 1.1]
+    ];
+    positions.forEach((pos, index) => {
+      const material = new THREE.MeshStandardMaterial({
+        color: palette[index % palette.length],
+        roughness: 0.8,
+        metalness: 0.1,
+        flatShading: true
+      });
+      const cube = new THREE.Mesh(cubeGeometry, material);
+      cube.position.set(pos[0], pos[1], pos[2]);
+      voxelGroup.add(cube);
+    });
+    const mesh = voxelGroup;
+    scene.add(mesh);`
+    : `    // Create objects
+    const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+    const material = new THREE.MeshPhongMaterial({ 
+      color: '${accentColor}',
+      shininess: 100,
+      specular: 0x444444
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -2573,15 +2652,7 @@ const generateBasicSimulationHTML = (blueprint: SimulationBlueprint): string => 
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
     
-    // Create objects
-    const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
-    const material = new THREE.MeshPhongMaterial({ 
-      color: '${accentColor}',
-      shininess: 100,
-      specular: 0x444444
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    scene.add(mesh);
+${meshSetup}
     
     // Lighting
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
@@ -2634,17 +2705,18 @@ const generateBasicSimulationHTML = (blueprint: SimulationBlueprint): string => 
 export const generateSimulation = async (
   documentText: string,
   topic: string,
-  onProgress?: (stage: string) => void
+  onProgress?: (stage: string) => void,
+  options?: { visualStyle?: SimulationVisualStyle }
 ): Promise<{ blueprint: SimulationBlueprint; html: string }> => {
   console.log('🎮 Starting full simulation generation for:', topic);
 
   // Step 1: Generate blueprint
   onProgress?.('Analyzing document and creating simulation blueprint...');
-  const blueprint = await generateSimulationBlueprint(documentText, topic);
+  const blueprint = await generateSimulationBlueprint(documentText, topic, options);
 
   // Step 2: Generate HTML from blueprint  
   onProgress?.('Generating interactive simulation code...');
-  const html = await generateSimulationHTML(blueprint);
+  const html = await generateSimulationHTML(blueprint, options);
 
   return { blueprint, html };
 };

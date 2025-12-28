@@ -42,6 +42,7 @@ import {
   GRADE_LEVEL_LABELS,
   SUBAGENTS,
 } from '../services/deepSimulationService';
+import { addFileToSourceLibrary } from '../utils/sourceLibrary';
 import { View } from '../types/studium';
 import { InteractiveCanvas } from './Studium/InteractiveCanvas';
 import { ChatInterface } from './Studium/ChatInterface';
@@ -1098,6 +1099,9 @@ const SimulationPlayground: React.FC<SimulationPlaygroundProps> = ({ onClose }) 
       }
 
       setPdfContent(fullText.trim());
+      addFileToSourceLibrary(file, { content: fullText.trim() }).catch((error) => {
+        console.warn('[SimulationPlayground] Failed to add source to library:', error);
+      });
 
       // Auto-suggest topic from PDF content if topic is empty
       if (!topic.trim() && fullText.length > 100) {

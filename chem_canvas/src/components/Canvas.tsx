@@ -31,6 +31,7 @@ import InlineMoleculeSearch from './InlineMoleculeSearch';
 import InlineReactionSearch, { type ReactionSearchResult } from './InlineReactionSearch';
 import PDBViewerEmbed from './PDBViewerEmbed';
 import ChemistryWidgetPanel from './ChemistryWidgetPanel';
+import DrawingToolsDock, { type DrawingTool } from './DrawingToolsDock';
 import rough from 'roughjs';
 import { Diff, Hunk, parseDiff } from 'react-diff-view';
 import { createTwoFilesPatch } from 'diff';
@@ -551,6 +552,10 @@ interface CanvasProps {
   currentTool: string;
   strokeWidth: number;
   strokeColor: string;
+  onToolChange?: (tool: DrawingTool) => void;
+  showToolsDock?: boolean;
+  dockForceCollapsed?: boolean;
+  onChemistryToolsClick?: () => void;
   onOpenCalculator?: () => void;
   onOpenMolView?: () => void;
   onOpenPeriodicTable?: () => void;
@@ -593,6 +598,10 @@ export default function Canvas({
   currentTool,
   strokeWidth,
   strokeColor,
+  onToolChange,
+  showToolsDock = true,
+  dockForceCollapsed = false,
+  onChemistryToolsClick,
   onOpenCalculator,
   onOpenMolView,
   onOpenPeriodicTable,
@@ -7318,82 +7327,92 @@ export default function Canvas({
         </div>
       )}
 
-      {/* Right-side Controls - Consolidated */}
-      <div className="absolute right-8 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
-        <div className="backdrop-blur-sm border border-cyan-500/20 rounded-xl p-3 shadow-lg shadow-cyan-500/10 space-y-3" style={{ backgroundColor: 'rgb(23, 23, 23)' }}>
+      {/* Right-side Controls + Drawing Tools */}
+      <div className="absolute right-6 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
+        {showToolsDock && onToolChange && (
+          <DrawingToolsDock
+            currentTool={currentTool as DrawingTool}
+            onToolChange={onToolChange}
+            position="right"
+            layout="inline"
+            enableKeyboardShortcuts={true}
+            forceCollapsed={dockForceCollapsed}
+            onChemistryToolsClick={onChemistryToolsClick ?? (() => setShowChemistryWidgetPanel(true))}
+            extraControls={(
+              <div className="space-y-2">
+                {/* Grid Toggle */}
+                <button
+                  onClick={() => setShowGrid(!showGrid)}
+                  className={`w-full p-1.5 rounded-lg transition-all flex items-center justify-center ${showGrid
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/25'
+                    : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                    }`}
+                  title="Toggle Grid"
+                >
+                  <Grid3x3 size={16} />
+                </button>
 
-          {/* Grid Toggle */}
-          <button
-            onClick={() => setShowGrid(!showGrid)}
-            className={`w-full p-2 rounded-lg transition-all flex items-center justify-center ${showGrid
-              ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/25'
-              : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
-              }`}
-            title="Toggle Grid"
-          >
-            <Grid3x3 size={16} />
-          </button>
+                {/* Background Toggle */}
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={() => setCanvasBackground('dark')}
+                    className={`p-1.5 rounded-lg transition-all ${canvasBackground === 'dark'
+                      ? 'bg-gradient-to-r from-cyan-500/40 to-blue-500/40 text-cyan-200 border border-cyan-500/30'
+                      : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                      }`}
+                    title="Dark Canvas"
+                  >
+                    <Moon size={14} />
+                  </button>
+                  <button
+                    onClick={() => setCanvasBackground('white')}
+                    className={`p-1.5 rounded-lg transition-all ${canvasBackground === 'white'
+                      ? 'bg-gradient-to-r from-cyan-500/40 to-blue-500/40 text-cyan-200 border border-cyan-500/30'
+                      : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                      }`}
+                    title="Light Canvas"
+                  >
+                    <Sun size={14} />
+                  </button>
+                </div>
 
-          {/* Background Toggle */}
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={() => setCanvasBackground('dark')}
-              className={`p-2 rounded-lg transition-all ${canvasBackground === 'dark'
-                ? 'bg-gradient-to-r from-cyan-500/40 to-blue-500/40 text-cyan-200 border border-cyan-500/30'
-                : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
-                }`}
-              title="Dark Canvas"
-            >
-              <Moon size={14} />
-            </button>
-            <button
-              onClick={() => setCanvasBackground('white')}
-              className={`p-2 rounded-lg transition-all ${canvasBackground === 'white'
-                ? 'bg-gradient-to-r from-cyan-500/40 to-blue-500/40 text-cyan-200 border border-cyan-500/30'
-                : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10'
-                }`}
-              title="Light Canvas"
-            >
-              <Sun size={14} />
-            </button>
-          </div>
+                {/* Zoom Controls */}
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={handleZoomIn}
+                    className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
+                    title="Zoom In"
+                  >
+                    <ZoomIn size={14} />
+                  </button>
+                  <button
+                    onClick={handleResetZoom}
+                    className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
+                    title="Reset Zoom"
+                  >
+                    <RotateCcw size={12} />
+                  </button>
+                  <button
+                    onClick={handleZoomOut}
+                    className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut size={14} />
+                  </button>
+                </div>
 
-          {/* Zoom Controls */}
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={handleZoomIn}
-              className="p-2 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
-              title="Zoom In"
-            >
-              <ZoomIn size={14} />
-            </button>
-            <button
-              onClick={handleResetZoom}
-              className="p-2 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
-              title="Reset Zoom"
-            >
-              <RotateCcw size={12} />
-            </button>
-            <button
-              onClick={handleZoomOut}
-              className="p-2 text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all"
-              title="Zoom Out"
-            >
-              <ZoomOut size={14} />
-            </button>
-          </div>
-
-          {/* Clear Canvas */}
-          <button
-            onClick={clearCanvas}
-            className="w-full p-2 text-red-400 hover:bg-red-500/20 hover:text-red-300 rounded-lg transition-all"
-            title="Clear Canvas"
-          >
-            <Trash2 size={14} />
-          </button>
-
-        </div>
-
+                {/* Clear Canvas */}
+                <button
+                  onClick={clearCanvas}
+                  className="w-full p-1.5 text-red-400 hover:bg-red-500/20 hover:text-red-300 rounded-lg transition-all"
+                  title="Clear Canvas"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
+          />
+        )}
       </div>
 
       {/* Zoom Indicator */}

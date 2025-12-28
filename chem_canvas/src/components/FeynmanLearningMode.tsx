@@ -56,11 +56,16 @@ import { LearningScoreCard, MisconceptionItem, ConceptItem, InsightItem } from '
 import { ClassroomSimulation } from './ClassroomSimulation';
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
+import { extractTextFromDocument } from '../utils/documentTextExtractor';
+import { addFileToSourceLibrary } from '../utils/sourceLibrary';
 
 interface FeynmanLearningModeProps {
     topic: string;
     onBack: () => void;
     onSwitchToSocratic?: (topic: string) => void;
+    remainingTopics?: string[];
+    onTopicChange?: (newTopic: string) => void;
+    documentData?: { mimeType: string; data: string };
 }
 
 // Color palette matching reference
@@ -73,7 +78,10 @@ const COLORS = [
 
 export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
     topic,
-    onBack
+    onBack,
+    remainingTopics = [],
+    onTopicChange,
+    documentData
 }) => {
     // Sub-mode: 'tutor' = original mode, 'classroom' = simulated classroom
     const [feynmanSubMode, setFeynmanSubMode] = useState<'tutor' | 'classroom'>('tutor');
@@ -507,44 +515,51 @@ Keep responses conversational and brief for voice interaction.`
         const file = e.target.files?.[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            const content = event.target?.result as string;
-            setUploadedDocument({ name: file.name, content });
+        let content = '';
+        try {
+            const extracted = await extractTextFromDocument(file);
+            content = extracted.text || '';
+        } catch (error) {
+            console.warn('[FeynmanLearningMode] Failed to extract document text, falling back to raw text.', error);
+            content = await file.text();
+        }
 
-            // Add context message about the uploaded document
-            const contextMessage: TutorChatMessage = {
-                role: 'user',
-                content: `I've uploaded a document "${file.name}" to help with my explanation. Here's the content:\n\n${content.substring(0, 2000)}${content.length > 2000 ? '...(truncated)' : ''}`,
-                timestamp: new Date()
-            };
-            setMessages(prev => [...prev, contextMessage]);
+        setUploadedDocument({ name: file.name, content });
+        addFileToSourceLibrary(file, { content }).catch((error) => {
+            console.warn('[FeynmanLearningMode] Failed to add source to library:', error);
+        });
 
-            // Get AI response about the document
-            setIsLoading(true);
-            try {
-                const response = await generateFeynmanResponse(
-                    `The learner uploaded a document titled "${file.name}". Please acknowledge it and ask them to explain what they understand from it.`,
-                    currentTopic,
-                    messages,
-                    isTeachBackMode,
-                    (chunk: string) => setStreamingContent(prev => prev + chunk)
-                );
-                const assistantMessage: TutorChatMessage = {
-                    role: 'assistant',
-                    content: response.assistant_message_md,
-                    timestamp: new Date(),
-                    tutor_response: response
-                };
-                setMessages(prev => [...prev, assistantMessage]);
-                setStreamingContent('');
-            } catch (error) {
-                console.error('Failed to process document:', error);
-            } finally {
-                setIsLoading(false);
-            }
+        // Add context message about the uploaded document
+        const contextMessage: TutorChatMessage = {
+            role: 'user',
+            content: `I've uploaded a document "${file.name}" to help with my explanation. Here's the content:\n\n${content.substring(0, 2000)}${content.length > 2000 ? '...(truncated)' : ''}`,
+            timestamp: new Date()
         };
-        reader.readAsText(file);
+        setMessages(prev => [...prev, contextMessage]);
+
+        // Get AI response about the document
+        setIsLoading(true);
+        try {
+            const response = await generateFeynmanResponse(
+                `The learner uploaded a document titled "${file.name}". Please acknowledge it and ask them to explain what they understand from it.`,
+                currentTopic,
+                messages,
+                isTeachBackMode,
+                (chunk: string) => setStreamingContent(prev => prev + chunk)
+            );
+            const assistantMessage: TutorChatMessage = {
+                role: 'assistant',
+                content: response.assistant_message_md,
+                timestamp: new Date(),
+                tutor_response: response
+            };
+            setMessages(prev => [...prev, assistantMessage]);
+            setStreamingContent('');
+        } catch (error) {
+            console.error('Failed to process document:', error);
+        } finally {
+            setIsLoading(false);
+        }
     }, [currentTopic, messages, isTeachBackMode]);
 
     // Clear session and canvas

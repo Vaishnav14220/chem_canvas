@@ -587,6 +587,59 @@ export const generateNanoBananaImage = async (
   }
 };
 
+/**
+ * Generates an image using Gemini 3 Pro Image Preview.
+ * Optimized for Socratic dialogue visualizations.
+ */
+export const generateGeminiImage = async (
+  prompt: string,
+  options?: {
+    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+  }
+): Promise<{ imageBase64: string; mimeType: string }> => {
+  await ensureInitializedAsync();
+  if (!genAI) {
+    throw new Error('Gemini API not initialized. Please provide an API key.');
+  }
+
+  const modelName = 'gemini-3-pro-image-preview';
+
+  try {
+    return await executeWithRotation(async (apiKey) => {
+      // Re-init if key changed
+      if (apiKey !== currentApiKey) {
+        genAI = new GoogleGenAI({ apiKey });
+        currentApiKey = apiKey;
+        cachedModelName = null;
+      }
+
+      console.log(`🎨 Generating image with ${modelName}: "${prompt}"`);
+
+      const response = await genAI!.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: {
+          responseModalities: ['Image'],
+          imageConfig: options?.aspectRatio ? { aspectRatio: options.aspectRatio } : undefined
+        }
+      });
+
+      const part = response.candidates?.[0]?.content?.parts?.[0];
+      if (part?.inlineData) {
+        return {
+          imageBase64: part.inlineData.data,
+          mimeType: part.inlineData.mimeType || 'image/png'
+        };
+      }
+
+      throw new Error('No image generated in response');
+    });
+  } catch (error) {
+    console.error('❌ Gemini Image Generation failed:', error);
+    throw error;
+  }
+};
+
 // Convenience wrapper used by UI helpers like the document editor.
 // Guarantees a trimmed string and isolates UI imports from the heavier service API.
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

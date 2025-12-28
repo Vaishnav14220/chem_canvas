@@ -1,5 +1,6 @@
 import { extractText } from 'unpdf';
 import { uploadTextToFileSearchStore } from './fileSearchStore';
+import { addFileToSourceLibrary } from '../../utils/sourceLibrary';
 
 export async function processUploadedFile(file: File): Promise<{
   title: string;
@@ -36,6 +37,9 @@ export async function processUploadedFile(file: File): Promise<{
     title,
     text: `Title: ${title}\n\nFilename: ${file.name}\n\n${text}`,
   });
+  addFileToSourceLibrary(file, { content: text, name: file.name, mimeType: file.type }).catch((error) => {
+    console.warn('[hyperbook] Failed to add source to library:', error);
+  });
 
   return {
     title,
@@ -46,4 +50,3 @@ export async function processUploadedFile(file: File): Promise<{
     fileSearchDocumentName,
   };
 }
-

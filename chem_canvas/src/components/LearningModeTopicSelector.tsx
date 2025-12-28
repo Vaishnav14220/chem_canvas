@@ -13,14 +13,24 @@ import {
     Upload,
     Loader2,
     Sparkles,
-    BookOpen,
     MessageCircle,
-    Check,
     AlertCircle,
-    File,
-    Trash2
+    Trash2,
+    GraduationCap,
+    ArrowLeft,
+    Mic
 } from 'lucide-react';
 import { streamTextContent } from '../services/geminiService';
+import { useSourceStore } from '../store/sourceStore';
+import { SourceSelector } from './ui/SourceSelector';
+import { addFileToSourceLibrary } from '../utils/sourceLibrary';
+import { Alert, AlertDescription } from './ui/alert';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
+import { Field, FieldContent, FieldDescription as FieldHelp, FieldGroup, FieldLabel } from './ui/field';
+import { Input } from './ui/input';
+import { Separator } from './ui/separator';
 
 interface UploadedDocument {
     name: string;
@@ -32,16 +42,21 @@ interface UploadedDocument {
 interface LearningModeTopicSelectorProps {
     isOpen: boolean;
     onClose: () => void;
-    onStart: (topic: string, documentData?: { mimeType: string; data: string }) => void;
-    mode: 'socratic' | 'feynman';
+    onStart: (topic: string, mode: 'auto' | 'socratic' | 'feynman' | 'pdf-study', documentData?: { mimeType: string; data: string }, remainingTopics?: string[]) => void;
+    mode?: 'socratic' | 'feynman' | 'auto' | 'pdf-study' | null;
 }
 
 export const LearningModeTopicSelector: React.FC<LearningModeTopicSelectorProps> = ({
     isOpen,
     onClose,
     onStart,
-    mode
+    mode: initialMode
 }) => {
+    // Step state: 'mode-selection' | 'context-input'
+    // If initialMode is provided, skip directly to context-input
+    const [step, setStep] = useState<'mode-selection' | 'context-input'>(initialMode ? 'context-input' : 'mode-selection');
+    const [selectedMode, setSelectedMode] = useState<'auto' | 'socratic' | 'feynman' | 'pdf-study'>(initialMode as any || 'auto');
+
     const [topic, setTopic] = useState('');
     const [documents, setDocuments] = useState<UploadedDocument[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -50,6 +65,22 @@ export const LearningModeTopicSelector: React.FC<LearningModeTopicSelectorProps>
     const [isDragOver, setIsDragOver] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Reset state when opening/closing
+    React.useEffect(() => {
+        if (isOpen) {
+            if (initialMode) {
+                setSelectedMode(initialMode);
+                setStep('context-input');
+            } else {
+                setStep('mode-selection');
+            }
+            setTopic('');
+            setDocuments([]);
+            setSuggestedTopics([]);
+            setError(null);
+        }
+    }, [isOpen, initialMode]);
 
     // Handle file upload
     const handleFileUpload = useCallback(async (files: FileList | null) => {
@@ -89,7 +120,17 @@ export const LearningModeTopicSelector: React.FC<LearningModeTopicSelectorProps>
                 size: file.size
             };
 
+
             setDocuments(prev => [...prev, newDoc]);
+
+            // Add to Global Source Store
+            addFileToSourceLibrary(file, {
+                data: base64,
+                mimeType: file.type,
+                name: file.name
+            }).catch((error) => {
+                console.warn('[LearningModeTopicSelector] Failed to add source to library:', error);
+            });
 
             // Auto-analyze document for topic suggestions
             analyzeDocumentForTopics(newDoc);
@@ -178,13 +219,27 @@ Document content is attached.`;
             return;
         }
 
-        // Combine all documents into one if multiple
-        const documentData = documents.length > 0 ? {
-            mimeType: documents[0].mimeType,
-            data: documents[0].data
-        } : undefined;
+        const { activeSourceId, getSource } = useSourceStore.getState();
+        const activeSource = activeSourceId ? getSource(activeSourceId) : null;
 
-        onStart(topic.trim(), documentData);
+        // Combine all documents into one if multiple
+        let documentData = undefined;
+
+        if (documents.length > 0) {
+            documentData = {
+                mimeType: documents[0].mimeType,
+                data: documents[0].data
+            };
+        } else if (activeSource && activeSource.data) {
+            documentData = {
+                mimeType: activeSource.mimeType || 'application/pdf',
+                data: activeSource.data
+            };
+        }
+
+        // Filter out the selected topic from suggested topics
+        const remainingTopicsToPass = suggestedTopics.filter(t => t !== topic.trim());
+        onStart(topic.trim(), selectedMode, documentData, remainingTopicsToPass);
 
         // Reset state
         setTopic('');
@@ -200,210 +255,298 @@ Document content is attached.`;
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     };
 
-    const modeConfig = {
+    type LearningModeType = 'auto' | 'socratic' | 'feynman' | 'pdf-study';
+    const modeConfig: Record<LearningModeType, { title: string; icon: any; description: string; badge?: string }> = {
+        auto: {
+            title: 'Auto Mode',
+            icon: Sparkles,
+            description: 'AI adapts to your pace and learning style automatically.',
+            badge: 'Recommended'
+        },
         socratic: {
-            title: 'Socratic Learning',
+            title: 'Socratic',
             icon: MessageCircle,
-            color: 'blue',
-            gradient: 'from-blue-500 to-indigo-500',
-            description: 'Learn through guided questions and discovery'
+            description: 'Learn through guided questioning and deep inquiry.'
         },
         feynman: {
-            title: 'Feynman Technique',
-            icon: BookOpen,
-            color: 'purple',
-            gradient: 'from-purple-500 to-pink-500',
-            description: 'Master concepts by teaching them back'
+            title: 'Feynman',
+            icon: GraduationCap,
+            description: 'Master concepts by teaching them in simple terms.'
+        },
+        'pdf-study': {
+            title: 'PDF Study Mode',
+            icon: Mic,
+            description: 'Upload PDF to chat with AI and generate real-time notes on a side canvas.',
+            badge: 'New'
         }
     };
 
-    const config = modeConfig[mode];
-    const Icon = config.icon;
+    const currentConfig = modeConfig[selectedMode];
+    const CurrentIcon = currentConfig.icon;
 
     if (!isOpen) return null;
 
     return (
         <AnimatePresence>
             <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-                onClick={onClose}
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="fixed left-1/2 top-32 z-[60] w-full max-w-3xl -translate-x-1/2 px-4"
             >
-                <motion.div
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.9, opacity: 0 }}
-                    className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-lg"
-                    onClick={e => e.stopPropagation()}
-                >
-                    {/* Header */}
-                    <div className={`p-6 border-b border-slate-700 bg-gradient-to-r ${config.gradient} rounded-t-2xl`}>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-white/20 rounded-lg">
-                                    <Icon className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-bold text-white">{config.title}</h2>
-                                    <p className="text-sm text-white/70">{config.description}</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={onClose}
-                                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                            >
-                                <X className="w-5 h-5 text-white" />
-                            </button>
-                        </div>
-                    </div>
+                <Card className="rounded-2xl border-slate-800/80 bg-[#171717] text-slate-100 shadow-2xl backdrop-blur">
+                    {step === 'mode-selection' ? (
+                        /* =========================================================================
+                           STEP 1: MODE SELECTION LAUNCHPAD
+                           ========================================================================= */
+                        <>
+                            <CardHeader>
+                                <CardTitle className="text-lg text-slate-100">Select learning mode</CardTitle>
+                                <CardDescription className="text-slate-400">
+                                    Pick the tutoring style for this session.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="grid gap-3 md:grid-cols-3">
+                                {(Object.keys(modeConfig) as Array<keyof typeof modeConfig>).map((m) => {
+                                    const config = modeConfig[m];
+                                    const Icon = config.icon;
+                                    const isRecommended = Boolean(config.badge);
 
-                    {/* Content */}
-                    <div className="p-6 space-y-5">
-                        {/* Topic Input */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
-                                What topic would you like to learn?
-                            </label>
-                            <input
-                                type="text"
-                                value={topic}
-                                onChange={e => setTopic(e.target.value)}
-                                placeholder="e.g., Photosynthesis, Chemical Bonding, Thermodynamics..."
-                                className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                onKeyDown={e => {
-                                    if (e.key === 'Enter' && topic.trim()) {
-                                        handleStart();
-                                    }
-                                }}
-                            />
-                        </div>
-
-                        {/* Document Upload */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
-                                Upload study material (optional)
-                            </label>
-                            <div
-                                onClick={() => fileInputRef.current?.click()}
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onDrop={handleDrop}
-                                className={`relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${isDragOver
-                                        ? 'border-blue-500 bg-blue-500/10'
-                                        : 'border-slate-600 hover:border-slate-500 bg-slate-800/50'
-                                    }`}
-                            >
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept=".pdf,.txt,.md,.html"
-                                    onChange={e => handleFileUpload(e.target.files)}
-                                    className="hidden"
-                                />
-                                <Upload className={`w-8 h-8 mx-auto mb-2 ${isDragOver ? 'text-blue-500' : 'text-slate-400'}`} />
-                                <p className="text-sm text-slate-400">
-                                    Drop a PDF, TXT, or MD file here, or click to browse
-                                </p>
-                                <p className="text-xs text-slate-500 mt-1">
-                                    Max 20MB
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Uploaded Documents */}
-                        {documents.length > 0 && (
-                            <div className="space-y-2">
-                                {documents.map((doc, index) => (
-                                    <div
-                                        key={index}
-                                        className="flex items-center justify-between p-3 bg-slate-800 rounded-lg border border-slate-700"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <File className="w-5 h-5 text-blue-400" />
-                                            <div>
-                                                <p className="text-sm text-white font-medium truncate max-w-[200px]">
-                                                    {doc.name}
-                                                </p>
-                                                <p className="text-xs text-slate-400">
-                                                    {formatSize(doc.size)}
-                                                </p>
+                                    return (
+                                        <button
+                                            key={m}
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedMode(m);
+                                                setStep('context-input');
+                                            }}
+                                            className="flex h-full flex-col gap-3 rounded-lg border border-slate-800 bg-black px-4 py-3 text-left transition hover:border-slate-700 hover:bg-slate-900"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-800 bg-black text-slate-200">
+                                                    <Icon className="h-4 w-4" />
+                                                </div>
+                                                {isRecommended && (
+                                                    <Badge variant="secondary" className="border border-slate-800 bg-slate-900 text-slate-200">
+                                                        {config.badge}
+                                                    </Badge>
+                                                )}
                                             </div>
-                                        </div>
-                                        <button
-                                            onClick={() => removeDocument(index)}
-                                            className="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
-                                        >
-                                            <Trash2 className="w-4 h-4 text-slate-400" />
+                                            <div className="text-sm font-semibold text-slate-100">{config.title}</div>
+                                            <div className="text-xs text-slate-400">{config.description}</div>
                                         </button>
+                                    );
+                                })}
+                            </CardContent>
+                            <CardFooter className="justify-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={onClose}
+                                    className="border-slate-800 bg-black text-slate-100 hover:bg-slate-900 hover:text-slate-100"
+                                >
+                                    Cancel
+                                </Button>
+                            </CardFooter>
+                        </>
+                    ) : (
+                        /* =========================================================================
+                           STEP 2: CONTEXT INPUT (TOPIC/FILE)
+                           ========================================================================= */
+                        <div className="flex max-h-[85vh] flex-col">
+                            <CardHeader className="flex flex-row items-start justify-between gap-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-800 bg-black text-slate-200">
+                                        <CurrentIcon className="h-5 w-5" />
                                     </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Analyzing Indicator */}
-                        {isAnalyzing && (
-                            <div className="flex items-center gap-2 text-sm text-blue-400">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span>Analyzing document for topics...</span>
-                            </div>
-                        )}
-
-                        {/* Suggested Topics */}
-                        {suggestedTopics.length > 0 && (
-                            <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-2">
-                                    <Sparkles className="w-4 h-4 inline-block mr-1 text-yellow-400" />
-                                    Suggested topics from document
-                                </label>
-                                <div className="flex flex-wrap gap-2">
-                                    {suggestedTopics.map((suggestion, index) => (
-                                        <button
-                                            key={index}
-                                            onClick={() => setTopic(suggestion)}
-                                            className={`px-3 py-1.5 rounded-lg text-sm transition-all ${topic === suggestion
-                                                    ? 'bg-blue-500 text-white'
-                                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-600'
-                                                }`}
-                                        >
-                                            {suggestion}
-                                        </button>
-                                    ))}
+                                    <div>
+                                        <CardTitle className="text-lg text-slate-100">{currentConfig.title}</CardTitle>
+                                        <CardDescription className="text-slate-400">
+                                            {currentConfig.badge || 'Learning session'}
+                                        </CardDescription>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                                <div className="flex items-center gap-2">
+                                    {!initialMode && (
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            onClick={() => setStep('mode-selection')}
+                                            className="border-slate-800 bg-black text-slate-100 hover:bg-slate-900"
+                                        >
+                                            <ArrowLeft className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={onClose}
+                                        className="text-slate-200 hover:bg-slate-900 hover:text-slate-100"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </CardHeader>
 
-                        {/* Error */}
-                        {error && (
-                            <div className="flex items-center gap-2 text-sm text-red-400">
-                                <AlertCircle className="w-4 h-4" />
-                                <span>{error}</span>
-                            </div>
-                        )}
-                    </div>
+                            <CardContent className="flex-1 space-y-6 overflow-y-auto">
+                                <FieldGroup>
+                                    {/* Topic Input */}
+                                    <Field>
+                                        <FieldLabel htmlFor="learning-topic" className="text-slate-200">Topic</FieldLabel>
+                                        <FieldContent>
+                                            <Input
+                                                id="learning-topic"
+                                                value={topic}
+                                                onChange={e => setTopic(e.target.value)}
+                                                placeholder="e.g., Photosynthesis, Quantum Mechanics, French Revolution..."
+                                                className="border-transparent bg-[#111111] text-slate-100 placeholder:text-slate-500 shadow-[0_10px_24px_-20px_rgba(0,0,0,0.9)] focus-visible:ring-slate-500/60"
+                                                autoFocus
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter' && topic.trim()) {
+                                                        handleStart();
+                                                    }
+                                                }}
+                                            />
+                                            <FieldHelp className="text-slate-400">
+                                                Focus on one concept or question to guide the session.
+                                            </FieldHelp>
+                                        </FieldContent>
+                                    </Field>
 
-                    {/* Footer */}
-                    <div className="p-6 border-t border-slate-700 flex justify-end gap-3">
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleStart}
-                            disabled={!topic.trim() || isAnalyzing}
-                            className={`px-6 py-2 rounded-lg text-sm font-medium text-white transition-all flex items-center gap-2 ${topic.trim() && !isAnalyzing
-                                    ? `bg-gradient-to-r ${config.gradient} hover:shadow-lg hover:shadow-${config.color}-500/25`
-                                    : 'bg-slate-700 cursor-not-allowed'
-                                }`}
-                        >
-                            <Check className="w-4 h-4" />
-                            Start Learning
-                        </button>
-                    </div>
-                </motion.div>
+                                    {/* Suggestion Pills */}
+                                    {suggestedTopics.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
+                                                <Sparkles className="h-4 w-4 text-slate-400" />
+                                                Suggested topics
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {suggestedTopics.map((suggestion, index) => (
+                                                    <Button
+                                                        key={index}
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => setTopic(suggestion)}
+                                                        className="border-slate-800 bg-[#111111] text-slate-200 hover:bg-[#1b1b1b] hover:text-slate-100"
+                                                    >
+                                                        {suggestion}
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                            {isAnalyzing && (
+                                                <div className="flex items-center gap-2 text-sm text-slate-400">
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Analyzing content for topics...
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {isAnalyzing && suggestedTopics.length === 0 && (
+                                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            Analyzing content for topics...
+                                        </div>
+                                    )}
+
+                                    <Separator className="bg-slate-800" />
+
+                                    {/* Document Upload Area */}
+                                    <Field>
+                                        <FieldLabel className="text-slate-200">Sources</FieldLabel>
+                                        <FieldHelp className="text-slate-400">
+                                            Select from your library or upload a file for context.
+                                        </FieldHelp>
+                                        <FieldContent className="gap-3">
+                                            <SourceSelector className="w-full" variant="black" />
+                                            {documents.length === 0 ? (
+                                                <div
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    onDragOver={handleDragOver}
+                                                    onDragLeave={handleDragLeave}
+                                                    onDrop={handleDrop}
+                                                    className={`cursor-pointer rounded-lg border border-transparent p-4 text-center text-sm text-slate-400 shadow-[0_12px_26px_-20px_rgba(0,0,0,0.9)] transition ${isDragOver
+                                                        ? 'bg-[#1b1b1b] text-slate-200'
+                                                        : 'bg-[#111111] hover:bg-[#1b1b1b]'
+                                                        }`}
+                                                >
+                                                    <input
+                                                        ref={fileInputRef}
+                                                        type="file"
+                                                        accept=".pdf,.txt,.md,.html"
+                                                        onChange={e => handleFileUpload(e.target.files)}
+                                                        className="hidden"
+                                                    />
+                                                    <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-transparent bg-[#111111] text-slate-300 shadow-[0_8px_18px_-12px_rgba(0,0,0,0.85)]">
+                                                        <Upload className="h-4 w-4" />
+                                                    </div>
+                                                    <div className="font-medium text-slate-200">Upload or drag a file</div>
+                                                    <div className="text-xs text-slate-500">
+                                                        PDF, TXT, MD, HTML up to 20MB
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {documents.map((doc, index) => (
+                                                        <div
+                                                            key={index}
+                                                            className="flex items-center justify-between rounded-lg border border-transparent bg-[#111111] px-3 py-2 shadow-[0_10px_22px_-18px_rgba(0,0,0,0.9)]"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-[#111111] shadow-[0_6px_16px_-12px_rgba(0,0,0,0.85)]">
+                                                                    <FileText className="h-4 w-4 text-slate-400" />
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-sm font-medium text-slate-100">{doc.name}</div>
+                                                                    <div className="text-xs text-slate-500">{formatSize(doc.size)}</div>
+                                                                </div>
+                                                            </div>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => removeDocument(index)}
+                                                                className="text-slate-300 hover:bg-slate-900 hover:text-slate-100"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </FieldContent>
+                                    </Field>
+                                </FieldGroup>
+
+                            </CardContent>
+
+                            {error && (
+                                <div className="px-6 pb-2">
+                                    <Alert variant="destructive" className="border-rose-500/50 bg-black text-rose-200">
+                                        <AlertCircle className="h-4 w-4" />
+                                        <AlertDescription>{error}</AlertDescription>
+                                    </Alert>
+                                </div>
+                            )}
+
+                            <CardFooter className="justify-between">
+                                <Button
+                                    variant="outline"
+                                    onClick={onClose}
+                                    className="border-transparent bg-[#111111] text-slate-100 shadow-[0_10px_22px_-18px_rgba(0,0,0,0.9)] hover:bg-[#1b1b1b] hover:text-slate-100"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={handleStart}
+                                    disabled={!topic.trim() || isAnalyzing}
+                                    className="border border-transparent bg-[#111111] text-slate-100 shadow-[0_10px_22px_-18px_rgba(0,0,0,0.9)] hover:bg-[#1b1b1b] hover:text-white"
+                                >
+                                    Start session
+                                </Button>
+                            </CardFooter>
+                        </div>
+                    )}
+                </Card>
             </motion.div>
         </AnimatePresence>
     );

@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import * as geminiService from '../services/geminiService';
 import { generateStreamingContent, isGeminiStreamingInitialized } from '../services/geminiStreaming';
+import { extractTextFromDocument } from '../utils/documentTextExtractor';
+import { addFileToSourceLibrary } from '../utils/sourceLibrary';
 import 'katex/dist/katex.min.css';
 
 interface UploadedDocument {
@@ -121,7 +123,14 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
     setIsUploading(true);
     
     try {
-      const content = await file.text();
+      let content = '';
+      try {
+        const extracted = await extractTextFromDocument(file);
+        content = extracted.text || '';
+      } catch (error) {
+        console.warn('[ChatAssistant] Failed to extract document text, falling back to raw text.', error);
+        content = await file.text();
+      }
       const newDocument: UploadedDocument = {
         id: Date.now().toString(),
         name: file.name,
@@ -132,6 +141,9 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ isOpen, onClose }) => {
       };
       
       setUploadedDocuments(prev => [...prev, newDocument]);
+      addFileToSourceLibrary(file, { content }).catch((error) => {
+        console.warn('[ChatAssistant] Failed to add source to library:', error);
+      });
       
       // Auto-add a welcome message about the uploaded document
       const welcomeMessage: ChatMessage = {

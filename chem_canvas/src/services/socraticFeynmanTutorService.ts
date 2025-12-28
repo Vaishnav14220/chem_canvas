@@ -5,7 +5,7 @@
  * Uses gemini-3-flash-preview model for AI responses.
  */
 
-import { generateTextContent, extractJsonBlock, streamTextContent } from './geminiService';
+import { generateTextContent, extractJsonBlock, streamTextContent, generateGeminiImage } from './geminiService';
 import {
     TutorResponse,
     TutorMode,
@@ -839,6 +839,402 @@ export function checkAutoModeSwitch(
     return { shouldSwitch: false };
 }
 
+/**
+ * Analyze a document using Tree of Thoughts (ToT) and Chain of Thoughts (CoT)
+ * to determine the optimal learning mode (Socratic or Feynman).
+ * 
+ * Decision factors:
+ * - Procedural/how-to content → Feynman (teach-back verification)
+ * - Complex theory/concepts → Socratic (guided inquiry)
+ * - Dense formulas/math → Socratic (step-by-step exploration)
+ * - Step-by-step processes → Feynman (explain to teach)
+ */
+export interface DocumentAnalysisResult {
+    recommendedMode: 'socratic' | 'feynman';
+    confidence: number; // 0-100
+    reasoning: string;
+    contentType: 'theoretical' | 'procedural' | 'mixed';
+    keyConcepts: string[];
+    suggestedTopic: string;
+}
+
+export async function analyzeDocumentForOptimalMode(
+    documentContent: string,
+    topic: string,
+    onProgress?: (stage: string) => void
+): Promise<DocumentAnalysisResult> {
+    onProgress?.('Analyzing document structure...');
+
+    const truncatedContent = documentContent.substring(0, 8000); // Limit for prompt size
+
+    const prompt = `You are an expert learning scientist using Tree of Thoughts (ToT) and Chain of Thoughts (CoT) reasoning to analyze educational content and recommend the optimal learning approach.
+
+## DOCUMENT TO ANALYZE:
+Topic: ${topic}
+Content:
+${truncatedContent}
+
+## YOUR TASK:
+Use ToT/CoT reasoning to determine whether this content is best learned through:
+- **Socratic Mode**: Guided questioning and deep inquiry (best for complex theory, abstract concepts, dense formulas)
+- **Feynman Mode**: Teaching and explaining (best for procedures, step-by-step processes, practical applications)
+
+## TREE OF THOUGHTS ANALYSIS:
+
+### Branch 1: Content Type Classification
+<thinking>
+- Is this content primarily theoretical or practical?
+- Does it contain step-by-step procedures?
+- Are there abstract concepts that need deep exploration?
+- Is there heavy mathematical content?
+</thinking>
+
+### Branch 2: Learning Objective Assessment
+<thinking>
+- What does the learner need to achieve?
+- Would questioning help reveal understanding gaps?
+- Would teaching the content help reinforce learning?
+- What's the complexity level?
+</thinking>
+
+### Branch 3: Optimal Mode Selection
+<thinking>
+- Based on content type and learning objectives, which mode fits better?
+- Socratic: When content is conceptually dense, theoretical, or requires deep exploration
+- Feynman: When content has procedures, how-to guides, or benefits from teaching back
+</thinking>
+
+## RESPOND WITH VALID JSON ONLY:
+{
+    "recommendedMode": "socratic" | "feynman",
+    "confidence": 0-100,
+    "reasoning": "Brief explanation of why this mode is best",
+    "contentType": "theoretical" | "procedural" | "mixed",
+    "keyConcepts": ["List of 3-5 key concepts to focus on"],
+    "suggestedTopic": "Refined topic suggestion based on content"
+}`;
+
+    try {
+        onProgress?.('Running ToT/CoT analysis...');
+
+        const response = await generateTextContent(prompt, {
+            model: 'gemini-3-flash-preview',
+            thinking: 'high'
+        });
+
+        onProgress?.('Processing recommendation...');
+
+        // Extract JSON from response
+        const jsonStr = extractJsonBlock(response) || response;
+        const result = JSON.parse(jsonStr) as DocumentAnalysisResult;
+
+        // Validate and ensure required fields
+        return {
+            recommendedMode: result.recommendedMode === 'feynman' ? 'feynman' : 'socratic',
+            confidence: Math.min(100, Math.max(0, result.confidence || 75)),
+            reasoning: result.reasoning || 'Analysis complete.',
+            contentType: result.contentType || 'mixed',
+            keyConcepts: result.keyConcepts || [],
+            suggestedTopic: result.suggestedTopic || topic
+        };
+    } catch (error) {
+        console.error('Error analyzing document for optimal mode:', error);
+        // Default to Socratic for unknown content
+        return {
+            recommendedMode: 'socratic',
+            confidence: 50,
+            reasoning: 'Unable to fully analyze content. Defaulting to Socratic mode for guided exploration.',
+            contentType: 'mixed',
+            keyConcepts: [],
+            suggestedTopic: topic
+        };
+    }
+}
+
+/**
+ * Extract diagrams and technical content from a PDF document using Gemini Vision.
+ * Analyzes the document to find diagrams, flowcharts, code snippets, and processes.
+ * Returns image data for canvas display and descriptions for AI context.
+ */
+export interface ExtractedDiagram {
+    imageBase64: string;
+    mimeType: string;
+    description: string;
+    type: 'diagram' | 'flowchart' | 'code' | 'process' | 'circuit' | 'other';
+    pageNumber?: number;
+}
+
+export interface DiagramExtractionResult {
+    diagrams: ExtractedDiagram[];
+    hasTechnicalContent: boolean;
+    documentSummary: string;
+    suggestedQuestions: string[];
+}
+
+export type ActivityPlanStepType = 'quiz' | 'fill_blank' | 'matching' | 'flashcards' | 'challenge';
+
+export interface ActivityPlanStep {
+    type: ActivityPlanStepType;
+    focus: string;
+    useDiagram: boolean;
+}
+
+export interface ActivityPlanResult {
+    steps: ActivityPlanStep[];
+}
+
+export async function extractDiagramsFromPdf(
+    pdfBase64: string,
+    mimeType: string = 'application/pdf',
+    onProgress?: (stage: string) => void
+): Promise<DiagramExtractionResult> {
+    onProgress?.('Analyzing document for technical content...');
+
+    try {
+        // For PDF analysis, we'll ask Gemini Vision to identify and describe technical content
+        const analysisPrompt = `Analyze this document and identify all technical diagrams, flowcharts, code snippets, circuit diagrams, and process illustrations.
+
+For each technical element found, provide:
+1. A detailed description
+2. The type (diagram, flowchart, code, process, circuit, other)
+3. Key concepts it illustrates
+4. 2-3 questions that would test understanding of this element
+
+Also provide:
+- A brief summary of the document's technical content
+- Whether this is primarily a technical/visual document (true/false)
+
+RESPOND WITH VALID JSON:
+{
+    "hasTechnicalContent": true/false,
+    "documentSummary": "Brief summary of technical content",
+    "technicalElements": [
+        {
+            "description": "Detailed description of the diagram/element",
+            "type": "diagram|flowchart|code|process|circuit|other",
+            "keyConcepts": ["concept1", "concept2"],
+            "questions": ["Question 1?", "Question 2?"]
+        }
+    ],
+    "suggestedQuestions": ["Overall question 1?", "Overall question 2?"]
+}`;
+
+        onProgress?.('Running visual analysis...');
+
+        const response = await streamTextContent(
+            analysisPrompt,
+            (chunk) => { /* progress tracking */ },
+            {
+                model: 'gemini-3-flash-preview',
+                thinking: 'high',
+                inlineData: {
+                    mimeType: mimeType,
+                    data: pdfBase64 // Send full PDF data - truncation was causing "document has no pages" error
+                }
+            }
+        );
+
+        onProgress?.('Processing diagram information...');
+
+        // Extract JSON from response
+        const jsonStr = extractJsonBlock(response) || response;
+        let analysisResult;
+        try {
+            analysisResult = JSON.parse(jsonStr);
+        } catch {
+            console.warn('[extractDiagramsFromPdf] Failed to parse analysis result');
+            return {
+                diagrams: [],
+                hasTechnicalContent: false,
+                documentSummary: 'Unable to analyze document content.',
+                suggestedQuestions: []
+            };
+        }
+
+        // Create diagram entries from analysis
+        // Note: In a full implementation, we would extract actual image data from the PDF
+        // For now, we return the descriptions which can be used to generate diagrams or guide the AI
+        const diagrams: ExtractedDiagram[] = (analysisResult.technicalElements || []).map((el: any, idx: number) => ({
+            imageBase64: '', // Would be populated from actual PDF image extraction
+            mimeType: 'image/png',
+            description: el.description || '',
+            type: el.type || 'other',
+            pageNumber: idx + 1
+        }));
+
+        // Collect all questions
+        const suggestedQuestions = [
+            ...(analysisResult.suggestedQuestions || []),
+            ...(analysisResult.technicalElements || []).flatMap((el: any) => el.questions || [])
+        ];
+
+        return {
+            diagrams,
+            hasTechnicalContent: analysisResult.hasTechnicalContent ?? false,
+            documentSummary: analysisResult.documentSummary || '',
+            suggestedQuestions: suggestedQuestions.slice(0, 10) // Limit to 10 questions
+        };
+    } catch (error) {
+        console.error('[extractDiagramsFromPdf] Error:', error);
+        return {
+            diagrams: [],
+            hasTechnicalContent: false,
+            documentSummary: 'Error analyzing document.',
+            suggestedQuestions: []
+        };
+    }
+}
+
+export async function recommendActivityPlanFromPdf(args: {
+    topic: string;
+    documentSummary: string;
+    hasTechnicalContent: boolean;
+    diagrams: ExtractedDiagram[];
+    suggestedQuestions: string[];
+}): Promise<ActivityPlanResult> {
+    const diagramTypes = new Set(args.diagrams.map(diagram => diagram.type));
+    const hasFlow = diagramTypes.has('flowchart') || diagramTypes.has('process');
+    const hasDiagram = diagramTypes.has('diagram') || diagramTypes.has('circuit');
+    const hasCode = diagramTypes.has('code');
+    const hasVisuals = args.diagrams.length > 0;
+
+    const buildFallbackPlan = (): ActivityPlanResult => {
+        if (hasFlow) {
+            return {
+                steps: [
+                    { type: 'matching', focus: args.topic, useDiagram: hasVisuals },
+                    { type: 'fill_blank', focus: args.topic, useDiagram: hasVisuals },
+                    { type: 'quiz', focus: args.topic, useDiagram: hasVisuals },
+                    { type: 'flashcards', focus: args.topic, useDiagram: false },
+                    { type: 'challenge', focus: args.topic, useDiagram: hasVisuals }
+                ]
+            };
+        }
+
+        if (hasCode) {
+            return {
+                steps: [
+                    { type: 'fill_blank', focus: args.topic, useDiagram: false },
+                    { type: 'quiz', focus: args.topic, useDiagram: hasVisuals },
+                    { type: 'flashcards', focus: args.topic, useDiagram: false },
+                    { type: 'matching', focus: args.topic, useDiagram: hasVisuals },
+                    { type: 'challenge', focus: args.topic, useDiagram: hasVisuals }
+                ]
+            };
+        }
+
+        if (hasDiagram) {
+            return {
+                steps: [
+                    { type: 'quiz', focus: args.topic, useDiagram: hasVisuals },
+                    { type: 'matching', focus: args.topic, useDiagram: hasVisuals },
+                    { type: 'fill_blank', focus: args.topic, useDiagram: hasVisuals },
+                    { type: 'flashcards', focus: args.topic, useDiagram: false },
+                    { type: 'challenge', focus: args.topic, useDiagram: hasVisuals }
+                ]
+            };
+        }
+
+        return {
+            steps: [
+                { type: 'flashcards', focus: args.topic, useDiagram: false },
+                { type: 'quiz', focus: args.topic, useDiagram: false },
+                { type: 'matching', focus: args.topic, useDiagram: false },
+                { type: 'fill_blank', focus: args.topic, useDiagram: false },
+                { type: 'challenge', focus: args.topic, useDiagram: false }
+            ]
+        };
+    };
+
+    const defaultPlan = buildFallbackPlan();
+
+    const diagramSummary = args.diagrams.slice(0, 5).map((diagram, index) => ({
+        index,
+        type: diagram.type,
+        description: diagram.description
+    }));
+
+    const prompt = `You are an expert learning designer. Build a 5-step activity plan for a learner based on this PDF.
+
+TOPIC: ${args.topic}
+SUMMARY: ${args.documentSummary}
+HAS_TECHNICAL_CONTENT: ${args.hasTechnicalContent}
+DIAGRAMS: ${JSON.stringify(diagramSummary)}
+SUGGESTED_QUESTIONS: ${JSON.stringify(args.suggestedQuestions.slice(0, 6))}
+
+Rules:
+- Return EXACTLY 5 steps.
+- Use ONLY these activity types: quiz, fill_blank, matching, flashcards, challenge.
+- Include ONE challenge step.
+- Ensure variety (at least 3 different types).
+- Set useDiagram true only if the step should reference a visual or diagram.
+- Keep focus concise (5-12 words).
+
+Respond ONLY with JSON:
+{
+  "steps": [
+    { "type": "quiz", "focus": "...", "useDiagram": true },
+    { "type": "fill_blank", "focus": "...", "useDiagram": true },
+    { "type": "matching", "focus": "...", "useDiagram": false },
+    { "type": "flashcards", "focus": "...", "useDiagram": false },
+    { "type": "challenge", "focus": "...", "useDiagram": true }
+  ]
+}`;
+
+    const normalizePlan = (plan: ActivityPlanResult): ActivityPlanResult => {
+        if (!plan.steps || plan.steps.length !== 5) {
+            return defaultPlan;
+        }
+
+        const allowedTypes: ActivityPlanStepType[] = ['quiz', 'fill_blank', 'matching', 'flashcards', 'challenge'];
+        const sanitized = plan.steps.map(step => ({
+            type: allowedTypes.includes(step.type) ? step.type : 'quiz',
+            focus: step.focus || args.topic,
+            useDiagram: hasVisuals ? Boolean(step.useDiagram) : false
+        }));
+
+        const types = sanitized.map(step => step.type);
+        const uniqueTypes = new Set(types);
+        const hasChallenge = types.includes('challenge');
+
+        if (uniqueTypes.size < 3 || !hasChallenge) {
+            return defaultPlan;
+        }
+
+        for (let i = 1; i < sanitized.length; i += 1) {
+            if (sanitized[i].type === sanitized[i - 1].type) {
+                const swapIndex = sanitized.findIndex((step, idx) => idx > i && step.type !== sanitized[i].type);
+                if (swapIndex > 0) {
+                    const swap = sanitized[i];
+                    sanitized[i] = sanitized[swapIndex];
+                    sanitized[swapIndex] = swap;
+                }
+            }
+        }
+
+        if (hasVisuals) {
+            const withDiagrams = sanitized.filter(step => step.useDiagram).length;
+            if (withDiagrams < 2) {
+                sanitized[0].useDiagram = true;
+                sanitized[2].useDiagram = true;
+            }
+        }
+
+        return { steps: sanitized };
+    };
+
+    try {
+        const response = await generateTextContent(prompt, { model: TUTOR_MODEL, thinking: 'high' });
+        const jsonStr = extractJsonBlock(response) || response;
+        const parsed = JSON.parse(jsonStr) as ActivityPlanResult;
+
+        return normalizePlan(parsed);
+    } catch (error) {
+        console.error('Error recommending activity plan:', error);
+        return defaultPlan;
+    }
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -1024,7 +1420,23 @@ Generate VALID JSON ONLY, no markdown code blocks.`;
     try {
         const response = await generateTextContent(prompt, { model: TUTOR_MODEL, thinking: 'high' });
         const jsonStr = extractJsonBlock(response) || response;
-        return JSON.parse(jsonStr) as InteractiveContentResponse;
+        const content = JSON.parse(jsonStr) as InteractiveContentResponse;
+
+        // If visualization, generate the actual image using Gemini 3 Pro
+        if (type === 'visualization' && content.visualization) {
+            try {
+                console.log('🖼️ Generating visualization image for:', content.visualization.topic);
+                const imageResult = await generateGeminiImage(content.visualization.description, {
+                    aspectRatio: '16:9'
+                });
+                content.visualization.imageUrl = `data:${imageResult.mimeType};base64,${imageResult.imageBase64}`;
+            } catch (imgError) {
+                console.error('Failed to generate visualization image:', imgError);
+                // We'll still return the description so the UI checks out, but without the image
+            }
+        }
+
+        return content;
     } catch (error) {
         console.error('Error generating interactive content:', error);
         return {};

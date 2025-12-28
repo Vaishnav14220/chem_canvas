@@ -19,6 +19,8 @@ import {
   X
 } from 'lucide-react';
 import * as geminiService from '../services/geminiService';
+import { extractTextFromDocument } from '../utils/documentTextExtractor';
+import { addFileToSourceLibrary } from '../utils/sourceLibrary';
 
 interface UploadedDocument {
   id: string;
@@ -119,7 +121,14 @@ const TestSection: React.FC<TestSectionProps> = ({ isOpen, onClose }) => {
     setIsUploading(true);
     
     try {
-      const content = await file.text();
+      let content = '';
+      try {
+        const extracted = await extractTextFromDocument(file);
+        content = extracted.text || '';
+      } catch (error) {
+        console.warn('[TestSection] Failed to extract document text, falling back to raw text.', error);
+        content = await file.text();
+      }
       const newDocument: UploadedDocument = {
         id: Date.now().toString(),
         name: file.name,
@@ -130,6 +139,9 @@ const TestSection: React.FC<TestSectionProps> = ({ isOpen, onClose }) => {
       };
       
       setUploadedDocuments(prev => [...prev, newDocument]);
+      addFileToSourceLibrary(file, { content }).catch((error) => {
+        console.warn('[TestSection] Failed to add source to library:', error);
+      });
     } catch (error) {
       console.error('Error uploading file:', error);
     } finally {

@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Settings, Search, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine, Image as ImageIcon, Gem, Atom, Scan } from 'lucide-react';
+import { FileText, Settings, Search, Beaker, FlaskConical, Edit3, Palette, MessageSquare, BookOpen, User, Video, Headphones, LineChart, Target, X, Menu, Clock, LogOut, ExternalLink, Layers3, Upload, Mic, Plus, FileSpreadsheet, PenLine, Image as ImageIcon, Gem, Atom, Scan, Sparkles, MessageCircle, GraduationCap } from 'lucide-react';
 import Canvas, {
   type CanvasCommand,
   type CanvasMoleculeInsertionHandler,
@@ -37,11 +37,11 @@ import { detectToolCalls, executeToolCalls } from './services/aiToolOrchestrator
 import ChemistryWidgetPanel from './components/ChemistryWidgetPanel';
 import DarkButtonWithIcon from './components/DarkButtonWithIcon';
 import ArMobileView from './components/ArMobileView';
-import SegmentedControl, { type SegmentedOption } from './components/SegmentedControl';
+import { type SegmentedOption } from './components/SegmentedControl';
 
 import AdaptivePlan from './components/AdaptivePlan';
 import FlippingInfo from './components/FlippingInfo';
-import PlannerTab from './components/PlannerTab';
+import DeskbaumPlanner from './components/DeskbaumPlanner';
 // import RdkitWorkspace from './components/RdkitWorkspace';
 import GeminiLiveOverlay from './components/GeminiLive/GeminiLiveOverlay';
 import GeminiLiveImageLightbox from './components/GeminiLive/GeminiLiveImageLightbox';
@@ -62,14 +62,14 @@ import AIWord from './components/AIWord';
 import { ExcalidrawCanvas, type ExcalidrawCanvasRef } from './components/ExcalidrawCanvas';
 import LearningTutorChat from './components/LearningTutorChat';
 import GeminiLiveWorkspace from './components/GeminiLiveWorkspace';
-import SrlCoachWorkspace from './components/SrlCoachWorkspace';
 import YouTubeVideos from './components/ImmersiveLearning';
-import DrawingToolsDock, { type DrawingTool } from './components/DrawingToolsDock';
-import FeynmanCoachPanel, { type FeynmanGuide } from './components/FeynmanCoachPanel';
+import { CanvasUploadPieMenu } from './components/CanvasUploadPieMenu';
+import type { DrawingTool } from './components/DrawingToolsDock';
+import { type FeynmanGuide } from './components/FeynmanCoachPanel';
 import { SocraticLearningMode } from './components/SocraticLearningMode';
 import { FeynmanLearningMode } from './components/FeynmanLearningMode';
+import { PdfStudyModeView } from './components/PdfStudyModeView';
 import { LearningModeTopicSelector } from './components/LearningModeTopicSelector';
-import { CanvasPlanner } from './components/CanvasPlanner';
 import {
   createWorkspace,
   getWorkspaces,
@@ -82,6 +82,11 @@ import { getFeynmanLiveConfig } from './services/learningTheoriesService';
 import { uploadFileToStorage, UploadedFile } from './services/database/storageService';
 import { getCurrentUserId } from './services/database/userService';
 import { Save, CloudOff, Cloud, FolderOpen, Loader2 as LoaderIcon, ChevronUp, ChevronDown } from 'lucide-react';
+import FeatureSidebar, { type FeatureGroup, type FeatureItem } from './components/FeatureSidebar';
+import FeatureGuideModal from './components/FeatureGuideModal';
+import { useSourceStore } from './store/sourceStore';
+import { addFileToSourceLibrary } from './utils/sourceLibrary';
+import { analyzeDocumentForOptimalMode, type DocumentAnalysisResult } from './services/socraticFeynmanTutorService';
 
 const NMR_ASSISTANT_PROMPT = `You are ChemAssist's NMR laboratory mentor embedded next to the NMRium spectrum viewer. Your job is to guide students through NMR data analysis, molecule preparation and interpretation. Always:
 • Explain steps clearly and reference relevant controls inside NMRium when appropriate.
@@ -113,7 +118,7 @@ type StudyToolType =
 
 type SourceEntry = {
   id: string;
-  type: 'document' | 'youtube' | 'weblink' | 'image' | 'paste';
+  type: 'document' | 'youtube' | 'weblink' | 'image' | 'paste' | 'pdf' | 'text' | 'markdown' | 'html';
   title: string;
   url?: string;
   content?: string;
@@ -201,14 +206,18 @@ const App: React.FC = () => {
   const [nmrIframeSrc, setNmrIframeSrc] = useState<string>('https://nmrium.nmrxiv.org?workspace=default');
 
   // Sources state
-  const [sources, setSources] = useState<SourceEntry[]>([]);
+  const { sources, activeSourceId, addSource: addSourceToStore, removeSource: removeSourceFromStore } = useSourceStore();
+
+  // Sources logic moved to useSourceStore, but we access via hooks below where we define adapters
+
+  // Backward compatibility for existing components that expect specific formats
   const youtubeSources = useMemo(() => sources.filter(source => source.type === 'youtube'), [sources]);
   const tutorSources = useMemo(() => {
     return sources
       .filter(source => source.content && source.content.trim())
       .map((source, index) => ({
-        id: source.id || `source-${index + 1}`,
-        title: source.title || `Source ${index + 1}`,
+        id: source.id,
+        title: source.name || `Source ${index + 1}`,
         content: source.content || ''
       }));
   }, [sources]);
@@ -237,31 +246,36 @@ const App: React.FC = () => {
   const CHAT_MAX_WIDTH = 700;
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [chatMode, setChatMode] = useState<SegmentedOption>('auto');
+  const [showLearningModePanel, setShowLearningModePanel] = useState(true);
   const [feynmanTopic, setFeynmanTopic] = useState('');
   const [feynmanGuide, setFeynmanGuide] = useState<FeynmanGuide | null>(null);
   const [isFeynmanGuideLoading, setIsFeynmanGuideLoading] = useState(false);
   const [feynmanGuideError, setFeynmanGuideError] = useState<string | null>(null);
   const [showChemistryPanel, setShowChemistryPanel] = useState(false);
   const [showNmrFullscreen, setShowNmrFullscreen] = useState(false);
-  const [showSrlCoachWorkspace, setShowSrlCoachWorkspace] = useState(false);
 
   const [showAdaptivePlan, setShowAdaptivePlan] = useState(false);
 
   const [showGeminiLiveWorkspace, setShowGeminiLiveWorkspace] = useState(false); // Kept for compatibility if needed, or remove
   const [showAIWord, setShowAIWord] = useState(false);
   const [showYouTubeVideos, setShowYouTubeVideos] = useState(false);
+  const [immersiveInitialMode, setImmersiveInitialMode] = useState<'assignment' | 'notebook' | 'immersive-text' | null>(null);
   const [showExcalidrawCanvas, setShowExcalidrawCanvas] = useState(false);
   const [showSocraticLearning, setShowSocraticLearning] = useState(false);
   const [showFeynmanLearning, setShowFeynmanLearning] = useState(false);
+  const [showPdfStudyMode, setShowPdfStudyMode] = useState(false);
   const [learningModeTopic, setLearningModeTopic] = useState('');
+  const [remainingTopics, setRemainingTopics] = useState<string[]>([]);
   const [learningModeDocumentData, setLearningModeDocumentData] = useState<{ mimeType: string; data: string } | undefined>(undefined);
   const [showTopicSelector, setShowTopicSelector] = useState(false);
-  const [pendingLearningMode, setPendingLearningMode] = useState<'socratic' | 'feynman' | null>(null);
+  const [pendingLearningMode, setPendingLearningMode] = useState<'auto' | 'socratic' | 'feynman' | 'pdf-study' | null>(null);
   const [pendingCanvasNote, setPendingCanvasNote] = useState<string | null>(null);
-  const [showCanvasPlanner, setShowCanvasPlanner] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ConceptImageRecord | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [showQuickActionsPopup, setShowQuickActionsPopup] = useState(false);
+  const [featureSidebarCollapsed, setFeatureSidebarCollapsed] = useState(false);
+  const [activeFeatureGuide, setActiveFeatureGuide] = useState<FeatureItem | null>(null);
+  const [activeFeatureId, setActiveFeatureId] = useState<string>('workspace-view');
   const [quickActionHandlers, setQuickActionHandlers] = useState<{
     onOpenMinerals: () => void;
     onOpenReactions: () => void;
@@ -275,6 +289,12 @@ const App: React.FC = () => {
   const feynmanAutoScreenShareRef = useRef(false);
   const wasFeynmanModeRef = useRef(false);
   const isFeynmanMode = chatMode === 'feynman';
+
+  const [uploadPieMenu, setUploadPieMenu] = useState<{ open: boolean; x: number; y: number }>({
+    open: false,
+    x: 0,
+    y: 0
+  });
 
   const resolvedFeynmanTopic = useMemo(() => {
     if (feynmanTopic.trim()) {
@@ -597,66 +617,22 @@ const App: React.FC = () => {
     setShowFeynmanLearning(false);
     setShowTopicSelector(false);
 
-    if (mode === 'socratic') {
-      // Show topic selector popup for Socratic mode
-      setPendingLearningMode('socratic');
-      setShowTopicSelector(true);
-      setShowChatPanel(false);
-      return;
-    }
+    // For all modes, show the topic selector (Launchpad) first
+    setPendingLearningMode(mode === 'auto' ? 'auto' : mode);
+    setShowTopicSelector(true);
+    setShowChatPanel(false);
 
-    if (mode === 'feynman') {
-      // Show topic selector popup for Feynman mode
-      setPendingLearningMode('feynman');
-      setShowTopicSelector(true);
-      setShowChatPanel(false);
-      return;
-    }
-
-    // Auto mode - close overlays and stop screen share
-    setPendingLearningMode(null);
     if (feynmanAutoScreenShareRef.current) {
       handleFeynmanStopScreenShare();
     }
   }, [
     handleFeynmanStopScreenShare
   ]);
-
-  // Handler for when user confirms topic in the selector
-  const handleTopicSelected = useCallback((topic: string, documentData?: { mimeType: string; data: string }) => {
-    setLearningModeTopic(topic);
-    setLearningModeDocumentData(documentData);
-    setShowTopicSelector(false);
-
-    if (pendingLearningMode === 'socratic') {
-      setShowSocraticLearning(true);
-      setShowExcalidrawCanvas(false);
-    } else if (pendingLearningMode === 'feynman') {
-      setShowFeynmanLearning(true);
-      setShowExcalidrawCanvas(true);
-      if (!feynmanGuide && !isFeynmanGuideLoading) {
-        void generateFeynmanGuide();
-      }
-      handleFeynmanConnect(true);
-      if (!isScreenSharing) {
-        handleFeynmanStartScreenShare();
-      }
-    }
-  }, [
-    pendingLearningMode,
-    feynmanGuide,
-    generateFeynmanGuide,
-    handleFeynmanConnect,
-    handleFeynmanStartScreenShare,
-    isFeynmanGuideLoading,
-    isScreenSharing
-  ]);
-
   useEffect(() => {
-    if (!isFeynmanMode) {
+    if (!isFeynmanMode || !showFeynmanLearning) {
       return;
     }
-    setShowExcalidrawCanvas(true);
+    setShowExcalidrawCanvas(false);
     if (!feynmanTopic.trim() && resolvedFeynmanTopic) {
       setFeynmanTopic(resolvedFeynmanTopic);
     }
@@ -669,7 +645,8 @@ const App: React.FC = () => {
     feynmanTopic,
     isFeynmanGuideLoading,
     isFeynmanMode,
-    resolvedFeynmanTopic
+    resolvedFeynmanTopic,
+    showFeynmanLearning
   ]);
 
   useEffect(() => {
@@ -743,9 +720,8 @@ const App: React.FC = () => {
 
 
   const isMainCanvasSurfaceActive =
-    activeCanvasTab === 'workspace' &&
+    (activeCanvasTab === 'workspace' || activeCanvasTab === 'planner') &&
     !isMolecularMode &&
-    !showSrlCoachWorkspace &&
     !showNmrFullscreen &&
     !showGeminiLiveWorkspace;
 
@@ -1163,12 +1139,8 @@ const App: React.FC = () => {
   }, []);
 
   const pillButtonClasses =
-    'inline-flex items-center gap-1.75 rounded-full border px-4 py-2 text-sm font-semibold backdrop-blur transition-all duration-300 relative overflow-hidden group button-shimmer' +
-    ' border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-purple-500/10' +
-    ' text-cyan-100 shadow-[0_2px_8px_rgba(6,182,212,0.15),inset_0_1px_0_rgba(255,255,255,0.1)]' +
-    ' hover:-translate-y-[1px] hover:border-cyan-400/50 hover:bg-gradient-to-br hover:from-cyan-500/15 hover:via-blue-500/15 hover:to-purple-500/15' +
-    ' hover:shadow-[0_4px_12px_rgba(6,182,212,0.25),inset_0_1px_0_rgba(255,255,255,0.15)]' +
-    ' active:translate-y-0 active:shadow-[0_2px_6px_rgba(6,182,212,0.2)]';
+    'inline-flex items-center gap-2 rounded-xl border border-slate-700/70 bg-[#171717] px-3 py-1.5 text-xs font-medium text-slate-200 shadow-sm shadow-black/20 transition-all duration-200' +
+    ' hover:border-slate-500/70 hover:bg-[#1f1f1f] hover:text-white';
   const dispatchCanvasCommand = useCallback((command: CanvasCommand) => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent<CanvasCommand>('canvas-command', { detail: command }));
@@ -1270,6 +1242,7 @@ const App: React.FC = () => {
     // Expose immersive learning trigger for testing
     if (typeof window !== 'undefined') {
       (window as any).openYouTubeVideos = () => {
+        setImmersiveInitialMode(null);
         setShowYouTubeVideos(true);
         startFeature('immersive-learning');
       };
@@ -1343,7 +1316,6 @@ const App: React.FC = () => {
 
   const openChemistryPanel = () => {
     setShowChemistryPanel(true);
-    setShowSrlCoachWorkspace(false);
 
     setShowNmrFullscreen(false);
     setShowChatPanel(false);
@@ -1354,22 +1326,814 @@ const App: React.FC = () => {
     setShowRdkitAssistant(false);
   };
 
+  const openDocStudio = () => {
+    setShowAIWord(true);
+    setShowNmrFullscreen(false);
+    setShowChemistryPanel(false);
+    setShowChatPanel(false);
+    setIsNmrAssistantActive(false);
+    setShowNmrAssistant(false);
+    setIsRdkitAssistantActive(false);
+    setShowRdkitAssistant(false);
+    setRdkitStatus('idle');
+    void captureToolClick('ai_word');
+    startFeature('ai_word');
+  };
+
+  // Helper to reset all overlays and return to the main workspace view
+  const resetToWorkspace = () => {
+    setShowNmrFullscreen(false);
+    setShowGeminiLiveWorkspace(false);
+    setShowYouTubeVideos(false);
+    setShowSocraticLearning(false);
+    setShowFeynmanLearning(false);
+    setShowChatPanel(false);
+    setShowChemistryPanel(false);
+    setShowAIWord(false);
+    setShowPeriodicTable(false);
+    setShowMolView(false);
+    setShowCalculator(false);
+    setShowProfileUpdate(false);
+    setShowSettings(false);
+    setIsNmrAssistantActive(false);
+    setShowNmrAssistant(false);
+    setIsRdkitAssistantActive(false);
+    setShowRdkitAssistant(false);
+    setRdkitStatus('idle');
+  };
+
+  const openDrawingTools = () => {
+    // Legacy support if needed, otherwise this is handled by resetToWorkspace + activeCanvasTab
+    resetToWorkspace();
+  };
+
+  const openImmersiveLearning = (mode?: 'assignment' | 'notebook' | 'immersive-text') => {
+    resetToWorkspace();
+    setImmersiveInitialMode(mode ?? null);
+    setShowYouTubeVideos(true);
+    void captureToolClick('immersive_learning');
+    startFeature('immersive_learning');
+  };
+
+  const openSocraticLearning = () => {
+    resetToWorkspace();
+    setShowSocraticLearning(true);
+    void captureToolClick('socratic_learning');
+    startFeature('socratic_learning');
+  };
+
+  const openFeynmanLearning = () => {
+    resetToWorkspace();
+    handleChatModeChange('feynman');
+    void captureToolClick('feynman_learning');
+  };
+
+  const handleTopicSelected = useCallback((topic: string, mode: 'auto' | 'socratic' | 'feynman' | 'pdf-study', documentData?: { mimeType: string; data: string }, passedRemainingTopics?: string[]) => {
+    setLearningModeTopic(topic);
+    setLearningModeDocumentData(documentData);
+    // Store remaining topics from the topic selector
+    if (passedRemainingTopics && passedRemainingTopics.length > 0) {
+      setRemainingTopics(passedRemainingTopics);
+    }
+    setShowTopicSelector(false); // Close the selector first to update state cleanly
+
+    // We don't set chatMode to 'pdf-study' because it's not a chat mode (it's an immersive mode)
+    if (mode !== 'pdf-study') {
+      setChatMode(mode as any);
+    }
+
+    if (mode === 'socratic') {
+      setShowSocraticLearning(true);
+      setShowExcalidrawCanvas(false);
+    } else if (mode === 'feynman') {
+      setShowSocraticLearning(false);
+      setShowFeynmanLearning(true);
+      setShowChatPanel(false);
+      setShowExcalidrawCanvas(false);
+      if (feynmanAutoScreenShareRef.current) {
+        handleFeynmanStopScreenShare();
+      }
+    } else if (mode === 'pdf-study') {
+      // PDF Study Mode -> Open dedicated PDF study view
+      setShowSocraticLearning(false);
+      setShowFeynmanLearning(false);
+      setShowChatPanel(false);
+      setShowPdfStudyMode(true);
+    } else {
+      // Auto mode - analyze document with ToT/CoT to determine best mode
+      if (documentData?.data) {
+        // Analyze document without showing intermediate UI
+        const analyzeAndRedirect = async () => {
+          try {
+            // For PDFs, we'll use the first portion of base64 content
+            const textContent = atob(documentData.data).substring(0, 5000);
+
+            const analysis = await analyzeDocumentForOptimalMode(
+              textContent,
+              topic,
+              (stage) => console.log('[Auto Mode Analysis]', stage)
+            );
+
+            console.log('[Auto Mode] Analysis result:', analysis);
+
+            // Use suggested topic if available
+            if (analysis.suggestedTopic) {
+              setLearningModeTopic(analysis.suggestedTopic);
+            }
+
+            // Redirect to recommended full learning mode page
+            // Store remaining topics from analysis for continuous study
+            if (analysis.keyConcepts && analysis.keyConcepts.length > 0) {
+              // Filter out the selected topic from remaining topics
+              const remainingFromAnalysis = analysis.keyConcepts.filter(t => t !== analysis.suggestedTopic);
+              setRemainingTopics(remainingFromAnalysis);
+            }
+
+            if (analysis.recommendedMode === 'feynman') {
+              setShowSocraticLearning(false);
+              setShowChatPanel(false);
+              setShowExcalidrawCanvas(false);
+              setShowFeynmanLearning(true);
+              startFeature('feynman_learning');
+            } else {
+              setShowFeynmanLearning(false);
+              setShowChatPanel(false);
+              setShowExcalidrawCanvas(false);
+              setShowSocraticLearning(true);
+              startFeature('socratic_learning');
+            }
+          } catch (error) {
+            console.error('[Auto Mode] Analysis failed, defaulting to Socratic:', error);
+            setShowChatPanel(false);
+            setShowExcalidrawCanvas(false);
+            setShowSocraticLearning(true);
+            startFeature('socratic_learning');
+          }
+        };
+
+        void analyzeAndRedirect();
+      } else {
+        // No document - default to Socratic for topic exploration
+        setShowFeynmanLearning(false);
+        setShowChatPanel(false);
+        setShowExcalidrawCanvas(false);
+        setShowSocraticLearning(true);
+        startFeature('socratic_learning');
+      }
+    }
+  }, [
+    handleFeynmanStopScreenShare,
+    openImmersiveLearning
+  ]);
+
+  const openNmrLab = () => {
+    resetToWorkspace();
+    setShowNmrFullscreen(true);
+    startFeature('nmr_lab');
+  };
+
+  const open3dExplorer = () => {
+    startFeature('3d_explorer');
+    resetToWorkspace();
+    openChemistryPanel();
+  };
+
+  const openChatPanel = () => {
+    resetToWorkspace();
+    setShowChatPanel(true);
+    startFeature('chat');
+  };
+
+  const uploadPieItems = useMemo(
+    () => [
+      {
+        id: 'assignment',
+        label: 'ASSIGNMENT',
+        icon: FileText,
+        color: '#3b82f6',
+        gradientStart: '#2563eb', // blue-600
+        gradientEnd: '#60a5fa',   // blue-400
+        onSelect: () => openImmersiveLearning('assignment')
+      },
+      {
+        id: 'notebook',
+        label: 'NOTEBOOK',
+        icon: BookOpen,
+        color: '#10b981',
+        gradientStart: '#059669', // emerald-600
+        gradientEnd: '#34d399',   // emerald-400
+        onSelect: () => openImmersiveLearning('notebook')
+      },
+      {
+        id: 'socratic',
+        label: 'SOCRATIC',
+        icon: MessageCircle,
+        color: '#8b5cf6',
+        gradientStart: '#7c3aed', // violet-600
+        gradientEnd: '#a78bfa',   // violet-400
+        onSelect: () => handleChatModeChange('socratic')
+      },
+      {
+        id: 'feynman',
+        label: 'FEYNMAN',
+        icon: GraduationCap,
+        color: '#f59e0b',
+        gradientStart: '#d97706', // amber-600
+        gradientEnd: '#fbbf24',   // amber-400
+        onSelect: () => handleChatModeChange('feynman')
+      }
+    ],
+    [handleChatModeChange, openImmersiveLearning]
+  );
+
+  const featureGroups: FeatureGroup[] = [
+    {
+      id: 'workspace',
+      label: 'Workspace',
+      items: [
+        {
+          id: 'workspace-view',
+          label: 'Workspace View',
+          description: 'Your main canvas for notes, diagrams, and study artifacts.',
+          steps: [
+            'Switch back to the primary workspace.',
+            'Use the left tool rail to draw, type, or insert.',
+            'Save progress from the workspace controls.'
+          ],
+          icon: Layers3,
+          action: () => {
+            setActiveCanvasTab('workspace');
+            setIsMolecularMode(false);
+          },
+          children: [
+            {
+              id: 'workspace-tabs',
+              label: 'Workspace tabs',
+              description: 'Switch between multiple workspace tabs.',
+              steps: [
+                'Click a workspace tab to switch.',
+                'Use the + button to add a new workspace.',
+                'Use the x button to close a workspace.'
+              ],
+              icon: Layers3
+            },
+            {
+              id: 'workspace-save-load',
+              label: 'Open and save',
+              description: 'Open saved workspaces and store updates.',
+              steps: [
+                'Click Open to load saved workspaces.',
+                'Click Save to store changes.',
+                'Watch the save status indicator for sync.'
+              ],
+              icon: Save
+            },
+            {
+              id: 'workspace-learning-mode',
+              label: 'Learning mode switcher',
+              description: 'Pick the tutoring style for the session.',
+              steps: [
+                'Auto adapts to the conversation.',
+                'Socratic prompts with questions.',
+                'Feynman focuses on teach-back.'
+              ],
+              icon: MessageSquare
+            }
+          ]
+        },
+        {
+          id: 'planner-view',
+          label: 'Planner View',
+          description: 'Deskbaum-style planner board for quick widgets and planning.',
+          steps: [
+            'Open the Planner tab next to your workspace.',
+            'Choose a widget size and type.',
+            'Click the grid to place widgets.'
+          ],
+          icon: Target,
+          action: () => {
+            resetToWorkspace();
+            setActiveCanvasTab('planner');
+            setIsMolecularMode(false);
+          },
+          children: [
+            {
+              id: 'planner-widget-size',
+              label: 'Widget sizes',
+              description: 'Pick a widget footprint before placing it.',
+              steps: [
+                'Single is one cell.',
+                'Full Width spans two columns.',
+                'Full Height spans two rows.'
+              ],
+              icon: Target
+            },
+            {
+              id: 'planner-widget-types',
+              label: 'Widget types',
+              description: 'Available widget templates on the board.',
+              steps: [
+                'Greeting, Today\'s Focus, Date and Time.',
+                'Custom Text for notes.',
+                'Calendar, Tasks, GitHub, Gmail placeholders.'
+              ],
+              icon: FileText
+            }
+          ]
+        },
+        {
+          id: 'canvas-studio',
+          label: 'Canvas Studio',
+          description: 'Default drawing canvas tools for notes and sketches.',
+          steps: [
+            'Activate Canvas Studio mode.',
+            'Use pen, text, and shape tools.',
+            'Share snapshots to the tutor when needed.'
+          ],
+          icon: Edit3,
+          action: () => {
+            resetToWorkspace();
+            setIsMolecularMode(false);
+            setActiveCanvasTab('workspace');
+          },
+          children: [
+            {
+              id: 'canvas-tools',
+              label: 'Drawing tools',
+              description: 'Core tools for sketching and annotation.',
+              steps: [
+                'Pen, text, and shapes for notes.',
+                'Select and move items as needed.',
+                'Eraser to clean up.'
+              ],
+              icon: Edit3
+            }
+          ]
+        },
+        {
+          id: 'molecule-sketcher',
+          label: 'Molecule Sketcher',
+          description: 'Chemical structure sketching mode on the canvas.',
+          steps: [
+            'Switch to Molecule Sketcher.',
+            'Draw structures directly on the canvas.',
+            'Use chemistry tools for reactions or proteins.'
+          ],
+          icon: Beaker,
+          action: () => {
+            resetToWorkspace();
+            setIsMolecularMode(true);
+            setActiveCanvasTab('workspace');
+          },
+          children: [
+            {
+              id: 'molecule-mode-tools',
+              label: 'Chemistry tools',
+              description: 'Quick actions for chemistry workflows.',
+              steps: [
+                'Open reactions, minerals, or proteins.',
+                'View selected molecules in AR.',
+                'Switch back to Canvas Studio when done.'
+              ],
+              icon: Beaker
+            }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'resources',
+      label: 'Resources',
+      items: [
+        {
+          id: 'sources',
+          label: 'Sources',
+          description: 'Manage PDFs, images, links, and notes for your session.',
+          steps: [
+            'Open the Sources panel.',
+            'Add or remove sources as you study.',
+            'Click a source to review or cite it.'
+          ],
+          icon: FileText,
+          action: () => setDocumentViewerOpen(true),
+          children: [
+            {
+              id: 'sources-list',
+              label: 'Source list',
+              description: 'All uploaded and linked materials.',
+              steps: [
+                'Select a source to preview.',
+                'Use remove to clean up.',
+                'Search within sources if needed.'
+              ],
+              icon: FileText
+            }
+          ]
+        },
+        {
+          id: 'upload',
+          label: 'Upload to Canvas',
+          description: 'Drop files directly onto the workspace for analysis.',
+          steps: [
+            'Open the upload picker.',
+            'Select a PDF, image, or document.',
+            'The file appears in Sources and on the canvas.'
+          ],
+          icon: Upload,
+          action: () => handleHeaderUploadClick()
+        },
+        {
+          id: '3d-explorer',
+          label: '3D Explorer',
+          description: 'Explore molecules and proteins in 3D.',
+          steps: [
+            'Open the 3D Explorer panel.',
+            'Search for a structure to load.',
+            'Inspect and rotate the model.'
+          ],
+          icon: Layers3,
+          action: open3dExplorer,
+          children: [
+            {
+              id: '3d-tabs-molecule',
+              label: 'Molecules tab',
+              description: 'Load small molecule structures.',
+              steps: [
+                'Search by name or identifier.',
+                'Load the molecule to the viewport.',
+                'Use the viewport controls to inspect.'
+              ],
+              icon: Layers3
+            },
+            {
+              id: '3d-tabs-protein',
+              label: 'Proteins tab',
+              description: 'Load proteins and macromolecules.',
+              steps: [
+                'Search a PDB ID.',
+                'Load a sample protein.',
+                'Explore binding sites and chains.'
+              ],
+              icon: Layers3
+            },
+            {
+              id: '3d-tabs-crystal',
+              label: 'Crystals tab',
+              description: 'Explore crystal structures.',
+              steps: [
+                'Search by COD ID.',
+                'Load crystal lattice data.',
+                'Inspect symmetry and cell data.'
+              ],
+              icon: Layers3
+            },
+            {
+              id: '3d-tabs-reaction',
+              label: 'Reactions tab',
+              description: 'Animate and visualize reactions.',
+              steps: [
+                'Load a reaction sequence.',
+                'Play the reaction animation.',
+                'Inspect intermediates.'
+              ],
+              icon: Layers3
+            }
+          ]
+        },
+        {
+          id: 'nmr-lab',
+          label: 'NMR Lab',
+          description: 'Open NMRium for spectral analysis.',
+          steps: [
+            'Launch the NMR Lab view.',
+            'Load your spectrum or JCAMP-DX file.',
+            'Use the assistant for peak guidance.'
+          ],
+          icon: LineChart,
+          action: openNmrLab,
+          children: [
+            {
+              id: 'nmr-assistant',
+              label: 'NMR Assistant',
+              description: 'Toggle the helper chat for NMR guidance.',
+              steps: [
+                'Open the assistant from the NMR header.',
+                'Ask about peaks, assignments, or tips.',
+                'Close the assistant to focus on spectra.'
+              ],
+              icon: Headphones
+            },
+            {
+              id: 'nmr-open-tab',
+              label: 'Open in new tab',
+              description: 'Launch the NMR viewer in a separate tab.',
+              steps: [
+                'Use the Open in new tab button.',
+                'Keep the main workspace open.',
+                'Return when you need to sync.'
+              ],
+              icon: ExternalLink
+            }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'learning',
+      label: 'Learning Modes',
+      items: [
+        {
+          id: 'doc-studio',
+          label: 'Doc Studio',
+          description: 'AI word processor for long-form writing.',
+          steps: [
+            'Open Doc Studio.',
+            'Start drafting or import content.',
+            'Use AI tools to refine your writing.'
+          ],
+          icon: PenLine,
+          action: openDocStudio,
+          children: [
+            {
+              id: 'doc-studio-chat',
+              label: 'Chat tab',
+              description: 'Conversational drafting and assistance.',
+              steps: [
+                'Ask for outlines or rewrites.',
+                'Paste text for feedback.',
+                'Keep chat notes alongside drafts.'
+              ],
+              icon: MessageSquare
+            },
+            {
+              id: 'doc-studio-editor',
+              label: 'Editor tab',
+              description: 'Main document editor workspace.',
+              steps: [
+                'Write directly in the editor.',
+                'Use formatting tools for structure.',
+                'Save progress regularly.'
+              ],
+              icon: PenLine
+            },
+            {
+              id: 'doc-studio-googledoc',
+              label: 'Google Doc tab',
+              description: 'Sync and edit Google Docs.',
+              steps: [
+                'Connect a Google document.',
+                'Edit inside the embedded view.',
+                'Sync changes back to Drive.'
+              ],
+              icon: FileSpreadsheet
+            },
+            {
+              id: 'doc-studio-latex',
+              label: 'LaTeX tab',
+              description: 'Compose LaTeX documents.',
+              steps: [
+                'Switch to the LaTeX view.',
+                'Edit equations and sections.',
+                'Preview compiled output.'
+              ],
+              icon: FileText
+            },
+            {
+              id: 'doc-studio-deep-agent',
+              label: 'Deep Agent tab',
+              description: 'Multi-step AI agent workflows.',
+              steps: [
+                'Queue up complex tasks.',
+                'Review agent outputs.',
+                'Export results into your draft.'
+              ],
+              icon: Gem
+            },
+            {
+              id: 'doc-studio-research',
+              label: 'Research tab',
+              description: 'Collect citations and research notes.',
+              steps: [
+                'Add sources for context.',
+                'Summarize findings.',
+                'Insert citations into your document.'
+              ],
+              icon: BookOpen
+            }
+          ]
+        },
+        {
+          id: 'immersive-learning',
+          label: 'Immersive Learning',
+          description: 'Video-driven lessons with interactive tasks.',
+          steps: [
+            'Open Immersive Learning.',
+            'Search for a lesson or video.',
+            'Follow the activities and summaries.'
+          ],
+          icon: BookOpen,
+          action: openImmersiveLearning,
+          children: [
+            {
+              id: 'immersive-main-tabs',
+              label: 'Mode tabs',
+              description: 'Primary navigation within Immersive Learning.',
+              steps: [
+                'Subject, Simulator, Research.',
+                'Coach, LaTeX, Assignment.',
+                'Use these to switch learning views.'
+              ],
+              icon: BookOpen
+            },
+            {
+              id: 'immersive-dashboard-tabs',
+              label: 'Dashboard tabs',
+              description: 'Organize notebooks and spaces.',
+              steps: [
+                'Notebooks for lesson content.',
+                'Spaces for saved work.',
+                'Search within each list.'
+              ],
+              icon: BookOpen
+            },
+            {
+              id: 'immersive-notebook-tabs',
+              label: 'Notebook tabs',
+              description: 'Notebook activity sections.',
+              steps: [
+                'Summary, Mindmap.',
+                'Audio, Chat.',
+                'Switch tabs for different study modes.'
+              ],
+              icon: BookOpen
+            },
+            {
+              id: 'immersive-assignments',
+              label: 'Assignment tabs',
+              description: 'Assignment preparation modes.',
+              steps: [
+                'Exam Prep.',
+                'LaTeX Prep.',
+                'Switch to match your workload.'
+              ],
+              icon: BookOpen
+            },
+            {
+              id: 'immersive-audio-video',
+              label: 'Audio and video tabs',
+              description: 'Lesson media modes.',
+              steps: [
+                'Video for interactive lessons.',
+                'Audio for podcast style.',
+                'Use based on your focus.'
+              ],
+              icon: BookOpen
+            },
+            {
+              id: 'immersive-video-content',
+              label: 'Video content tabs',
+              description: 'Segments within video lessons.',
+              steps: [
+                'Summary and Key Concepts.',
+                'Clips and Transcript.',
+                'Use to dive deeper.'
+              ],
+              icon: BookOpen
+            },
+            {
+              id: 'immersive-video-interactive',
+              label: 'Video interactive tabs',
+              description: 'Activities alongside video lessons.',
+              steps: [
+                'Chat, Quiz, Flashcards.',
+                'Complete quizzes for recall.',
+                'Review flashcards for retention.'
+              ],
+              icon: BookOpen
+            },
+            {
+              id: 'immersive-visual-activity',
+              label: 'Visual activity tabs',
+              description: 'Interactive visual tasks.',
+              steps: [
+                'Image-based activity.',
+                '3D activity.',
+                'Pick the format you prefer.'
+              ],
+              icon: BookOpen
+            }
+          ]
+        },
+        {
+          id: 'socratic-learning',
+          label: 'Socratic',
+          description: 'Guided question-driven tutoring.',
+          steps: [
+            'Enter Socratic mode.',
+            'Answer the tutor questions.',
+            'Use hints to refine your understanding.'
+          ],
+          icon: MessageSquare,
+          action: openSocraticLearning,
+          children: [
+            {
+              id: 'socratic-tabs',
+              label: 'Socratic tabs',
+              description: 'Switch between learning activities.',
+              steps: [
+                'Concept Graph view.',
+                'Flashcards practice.',
+                'Quiz challenges.'
+              ],
+              icon: MessageSquare
+            }
+          ]
+        },
+        {
+          id: 'feynman-learning',
+          label: 'Feynman',
+          description: 'Teach-back workflow with guided canvas.',
+          steps: [
+            'Enter Feynman mode.',
+            'Explain the concept in your own words.',
+            'Review the generated guide.'
+          ],
+          icon: Palette,
+          action: openFeynmanLearning,
+          children: [
+            {
+              id: 'feynman-guide',
+              label: 'Feynman guide',
+              description: 'AI-generated explanation checklist.',
+              steps: [
+                'Generate a guide for the topic.',
+                'Follow the checklist prompts.',
+                'Revise until the guide is complete.'
+              ],
+              icon: Palette
+            }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'assist',
+      label: 'Assist',
+      items: [
+        {
+          id: 'learning-tutor',
+          label: 'Learning Tutor Chat',
+          description: 'Open the right-side tutor chat panel.',
+          steps: [
+            'Open the chat panel.',
+            'Ask a question or request feedback.',
+            'Share a canvas snapshot when needed.'
+          ],
+          icon: MessageSquare,
+          action: openChatPanel,
+          children: [
+            {
+              id: 'learning-tutor-modes',
+              label: 'Tutor modes',
+              description: 'Change the tutoring style.',
+              steps: [
+                'Auto adapts to your needs.',
+                'Socratic for question-led coaching.',
+                'Feynman for teach-back practice.'
+              ],
+              icon: MessageSquare
+            }
+          ]
+        }
+      ]
+    }
+  ];
+
   // Sources handlers
-  const addSource = (type: 'document' | 'youtube' | 'weblink' | 'image' | 'paste', data: any) => {
+  // Sources handlers - ADAPTER for backward compatibility
+  // The store's addSource expects an object. The legacy addSource expected (type, data).
+  // We rename the destructured addSource to addSourceToStore to avoid conflict here, 
+  // then define addSource to match the expected signature.
+
+
+  const addSource = useCallback(async (type: 'document' | 'youtube' | 'weblink' | 'image' | 'paste', data: any) => {
     const newSource = {
       id: data.id ?? generateSourceId(),
       type,
-      title: data.title || 'Untitled',
+      name: data.title || 'Untitled', // Map title to name
+      title: data.title || 'Untitled', // Keep title for compatibility
       url: data.url,
       content: data.content,
       description: data.description,
       thumbnail: data.thumbnail,
       videoId: data.videoId,
       channelTitle: data.channelTitle,
-      channelSubscribers: data.channelSubscribers
+      channelSubscribers: data.channelSubscribers,
+      data: data.data, // in case it is passed
+      mimeType: data.mimeType
     };
-    setSources(prev => [...prev, newSource]);
-  };
+    await addSourceToStore(newSource);
+  }, [addSourceToStore]);
 
   type VideoRecommendationConfig = {
     label: string;
@@ -1624,7 +2388,12 @@ const App: React.FC = () => {
 
   const handleExportVideoSummary = useCallback(
     (source: any) => {
-      void summarizeVideoToCanvas(source, { showSpinner: true });
+      // Ensure title is present (SourceFile has optional title, but SourceEntry expects string)
+      const compatibleSource = {
+        ...source,
+        title: source.title || source.name || 'Untitled'
+      };
+      void summarizeVideoToCanvas(compatibleSource as any, { showSpinner: true });
     },
     [summarizeVideoToCanvas]
   );
@@ -1636,7 +2405,7 @@ const App: React.FC = () => {
     setSummarizingAll(true);
     try {
       for (const video of youtubeSources) {
-        await summarizeVideoToCanvas(video, { showSpinner: false });
+        await summarizeVideoToCanvas(video as any, { showSpinner: false });
       }
     } finally {
       setSummarizingAll(false);
@@ -1645,9 +2414,9 @@ const App: React.FC = () => {
   }, [summarizeVideoToCanvas, youtubeSources, summarizingAll]);
 
 
-  const removeSource = (id: string) => {
-    setSources(prev => prev.filter(source => source.id !== id));
-  };
+  const removeSource = useCallback((id: string) => {
+    removeSourceFromStore(id);
+  }, [removeSourceFromStore]);
 
   const handleToggleInlineVideo = useCallback((source: SourceEntry) => {
     const resolvedVideoId = source.videoId ?? (source.url ? extractVideoIdFromUrl(source.url) : null);
@@ -1671,6 +2440,11 @@ const App: React.FC = () => {
     if (!files.length) {
       return;
     }
+    files.forEach((file) => {
+      addFileToSourceLibrary(file).catch((error) => {
+        console.warn('[App] Failed to add source to library:', error);
+      });
+    });
     requestCanvasFileUpload(files);
     event.target.value = '';
   };
@@ -1678,6 +2452,43 @@ const App: React.FC = () => {
   const handleHeaderUploadClick = () => {
     fileUploadInputRef.current?.click();
   };
+
+  const handleCanvasContextMenu = useCallback((event: React.MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button, input, textarea, [role="button"], [contenteditable="true"], [data-ignore-pie-menu="true"]')) {
+      return;
+    }
+    event.preventDefault();
+    const padding = 150;
+    const viewportWidth = window.innerWidth || 0;
+    const viewportHeight = window.innerHeight || 0;
+    const safeX = Math.min(Math.max(event.clientX, padding), viewportWidth - padding);
+    const safeY = Math.min(Math.max(event.clientY, padding), viewportHeight - padding);
+    setUploadPieMenu({ open: true, x: safeX, y: safeY });
+  }, []);
+
+  const closeUploadPieMenu = useCallback(() => {
+    setUploadPieMenu((prev) => ({ ...prev, open: false }));
+  }, []);
+
+  // Resize handlers
+  useEffect(() => {
+    const handleCustomContextMenu = (event: Event) => {
+      const customEvent = event as CustomEvent<{ x: number; y: number }>;
+      const { x, y } = customEvent.detail;
+
+      const padding = 150;
+      const viewportWidth = window.innerWidth || 0;
+      const viewportHeight = window.innerHeight || 0;
+      const safeX = Math.min(Math.max(x, padding), viewportWidth - padding);
+      const safeY = Math.min(Math.max(y, padding), viewportHeight - padding);
+
+      setUploadPieMenu({ open: true, x: safeX, y: safeY });
+    };
+
+    window.addEventListener('canvas-context-menu', handleCustomContextMenu);
+    return () => window.removeEventListener('canvas-context-menu', handleCustomContextMenu);
+  }, []);
 
   // Resize handlers
   const handleMouseDown = (panel: 'sources' | 'chat', e: React.MouseEvent) => {
@@ -2105,7 +2916,6 @@ Here is the learner's question: ${message}`;
       case 'voice-chat':
       case 'interactive-tutor':
         setShowGeminiLiveWorkspace(true);
-        setShowSrlCoachWorkspace(false);
 
         setShowNmrFullscreen(false);
         setShowChemistryPanel(false);
@@ -2117,8 +2927,8 @@ Here is the learner's question: ${message}`;
         setRdkitStatus('idle');
         break;
       case 'immersive-learning':
+        setImmersiveInitialMode(null);
         setShowYouTubeVideos(true);
-        setShowSrlCoachWorkspace(false);
 
         setShowNmrFullscreen(false);
         setShowChemistryPanel(false);
@@ -2239,10 +3049,16 @@ Here is the learner's question: ${message}`;
   }
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-foreground dark">
+    <div className="min-h-screen bg-[#0b0f14] text-foreground dark">
       {/* Header */}
       {true && (
-        <header className="sticky top-0 z-50 w-full border-b border-border/40 shadow-sm" style={{ backgroundColor: '#0f172a', backdropFilter: 'blur-xl' }}>
+        <header
+          className="sticky top-0 z-50 w-full border-b border-slate-800/60 shadow-sm"
+          style={{
+            background: '#171717',
+            backdropFilter: 'blur-xl'
+          }}
+        >
           <input
             ref={fileUploadInputRef}
             type="file"
@@ -2251,8 +3067,11 @@ Here is the learner's question: ${message}`;
             className="hidden"
             onChange={handleHeaderFileChange}
           />
-          <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6" style={{ backgroundColor: '#0f172a' }}>
-            <div className="flex flex-wrap items-center gap-4">
+          <div
+            className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:px-5 lg:px-6"
+            style={{ background: '#171717' }}
+          >
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="flex flex-col">
@@ -2270,70 +3089,28 @@ Here is the learner's question: ${message}`;
               <div className="flex-1 flex justify-center min-w-0 max-w-2xl mx-auto">
                 <button
                   onClick={() => setCommandPaletteOpen(true)}
-                  className="group relative inline-flex h-12 w-full max-w-xl items-center justify-between rounded-2xl border overflow-hidden px-4 text-sm font-semibold text-slate-100 backdrop-blur-xl transition-all duration-300 hover:-translate-y-[1px] active:translate-y-0"
-                  style={{
-                    backgroundColor: '#0f172a',
-                    borderColor: 'rgba(6, 182, 212, 0.3)',
-                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-                  }}
+                  className="inline-flex h-10 w-full max-w-xl items-center justify-between rounded-xl border border-slate-700/80 bg-[#171717] px-4 text-sm font-medium text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-slate-600/80 hover:bg-[#1f1f1f]"
                 >
-                  {/* Shimmer effect */}
-                  <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-                  <span className="relative z-10 flex items-center gap-2.5 text-left">
-                    <div
-                      className="flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110"
-                      style={{
-                        backgroundColor: 'rgba(6, 182, 212, 0.2)',
-                        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(6, 182, 212, 0.3)',
-                        border: '1px solid rgba(6, 182, 212, 0.4)'
-                      }}
-                    >
-                      <Search className="h-4 w-4 text-cyan-300 drop-shadow-sm" />
-                    </div>
-                    <div className="flex flex-col items-start">
-                      <span className="text-slate-50 font-semibold leading-tight">Quick Search</span>
-                      <span className="hidden sm:inline text-[10px] text-slate-400 font-normal leading-tight">docs, tools, AI</span>
-                    </div>
+                  <span className="flex items-center gap-2 text-left">
+                    <Search className="h-4 w-4 text-slate-400" />
+                    <span className="text-slate-300">Quick Search (docs, tools, AI)</span>
                   </span>
-                  <kbd
-                    className="relative z-10 pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded-lg px-3 font-mono text-[11px] uppercase tracking-wide transition-all duration-300 group-hover:scale-105"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-                      color: 'rgba(255, 255, 255, 0.9)'
-                    }}
-                  >
-                    ⌘K
+                  <kbd className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-700/70 bg-[#171717] px-2 font-mono text-[10px] text-slate-300">
+                    Cmd+K
                   </kbd>
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2.5">
                 {isAuthenticated && (() => {
                   const sessionStatus = getSessionStatus();
                   if (sessionStatus.isValid && sessionStatus.remainingHours) {
                     return (
                       <div
-                        className="hidden sm:flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-amber-400 relative overflow-hidden group cursor-default"
-                        style={{
-                          background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.2) 100%)',
-                          border: '1px solid rgba(251, 191, 36, 0.3)',
-                          boxShadow: '0 2px 8px rgba(251, 191, 36, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-                        }}
+                        className="hidden sm:flex items-center gap-2 rounded-full border border-slate-700/70 bg-[#171717] px-3 py-1 text-[11px] font-semibold text-slate-200 cursor-default"
                       >
-                        {/* Continuous shimmer effect */}
-                        <div
-                          className="absolute inset-0 animate-shimmer"
-                          style={{
-                            background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.15) 50%, transparent 100%)',
-                            width: '50%',
-                            height: '100%'
-                          }}
-                        />
-                        <Clock className="h-3.5 w-3.5 relative z-10 drop-shadow-sm" />
-                        <span className="relative z-10 drop-shadow-sm">{sessionStatus.remainingHours}h active</span>
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>{sessionStatus.remainingHours}h active</span>
                         {sessionStatus.remainingHours < 24 && (
                           <button
                             onClick={() => {
@@ -2342,7 +3119,7 @@ Here is the learner's question: ${message}`;
                                 window.location.reload();
                               }
                             }}
-                            className="relative z-10 text-amber-300 underline-offset-2 hover:text-amber-200 hover:underline transition-colors font-medium"
+                            className="text-slate-200 underline-offset-2 hover:text-white hover:underline transition-colors font-medium"
                           >
                             Extend
                           </button>
@@ -2359,23 +3136,23 @@ Here is the learner's question: ${message}`;
                   </div>
                 )}
 
-                <div className="flex items-center gap-1.5 rounded-2xl border border-border/40 bg-background/60 p-1 shadow-inner">
+                <div className="flex items-center gap-1 rounded-full border border-slate-800/70 bg-slate-900/70 p-1">
                   <button
                     onClick={() => setShowProfileUpdate(true)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-sm text-slate-300 transition-colors hover:bg-slate-800/80 hover:text-white"
                     title="Update Profile"
                   >
                     <User className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setShowSettings(!showSettings)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-sm text-slate-300 transition-colors hover:bg-slate-800/80 hover:text-white"
                   >
                     <Settings className="h-4 w-4" />
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-rose-500/20 transition-transform hover:scale-[1.01]"
+                    className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-lg shadow-rose-500/20 transition-transform hover:scale-[1.01]"
                     title={`Logged in as ${user?.username || user?.displayName}`}
                   >
                     <LogOut className="h-4 w-4" />
@@ -2386,11 +3163,11 @@ Here is the learner's question: ${message}`;
             </div>
 
             <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setDocumentViewerOpen(!documentViewerOpen)}
                   className={`${pillButtonClasses} ${documentViewerOpen
-                    ? 'border-blue-400/60 bg-gradient-to-br from-blue-500/20 via-blue-500/15 to-cyan-500/15 text-blue-100 shadow-[0_4px_12px_rgba(59,130,246,0.3)]'
+                    ? 'border-blue-400/60 bg-blue-500/20 text-blue-100'
                     : ''}`}
                 >
                   <FileText className="h-5 w-5 relative z-10" />
@@ -2399,31 +3176,11 @@ Here is the learner's question: ${message}`;
 
                 <button
                   onClick={handleHeaderUploadClick}
-                  className={`${pillButtonClasses} border-dashed border-emerald-400/50 bg-gradient-to-br from-emerald-500/10 via-teal-500/10 to-cyan-500/10 text-emerald-100 hover:border-emerald-400/70 hover:from-emerald-500/15 hover:via-teal-500/15 hover:to-cyan-500/15 hover:text-emerald-50`}
+                  className={`${pillButtonClasses} border-dashed border-emerald-500/50 text-emerald-100 hover:border-emerald-400/70`}
                   title="Upload a PDF, image, or text doc directly to the canvas"
                 >
                   <Upload className="h-5 w-5 relative z-10" />
                   <span className="relative z-10">Upload to Canvas</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowSrlCoachWorkspace(true);
-                    setShowChatPanel(false);
-                    setShowNmrFullscreen(false);
-                    setShowChemistryPanel(false);
-                    setShowGeminiLiveWorkspace(false);
-                    setShowAIWord(false);
-                    setIsNmrAssistantActive(false);
-                    setShowNmrAssistant(false);
-                    setIsRdkitAssistantActive(false);
-                    setShowRdkitAssistant(false);
-                    setRdkitStatus('idle');
-                  }}
-                  className={pillButtonClasses}
-                >
-                  <Target className="h-5 w-5 relative z-10" />
-                  <span className="relative z-10">SRL Coach</span>
                 </button>
 
                 <button
@@ -2440,7 +3197,6 @@ Here is the learner's question: ${message}`;
                 <button
                   onClick={() => {
                     setShowNmrFullscreen(true);
-                    setShowSrlCoachWorkspace(false);
                     setIsNmrAssistantActive(false);
                     setShowChatPanel(false);
                     startFeature('nmr_lab');
@@ -2465,14 +3221,15 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('ai_word');
                     startFeature('ai_word');
                   }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-cyan-500 hover:bg-cyan-400 shadow-lg shadow-cyan-500/25 border border-cyan-400/20"
+                  className="inline-flex items-center gap-2 rounded-xl border border-teal-400/40 bg-[#171717] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm shadow-teal-500/25 transition hover:bg-[#1f1f1f]"
                 >
-                  <PenLine className="h-5 w-5 relative z-10" />
-                  <span className="relative z-10 font-medium">Doc Studio</span>
+                  <PenLine className="h-4 w-4" />
+                  <span>Doc Studio</span>
                 </button>
 
                 <button
                   onClick={() => {
+                    setImmersiveInitialMode(null);
                     setShowYouTubeVideos(true);
                     setShowAIWord(false);
                     setShowNmrFullscreen(false);
@@ -2486,10 +3243,10 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('immersive_learning');
                     startFeature('immersive_learning');
                   }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-violet-600 hover:bg-violet-500 shadow-lg shadow-violet-600/25 border border-violet-500/20"
+                  className="inline-flex items-center gap-2 rounded-xl border border-violet-400/40 bg-[#171717] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm shadow-violet-500/25 transition hover:bg-[#1f1f1f]"
                 >
-                  <BookOpen className="h-5 w-5 relative z-10" />
-                  <span className="relative z-10 font-medium">Immersive Learning</span>
+                  <BookOpen className="h-4 w-4" />
+                  <span>Immersive Learning</span>
                 </button>
 
                 {/* Socratic Learning Button */}
@@ -2501,97 +3258,53 @@ Here is the learner's question: ${message}`;
                     void captureToolClick('socratic_learning');
                     startFeature('socratic_learning');
                   }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-600/25 border border-blue-500/20"
+                  className="inline-flex items-center gap-2 rounded-xl border border-blue-400/40 bg-[#171717] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm shadow-blue-500/25 transition hover:bg-[#1f1f1f]"
                   title="Guided discovery through questions (hint ladder)"
                 >
-                  <MessageSquare className="h-5 w-5 relative z-10" />
-                  <span className="relative z-10 font-medium">Socratic</span>
+                  <MessageSquare className="h-4 w-4" />
+                  <span>Socratic</span>
                 </button>
 
                 {/* Feynman Learning Button */}
                 <button
                   onClick={() => {
-                    setShowFeynmanLearning(true);
                     setShowSocraticLearning(false);
                     setShowYouTubeVideos(false);
+                    handleChatModeChange('feynman');
                     void captureToolClick('feynman_learning');
-                    startFeature('feynman_learning');
                   }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-pink-600 hover:bg-pink-500 shadow-lg shadow-pink-600/25 border border-pink-500/20"
+                  className="inline-flex items-center gap-2 rounded-xl border border-pink-400/40 bg-[#171717] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm shadow-pink-500/25 transition hover:bg-[#1f1f1f]"
                   title="Teach back to learn - with visual canvas"
                 >
-                  <Palette className="h-5 w-5 relative z-10" />
-                  <span className="relative z-10 font-medium">Feynman</span>
+                  <Palette className="h-4 w-4" />
+                  <span>Feynman</span>
                 </button>
 
-                {/* Canvas Planner Button - AFFiNE-style */}
-                <button
-                  onClick={() => {
-                    setShowCanvasPlanner(true);
-                    setShowYouTubeVideos(false);
-                    setShowSocraticLearning(false);
-                    setShowFeynmanLearning(false);
-                    setShowAIWord(false);
-                    void captureToolClick('canvas_planner');
-                    startFeature('canvas_planner');
-                  }}
-                  className="group relative inline-flex items-center gap-2 rounded-full overflow-hidden px-4 py-2 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-600/25 border border-emerald-500/20"
-                  title="AFFiNE-style infinite canvas planner"
-                >
-                  <Layers3 className="h-5 w-5 relative z-10" />
-                  <span className="relative z-10 font-medium">Canvas Planner</span>
-                </button>
-
-                <div className="inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900/50 backdrop-blur-sm p-0.5 text-xs font-semibold shadow-lg">
+                <div className="inline-flex items-center gap-1 rounded-xl border border-slate-700/70 bg-slate-900/60 p-1 text-[11px] font-semibold">
                   <button
                     onClick={() => {
                       setIsMolecularMode(false);
                     }}
-                    className={`group relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm transition-all duration-300 overflow-hidden ${!isMolecularMode
-                      ? 'text-white'
-                      : 'text-slate-400 hover:text-slate-200'
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${!isMolecularMode
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'text-slate-300 hover:text-white'
                       }`}
-                    style={!isMolecularMode ? {
-                      background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 25%, #f97316 50%, #fb923c 75%, #fdba74 100%)',
-                      boxShadow: '0 4px 16px rgba(245, 158, 11, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(0, 0, 0, 0.1)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)'
-                    } : {}}
                   >
-                    {!isMolecularMode && (
-                      <>
-                        {/* Enhanced shimmer effect */}
-                        <div className="absolute inset-0 -z-10 blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                          <div className="absolute inset-0 animate-shimmer-slide bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-                        </div>
-                        {/* Shimmer border effect */}
-                        <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-orange-400/50 via-white/50 to-orange-400/50 animate-shimmer-slide" style={{ mask: 'linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)', WebkitMask: 'linear-gradient(#000, #000) content-box, linear-gradient(#000, #000)', padding: '1px' }} />
-                        </div>
-                      </>
-                    )}
-                    <Edit3 className={`h-5 w-5 relative z-10 ${!isMolecularMode ? 'drop-shadow-lg' : ''}`} />
-                    <span className={`relative z-10 ${!isMolecularMode ? 'drop-shadow-md font-medium' : ''}`}>Canvas Studio</span>
+                    <Edit3 className="h-4 w-4" />
+                    <span>Canvas Studio</span>
                   </button>
                   <button
                     onClick={() => {
                       setIsMolecularMode(true);
                     }}
-                    className={`group relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm transition-all duration-300 overflow-hidden ${isMolecularMode
-                      ? 'text-white'
-                      : 'text-slate-400 hover:text-slate-200'
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${isMolecularMode
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'text-slate-300 hover:text-white'
                       }`}
-                    style={isMolecularMode ? {
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                      boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-                    } : {}}
                   >
-                    {isMolecularMode && (
-                      <div className="special-button-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    )}
-                    <Beaker className={`h-5 w-5 relative z-10 ${isMolecularMode ? 'drop-shadow-sm' : ''}`} />
-                    <span className={`relative z-10 ${isMolecularMode ? 'drop-shadow-sm' : ''}`}>Molecule Sketcher</span>
+                    <Beaker className="h-4 w-4" />
+                    <span>Molecule Sketcher</span>
                   </button>
-
                 </div>
 
               </div>
@@ -2630,25 +3343,7 @@ Here is the learner's question: ${message}`;
 
       {/* Fullscreen NMR viewer */}
       {
-        showSrlCoachWorkspace ? (
-          <SrlCoachWorkspace
-            interactions={interactions}
-            onSendMessage={handleSendMessage}
-            isLoading={chatLoading}
-            documentName={sources.length > 0 ? `${sources.length} sources` : 'No sources'}
-            onOpenDocument={() => setDocumentViewerOpen(true)}
-            user={user}
-            onClose={() => {
-              setShowSrlCoachWorkspace(false);
-              setShowChatPanel(false);
-              setIsNmrAssistantActive(false);
-              setShowNmrAssistant(false);
-              setIsRdkitAssistantActive(false);
-              setShowRdkitAssistant(false);
-            }}
-          />
-
-        ) : showNmrFullscreen ? (
+        showNmrFullscreen ? (
           <div className="flex h-[calc(100vh-5rem)] flex-col">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-slate-800 px-4 md:px-6 py-3" style={{ backgroundColor: '#212121' }}>
               <div>
@@ -2737,6 +3432,21 @@ Here is the learner's question: ${message}`;
           />
         ) : (
           <div className="flex h-[calc(100vh-5rem)]">
+            <FeatureSidebar
+              groups={featureGroups}
+              collapsed={featureSidebarCollapsed}
+              activeId={activeFeatureId}
+              onToggle={() => setFeatureSidebarCollapsed(prev => !prev)}
+              onSelect={(feature) => {
+                setActiveFeatureId(feature.id);
+                if (feature.action) {
+                  feature.action();
+                } else {
+                  setActiveFeatureGuide(feature);
+                }
+              }}
+              onHelp={(feature) => setActiveFeatureGuide(feature)}
+            />
             {/* Sources Panel */}
             {documentViewerOpen && (
               <>
@@ -2779,119 +3489,161 @@ Here is the learner's question: ${message}`;
 
                   {/* Sources List */}
                   <div className="flex-1 p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent" style={{ backgroundColor: '#171717' }}>
-                    <div className="space-y-4">
-                      {youtubeSources.length === 0 ? (
-                        <div className="text-center py-12">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/60 ring-1 ring-slate-700/50 mx-auto mb-3">
-                            <Video className="h-6 w-6 text-slate-400" />
-                          </div>
-                          <p className="text-sm text-slate-300">No video recommendations yet</p>
-                          <p className="text-xs text-slate-500 mt-1">Upload a PDF to see curated explainers.</p>
-                        </div>
-                      ) : (
-                        youtubeSources.map((source) => {
-                          const resolvedVideoId = source.videoId ?? (source.url ? extractVideoIdFromUrl(source.url) : null);
-                          const isInlinePlaying = inlineVideoSourceId === source.id && Boolean(resolvedVideoId);
-                          const embedUrl = resolvedVideoId
-                            ? `https://www.youtube.com/embed/${encodeURIComponent(resolvedVideoId)}?autoplay=1&modestbranding=1`
-                            : null;
-                          return (
-                            <div key={source.id} className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-3 shadow-sm hover:border-slate-600/50 transition-all">
-                              {/* Thumbnail */}
-                              <div className="mb-3">
-                                {isInlinePlaying && embedUrl ? (
-                                  <div
-                                    className="relative w-full overflow-hidden rounded-lg border border-slate-700 bg-black"
-                                    style={{ aspectRatio: '16 / 9' }}
-                                  >
-                                    <iframe
-                                      src={embedUrl}
-                                      title={`${source.title} inline player`}
-                                      className="absolute inset-0 h-full w-full"
-                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                      allowFullScreen
-                                    />
+                    <div className="space-y-6">
+                      {/* Documents Section */}
+                      {sources.some(s => s.type !== 'youtube') && (
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Documents</h4>
+                          <div className="space-y-2">
+                            {sources.filter(s => s.type !== 'youtube').map(source => (
+                              <div key={source.id} className="group flex items-center justify-between p-3 rounded-xl border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/50 hover:border-slate-600 transition-all">
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                  <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0">
+                                    {source.type === 'pdf' ? <FileText className="h-4 w-4" /> :
+                                      source.type === 'image' ? <ImageIcon className="h-4 w-4" /> :
+                                        <FileText className="h-4 w-4" />}
                                   </div>
-                                ) : source.thumbnail ? (
-                                  <img
-                                    src={source.thumbnail}
-                                    alt={source.title}
-                                    className="w-full h-auto rounded-lg border border-slate-700 object-cover"
-                                    style={{ aspectRatio: '16 / 9' }}
-                                    loading="lazy"
-                                  />
-                                ) : (
-                                  <div
-                                    className="flex w-full items-center justify-center rounded-lg border border-dashed border-slate-700 text-muted-foreground bg-slate-900/50"
-                                    style={{ aspectRatio: '16 / 9' }}
-                                  >
-                                    <Video className="h-8 w-8" />
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Content */}
-                              <div className="space-y-2">
-                                <h4 className="text-sm font-semibold text-white line-clamp-2 leading-tight">{source.title}</h4>
-                                <p className="text-xs text-slate-400">
-                                  {source.channelTitle ? `${source.channelTitle}` : 'YouTube'}
-                                  {source.channelSubscribers
-                                    ? ` • ${Intl.NumberFormat('en', { notation: 'compact' }).format(source.channelSubscribers)} subscribers`
-                                    : ''}
-                                </p>
-                                {source.description && (
-                                  <p className="text-xs text-slate-500 line-clamp-2">{source.description}</p>
-                                )}
-                                {source.url && (
-                                  <a
-                                    href={source.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center text-xs font-medium text-blue-400 hover:text-blue-300"
-                                  >
-                                    Watch on YouTube
-                                    <ExternalLink className="ml-1 h-3 w-3" />
-                                  </a>
-                                )}
-
-                                {/* Action Buttons */}
-                                <div className="pt-2 flex flex-col gap-2">
-                                  <button
-                                    onClick={() => handleExportVideoSummary(source)}
-                                    disabled={videoSummaryLoadingId === source.id}
-                                    className={`w-full inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold transition ${videoSummaryLoadingId === source.id
-                                      ? 'bg-slate-700 text-slate-400'
-                                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                      }`}
-                                  >
-                                    {videoSummaryLoadingId === source.id ? 'Summarizing…' : 'Summarize to Canvas'}
-                                  </button>
-
-                                  <div className="flex gap-2">
-                                    {resolvedVideoId && (
-                                      <button
-                                        onClick={() => handleToggleInlineVideo(source)}
-                                        className={`flex-1 inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold transition ${isInlinePlaying
-                                          ? 'bg-emerald-500 text-white hover:bg-emerald-400'
-                                          : 'border border-slate-600 text-slate-300 hover:border-emerald-400 hover:text-emerald-400'
-                                          }`}
-                                      >
-                                        {isInlinePlaying ? 'Close inline player' : 'Play inline'}
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={() => removeSource(source.id)}
-                                      className="flex items-center justify-center rounded-lg border border-slate-600 px-3 py-2 text-slate-400 hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-400 transition"
-                                      title="Remove source"
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </button>
+                                  <div className="truncate">
+                                    <h5 className="text-sm font-medium text-slate-200 truncate">{source.name || source.title}</h5>
+                                    <p className="text-[10px] text-slate-500">{source.type.toUpperCase()}</p>
                                   </div>
                                 </div>
+                                <button
+                                  onClick={() => removeSource(source.id)}
+                                  className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                  title="Remove source"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
                               </div>
-                            </div>
-                          );
-                        })
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Videos Section */}
+                      {youtubeSources.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Videos</h4>
+                          <div className="space-y-4">
+                            {youtubeSources.map((source) => {
+                              const resolvedVideoId = source.videoId ?? (source.url ? extractVideoIdFromUrl(source.url) : null);
+                              const isInlinePlaying = inlineVideoSourceId === source.id && Boolean(resolvedVideoId);
+                              const embedUrl = resolvedVideoId
+                                ? `https://www.youtube.com/embed/${encodeURIComponent(resolvedVideoId)}?autoplay=1&modestbranding=1`
+                                : null;
+                              return (
+                                <div key={source.id} className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-3 shadow-sm hover:border-slate-600/50 transition-all">
+                                  {/* Thumbnail */}
+                                  <div className="mb-3">
+                                    {isInlinePlaying && embedUrl ? (
+                                      <div
+                                        className="relative w-full overflow-hidden rounded-lg border border-slate-700 bg-black"
+                                        style={{ aspectRatio: '16 / 9' }}
+                                      >
+                                        <iframe
+                                          src={embedUrl}
+                                          title={`${source.title} inline player`}
+                                          className="absolute inset-0 h-full w-full"
+                                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                          allowFullScreen
+                                        />
+                                      </div>
+                                    ) : source.thumbnail ? (
+                                      <img
+                                        src={source.thumbnail}
+                                        alt={source.title}
+                                        className="w-full h-auto rounded-lg border border-slate-700 object-cover"
+                                        style={{ aspectRatio: '16 / 9' }}
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      <div
+                                        className="flex w-full items-center justify-center rounded-lg border border-dashed border-slate-700 text-muted-foreground bg-slate-900/50"
+                                        style={{ aspectRatio: '16 / 9' }}
+                                      >
+                                        <Video className="h-8 w-8" />
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Content */}
+                                  <div className="space-y-2">
+                                    <h4 className="text-sm font-semibold text-white line-clamp-2 leading-tight">{source.title}</h4>
+                                    <p className="text-xs text-slate-400">
+                                      {source.channelTitle ? `${source.channelTitle}` : 'YouTube'}
+                                      {source.channelSubscribers
+                                        ? ` • ${Intl.NumberFormat('en', { notation: 'compact' }).format(source.channelSubscribers)} subscribers`
+                                        : ''}
+                                    </p>
+                                    {source.description && (
+                                      <p className="text-xs text-slate-500 line-clamp-2">{source.description}</p>
+                                    )}
+                                    {source.url && (
+                                      <a
+                                        href={source.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center text-xs font-medium text-blue-400 hover:text-blue-300"
+                                      >
+                                        Watch on YouTube
+                                        <ExternalLink className="ml-1 h-3 w-3" />
+                                      </a>
+                                    )}
+
+                                    {/* Action Buttons */}
+                                    <div className="pt-2 flex flex-col gap-2">
+                                      <button
+                                        onClick={() => handleExportVideoSummary(source as any)}
+                                        disabled={videoSummaryLoadingId === source.id}
+                                        className={`w-full inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold transition ${videoSummaryLoadingId === source.id
+                                          ? 'bg-slate-700 text-slate-400'
+                                          : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                          }`}
+                                      >
+                                        {videoSummaryLoadingId === source.id ? 'Summarizing…' : 'Summarize to Canvas'}
+                                      </button>
+
+                                      <div className="flex gap-2">
+                                        {resolvedVideoId && (
+                                          <button
+                                            onClick={() => handleToggleInlineVideo(source as any)}
+                                            className={`flex-1 inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold transition ${isInlinePlaying
+                                              ? 'bg-emerald-500 text-white hover:bg-emerald-400'
+                                              : 'border border-slate-600 text-slate-300 hover:border-emerald-400 hover:text-emerald-400'
+                                              }`}
+                                          >
+                                            {isInlinePlaying ? 'Close inline player' : 'Play inline'}
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => removeSource(source.id)}
+                                          className="flex items-center justify-center rounded-lg border border-slate-600 px-3 py-2 text-slate-400 hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-400 transition"
+                                          title="Remove source"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Empty State */}
+                      {sources.length === 0 && (
+                        <div className="text-center py-12">
+
+
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/60 ring-1 ring-slate-700/50 mx-auto mb-3">
+                            <BookOpen className="h-6 w-6 text-slate-400" />
+                          </div>
+                          <p className="text-sm text-slate-300">No sources added yet</p>
+                          <p className="text-xs text-slate-500 mt-1">Upload a document or add a video to get started.</p>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2911,7 +3663,7 @@ Here is the learner's question: ${message}`;
               {/* Canvas, Chat, and Study Tools */}
               <div className="flex-1 flex relative">
                 {/* Canvas */}
-                <div className="flex-1 relative flex flex-col">
+                <div className="flex-1 relative flex flex-col" onContextMenu={handleCanvasContextMenu}>
                   {isMolecularMode && activeCanvasTab !== 'planner' ? (
                     <MoldrawEmbed />
                   ) : (
@@ -2929,7 +3681,7 @@ Here is the learner's question: ${message}`;
                         {!isWorkspaceTabsCollapsed && (
                           <>
                             {canvasWorkspaces.map(workspace => {
-                              const isActive = activeCanvasTab === 'workspace' && workspace.id === activeWorkspaceId;
+                              const isActive = workspace.id === activeWorkspaceId;
                               return (
                                 <button
                                   key={workspace.id}
@@ -2979,13 +3731,21 @@ Here is the learner's question: ${message}`;
                             </button>
 
                             {/* Learning Mode Selector */}
-                            <div className="flex items-center gap-1 mx-auto">
-                              <span className="text-xs text-slate-500 font-medium mr-2 hidden lg:inline">LEARNING MODE</span>
-                              <div className="inline-flex items-center rounded-full border border-slate-700/50 bg-slate-900/80 backdrop-blur-sm p-0.5 text-xs font-semibold shadow-lg">
+                            <div className="flex items-center gap-2 mx-auto">
+                              <button
+                                onClick={() => {
+                                  setPendingLearningMode(null);
+                                  setShowTopicSelector(true);
+                                }}
+                                className="text-xs text-slate-500 font-medium hover:text-white transition-colors cursor-pointer"
+                              >
+                                LEARNING MODE
+                              </button>
+                              <div className="inline-flex items-center rounded-full border border-slate-700/50 bg-[#171717] backdrop-blur-sm p-0.5 text-xs font-semibold shadow-lg">
                                 <button
                                   onClick={() => setChatMode('auto')}
                                   className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${chatMode === 'auto'
-                                    ? 'bg-slate-700 text-white shadow-sm'
+                                    ? 'bg-[#171717] text-white shadow-sm border border-slate-600/70'
                                     : 'text-slate-400 hover:text-slate-200'
                                     }`}
                                 >
@@ -2994,7 +3754,7 @@ Here is the learner's question: ${message}`;
                                 <button
                                   onClick={() => handleChatModeChange('socratic')}
                                   className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${chatMode === 'socratic'
-                                    ? 'bg-blue-600 text-white shadow-sm'
+                                    ? 'bg-[#171717] text-white shadow-sm border border-slate-600/70'
                                     : 'text-slate-400 hover:text-slate-200'
                                     }`}
                                 >
@@ -3003,13 +3763,21 @@ Here is the learner's question: ${message}`;
                                 <button
                                   onClick={() => handleChatModeChange('feynman')}
                                   className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${chatMode === 'feynman'
-                                    ? 'bg-purple-600 text-white shadow-sm'
+                                    ? 'bg-[#171717] text-white shadow-sm border border-slate-600/70'
                                     : 'text-slate-400 hover:text-slate-200'
                                     }`}
                                 >
                                   Feynman
                                 </button>
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => setShowLearningModePanel((prev) => !prev)}
+                                className="inline-flex items-center gap-1 rounded-full border border-slate-700/70 bg-black px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-400/80 hover:text-white transition"
+                              >
+                                {showLearningModePanel ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                {showLearningModePanel ? 'Minimize' : 'Show'}
+                              </button>
                             </div>
 
                             {/* Workspace Save/Load Controls */}
@@ -3116,9 +3884,7 @@ Here is the learner's question: ${message}`;
                       )}
                       <div className="flex-1 relative">
                         {activeCanvasTab === 'planner' ? (
-                          <PlannerTab
-                            initialTopic={sources.length > 0 ? sources.map(s => s.title).join(', ') : ''}
-                          />
+                          <DeskbaumPlanner />
                         ) : (
                           <>
                             {canvasWorkspaces.map(workspace => (
@@ -3130,6 +3896,9 @@ Here is the learner's question: ${message}`;
                                   currentTool={currentTool}
                                   strokeWidth={strokeWidth}
                                   strokeColor={strokeColor}
+                                  onToolChange={setCurrentTool}
+                                  dockForceCollapsed={documentViewerOpen}
+                                  onChemistryToolsClick={() => setShowQuickActionsPopup(true)}
                                   onOpenCalculator={handleOpenCalculator}
                                   onOpenMolView={handleOpenMolView}
                                   onOpenPeriodicTable={handleOpenPeriodicTable}
@@ -3154,16 +3923,6 @@ Here is the learner's question: ${message}`;
                                 />
                               </div>
                             ))}
-
-                            {/* Drawing Tools Dock - Floating on canvas */}
-                            <DrawingToolsDock
-                              currentTool={currentTool}
-                              onToolChange={setCurrentTool}
-                              position="left"
-                              enableKeyboardShortcuts={true}
-                              forceCollapsed={documentViewerOpen}
-                              onChemistryToolsClick={() => setShowQuickActionsPopup(true)}
-                            />
                           </>
                         )}
                       </div>
@@ -3178,19 +3937,98 @@ Here is the learner's question: ${message}`;
                 {/* Study Tools Panel handled via full-screen workspace */}
 
                 {/* Chat Mode Selector - Centered */}
-                {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
-                  <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2">
-                    <label className="text-sm font-medium text-gray-400">Learning Mode</label>
-                    <SegmentedControl
-                      value={chatMode}
-                      onChange={handleChatModeChange}
-                      className="shadow-lg"
-                    />
+                {!showChatPanel && !showNmrFullscreen && !showGeminiLiveWorkspace && showLearningModePanel && (
+                  <div className="absolute top-20 left-1/2 -translate-x-1/2 z-10 flex w-full max-w-3xl flex-col items-center gap-6 px-4">
+                    <div className="text-sm font-semibold uppercase tracking-[0.3em] text-cyan-200">Select Learning Mode</div>
+                    <div className="grid w-full gap-4 md:grid-cols-3">
+                      {[
+                        {
+                          id: 'auto' as const,
+                          label: 'Auto Mode',
+                          description: 'AI adapts to your pace and learning style automatically.',
+                          icon: Sparkles,
+                          accent: 'border-transparent bg-[#171717]/70 text-blue-50 shadow-[0_10px_25px_-18px_rgba(15,23,42,0.85)]',
+                          ring: 'ring-blue-500/40',
+                          recommended: true,
+                          titleColor: 'text-blue-200',
+                          bodyColor: 'text-blue-100/80'
+                        },
+                        {
+                          id: 'socratic' as const,
+                          label: 'Socratic',
+                          description: 'Learn through guided questioning and deep inquiry.',
+                          icon: MessageCircle,
+                          accent: 'border-transparent bg-[#171717]/70 text-slate-100 shadow-[0_10px_25px_-18px_rgba(15,23,42,0.85)]',
+                          ring: 'ring-emerald-500/40',
+                          recommended: false,
+                          titleColor: 'text-emerald-200',
+                          bodyColor: 'text-emerald-100/80'
+                        },
+                        {
+                          id: 'feynman' as const,
+                          label: 'Feynman',
+                          description: 'Master concepts by teaching them in simple terms.',
+                          icon: GraduationCap,
+                          accent: 'border-transparent bg-[#171717]/70 text-slate-100 shadow-[0_10px_25px_-18px_rgba(15,23,42,0.85)]',
+                          ring: 'ring-violet-500/40',
+                          recommended: false,
+                          titleColor: 'text-violet-200',
+                          bodyColor: 'text-violet-100/80'
+                        },
+                        {
+                          id: 'pdf-study' as const,
+                          label: 'PDF Study Mode',
+                          description: 'Upload PDF to chat with AI and generate real-time notes.',
+                          icon: Mic,
+                          accent: 'border-transparent bg-[#171717]/70 text-slate-100 shadow-[0_10px_25px_-18px_rgba(15,23,42,0.85)]',
+                          ring: 'ring-rose-500/40',
+                          recommended: false,
+                          titleColor: 'text-rose-200',
+                          bodyColor: 'text-rose-100/80',
+                          badge: 'New'
+                        }
+                      ].map((mode) => {
+                        const Icon = mode.icon;
+                        const isActive = chatMode === mode.id;
+                        return (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => handleChatModeChange(mode.id)}
+                            className={`group relative flex h-full flex-col items-center gap-3 rounded-2xl border border-transparent px-5 py-6 text-left transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#1f1f1f] hover:shadow-[0_16px_30px_-18px_rgba(15,23,42,0.9)] ${mode.accent} ${isActive ? `ring-2 ${mode.ring}` : ''}`}
+                          >
+                            {mode.recommended && (
+                              <span className="absolute -top-3 left-6 rounded-full bg-blue-600 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white shadow-lg shadow-blue-600/30">
+                                Recommended
+                              </span>
+                            )}
+                            {(mode as any).badge && (
+                              <span className="absolute -top-2 -right-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-200 shadow-sm ring-1 ring-inset ring-rose-500/40 backdrop-blur-sm">
+                                {(mode as any).badge}
+                              </span>
+                            )}
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white">
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div className={`text-sm font-semibold ${mode.titleColor}`}>{mode.label}</div>
+                            <p className={`text-xs text-center leading-relaxed ${mode.bodyColor}`}>
+                              {mode.description}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="w-full rounded-2xl border border-transparent bg-[#171717]/70 px-5 py-4 text-center shadow-[0_12px_28px_-20px_rgba(15,23,42,0.8)]">
+                      <div className="text-base font-semibold text-teal-200">Ready to explore?</div>
+                      <p className="mt-1 text-xs text-sky-100/80">
+                        Select a learning mode to begin your session and open the guided launchpad.
+                      </p>
+                    </div>
                   </div>
                 )}
 
                 {/* Chat Start Button - Floating Right Corner */}
-                {!showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
+                {!showChatPanel && !showNmrFullscreen && !showGeminiLiveWorkspace && (
                   <div className="absolute top-16 right-8 z-10 flex flex-col gap-3 items-end">
                     {/* Gemini Live Share Canvas Button */}
                     {connectionState === ConnectionState.CONNECTED && (
@@ -3247,8 +4085,8 @@ Here is the learner's question: ${message}`;
                           mode={chatMode}
                           onRequireApiKey={() => setShowSettings(true)}
                           groundingSources={tutorSources}
-                          onOpenCanvas={() => setShowExcalidrawCanvas(true)}
-                          onCanvasNote={handleCanvasNote}
+                          onOpenCanvas={!isFeynmanMode ? () => setShowExcalidrawCanvas(true) : undefined}
+                          onCanvasNote={!isFeynmanMode ? handleCanvasNote : undefined}
                           audioConnectionState={connectionState}
                           isListening={isListening}
                           isSpeaking={isSpeaking}
@@ -3278,25 +4116,6 @@ Here is the learner's question: ${message}`;
                   </>
                 )}
 
-                {isFeynmanMode && !showChatPanel && !showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace && (
-                  <FeynmanCoachPanel
-                    topic={feynmanTopic}
-                    onTopicChange={setFeynmanTopic}
-                    guide={feynmanGuide}
-                    isLoading={isFeynmanGuideLoading}
-                    error={feynmanGuideError}
-                    onGenerateGuide={generateFeynmanGuide}
-                    connectionState={connectionState}
-                    isListening={isListening}
-                    isSpeaking={isSpeaking}
-                    isScreenSharing={isScreenSharing}
-                    onConnect={handleFeynmanConnect}
-                    onDisconnect={handleFeynmanDisconnect}
-                    onStartScreenShare={handleFeynmanStartScreenShare}
-                    onStopScreenShare={handleFeynmanStopScreenShare}
-                    onShareSnapshot={() => captureAndSendSnapshot()}
-                  />
-                )}
               </div>
             </div>
           </div>
@@ -3375,7 +4194,7 @@ Here is the learner's question: ${message}`;
 
       {/* Chemistry Widget Panel */}
       {
-        showChemistryPanel && !showNmrFullscreen && !showSrlCoachWorkspace && (
+        showChemistryPanel && !showNmrFullscreen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden">
               <ChemistryWidgetPanel
@@ -3421,7 +4240,6 @@ Here is the learner's question: ${message}`;
           // Ensure canvas is visible when Gemini Live connects for handwriting responses
           // Close any fullscreen panels that might hide the canvas
           setShowNmrFullscreen(false);
-          setShowSrlCoachWorkspace(false);
           setShowGeminiLiveWorkspace(false);
 
           setShowAIWord(false);
@@ -3443,7 +4261,7 @@ Here is the learner's question: ${message}`;
         onStartScreenShare={() => startScreenShare()}
         onStopScreenShare={() => stopScreenShare()}
         onShareCanvas={() => captureAndSendSnapshot()}
-        showShareCanvas={!showNmrFullscreen && !showSrlCoachWorkspace && !showGeminiLiveWorkspace}
+        showShareCanvas={!showNmrFullscreen && !showGeminiLiveWorkspace}
 
         // Webcam Sharing
         isWebcamSharing={isWebcamSharing}
@@ -3486,19 +4304,33 @@ Here is the learner's question: ${message}`;
           setChatMode('auto');
         }}
         onStart={handleTopicSelected}
-        mode={pendingLearningMode || 'socratic'}
+        mode={pendingLearningMode}
+      />
+
+      <CanvasUploadPieMenu
+        isOpen={uploadPieMenu.open}
+        x={uploadPieMenu.x}
+        y={uploadPieMenu.y}
+        onClose={closeUploadPieMenu}
+        onCenterClick={handleHeaderUploadClick}
+        items={uploadPieItems}
+        centerLabel="Upload"
       />
 
       {/* YouTube Videos */}
       {
         showYouTubeVideos && (
-          <YouTubeVideos
-            onClose={() => {
-              setShowYouTubeVideos(false);
-              endCurrentFeature();
-            }}
-            apiKey={apiKey}
-          />
+          <div className="fixed inset-0 z-[60] bg-background">
+            <YouTubeVideos
+              onClose={() => {
+                setShowYouTubeVideos(false);
+                setImmersiveInitialMode(null);
+                endCurrentFeature();
+              }}
+              apiKey={apiKey}
+              initialMode={immersiveInitialMode ?? undefined}
+            />
+          </div>
         )
       }
 
@@ -3519,8 +4351,18 @@ Here is the learner's question: ${message}`;
               onSwitchToFeynman={(topic: string) => {
                 setLearningModeTopic(topic);
                 setShowSocraticLearning(false);
-                setShowFeynmanLearning(true);
+                setShowFeynmanLearning(false);
+                setShowExcalidrawCanvas(false);
+                setChatMode('feynman');
+                setShowChatPanel(true);
+                startFeature('chat');
               }}
+              remainingTopics={remainingTopics}
+              onTopicChange={(newTopic) => {
+                setLearningModeTopic(newTopic);
+                setRemainingTopics(prev => prev.filter(t => t !== newTopic));
+              }}
+              documentData={learningModeDocumentData}
             />
           </div>
         )
@@ -3542,18 +4384,28 @@ Here is the learner's question: ${message}`;
                 setShowFeynmanLearning(false);
                 setShowSocraticLearning(true);
               }}
+              remainingTopics={remainingTopics}
+              onTopicChange={(newTopic) => {
+                setLearningModeTopic(newTopic);
+                // Remove from remaining topics when selected
+                setRemainingTopics(prev => prev.filter(t => t !== newTopic));
+              }}
+              documentData={learningModeDocumentData}
             />
           </div>
         )
       }
 
-      {/* Canvas Planner - AFFiNE-style infinite canvas */}
+      {/* PDF Study Mode - Full Screen Split Layout */}
       {
-        showCanvasPlanner && (
-          <div className="fixed inset-0 z-[60] bg-slate-950">
-            <CanvasPlanner
+        showPdfStudyMode && (
+          <div className="fixed inset-0 z-[60] bg-[#0f0f0f]">
+            <PdfStudyModeView
+              topic={learningModeTopic || 'Document Study'}
+              documentData={learningModeDocumentData}
               onClose={() => {
-                setShowCanvasPlanner(false);
+                setShowPdfStudyMode(false);
+                setChatMode('auto');
                 endCurrentFeature();
               }}
             />
@@ -3561,6 +4413,7 @@ Here is the learner's question: ${message}`;
         )
       }
 
+      {/* Canvas Planner - AFFiNE-style infinite canvas */}
       {/* Quick Actions Popup */}
       {
         showQuickActionsPopup && quickActionHandlers && (
@@ -3665,6 +4518,15 @@ Here is the learner's question: ${message}`;
           </div>
         )
       }
+
+      <FeatureGuideModal
+        feature={activeFeatureGuide}
+        onClose={() => setActiveFeatureGuide(null)}
+        onOpen={(feature) => {
+          feature.action?.();
+          setActiveFeatureGuide(null);
+        }}
+      />
 
       {/* Webcam Preview - Small floating video when sharing */}
       {

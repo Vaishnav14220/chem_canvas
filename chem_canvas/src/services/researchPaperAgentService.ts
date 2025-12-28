@@ -18,6 +18,7 @@
 
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { generateTextContent, isGeminiInitialized, initializeGeminiWithFirebaseKey } from './geminiService';
+import { addFileToSourceLibrary, addTextToSourceLibrary } from '../utils/sourceLibrary';
 import { 
   writeLatexFile, 
   getLatexFiles, 
@@ -589,6 +590,9 @@ export const uploadFile = async (
   };
   
   state.uploadedFiles.push(uploadedFile);
+  addFileToSourceLibrary(file, { content, mimeType: file.type, name: file.name }).catch((error) => {
+    console.warn('[researchPaperAgentService] Failed to add source to library:', error);
+  });
   
   emitEvent({
     type: 'file-uploaded',
@@ -615,6 +619,9 @@ export const addTextContent = (
   };
   
   state.uploadedFiles.push(uploadedFile);
+  addTextToSourceLibrary({ name, content, type: 'text' }).catch((error) => {
+    console.warn('[researchPaperAgentService] Failed to add text source to library:', error);
+  });
   
   emitEvent({
     type: 'file-uploaded',

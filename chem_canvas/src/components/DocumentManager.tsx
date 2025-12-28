@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, Trash2, FileText, Clock, HardDrive, AlertCircle, CheckCircle, Download } from 'lucide-react';
 import { auth } from '../firebase/config';
+import { addFileToSourceLibrary } from '../utils/sourceLibrary';
 
 interface StoredDocument {
   id: string;
@@ -106,6 +107,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ onDocumentSele
       });
 
       const dataUrl = await base64Promise;
+      const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
 
       const newDoc: StoredDocument = {
         id: `${Date.now()}-${file.name}`,
@@ -122,6 +124,9 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ onDocumentSele
 
       // Update UI
       setDocuments(updatedDocs);
+      addFileToSourceLibrary(file, { data: base64Data, mimeType: file.type, name: file.name }).catch((error) => {
+        console.warn('[DocumentManager] Failed to add source to library:', error);
+      });
       setSuccess(`✓ "${file.name}" saved successfully!`);
 
       // Clear success message after 3 seconds

@@ -68,6 +68,7 @@ export interface ExcalidrawCanvasRef {
   loadLibrary: (category: string) => Promise<boolean>; // Load external library
   insertLibraryItem: (itemNameOrKeyword: string) => Promise<boolean>; // Insert library item onto canvas
   generateAndInsertImage: (prompt: string, options?: { model?: 'nano-banana' | 'nano-banana-pro' }) => Promise<boolean>; // Generate AI image and insert onto canvas
+  addImageFromBase64: (base64: string, mimeType: string, options?: { width?: number; height?: number; x?: number; y?: number }) => Promise<boolean>; // Add base64 image to canvas
 }
 
 interface ExcalidrawCanvasProps {
@@ -1014,6 +1015,84 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
           return true;
         } catch (error) {
           console.error('[ExcalidrawCanvas] Failed to generate/insert AI image:', error);
+          return false;
+        }
+      },
+
+      // Add base64 image directly to canvas (for PDF diagram extraction)
+      addImageFromBase64: async (base64: string, mimeType: string, options?: { width?: number; height?: number; x?: number; y?: number }): Promise<boolean> => {
+        if (!excalidrawAPIRef.current) return false;
+
+        try {
+          console.log('[ExcalidrawCanvas] Adding base64 image to canvas');
+
+          // Create a file ID for the image
+          const fileId = `pdf-image-${Date.now()}`;
+          const dataURL = `data:${mimeType};base64,${base64}`;
+
+          // Add the image as a file to Excalidraw
+          const imageFile = {
+            id: fileId,
+            dataURL: dataURL,
+            mimeType: mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+            created: Date.now(),
+            lastRetrieved: Date.now(),
+          };
+
+          excalidrawAPIRef.current.addFiles([imageFile as any]);
+
+          // Create image element with specified or default position/size
+          const now = Date.now();
+          const imageElement = {
+            id: `img-${now}`,
+            type: 'image' as const,
+            x: options?.x ?? 50,
+            y: options?.y ?? 50,
+            width: options?.width ?? 500,
+            height: options?.height ?? 400,
+            angle: 0,
+            strokeColor: '#000000',
+            backgroundColor: 'transparent',
+            fillStyle: 'solid' as const,
+            strokeWidth: 1,
+            strokeStyle: 'solid' as const,
+            roughness: 0,
+            opacity: 100,
+            groupIds: [] as string[],
+            frameId: null,
+            roundness: null,
+            seed: Math.floor(Math.random() * 2147483647),
+            version: 1,
+            versionNonce: Math.floor(Math.random() * 2147483647),
+            isDeleted: false,
+            boundElements: null,
+            updated: now,
+            link: null,
+            locked: false,
+            fileId: fileId,
+            status: 'saved' as const,
+            scale: [1, 1] as [number, number],
+          };
+
+          const existingElements = excalidrawAPIRef.current.getSceneElements();
+          excalidrawAPIRef.current.updateScene({
+            elements: [...existingElements, imageElement as any],
+          });
+
+          // Scroll to the new image
+          setTimeout(() => {
+            if (excalidrawAPIRef.current) {
+              excalidrawAPIRef.current.scrollToContent(imageElement as any, {
+                fitToContent: true,
+                viewportZoomFactor: 0.8
+              });
+            }
+          }, 200);
+
+          console.log('[ExcalidrawCanvas] Base64 image inserted successfully');
+          return true;
+        } catch (error) {
+          console.error('[ExcalidrawCanvas] Failed to add base64 image:', error);
           return false;
         }
       },

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronDown, ChevronRight, Brain, Sparkles, CheckCircle2, XCircle, Zap, Target, MessageSquare } from 'lucide-react';
+import { ToTGenerationAnimation } from './ToTGenerationAnimation';
 import { ExamPrepToTResponse, TotNode, buildTreeFromNodes, TotNodeWithChildren } from '../services/examPrepToTService';
 
 interface ToTLiveViewerProps {
@@ -7,6 +8,9 @@ interface ToTLiveViewerProps {
     thoughts: string[];
     isGenerating: boolean;
     stage: 'analyzing' | 'generating' | 'evaluating' | 'selecting' | 'complete';
+    showContinue?: boolean;
+    onContinue?: () => void;
+    continueLabel?: string;
 }
 
 const STAGES = [
@@ -154,13 +158,94 @@ export const ToTLiveViewer: React.FC<ToTLiveViewerProps> = ({
     totData,
     thoughts,
     isGenerating,
-    stage
+    stage,
+    showContinue = false,
+    onContinue,
+    continueLabel = 'Continue to Extraction'
 }) => {
     const thoughtsEndRef = React.useRef<HTMLDivElement>(null);
     const treeRoots = React.useMemo(() =>
         totData ? buildTreeFromNodes(totData.tree) : [],
         [totData]
     );
+
+    const approachSteps = React.useMemo(() => ([
+        { key: 'analyze', label: 'Scan prompt and scope', stage: 'analyzing' as const },
+        { key: 'constraints', label: 'Extract constraints and goals', stage: 'analyzing' as const },
+        { key: 'generate', label: 'Generate candidate approaches', stage: 'generating' as const },
+        { key: 'evaluate', label: 'Score options with criteria', stage: 'evaluating' as const },
+        { key: 'select', label: 'Select strongest path', stage: 'selecting' as const },
+        { key: 'prepare', label: 'Prepare structured output', stage: 'complete' as const }
+    ]), []);
+
+    const stageIndexMap: Record<ToTLiveViewerProps['stage'], number> = {
+        analyzing: 1,
+        generating: 2,
+        evaluating: 3,
+        selecting: 4,
+        complete: 5
+    };
+    const stageRankMap: Record<ToTLiveViewerProps['stage'], number> = {
+        analyzing: 0,
+        generating: 1,
+        evaluating: 2,
+        selecting: 3,
+        complete: 4
+    };
+    const stageRank = stageRankMap[stage];
+    const rootNode = React.useMemo(
+        () => (totData ? totData.tree.find(node => node.parentId === null) || null : null),
+        [totData]
+    );
+    const candidateNodes = React.useMemo(() => {
+        if (!totData || !rootNode) return [];
+        return totData.tree.filter(node => node.parentId === rootNode.id);
+    }, [totData, rootNode]);
+    const selectedNode = React.useMemo(() => {
+        if (!totData) return null;
+        return totData.tree.find(node => node.id === totData.selectedId) || null;
+    }, [totData]);
+    const criteriaList = totData?.criteria ?? [];
+    const showApproaches = stageRank >= 1;
+    const showEvaluation = stageRank >= 2;
+    const showSelection = stageRank >= 3;
+    const analysisSummary = totData?.problem || 'Analyzing source material and constraints...';
+    const fallbackCandidates: TotNode[] = React.useMemo(() => ([
+        {
+            id: 'candidate-a',
+            parentId: 'root',
+            title: 'Interactive simulation first',
+            summary: 'Focus on hands-on exploration with sliders and visual feedback.',
+            pros: ['Engaging', 'Concept clarity'],
+            cons: ['Requires setup time'],
+            score: 7.8,
+            status: 'candidate',
+            nextQuestions: []
+        },
+        {
+            id: 'candidate-b',
+            parentId: 'root',
+            title: 'Worked examples with annotations',
+            summary: 'Highlight formulas in context with step-by-step explanations.',
+            pros: ['Clear structure', 'Fast to review'],
+            cons: ['Less interactive'],
+            score: 6.4,
+            status: 'candidate',
+            nextQuestions: []
+        },
+        {
+            id: 'candidate-c',
+            parentId: 'root',
+            title: 'Concept map with summaries',
+            summary: 'Organize definitions and formulas into a visual hierarchy.',
+            pros: ['High level overview'],
+            cons: ['Limited detail'],
+            score: 5.9,
+            status: 'candidate',
+            nextQuestions: []
+        }
+    ]), []);
+    const approachCards = candidateNodes.length > 0 ? candidateNodes : fallbackCandidates;
 
     // Auto-scroll thoughts
     React.useEffect(() => {
@@ -186,11 +271,12 @@ export const ToTLiveViewer: React.FC<ToTLiveViewerProps> = ({
                 </div>
 
                 {/* Stage Progress */}
-                <div className="flex items-center gap-1 overflow-x-auto pb-2">
-                    {STAGES.map((s, idx) => (
-                        <React.Fragment key={s.key}>
-                            <div
-                                className={`
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
+                    <div className="flex items-center gap-1 overflow-x-auto">
+                        {STAGES.map((s, idx) => (
+                            <React.Fragment key={s.key}>
+                                <div
+                                    className={`
                   flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all
                   ${idx <= currentStageIndex
                                         ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
@@ -198,15 +284,24 @@ export const ToTLiveViewer: React.FC<ToTLiveViewerProps> = ({
                                     }
                   ${idx === currentStageIndex && isGenerating ? 'ring-2 ring-violet-500/50 animate-pulse' : ''}
                 `}
-                            >
-                                <span>{s.icon}</span>
-                                <span>{s.label}</span>
-                            </div>
-                            {idx < STAGES.length - 1 && (
-                                <div className={`w-4 h-0.5 flex-shrink-0 ${idx < currentStageIndex ? 'bg-violet-500' : 'bg-slate-700'}`} />
-                            )}
-                        </React.Fragment>
-                    ))}
+                                >
+                                    <span>{s.icon}</span>
+                                    <span>{s.label}</span>
+                                </div>
+                                {idx < STAGES.length - 1 && (
+                                    <div className={`w-4 h-0.5 flex-shrink-0 ${idx < currentStageIndex ? 'bg-violet-500' : 'bg-slate-700'}`} />
+                                )}
+                            </React.Fragment>
+                        ))}
+                    </div>
+                    {showContinue && (
+                        <button
+                            onClick={onContinue}
+                            className="px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-200 border border-emerald-500/40 hover:bg-emerald-500/30 transition-colors"
+                        >
+                            {continueLabel}
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -224,30 +319,156 @@ export const ToTLiveViewer: React.FC<ToTLiveViewerProps> = ({
                             </span>
                         )}
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-2 text-xs font-mono">
-                        {thoughts.length === 0 ? (
-                            <div className="text-slate-500 italic">Waiting for model thoughts...</div>
-                        ) : (
-                            thoughts.map((thought, i) => (
-                                <div
-                                    key={i}
-                                    className={`
-                    p-2 rounded border-l-2 
-                    ${thought.startsWith('✅')
-                                            ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
-                                            : thought.startsWith('⚠️')
-                                                ? 'bg-amber-500/10 border-amber-500 text-amber-300'
-                                                : thought.startsWith('❌')
-                                                    ? 'bg-red-500/10 border-red-500 text-red-300'
-                                                    : 'bg-slate-800/50 border-violet-500/50 text-slate-300'
-                                        }
-                  `}
-                                >
-                                    {thought}
+                    <div className="flex-1 overflow-y-auto p-4">
+                        <div className="space-y-4">
+                            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-2">Analysis</div>
+                                <p className="text-xs text-slate-300 leading-relaxed">{analysisSummary}</p>
+                                {showEvaluation && criteriaList.length > 0 && (
+                                    <div className="mt-3">
+                                        <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-2">Evaluation Criteria</div>
+                                        <ul className="space-y-1 text-[11px] text-slate-400">
+                                            {criteriaList.map((criterion, index) => (
+                                                <li key={`${criterion}-${index}`} className="flex gap-2">
+                                                    <span className="text-slate-500">-</span>
+                                                    <span>{criterion}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+
+                            {showApproaches && (
+                                <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+                                    <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-3">Approach Candidates</div>
+                                    <div className="space-y-3">
+                                        {approachCards.map((node) => {
+                                            const isSelected = selectedNode?.id === node.id;
+                                            const cardTone = node.status === 'rejected'
+                                                ? 'border-red-500/30 bg-red-500/10'
+                                                : isSelected
+                                                    ? 'border-emerald-500/50 bg-emerald-500/10'
+                                                    : 'border-slate-800 bg-slate-950/40';
+                                            return (
+                                                <div key={node.id} className={`rounded-lg border p-3 ${cardTone}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="text-xs font-semibold text-slate-200">{node.title}</div>
+                                                        {showEvaluation ? (
+                                                            <div className={`px-2 py-0.5 rounded text-[10px] font-bold ${getScoreColor(node.score)}`}>
+                                                                {node.score.toFixed(1)}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-[10px] text-slate-500">scoring...</div>
+                                                        )}
+                                                    </div>
+                                                    <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">{node.summary}</p>
+                                                    {showEvaluation && (
+                                                        <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-slate-400">
+                                                            <div>
+                                                                <span className="text-emerald-400 font-bold">Pros: </span>
+                                                                {node.pros.length > 0 ? node.pros.join(', ') : 'Pending'}
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-amber-400 font-bold">Cons: </span>
+                                                                {node.cons.length > 0 ? node.cons.join(', ') : 'Pending'}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {showSelection && isSelected && (
+                                                        <div className="mt-2 text-[11px] text-emerald-300 font-semibold">Selected strategy</div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            ))
-                        )}
-                        <div ref={thoughtsEndRef} />
+                            )}
+
+                            {showSelection && selectedNode && (
+                                <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+                                    <div className="text-[11px] uppercase tracking-wide text-emerald-300 mb-2">Selected Strategy</div>
+                                    <div className="text-xs font-semibold text-emerald-100">{selectedNode.title}</div>
+                                    <p className="mt-2 text-[11px] text-emerald-100/80 leading-relaxed">
+                                        {selectedNode.summary || totData?.finalAnswer}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-4 space-y-2 text-xs font-mono">
+                            {thoughts.length === 0 ? (
+                                <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-slate-300">
+                                    <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-3">
+                                        Approach Timeline
+                                    </div>
+                                    <div className="space-y-2">
+                                        {approachSteps.map((step, idx) => {
+                                            const activeIndex = stageIndexMap[stage];
+                                            const isActive = idx === activeIndex;
+                                            const isComplete = idx < activeIndex;
+                                            return (
+                                                <div
+                                                    key={step.key}
+                                                    className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition-all ${
+                                                        isActive
+                                                            ? 'border-violet-500/70 bg-violet-500/15 text-violet-200 animate-pulse'
+                                                            : isComplete
+                                                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200/90'
+                                                                : 'border-slate-800 bg-slate-950/40 text-slate-500'
+                                                    }`}
+                                                >
+                                                    <div
+                                                        className={`h-2.5 w-2.5 rounded-full ${
+                                                            isActive
+                                                                ? 'bg-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.8)]'
+                                                                : isComplete
+                                                                    ? 'bg-emerald-400'
+                                                                    : 'bg-slate-700'
+                                                        }`}
+                                                    />
+                                                    <div className="flex-1 text-[11px]">
+                                                        {step.label}
+                                                    </div>
+                                                    <div className="text-[10px] uppercase tracking-wide text-slate-600">
+                                                        {step.stage}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="mt-4 grid gap-2">
+                                        {[0, 1, 2].map((row) => (
+                                            <div
+                                                key={row}
+                                                className="h-2 rounded bg-gradient-to-r from-slate-800 via-slate-700/60 to-slate-800 animate-pulse"
+                                                style={{ animationDelay: `${row * 0.15}s` }}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                thoughts.map((thought, i) => (
+                                    <div
+                                        key={i}
+                                        className={`
+                    p-2 rounded border-l-2 
+                    ${thought.startsWith('?o.')
+                                                ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
+                                                : thought.startsWith('?s????')
+                                                    ? 'bg-amber-500/10 border-amber-500 text-amber-300'
+                                                    : thought.startsWith('??O')
+                                                        ? 'bg-red-500/10 border-red-500 text-red-300'
+                                                        : 'bg-slate-800/50 border-violet-500/50 text-slate-300'
+                                            }
+                  `}
+                                    >
+                                        {thought}
+                                    </div>
+                                ))
+                            )}
+                            <div ref={thoughtsEndRef} />
+                        </div>
                     </div>
                 </div>
 
@@ -259,10 +480,8 @@ export const ToTLiveViewer: React.FC<ToTLiveViewerProps> = ({
                     </div>
                     <div className="flex-1 overflow-y-auto p-4">
                         {!totData ? (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                                <Brain className="w-12 h-12 mb-3 opacity-30 animate-pulse" />
-                                <p className="text-sm">Generating reasoning tree...</p>
-                                <p className="text-xs mt-1">The model is exploring different approaches</p>
+                            <div className="h-full min-h-[360px]">
+                                <ToTGenerationAnimation isGenerating={isGenerating} stage={stage} />
                             </div>
                         ) : (
                             <>

@@ -132,10 +132,16 @@ const DockIcon = ({
     damping: 12,
   });
 
+  // Use fixed size when magnification is disabled to ensure consistent sizing
+  const finalSize = disableMagnification ? size : scaleSize;
+  const finalStyle = disableMagnification 
+    ? { width: size, height: size, padding }
+    : { width: scaleSize, height: scaleSize, padding };
+
   return (
     <motion.div
       ref={ref}
-      style={{ width: scaleSize, height: scaleSize, padding }}
+      style={finalStyle}
       className={cn(
         "flex aspect-square cursor-pointer items-center justify-center rounded-full",
         disableMagnification && "hover:bg-muted-foreground transition-colors",

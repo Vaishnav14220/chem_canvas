@@ -97,6 +97,7 @@ import { ToolCallBox } from './deep-agent/ToolCallBox';
 import { TasksFilesPanel } from './deep-agent/TasksFilesPanel';
 import type { ToolCall, SubAgent, TodoItem, ChatMessage as ChatMessageType, ActiveTask, TaskProgressStep } from './deep-agent/types';
 import { extractTextFromFile } from '../services/researchPaperAgentService';
+import { addFileToSourceLibrary } from '../utils/sourceLibrary';
 import { GoogleDocsExportButton } from './GoogleDocsIntegration';
 import { Task, TaskContent, TaskItem, TaskItemFile, TaskTrigger } from './ui/ai/task';
 import 'katex/dist/katex.min.css';
@@ -817,6 +818,9 @@ const DeepAgentChat: React.FC<DeepAgentChatProps> = ({
             ? { ...f, content: result.text, isProcessing: false }
             : f
         ));
+        addFileToSourceLibrary(fileEntry.file, { content: result.text }).catch((error) => {
+          console.warn('[DeepAgentChatEnhanced] Failed to add source to library:', error);
+        });
       } catch (error) {
         console.error('Error processing file:', error);
         setUploadedFiles(prev => prev.map(f =>

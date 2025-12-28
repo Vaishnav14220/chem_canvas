@@ -295,9 +295,11 @@ interface DrawingToolsDockProps {
   onToolChange: (tool: DrawingTool) => void;
   className?: string;
   position?: 'bottom' | 'left' | 'right' | 'bottom-right';
+  layout?: 'floating' | 'inline';
   enableKeyboardShortcuts?: boolean;
   forceCollapsed?: boolean;
   onChemistryToolsClick?: () => void;
+  extraControls?: React.ReactNode;
 }
 
 const tools: { id: DrawingTool; icon: React.ElementType; label: string; shortcut?: string }[] = [
@@ -335,11 +337,14 @@ export default function DrawingToolsDock({
   onToolChange, 
   className,
   position = 'bottom',
+  layout = 'floating',
   enableKeyboardShortcuts = true,
   forceCollapsed = false,
-  onChemistryToolsClick
+  onChemistryToolsClick,
+  extraControls
 }: DrawingToolsDockProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const hasExtras = Boolean(extraControls);
 
   // Auto-collapse/expand based on forceCollapsed prop
   useEffect(() => {
@@ -384,23 +389,23 @@ export default function DrawingToolsDock({
     ? (position === 'left' ? ChevronRight : ChevronLeft)
     : (position === 'bottom' ? ChevronUp : ChevronDown);
 
+  const collapseButtonClasses = cn(
+    "flex items-center justify-center border border-cyan-500/30 bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95",
+    "text-cyan-400 hover:text-cyan-300 transition-all duration-300",
+    "hover:border-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/20",
+    isVertical ? "h-9 w-[52px] rounded-xl" : "h-9 w-9 rounded-full"
+  );
+
   return (
     <div className={cn(
-      'fixed z-50 flex items-center gap-2',
-      positionClasses[position],
+      `${layout === 'floating' ? 'fixed' : 'relative'} z-50 flex items-center gap-2`,
+      layout === 'floating' ? positionClasses[position] : (position === 'left' || position === 'right' ? 'flex-col' : ''),
       className
     )}>
       {/* Collapse/Expand Button */}
       <motion.button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className={cn(
-          "flex items-center justify-center rounded-full border backdrop-blur-md transition-all duration-300",
-          "bg-gradient-to-b from-[#1C2025] via-[#22262B] to-[#1C2025]",
-          "border-cyan-500/30 shadow-lg shadow-cyan-500/10",
-          "hover:border-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/20",
-          "text-cyan-400 hover:text-cyan-300",
-          isVertical ? "h-10 w-10" : "h-10 w-10"
-        )}
+        className={collapseButtonClasses}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         aria-label={isCollapsed ? "Expand tools" : "Collapse tools"}
@@ -422,118 +427,41 @@ export default function DrawingToolsDock({
             exit={{ opacity: 0, scale: 0.8, x: isVertical ? (position === 'left' ? -20 : 20) : 0, y: !isVertical ? (position === 'bottom' ? 20 : -20) : 0 }}
             transition={{ duration: 0.3, ease: "easeInOut" }}
           >
-            <Dock 
-              iconSize={36} 
-              iconMagnification={36} 
-              iconDistance={100}
-              disableMagnification={true}
+            <div
               className={cn(
+                "flex flex-col items-center gap-2 rounded-2xl border border-cyan-500/20",
                 "bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95",
-                "border border-cyan-500/20 shadow-2xl shadow-black/50",
-                "backdrop-blur-xl",
-                isVertical && "flex-col h-auto w-[58px] !w-[58px]"
+                "shadow-2xl shadow-black/50 backdrop-blur-xl p-2",
+                isVertical && "w-[56px]"
               )}
             >
-              {/* Main Drawing Tools */}
-              {tools.map((tool) => (
-                <DockIcon
-                  key={tool.id}
-                  onClick={() => onToolChange(tool.id)}
-                  className={cn(
-                    "transition-all duration-200 relative group",
-                    currentTool === tool.id 
-                      ? "bg-gradient-to-br from-cyan-500/40 to-blue-500/30 text-cyan-300 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20" 
-                      : "text-slate-400 hover:text-cyan-300 hover:bg-slate-700/60"
-                  )}
-                >
-                  <tool.icon 
-                    className={cn(
-                      "w-5 h-5 transition-transform duration-200 relative z-10",
-                      currentTool === tool.id && "scale-110"
-                    )} 
-                  />
-                  <span className="sr-only">{tool.label}</span>
-                  {/* Tooltip */}
-                  <div className={cn(
-                    "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
-                    "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
-                    "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
-                    isVertical 
-                      ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
-                      : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
-                  )}>
-                    {tool.label}
-                    {tool.shortcut && (
-                      <span className="ml-1.5 text-slate-400">({tool.shortcut})</span>
-                    )}
-                  </div>
-                </DockIcon>
-              ))}
-
-              {/* Divider */}
-              <div className={cn(
-                "bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent",
-                isVertical ? "h-px w-8 my-1" : "w-px h-8 mx-1"
-              )} />
-
-              {/* Shape Tools */}
-              {shapeTools.map((tool) => (
-                <DockIcon
-                  key={tool.id}
-                  onClick={() => onToolChange(tool.id)}
-                  className={cn(
-                    "transition-all duration-200 relative group",
-                    currentTool === tool.id 
-                      ? "bg-gradient-to-br from-purple-500/40 to-pink-500/30 text-purple-300 ring-2 ring-purple-500/60 shadow-lg shadow-purple-500/20" 
-                      : "text-slate-400 hover:text-purple-300 hover:bg-slate-700/60"
-                  )}
-                >
-                  <tool.icon 
-                    className={cn(
-                      "w-5 h-5 transition-transform duration-200 relative z-10",
-                      currentTool === tool.id && "scale-110"
-                    )} 
-                  />
-                  <span className="sr-only">{tool.label}</span>
-                  {/* Tooltip */}
-                  <div className={cn(
-                    "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
-                    "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
-                    "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
-                    isVertical 
-                      ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
-                      : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
-                  )}>
-                    {tool.label}
-                    {tool.shortcut && (
-                      <span className="ml-1.5 text-slate-400">({tool.shortcut})</span>
-                    )}
-                  </div>
-                </DockIcon>
-              ))}
-
-              {/* Divider */}
-              {onChemistryToolsClick && (
-                <>
-                  <div className={cn(
-                    "bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent",
-                    isVertical ? "h-px w-8 my-1" : "w-px h-8 mx-1"
-                  )} />
-                  
-                  {/* Chemistry Tools Button */}
+              <Dock 
+                iconSize={30} 
+                iconMagnification={30} 
+                iconDistance={80}
+                disableMagnification={true}
+                className={cn(
+                  hasExtras ? "bg-transparent border-transparent shadow-none" : "bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95 border border-cyan-500/20 shadow-2xl shadow-black/50",
+                  isVertical && "flex-col h-auto w-[52px] !w-[52px] gap-0.5 p-1"
+                )}
+              >
+                {/* Main Drawing Tools */}
+                {tools.map((tool) => (
                   <DockIcon
-                    onClick={onChemistryToolsClick}
+                    key={tool.id}
+                    onClick={() => onToolChange(tool.id)}
+                    size={30}
                     className={cn(
-                      "transition-all duration-200 relative group",
-                      "text-slate-400 hover:text-emerald-300 hover:bg-slate-700/60"
+                      "transition-all duration-200 relative group !w-[30px] !h-[30px]",
+                      currentTool === tool.id 
+                        ? "bg-gradient-to-br from-cyan-500/40 to-blue-500/30 text-cyan-300 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20" 
+                        : "text-slate-400 hover:text-cyan-300 hover:bg-slate-700/60"
                     )}
                   >
-                    <MethaneIcon 
-                      className={cn(
-                        "w-5 h-5 transition-transform duration-200 relative z-10"
-                      )} 
+                    <tool.icon 
+                      className="w-5 h-5 transition-all duration-200 relative z-10"
                     />
-                    <span className="sr-only">Chemistry Tools</span>
+                    <span className="sr-only">{tool.label}</span>
                     {/* Tooltip */}
                     <div className={cn(
                       "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
@@ -543,12 +471,97 @@ export default function DrawingToolsDock({
                         ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
                         : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
                     )}>
-                      Chemistry Tools
+                      {tool.label}
+                      {tool.shortcut && (
+                        <span className="ml-1.5 text-slate-400">({tool.shortcut})</span>
+                      )}
                     </div>
                   </DockIcon>
-                </>
+                ))}
+
+                {/* Divider */}
+                <div className={cn(
+                  "bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent",
+                  isVertical ? "h-px w-7 my-0.5" : "w-px h-7 mx-0.5"
+                )} />
+
+                {/* Shape Tools */}
+                {shapeTools.map((tool) => (
+                  <DockIcon
+                    key={tool.id}
+                    onClick={() => onToolChange(tool.id)}
+                    size={30}
+                    className={cn(
+                      "transition-all duration-200 relative group !w-[30px] !h-[30px]",
+                      currentTool === tool.id 
+                        ? "bg-gradient-to-br from-purple-500/40 to-pink-500/30 text-purple-300 ring-2 ring-purple-500/60 shadow-lg shadow-purple-500/20" 
+                        : "text-slate-400 hover:text-purple-300 hover:bg-slate-700/60"
+                    )}
+                  >
+                    <tool.icon 
+                      className="w-5 h-5 transition-all duration-200 relative z-10"
+                    />
+                    <span className="sr-only">{tool.label}</span>
+                    {/* Tooltip */}
+                    <div className={cn(
+                      "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
+                      "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
+                      "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
+                      isVertical 
+                        ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
+                        : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
+                    )}>
+                      {tool.label}
+                      {tool.shortcut && (
+                        <span className="ml-1.5 text-slate-400">({tool.shortcut})</span>
+                      )}
+                    </div>
+                  </DockIcon>
+                ))}
+
+                {/* Divider */}
+                {onChemistryToolsClick && (
+                  <>
+                <div className={cn(
+                  "bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent",
+                  isVertical ? "h-px w-7 my-0.5" : "w-px h-7 mx-0.5"
+                )} />
+                    
+                    {/* Chemistry Tools Button */}
+                    <DockIcon
+                      onClick={onChemistryToolsClick}
+                      size={30}
+                      className={cn(
+                        "transition-all duration-200 relative group !w-[30px] !h-[30px]",
+                        "text-slate-400 hover:text-emerald-300 hover:bg-slate-700/60"
+                      )}
+                    >
+                      <MethaneIcon 
+                        className="w-5 h-5 transition-all duration-200 relative z-10"
+                      />
+                      <span className="sr-only">Chemistry Tools</span>
+                      {/* Tooltip */}
+                      <div className={cn(
+                        "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
+                        "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
+                        "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
+                        isVertical 
+                          ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
+                          : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
+                      )}>
+                        Chemistry Tools
+                      </div>
+                    </DockIcon>
+                  </>
+                )}
+              </Dock>
+
+              {extraControls && (
+                <div className="w-full border-t border-cyan-500/20 pt-2">
+                  {extraControls}
+                </div>
               )}
-            </Dock>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

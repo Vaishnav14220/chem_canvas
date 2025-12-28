@@ -321,6 +321,16 @@ export interface TutorChatMessage {
 
     /** Embedded interactive content */
     interactive_content?: InteractiveContentResponse;
+
+    /** Optional generated image for diagram/visuals */
+    image?: {
+        src: string;
+        alt?: string;
+        caption?: string;
+    };
+
+    /** Optional guided task identifier for activity sequencing */
+    guided_task_id?: string;
 }
 
 // =============================================================================

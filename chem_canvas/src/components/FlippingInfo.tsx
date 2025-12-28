@@ -73,17 +73,17 @@ const FlippingInfo: React.FC<FlippingInfoProps> = ({ userName }) => {
 
   const cards = [
     {
-      icon: <User className="h-5 w-5" />,
+      icon: <User className="h-5 w-5 text-slate-400" />,
       content: userName || 'User',
       label: 'Welcome'
     },
     {
-      icon: <Clock className="h-5 w-5" />,
+      icon: <Clock className="h-5 w-5 text-slate-400" />,
       content: formatTime(currentTime),
       label: 'Current Time'
     },
     {
-      icon: <Timer className="h-5 w-5" />,
+      icon: <Timer className="h-5 w-5 text-slate-400" />,
       content: formatTimeSpent(timeSpent),
       label: 'Time Spent'
     }
@@ -92,17 +92,17 @@ const FlippingInfo: React.FC<FlippingInfoProps> = ({ userName }) => {
   const currentCard = cards[currentIndex];
 
   return (
-    <div className="relative h-12 w-56 overflow-hidden rounded-lg bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 backdrop-blur-sm">
+    <div className="relative h-12 w-56 overflow-hidden rounded-lg border border-slate-700/60 bg-[#171717] backdrop-blur-sm">
       <div className="flex h-full w-full items-center justify-center px-4">
         <div className="flex items-center space-x-3 transition-all duration-500 ease-in-out">
           <div className="flex-shrink-0">
             {currentCard.icon}
           </div>
           <div className="flex flex-col">
-            <span className="text-xs text-muted-foreground font-medium">
+            <span className="text-xs text-slate-400 font-medium">
               {currentCard.label}
             </span>
-            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+            <span className="text-sm font-semibold text-slate-100">
               {currentCard.content}
             </span>
           </div>
@@ -110,9 +110,9 @@ const FlippingInfo: React.FC<FlippingInfoProps> = ({ userName }) => {
       </div>
 
       {/* Progress indicator */}
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-200 dark:bg-gray-700">
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-800">
         <div
-          className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500 ease-in-out"
+          className="h-full bg-slate-600 transition-all duration-500 ease-in-out"
           style={{
             width: `${((currentIndex + 1) / 3) * 100}%`
           }}

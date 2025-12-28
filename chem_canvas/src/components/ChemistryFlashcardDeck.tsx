@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, RotateCcw, GraduationCap, Loader2, RefreshCw, XCircle } from 'lucide-react';
 
@@ -17,6 +17,7 @@ interface FlashcardDeckProps {
   error?: string | null;
   topic?: string;
   onFlip?: () => void;
+  onFlipStateChange?: (isFlipped: boolean) => void;
   onNext?: () => void;
   onPrevious?: () => void;
   onRegenerate?: () => Promise<void>;
@@ -31,6 +32,7 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({
   error = null,
   topic,
   onFlip,
+  onFlipStateChange,
   onNext,
   onPrevious,
   onRegenerate,
@@ -43,7 +45,7 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({
   const currentIndex = activeIndex !== undefined ? activeIndex : internalIndex;
   const isFlipped = controlledIsFlipped !== undefined ? controlledIsFlipped : internalIsFlipped;
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (onNext) {
       onNext();
     } else {
@@ -52,9 +54,9 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({
         setInternalIndex((prev) => (prev + 1) % cards.length);
       }, 300);
     }
-  };
+  }, [cards.length, onNext]);
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     if (onPrevious) {
       onPrevious();
     } else {
@@ -63,15 +65,50 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({
         setInternalIndex((prev) => (prev - 1 + cards.length) % cards.length);
       }, 300);
     }
-  };
+  }, [cards.length, onPrevious]);
 
-  const handleFlip = () => {
+  const handleFlip = useCallback(() => {
     if (onFlip) {
       onFlip();
-    } else {
-      setInternalIsFlipped(!internalIsFlipped);
+      return;
     }
-  };
+
+    setInternalIsFlipped(prev => {
+      const next = !prev;
+      onFlipStateChange?.(next);
+      return next;
+    });
+  }, [onFlip, onFlipStateChange]);
+
+  // Keyboard Navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignor navigation if user is typing in chat
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      switch (e.code) {
+        case 'Space':
+        case 'ArrowUp':
+        case 'ArrowDown':
+          e.preventDefault();
+          handleFlip();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          handlePrev();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          handleNext();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleFlip, handleNext, handlePrev]);
 
   if (isLoading) {
     return (
@@ -129,7 +166,7 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({
   return (
     <div className="flex flex-col h-full max-w-md mx-auto p-4 w-full">
       <div
-        className="flex-1 perspective-1000 relative min-h-[300px] cursor-pointer group"
+        className="flex-1 perspective-1000 relative min-h-[340px] cursor-pointer group"
         onClick={handleFlip}
       >
         <motion.div
@@ -138,54 +175,70 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({
           style={{ transformStyle: 'preserve-3d' }}
         >
           {/* Front */}
-          <div className="absolute inset-0 backface-hidden bg-white border-2 border-indigo-100/80 rounded-2xl shadow-sm flex flex-col items-center justify-center p-8 text-center hover:shadow-md hover:border-indigo-200 transition-all">
-            <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-4">Term</span>
-            <h3 className="text-xl md:text-2xl font-bold text-slate-800 leading-tight">{currentCard?.front}</h3>
-            <p className="absolute bottom-6 text-xs text-slate-400 font-medium group-hover:text-indigo-400 transition-colors">Click to flip</p>
+          <div className="absolute inset-0 backface-hidden bg-white rounded-3xl shadow-[0_3px_12px_rgba(0,0,0,0.08)] border border-slate-100 flex flex-col items-center justify-center p-8 text-center hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] hover:border-indigo-100 transition-all duration-300">
+            <div className="absolute top-6 left-6 w-1.5 h-1.5 rounded-full bg-indigo-400 opacity-50"></div>
+            <div className="absolute top-6 right-6 w-1.5 h-1.5 rounded-full bg-indigo-400 opacity-50"></div>
+            <div className="absolute bottom-6 left-6 w-1.5 h-1.5 rounded-full bg-indigo-400 opacity-50"></div>
+            <div className="absolute bottom-6 right-6 w-1.5 h-1.5 rounded-full bg-indigo-400 opacity-50"></div>
+
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">Term</span>
+            <h3 className="text-2xl md:text-3xl font-bold text-slate-800 leading-tight tracking-tight">{currentCard?.front}</h3>
+            <p className="absolute bottom-6 text-xs text-slate-300 font-medium group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
+              <span className="w-1 h-1 rounded-full bg-current"></span> Click to flip
+            </p>
           </div>
 
           {/* Back */}
           <div
-            className="absolute inset-0 backface-hidden bg-gradient-to-br from-indigo-50 to-white border-2 border-indigo-200 rounded-2xl shadow-md flex flex-col items-center justify-center p-8 text-center"
+            className="absolute inset-0 backface-hidden bg-white rounded-3xl shadow-[0_3px_12px_rgba(0,0,0,0.08)] border-t-4 border-t-indigo-500 border-x border-b border-x-slate-100 border-b-slate-100 flex flex-col items-center justify-center p-8 text-center"
             style={{ transform: 'rotateY(180deg)' }}
           >
-            <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-4">Definition</span>
-            <div className="prose prose-sm max-w-none">
-              <p className="text-base md:text-lg text-slate-700 leading-relaxed font-medium">{currentCard?.back}</p>
+            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-6 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">Definition</span>
+            <div className="prose prose-lg max-w-none w-full flex items-center justify-center flex-1">
+              <p className="text-lg md:text-xl text-slate-700 leading-relaxed font-medium">{currentCard?.back}</p>
             </div>
-            {onNext && (
-              <p className="absolute bottom-6 text-xs text-indigo-400/60 font-medium">Click to flip back</p>
-            )}
           </div>
         </motion.div>
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-between mt-6 px-4">
-        <button
-          onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-          className="p-2 rounded-full hover:bg-slate-100 text-slate-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
-          disabled={cards.length <= 1 || isLoading}
-          title="Previous card"
-        >
-          <ChevronLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
-        </button>
-
-        <div className="flex flex-col items-center">
-          <span className="text-sm font-medium text-slate-700">
-            {currentIndex + 1} <span className="text-slate-400">/</span> {cards.length}
-          </span>
-          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">Card</span>
+      <div className="flex flex-col gap-4 mt-6 px-2">
+        {/* Progress Bar */}
+        <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-indigo-500 rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${((currentIndex + 1) / cards.length) * 100}%` }}
+            transition={{ duration: 0.3 }}
+          />
         </div>
 
-        <button
-          onClick={(e) => { e.stopPropagation(); handleNext(); }}
-          className="p-2 rounded-full hover:bg-slate-100 text-slate-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
-          disabled={cards.length <= 1 || isLoading}
-          title="Next card"
-        >
-          <ChevronRight className="w-6 h-6 group-hover:translate-x-0.5 transition-transform" />
-        </button>
+        {/* Controls */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={(e) => { e.stopPropagation(); handlePrev(); }}
+            className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed group active:scale-95 shadow-sm"
+            disabled={cards.length <= 1 || isLoading}
+            title="Previous card (Left Arrow)"
+          >
+            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+          </button>
+
+          <div className="flex flex-col items-center">
+            <span className="text-sm font-bold text-slate-700 font-mono">
+              {currentIndex + 1} / {cards.length}
+            </span>
+          </div>
+
+          <button
+            onClick={(e) => { e.stopPropagation(); handleNext(); }}
+            className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed group active:scale-95 shadow-sm"
+            disabled={cards.length <= 1 || isLoading}
+            title="Next card (Right Arrow)"
+          >
+            <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        </div>
       </div>
 
       {onRegenerate && !isLoading && (

@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../lib/utils';
 
-export type SegmentedOption = 'auto' | 'socratic' | 'feynman';
+export type SegmentedOption = 'auto' | 'socratic' | 'feynman' | 'pdf-study';
 
 interface SegmentedControlProps {
   value: SegmentedOption;

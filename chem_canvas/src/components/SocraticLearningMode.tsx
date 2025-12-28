@@ -57,11 +57,14 @@ import {
     updateSessionState,
     checkAutoModeSwitch,
     analyzeDrawingForSocratic,
-    generateVisualExplanation,
-    generateDiagramElements,
-    generateInteractiveContent
+    generateInteractiveContent,
+    extractDiagramsFromPdf,
+    DiagramExtractionResult,
+    recommendActivityPlanFromPdf,
+    ActivityPlanStep
 } from '../services/socraticFeynmanTutorService';
-import { ExcalidrawCanvas, ExcalidrawCanvasRef, DiagramElement } from './ExcalidrawCanvas/ExcalidrawCanvas';
+import { generateGeminiImage } from '../services/geminiService';
+import { ExcalidrawCanvas, ExcalidrawCanvasRef } from './ExcalidrawCanvas/ExcalidrawCanvas';
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { ConceptNetworkGraph, ConceptNodeData, generateConceptNetwork } from './ConceptNetworkGraph';
@@ -74,12 +77,40 @@ interface SocraticLearningModeProps {
     topic: string;
     onBack: () => void;
     onSwitchToFeynman?: (topic: string) => void;
+    remainingTopics?: string[];
+    onTopicChange?: (newTopic: string) => void;
+    documentData?: { mimeType: string; data: string }; // Base64 PDF data for diagram extraction
+}
+
+type GuidedTaskType = 'quiz' | 'fill_blank' | 'matching' | 'flashcards' | 'challenge';
+
+interface GuidedTask {
+    id: string;
+    type: GuidedTaskType;
+    label: string;
+    diagram?: DiagramExtractionResult['diagrams'][number];
+}
+
+interface GuidedTaskResult {
+    taskId: string;
+    label: string;
+    success: boolean;
+}
+
+interface GuidedReport {
+    misconceptions: string[];
+    correctPoints: string[];
+    successRate: number;
+    totalTasks: number;
 }
 
 export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
     topic,
     onBack,
-    onSwitchToFeynman
+    onSwitchToFeynman,
+    remainingTopics = [],
+    onTopicChange,
+    documentData
 }) => {
     // State
     const [messages, setMessages] = useState<TutorChatMessage[]>([]);
@@ -111,10 +142,425 @@ export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
     const [quiz, setQuiz] = useState<QuizQuestion | null>(null);
     const [isGeneratingContent, setIsGeneratingContent] = useState(false);
 
+    // Diagram extraction state for PDF documents
+    const [diagramAnalysis, setDiagramAnalysis] = useState<DiagramExtractionResult | null>(null);
+    const [isExtractingDiagrams, setIsExtractingDiagrams] = useState(false);
+    const [isGeneratingDiagram, setIsGeneratingDiagram] = useState(false);
+
+    // Guided activity flow state
+    const [isGuidedFlowActive, setIsGuidedFlowActive] = useState(false);
+    const [guidedTasks, setGuidedTasks] = useState<GuidedTask[]>([]);
+    const [guidedTaskIndex, setGuidedTaskIndex] = useState<number>(-1);
+    const [guidedResults, setGuidedResults] = useState<GuidedTaskResult[]>([]);
+    const [guidedReport, setGuidedReport] = useState<GuidedReport | null>(null);
+    const [showGuidedReport, setShowGuidedReport] = useState(false);
+    const [isGuidedFlowGenerating, setIsGuidedFlowGenerating] = useState(false);
+
     // Refs
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const excalidrawRef = useRef<ExcalidrawCanvasRef>(null);
+    const messagesRef = useRef<TutorChatMessage[]>([]);
+    const guidedTasksRef = useRef<GuidedTask[]>([]);
+    const guidedResultsRef = useRef<GuidedTaskResult[]>([]);
+    const lastGuidedImageIndexRef = useRef<number>(-999);
+    const lastAnalyzedDocumentKeyRef = useRef<string | null>(null);
+    const flashcardAutoAdvanceRef = useRef<Set<string>>(new Set());
+
+    useEffect(() => {
+        messagesRef.current = messages;
+    }, [messages]);
+
+    useEffect(() => {
+        guidedTasksRef.current = guidedTasks;
+    }, [guidedTasks]);
+
+    useEffect(() => {
+        guidedResultsRef.current = guidedResults;
+    }, [guidedResults]);
+
+    const normalizeGuidedLabel = useCallback((text: string) => {
+        const trimmed = text.trim();
+        if (trimmed.length <= 80) return trimmed;
+        const sentenceEnd = trimmed.indexOf('.');
+        if (sentenceEnd > 20 && sentenceEnd < 80) {
+            return trimmed.slice(0, sentenceEnd + 1);
+        }
+        return `${trimmed.slice(0, 77)}...`;
+    }, []);
+
+    const buildDiagramExplainer = useCallback((task: GuidedTask) => {
+        const description = task.diagram?.description?.trim() || '';
+        const snippet = description.length > 160 ? `${description.slice(0, 157)}...` : description;
+        const focus = task.label ? `Concept focus: ${task.label}.` : 'Concept focus:';
+        return [focus, snippet].filter(Boolean).join(' ');
+    }, []);
+
+    const shouldIncludeGuidedImage = useCallback((index: number) => {
+        const minGap = 2;
+        const lastIndex = lastGuidedImageIndexRef.current;
+        const stepsSince = index - lastIndex;
+        const hasNoImagesYet = lastIndex < 0;
+
+        if (stepsSince < minGap) {
+            return false;
+        }
+
+        const baseChance = hasNoImagesYet ? 0.6 : 0.4;
+        const bonusChance = Math.min(0.2, Math.max(0, stepsSince - minGap) * 0.1);
+        const chance = baseChance + bonusChance;
+        return Math.random() < chance;
+    }, []);
+
+    const buildGuidedTasks = useCallback((
+        diagrams: DiagramExtractionResult['diagrams'],
+        planSteps?: ActivityPlanStep[] | null
+    ) => {
+        const runId = Date.now();
+        const fallbackSequence: ActivityPlanStep[] = [
+            { type: 'quiz', focus: currentTopic, useDiagram: true },
+            { type: 'fill_blank', focus: currentTopic, useDiagram: true },
+            { type: 'matching', focus: currentTopic, useDiagram: false },
+            { type: 'flashcards', focus: currentTopic, useDiagram: false },
+            { type: 'challenge', focus: currentTopic, useDiagram: true }
+        ];
+        const sequence = planSteps && planSteps.length === 5 ? planSteps : fallbackSequence;
+        let diagramCursor = 0;
+
+        return sequence.map((step, index) => {
+            const diagram = step.useDiagram && diagrams.length > 0
+                ? diagrams[diagramCursor++ % diagrams.length]
+                : undefined;
+            const labelSource = step.focus || diagram?.description || currentTopic;
+            return {
+                id: `guided-${runId}-${index}`,
+                type: step.type as GuidedTaskType,
+                label: normalizeGuidedLabel(labelSource),
+                diagram
+            };
+        });
+    }, [currentTopic, normalizeGuidedLabel]);
+
+    const getGuidedIntro = useCallback((task: GuidedTask, index: number, hasImage: boolean) => {
+        const stepLabel = `Activity ${index + 1} of 5`;
+        const leadIn = hasImage ? 'Using the diagram above, ' : '';
+        switch (task.type) {
+            case 'quiz':
+                return `${stepLabel}: ${leadIn}answer this quick check.`;
+            case 'fill_blank':
+                return `${stepLabel}: ${leadIn}fill in the blank with the key idea.`;
+            case 'matching':
+                return `${stepLabel}: ${leadIn}match the terms to their meanings.`;
+            case 'flashcards':
+                return `${stepLabel}: Rapid flashcards to lock in key terms.`;
+            case 'challenge':
+                return `${stepLabel}: Challenge round. Try a tougher question to finish strong.`;
+            default:
+                return `${stepLabel}: Activity time.`;
+        }
+    }, []);
+
+    const buildFallbackActivity = useCallback((task: GuidedTask) => {
+        const fallbackId = `${task.id}-fallback`;
+        const label = task.label || currentTopic;
+        const shortLabel = label.split(' ')[0] || label;
+
+        switch (task.type) {
+            case 'flashcards':
+                return {
+                    flashcards: [
+                        { id: `${fallbackId}-1`, front: label, back: 'Explain the key idea in your own words.' },
+                        { id: `${fallbackId}-2`, front: `${shortLabel} detail`, back: 'State one important detail shown in the diagram.' },
+                        { id: `${fallbackId}-3`, front: 'Why it matters', back: `Why is ${shortLabel} important in this concept?` },
+                        { id: `${fallbackId}-4`, front: 'Common confusion', back: `What is often confused about ${shortLabel}?` },
+                        { id: `${fallbackId}-5`, front: 'Apply it', back: `Give one real-world application of ${shortLabel}.` }
+                    ]
+                };
+            case 'fill_blank':
+                return {
+                    fill_blank: {
+                        id: fallbackId,
+                        sentence: 'The diagram highlights _____ as the key idea.',
+                        blanks: [shortLabel],
+                        hint: `Look for the main concept: ${shortLabel}.`
+                    }
+                };
+            case 'matching':
+                return {
+                    matching: {
+                        id: fallbackId,
+                        title: 'Match the ideas',
+                        pairs: [
+                            { id: `${fallbackId}-1`, left: 'Main concept', right: label },
+                            { id: `${fallbackId}-2`, left: 'Supporting idea', right: 'Explains how the parts connect' },
+                            { id: `${fallbackId}-3`, left: 'Outcome', right: 'Result shown in the diagram' },
+                            { id: `${fallbackId}-4`, left: 'Input', right: 'Starting condition or signal' }
+                        ]
+                    }
+                };
+            case 'challenge':
+            case 'quiz':
+            default:
+                return {
+                    quiz: {
+                        id: fallbackId,
+                        question: `Which statement best captures the main idea of "${label}"?`,
+                        options: [
+                            label,
+                            'It is unrelated to the diagram context.',
+                            'It is the opposite of the concept shown.',
+                            'It is a minor detail only.'
+                        ],
+                        correctIndex: 0,
+                        explanation: `The diagram focuses on ${label}.`
+                    }
+                };
+        }
+    }, [currentTopic]);
+
+    const presentGuidedTask = useCallback(async (task: GuidedTask, index: number) => {
+        setIsGuidedFlowGenerating(true);
+        setGuidedTaskIndex(index);
+
+        const lastMessageHasImage = messagesRef.current.slice(-1).some(message => message.image);
+        const shouldRenderImage = task.diagram
+            ? index === 0 || (!lastMessageHasImage && shouldIncludeGuidedImage(index))
+            : false;
+
+        if (task.diagram && shouldRenderImage) {
+            lastGuidedImageIndexRef.current = index;
+            const prompt = `Create a clean, academic diagram on a light background based on this description: ${task.diagram.description}.
+Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
+
+            try {
+                const imageResult = await generateGeminiImage(prompt, { aspectRatio: '16:9' });
+                const imageUrl = `data:${imageResult.mimeType};base64,${imageResult.imageBase64}`;
+
+                const imageMessage: TutorChatMessage = {
+                    role: 'assistant',
+                    content: `Diagram: ${task.diagram.type.toUpperCase()}`,
+                    timestamp: new Date(),
+                    image: {
+                        src: imageUrl,
+                        alt: task.diagram.description,
+                        caption: task.diagram.description
+                    }
+                };
+                setMessages(prev => [...prev, imageMessage]);
+
+                const explainerMessage: TutorChatMessage = {
+                    role: 'assistant',
+                    content: buildDiagramExplainer(task),
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, explainerMessage]);
+            } catch (error) {
+                console.error('[Socratic] Failed to generate diagram image:', error);
+                const fallbackMessage: TutorChatMessage = {
+                    role: 'assistant',
+                    content: `Diagram: ${task.diagram.description}`,
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, fallbackMessage]);
+            }
+        }
+
+        try {
+            const recentContext = messagesRef.current.slice(-6).map(m => m.content).join('\n');
+            const contextParts = [
+                `Topic: ${currentTopic}`,
+                task.diagram ? `Diagram description: ${task.diagram.description}` : '',
+                task.type === 'challenge' ? 'Make this activity more challenging.' : '',
+                recentContext
+            ].filter(Boolean).join('\n');
+
+            const activityType = task.type === 'challenge' ? 'quiz' : task.type;
+            const interactiveContent = await generateInteractiveContent(
+                task.label,
+                contextParts,
+                activityType
+            );
+            const hasActivity = Boolean(
+                interactiveContent.quiz ||
+                interactiveContent.flashcards ||
+                interactiveContent.fill_blank ||
+                interactiveContent.matching
+            );
+
+            const activityMessage: TutorChatMessage = {
+                role: 'assistant',
+                content: getGuidedIntro(task, index, shouldRenderImage),
+                timestamp: new Date(),
+                interactive_content: hasActivity ? interactiveContent : buildFallbackActivity(task),
+                guided_task_id: task.id
+            };
+            setMessages(prev => [...prev, activityMessage]);
+        } catch (error) {
+            console.error('[Socratic] Failed to generate guided activity:', error);
+            const errorMessage: TutorChatMessage = {
+                role: 'assistant',
+                content: getGuidedIntro(task, index, shouldRenderImage),
+                timestamp: new Date(),
+                interactive_content: buildFallbackActivity(task),
+                guided_task_id: task.id
+            };
+            setMessages(prev => [...prev, errorMessage]);
+        } finally {
+            setIsGuidedFlowGenerating(false);
+        }
+    }, [buildDiagramExplainer, buildFallbackActivity, currentTopic, getGuidedIntro, shouldIncludeGuidedImage]);
+
+    const finalizeGuidedFlow = useCallback((results: GuidedTaskResult[]) => {
+        const totalTasks = results.length;
+        const correctPoints = results.filter(r => r.success).map(r => r.label);
+        const misconceptions = results.filter(r => !r.success).map(r => r.label);
+        const successRate = totalTasks > 0
+            ? Math.round((correctPoints.length / totalTasks) * 100)
+            : 0;
+
+        const report: GuidedReport = {
+            misconceptions: [...new Set(misconceptions)],
+            correctPoints: [...new Set(correctPoints)],
+            successRate,
+            totalTasks
+        };
+
+        setGuidedReport(report);
+        setShowGuidedReport(true);
+        setIsGuidedFlowActive(false);
+
+        const evaluation: TutorResponse['evaluation'] = {
+            scores: {
+                understanding: successRate,
+                accuracy: successRate,
+                completeness: successRate
+            },
+            detected_misconceptions: report.misconceptions,
+            missing_key_ideas: [],
+            correct_points: report.correctPoints
+        };
+        setLastEvaluation(evaluation);
+
+        const summaryMessage: TutorChatMessage = {
+            role: 'assistant',
+            content: remainingTopics.length > 0
+                ? 'Report ready. Want to move on to the next topic?'
+                : 'Report ready. Let me know if you want to review anything.',
+            timestamp: new Date()
+        };
+        setMessages(prev => [...prev, summaryMessage]);
+    }, [remainingTopics]);
+
+    const startGuidedFlow = useCallback(async (
+        diagrams: DiagramExtractionResult['diagrams'],
+        planSteps?: ActivityPlanStep[] | null
+    ) => {
+        const tasks = buildGuidedTasks(diagrams, planSteps);
+        if (tasks.length === 0) return;
+
+        setGuidedTasks(tasks);
+        setGuidedResults([]);
+        setGuidedReport(null);
+        setShowGuidedReport(false);
+        setIsGuidedFlowActive(true);
+        lastGuidedImageIndexRef.current = -999;
+        flashcardAutoAdvanceRef.current.clear();
+
+        await presentGuidedTask(tasks[0], 0);
+    }, [buildGuidedTasks, presentGuidedTask]);
+
+    const handleGuidedTaskComplete = useCallback(async (taskId: string, success: boolean) => {
+        const tasks = guidedTasksRef.current;
+        const currentIndex = tasks.findIndex(task => task.id === taskId);
+        if (currentIndex === -1 || guidedTaskIndex !== currentIndex) return;
+
+        const task = tasks[currentIndex];
+        const updatedResults = [
+            ...guidedResultsRef.current,
+            { taskId, label: task.label, success }
+        ];
+
+        guidedResultsRef.current = updatedResults;
+        setGuidedResults(updatedResults);
+
+        const feedbackMessage: TutorChatMessage = {
+            role: 'assistant',
+            content: success
+                ? 'Nice work. Let us keep going.'
+                : 'Good effort. Let us reinforce that with the next activity.',
+            timestamp: new Date()
+        };
+        setMessages(prev => [...prev, feedbackMessage]);
+
+        const nextIndex = currentIndex + 1;
+        if (nextIndex < tasks.length) {
+            await presentGuidedTask(tasks[nextIndex], nextIndex);
+            return;
+        }
+
+        finalizeGuidedFlow(updatedResults);
+    }, [finalizeGuidedFlow, guidedTaskIndex, presentGuidedTask]);
+
+    const handleProceedToNextTopic = useCallback(() => {
+        if (!onTopicChange || remainingTopics.length === 0) {
+            setShowGuidedReport(false);
+            return;
+        }
+
+        const [nextTopic] = remainingTopics;
+        setShowGuidedReport(false);
+        setGuidedReport(null);
+        setGuidedTasks([]);
+        setGuidedTaskIndex(-1);
+        setGuidedResults([]);
+        setIsGuidedFlowActive(false);
+        setCurrentTopic(nextTopic);
+        setEditTopicValue(nextTopic);
+        lastGuidedImageIndexRef.current = -999;
+        flashcardAutoAdvanceRef.current.clear();
+        onTopicChange(nextTopic);
+    }, [onTopicChange, remainingTopics]);
+
+    // Extract diagrams from PDF on component mount
+    useEffect(() => {
+        if (!documentData?.data) return;
+
+        const extractDiagrams = async () => {
+            const dataSampleStart = documentData.data.slice(0, 48);
+            const dataSampleEnd = documentData.data.slice(-48);
+            const analysisKey = `${documentData.mimeType}:${documentData.data.length}:${dataSampleStart}:${dataSampleEnd}`;
+            if (lastAnalyzedDocumentKeyRef.current === analysisKey) {
+                return;
+            }
+            lastAnalyzedDocumentKeyRef.current = analysisKey;
+
+            setIsExtractingDiagrams(true);
+            try {
+                const result = await extractDiagramsFromPdf(
+                    documentData.data,
+                    documentData.mimeType,
+                    (stage) => console.log('[Socratic] Diagram extraction:', stage)
+                );
+                setDiagramAnalysis(result);
+
+                const plan = await recommendActivityPlanFromPdf({
+                    topic: currentTopic,
+                    documentSummary: result.documentSummary,
+                    hasTechnicalContent: result.hasTechnicalContent,
+                    diagrams: result.diagrams,
+                    suggestedQuestions: result.suggestedQuestions
+                });
+
+                await startGuidedFlow(result.diagrams, plan.steps);
+            } catch (error) {
+                console.error('[Socratic] Failed to extract diagrams:', error);
+            } finally {
+                setIsExtractingDiagrams(false);
+            }
+        };
+
+        extractDiagrams();
+    }, [documentData]);
 
     // Initialize Gemini Live for two-way voice chat
     const geminiLive = useGeminiLive(voiceChatApiKey, 'en', {
@@ -136,6 +582,23 @@ Encourage the student to think through problems step by step.`
     const hasMisconceptions = useMemo(() => {
         return lastEvaluation?.detected_misconceptions && lastEvaluation.detected_misconceptions.length > 0;
     }, [lastEvaluation]);
+
+    const guidedTaskLookup = useMemo(() => {
+        return new Map(guidedTasks.map(task => [task.id, task]));
+    }, [guidedTasks]);
+
+    const activeGuidedTaskId = guidedTasks[guidedTaskIndex]?.id || null;
+
+    const handleFlashcardAutoAdvance = useCallback((taskId: string) => {
+        if (!taskId || taskId !== activeGuidedTaskId) return;
+        if (flashcardAutoAdvanceRef.current.has(taskId)) return;
+        if (guidedResultsRef.current.some(result => result.taskId === taskId)) return;
+
+        flashcardAutoAdvanceRef.current.add(taskId);
+        window.setTimeout(() => {
+            handleGuidedTaskComplete(taskId, true);
+        }, 500);
+    }, [activeGuidedTaskId, handleGuidedTaskComplete]);
 
     // Generate default concepts based on topic keywords
     const getDefaultConcepts = useCallback((topicStr: string) => {
@@ -365,6 +828,15 @@ Encourage the student to think through problems step by step.`
         setStreamingContent('');
         setLastEvaluation(null);
         setSessionState(createSessionState(currentTopic, 'socratic'));
+        setGuidedTasks([]);
+        setGuidedTaskIndex(-1);
+        setGuidedResults([]);
+        setGuidedReport(null);
+        setShowGuidedReport(false);
+        setIsGuidedFlowActive(false);
+        lastGuidedImageIndexRef.current = -999;
+        lastAnalyzedDocumentKeyRef.current = null;
+        flashcardAutoAdvanceRef.current.clear();
 
         // Reset to initial network state
         const defaultConcepts = getDefaultConcepts(currentTopic);
@@ -458,46 +930,40 @@ Encourage the student to think through problems step by step.`
         }
     };
 
-    // Handle AI drawing explanation on canvas
+    // Handle AI diagram generation in the dialogue panel
     const handleShowOnCanvas = async () => {
-        if (!excalidrawRef.current) return;
-
-        // Get the last assistant message as context
         const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
         const context = lastAssistantMessage?.content || `Explain ${topic}`;
 
-        setIsLoading(true);
-        setIsCanvasOpen(true);
-
-        // Clear canvas for fresh explanation
-        excalidrawRef.current.clearCanvas();
+        setIsGeneratingDiagram(true);
 
         try {
-            // Generate and draw diagram elements
-            const diagramData = await generateDiagramElements(topic, context);
+            const prompt = `Create a clean, academic diagram on a light background that helps explain: ${topic}.
+Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid stylized art.`;
+            const imageResult = await generateGeminiImage(prompt, { aspectRatio: '16:9' });
+            const imageUrl = `data:${imageResult.mimeType};base64,${imageResult.imageBase64}`;
 
-            // Draw the actual shapes first (they have specific positions)
-            if (diagramData.elements.length > 0) {
-                await excalidrawRef.current.drawDiagram(diagramData.elements as DiagramElement[]);
-            }
-
-            // Start a new text section below diagrams
-            excalidrawRef.current.startNewSection();
-
-            // Generate the complete explanation (no streaming to avoid overlap)
-            const explanation = await generateVisualExplanation(topic, context);
-
-            // Write the complete explanation as one block
-            await excalidrawRef.current.addHandwrittenText(
-                `═══ ${topic.toUpperCase()} ═══\n\n` +
-                diagramData.text + '\n\n' +
-                explanation
-            );
-
+            const imageMessage: TutorChatMessage = {
+                role: 'assistant',
+                content: `Generated diagram for ${topic}.`,
+                timestamp: new Date(),
+                image: {
+                    src: imageUrl,
+                    alt: `Diagram for ${topic}`,
+                    caption: `Generated diagram for ${topic}`
+                }
+            };
+            setMessages(prev => [...prev, imageMessage]);
         } catch (error) {
-            console.error('Failed to generate visual explanation:', error);
+            console.error('Failed to generate diagram image:', error);
+            const errorMessage: TutorChatMessage = {
+                role: 'assistant',
+                content: 'I could not generate a diagram image right now. Please try again.',
+                timestamp: new Date()
+            };
+            setMessages(prev => [...prev, errorMessage]);
         } finally {
-            setIsLoading(false);
+            setIsGeneratingDiagram(false);
         }
     };
 
@@ -533,7 +999,7 @@ Encourage the student to think through problems step by step.`
         }
     };
 
-    const handleQuizComplete = async (success: boolean, quizQuestion?: string) => {
+    const handleQuizComplete = async (success: boolean, quizQuestion?: string, guidedTaskId?: string) => {
         const questionTopic = quizQuestion || quiz?.question || 'Unknown Topic';
 
         // Update the concept graph based on quiz result
@@ -568,6 +1034,11 @@ Encourage the student to think through problems step by step.`
         );
         setConceptNodes(nodes);
         setConceptEdges(edges);
+
+        if (guidedTaskId && isGuidedFlowActive) {
+            await handleGuidedTaskComplete(guidedTaskId, success);
+            return;
+        }
 
         // Send feedback to tutor
         const feedbackMsg: TutorChatMessage = {
@@ -706,6 +1177,24 @@ Encourage the student to think through problems step by step.`
                 </div>
             </header>
 
+            {/* Next Topics Strip - Shows remaining topics for continuous study */}
+            {remainingTopics.length > 0 && (
+                <div className="flex-shrink-0 px-4 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100 flex items-center gap-2 overflow-x-auto">
+                    <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider whitespace-nowrap">Next Topics:</span>
+                    <div className="flex gap-2">
+                        {remainingTopics.slice(0, 5).map((topic, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => onTopicChange?.(topic)}
+                                className="px-3 py-1 text-sm bg-white text-emerald-700 rounded-full border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all whitespace-nowrap shadow-sm"
+                            >
+                                {topic}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Main Split Layout - Full Page */}
             <div className="flex flex-1 overflow-hidden">
                 {/* Left Panel - Socratic Dialogue (~50%) */}
@@ -731,11 +1220,15 @@ Encourage the student to think through problems step by step.`
                             <div className="flex items-center gap-1">
                                 <button
                                     onClick={handleShowOnCanvas}
-                                    disabled={isLoading}
+                                    disabled={isLoading || isGeneratingDiagram}
                                     className="p-1.5 hover:bg-gray-100 rounded"
-                                    title="Show on Canvas"
+                                    title="Generate diagram"
                                 >
-                                    <Palette className="w-4 h-4 text-gray-500" />
+                                    {isGeneratingDiagram ? (
+                                        <Loader2 className="w-4 h-4 text-gray-500 animate-spin" />
+                                    ) : (
+                                        <Palette className="w-4 h-4 text-gray-500" />
+                                    )}
                                 </button>
                                 <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center">
                                     <User className="w-4 h-4 text-white" />
@@ -745,99 +1238,165 @@ Encourage the student to think through problems step by step.`
 
                         {/* Messages Area */}
                         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-                            {messages.map((message, index) => (
-                                <div
-                                    key={index}
-                                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                                >
-                                    <div className={`flex items-start gap-2 max-w-[85%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                                        {message.role === 'assistant' && (
-                                            <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                                                <MessageCircle className="w-4 h-4 text-gray-500" />
-                                            </div>
-                                        )}
-                                        <div
-                                            className={`px-4 py-2.5 rounded-2xl text-sm ${message.role === 'user'
-                                                ? 'bg-emerald-100 text-emerald-900 rounded-br-md'
-                                                : 'bg-white text-gray-800 rounded-bl-md shadow-sm border border-gray-100'
-                                                }`}
-                                        >
-                                            {message.role === 'assistant' ? (
-                                                <div className="prose prose-sm max-w-none">
-                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                        {message.content}
-                                                    </ReactMarkdown>
+                            {messages.map((message, index) => {
+                                const guidedTask = message.guided_task_id
+                                    ? guidedTaskLookup.get(message.guided_task_id)
+                                    : undefined;
+                                const showFlashcardCompletion = Boolean(
+                                    guidedTask?.type === 'flashcards' && message.guided_task_id === activeGuidedTaskId
+                                );
 
-                                                    {/* Embedded Interactive Content */}
-                                                    {message.interactive_content && (
-                                                        <div className="mt-4 not-prose">
-                                                            {message.interactive_content.flashcards && message.interactive_content.flashcards.length > 0 && (
-                                                                <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden p-2">
-                                                                    <div className="text-xs font-bold text-indigo-500 uppercase tracking-wider px-4 py-2">
-                                                                        Flashcards
-                                                                    </div>
-                                                                    <div className="h-[350px]">
-                                                                        <FlashcardDeck cards={message.interactive_content.flashcards} />
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {message.interactive_content.quiz && (
-                                                                <div className="max-w-md mx-auto">
-                                                                    <QuizPanel
-                                                                        quiz={message.interactive_content.quiz}
-                                                                        onComplete={(success) => handleQuizComplete(success, message.interactive_content?.quiz?.question)}
-                                                                        onGenerateNew={() => {
-                                                                            setInputValue("Give me another quiz question.");
-                                                                            handleSendMessage();
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                            )}
-
-                                                            {message.interactive_content.fill_blank && (
-                                                                <FillBlankActivity
-                                                                    activity={message.interactive_content.fill_blank}
-                                                                    onComplete={(success) => handleQuizComplete(success, message.interactive_content?.fill_blank?.sentence)}
-                                                                />
-                                                            )}
-
-                                                            {message.interactive_content.matching && (
-                                                                <MatchingActivity
-                                                                    activity={message.interactive_content.matching}
-                                                                    onComplete={(success) => handleQuizComplete(success, message.interactive_content?.matching?.title)}
-                                                                />
-                                                            )}
-
-                                                            {message.interactive_content.visualization && (
-                                                                <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border border-teal-200 p-6">
-                                                                    <div className="flex items-center gap-2 mb-3">
-                                                                        <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
-                                                                            <Target className="w-4 h-4 text-teal-600" />
-                                                                        </div>
-                                                                        <span className="text-xs font-bold text-teal-600 uppercase tracking-wider">
-                                                                            Concept Visualization
-                                                                        </span>
-                                                                    </div>
-                                                                    <h4 className="font-semibold text-teal-800 mb-2">{message.interactive_content.visualization.topic}</h4>
-                                                                    <p className="text-sm text-teal-700">{message.interactive_content.visualization.description}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
+                                return (
+                                    <div
+                                        key={index}
+                                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                    >
+                                        <div className={`flex items-start gap-2 max-w-[85%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                                            {message.role === 'assistant' && (
+                                                <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                                    <MessageCircle className="w-4 h-4 text-gray-500" />
                                                 </div>
-                                            ) : (
-                                                <p className="whitespace-pre-wrap">{message.content}</p>
+                                            )}
+                                            <div
+                                                className={`px-4 py-2.5 rounded-2xl text-sm ${message.role === 'user'
+                                                    ? 'bg-emerald-100 text-emerald-900 rounded-br-md'
+                                                    : 'bg-white text-gray-800 rounded-bl-md shadow-sm border border-gray-100'
+                                                    }`}
+                                            >
+                                                {message.role === 'assistant' ? (
+                                                    <div className="prose prose-sm max-w-none">
+                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                            {message.content}
+                                                        </ReactMarkdown>
+
+                                                        {message.image && (
+                                                            <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                                                                <img
+                                                                    src={message.image.src}
+                                                                    alt={message.image.alt || 'Generated diagram'}
+                                                                    className="h-auto w-full"
+                                                                />
+                                                                {message.image.caption && (
+                                                                    <div className="px-4 py-2 text-xs text-gray-500">
+                                                                        {message.image.caption}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Embedded Interactive Content */}
+                                                        {message.interactive_content && (
+                                                            <div className="mt-4 not-prose">
+                                                                {message.interactive_content.flashcards && message.interactive_content.flashcards.length > 0 && (
+                                                                    <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden p-2">
+                                                                        <div className="text-xs font-bold text-indigo-500 uppercase tracking-wider px-4 py-2">
+                                                                            Flashcards
+                                                                        </div>
+                                                                    <div className="h-[350px]">
+                                                                        <FlashcardDeck
+                                                                            cards={message.interactive_content.flashcards}
+                                                                            onFlipStateChange={(isFlipped) => {
+                                                                                if (isFlipped && message.guided_task_id) {
+                                                                                    handleFlashcardAutoAdvance(message.guided_task_id);
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                        {showFlashcardCompletion && (
+                                                                            <div className="flex items-center justify-end gap-2 px-4 pb-3 pt-2">
+                                                                                <button
+                                                                                    onClick={() => handleGuidedTaskComplete(message.guided_task_id as string, false)}
+                                                                                    className="px-3 py-1.5 text-xs font-semibold rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                                                                >
+                                                                                    Needs review
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleGuidedTaskComplete(message.guided_task_id as string, true)}
+                                                                                    className="px-3 py-1.5 text-xs font-semibold rounded-full bg-emerald-500 text-white hover:bg-emerald-600"
+                                                                                >
+                                                                                    Mark complete
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {message.interactive_content.quiz && (
+                                                                    <div className="max-w-md mx-auto">
+                                                                        <QuizPanel
+                                                                            quiz={message.interactive_content.quiz}
+                                                                            onComplete={(success) => handleQuizComplete(
+                                                                                success,
+                                                                                message.interactive_content?.quiz?.question,
+                                                                                message.guided_task_id
+                                                                            )}
+                                                                            onGenerateNew={() => {
+                                                                                setInputValue("Give me another quiz question.");
+                                                                                handleSendMessage();
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                )}
+
+                                                                {message.interactive_content.fill_blank && (
+                                                                    <FillBlankActivity
+                                                                        activity={message.interactive_content.fill_blank}
+                                                                        onComplete={(success) => handleQuizComplete(
+                                                                            success,
+                                                                            message.interactive_content?.fill_blank?.sentence,
+                                                                            message.guided_task_id
+                                                                        )}
+                                                                    />
+                                                                )}
+
+                                                                {message.interactive_content.matching && (
+                                                                    <MatchingActivity
+                                                                        activity={message.interactive_content.matching}
+                                                                        onComplete={(success) => handleQuizComplete(
+                                                                            success,
+                                                                            message.interactive_content?.matching?.title,
+                                                                            message.guided_task_id
+                                                                        )}
+                                                                    />
+                                                                )}
+
+                                                                {message.interactive_content.visualization && (
+                                                                    <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border border-teal-200 p-6">
+                                                                        <div className="flex items-center gap-2 mb-3">
+                                                                            <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
+                                                                                <Target className="w-4 h-4 text-teal-600" />
+                                                                            </div>
+                                                                            <span className="text-xs font-bold text-teal-600 uppercase tracking-wider">
+                                                                                Concept Visualization
+                                                                            </span>
+                                                                        </div>
+                                                                        <h4 className="font-semibold text-teal-800 mb-2">{message.interactive_content.visualization.topic}</h4>
+                                                                        <p className="text-sm text-teal-700">{message.interactive_content.visualization.description}</p>
+                                                                        {message.interactive_content.visualization.imageUrl && (
+                                                                            <img
+                                                                                src={message.interactive_content.visualization.imageUrl}
+                                                                                alt={message.interactive_content.visualization.topic}
+                                                                                className="w-full h-auto rounded-lg shadow-sm border border-teal-100 mt-3 bg-white"
+                                                                            />
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <p className="whitespace-pre-wrap">{message.content}</p>
+                                                )}
+                                            </div>
+                                            {message.role === 'user' && (
+                                                <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center flex-shrink-0">
+                                                    <User className="w-4 h-4 text-white" />
+                                                </div>
                                             )}
                                         </div>
-                                        {message.role === 'user' && (
-                                            <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center flex-shrink-0">
-                                                <User className="w-4 h-4 text-white" />
-                                            </div>
-                                        )}
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
 
                             {/* Streaming content */}
                             {streamingContent && (
@@ -866,6 +1425,20 @@ Encourage the student to think through problems step by step.`
                                         </div>
                                         <div className="px-4 py-2.5 bg-white rounded-2xl rounded-bl-md shadow-sm">
                                             <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isGuidedFlowGenerating && !streamingContent && !isLoading && (
+                                <div className="flex justify-start">
+                                    <div className="flex items-start gap-2">
+                                        <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
+                                            <MessageCircle className="w-4 h-4 text-gray-500" />
+                                        </div>
+                                        <div className="px-4 py-2.5 bg-white rounded-2xl rounded-bl-md shadow-sm flex items-center gap-2 text-sm text-gray-600">
+                                            <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
+                                            Preparing the next activity...
                                         </div>
                                     </div>
                                 </div>
@@ -927,6 +1500,38 @@ Encourage the student to think through problems step by step.`
                         </div>
                     </div>
 
+                    {guidedReport && (
+                        <div className="mx-4 mt-4 rounded-xl border border-emerald-100 bg-white p-4 shadow-sm">
+                            <div className="flex items-center justify-between">
+                                <div className="text-sm font-semibold text-emerald-700">Misconception Report</div>
+                                <div className="text-xs text-gray-400">{guidedReport.successRate}% mastery</div>
+                            </div>
+                            <div className="mt-2 text-xs text-gray-500">
+                                Tasks completed: {guidedReport.totalTasks}
+                            </div>
+                            <div className="mt-3 text-xs font-semibold text-gray-600">Correct points</div>
+                            {guidedReport.correctPoints.length > 0 ? (
+                                <ul className="mt-2 text-xs text-emerald-600 space-y-1">
+                                    {guidedReport.correctPoints.slice(0, 4).map((point, idx) => (
+                                        <li key={`${point}-${idx}`} className="line-clamp-2">{point}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <div className="mt-2 text-xs text-gray-400">No confirmed points yet.</div>
+                            )}
+                            <div className="mt-3 text-xs font-semibold text-gray-600">Misconceptions</div>
+                            {guidedReport.misconceptions.length > 0 ? (
+                                <ul className="mt-2 text-xs text-rose-600 space-y-1">
+                                    {guidedReport.misconceptions.slice(0, 4).map((item, idx) => (
+                                        <li key={`${item}-${idx}`} className="line-clamp-2">{item}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <div className="mt-2 text-xs text-emerald-600">No misconceptions flagged.</div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Graph Area */}
                     <div className="flex-1 overflow-hidden p-4">
                         <ConceptNetworkGraph
@@ -965,6 +1570,80 @@ Encourage the student to think through problems step by step.`
                                 Stay in Socratic
                             </button>
                         </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showGuidedReport && guidedReport && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.96, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.96, opacity: 0 }}
+                            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+                        >
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-semibold text-gray-800">Misconception Report</h3>
+                                <button
+                                    onClick={() => setShowGuidedReport(false)}
+                                    className="p-2 rounded-full hover:bg-gray-100"
+                                >
+                                    <X className="w-4 h-4 text-gray-500" />
+                                </button>
+                            </div>
+                            <p className="mt-2 text-sm text-gray-500">
+                                You completed {guidedReport.totalTasks} activities with {guidedReport.successRate}% mastery.
+                            </p>
+
+                            <div className="mt-4">
+                                <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Correct Points</div>
+                                {guidedReport.correctPoints.length > 0 ? (
+                                    <ul className="mt-2 text-sm text-emerald-600 space-y-1">
+                                        {guidedReport.correctPoints.map((point, idx) => (
+                                            <li key={`${point}-${idx}`} className="line-clamp-2">{point}</li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div className="mt-2 text-sm text-gray-400">No confirmed points yet.</div>
+                                )}
+                            </div>
+
+                            <div className="mt-4">
+                                <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Misconceptions</div>
+                                {guidedReport.misconceptions.length > 0 ? (
+                                    <ul className="mt-2 text-sm text-rose-600 space-y-1">
+                                        {guidedReport.misconceptions.map((item, idx) => (
+                                            <li key={`${item}-${idx}`} className="line-clamp-2">{item}</li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div className="mt-2 text-sm text-emerald-600">No misconceptions flagged.</div>
+                                )}
+                            </div>
+
+                            <div className="mt-6 flex items-center justify-end gap-2">
+                                <button
+                                    onClick={() => setShowGuidedReport(false)}
+                                    className="px-4 py-2 text-sm rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
+                                >
+                                    Stay here
+                                </button>
+                                {remainingTopics.length > 0 && onTopicChange && (
+                                    <button
+                                        onClick={handleProceedToNextTopic}
+                                        className="px-4 py-2 text-sm rounded-full bg-emerald-500 text-white hover:bg-emerald-600"
+                                    >
+                                        Next topic
+                                    </button>
+                                )}
+                            </div>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>

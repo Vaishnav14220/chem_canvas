@@ -3,6 +3,7 @@
  * A full-featured infinite canvas with planning tools
  */
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
     MousePointer2,
     Pencil,
@@ -34,6 +35,12 @@ import {
     RectangleHorizontal,
     Pointer,
     Image as ImageIcon,
+    Sparkles,
+    Layers,
+    Copy,
+    Trash2,
+    Lock,
+    Unlock,
 } from 'lucide-react';
 import './canvasPlannerStyles.css';
 import {
@@ -744,167 +751,253 @@ export const CanvasPlanner: React.FC<CanvasPlannerProps> = ({ onClose }) => {
     return (
         <div className={`canvas-planner ${isPresentationMode ? 'presentation-mode' : ''}`}>
             {/* Main Toolbar */}
-            <div className="canvas-planner-toolbar">
+            <motion.div 
+                className="canvas-planner-toolbar"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+            >
                 {/* Basic Tools */}
-                {tools.map(tool => (
-                    <button
+                {tools.map((tool, index) => (
+                    <motion.button
                         key={tool.id}
                         className={`canvas-planner-tool-btn ${activeTool === tool.id ? 'active' : ''}`}
                         onClick={() => setActiveTool(tool.id)}
                         title={tool.label}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: index * 0.05 }}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                     >
                         {tool.icon}
-                    </button>
+                    </motion.button>
                 ))}
 
                 <div className="canvas-planner-toolbar-divider" />
 
                 {/* Shape Tools Dropdown */}
                 <div className="canvas-planner-dropdown">
-                    <button
+                    <motion.button
                         className={`canvas-planner-tool-btn ${shapeTools.some(t => t.id === activeTool) ? 'active' : ''}`}
                         onClick={() => setShowShapeDropdown(!showShapeDropdown)}
                         title="Shapes"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                     >
                         {currentShapeTool?.icon || <Square />}
-                    </button>
-                    <div className={`canvas-planner-dropdown-content ${showShapeDropdown ? '' : 'hidden'}`}>
-                        {shapeTools.map(tool => (
-                            <button
-                                key={tool.id}
-                                className={`canvas-planner-tool-btn ${activeTool === tool.id ? 'active' : ''}`}
-                                onClick={() => {
-                                    setActiveTool(tool.id);
-                                    setShowShapeDropdown(false);
-                                }}
-                                title={tool.label}
+                    </motion.button>
+                    <AnimatePresence>
+                        {showShapeDropdown && (
+                            <motion.div
+                                className="canvas-planner-dropdown-content"
+                                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                                transition={{ duration: 0.2 }}
                             >
-                                {tool.icon}
-                            </button>
-                        ))}
-                    </div>
+                                {shapeTools.map((tool, index) => (
+                                    <motion.button
+                                        key={tool.id}
+                                        className={`canvas-planner-tool-btn ${activeTool === tool.id ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setActiveTool(tool.id);
+                                            setShowShapeDropdown(false);
+                                        }}
+                                        title={tool.label}
+                                        initial={{ opacity: 0, scale: 0.8 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{ delay: index * 0.03 }}
+                                        whileHover={{ scale: 1.1 }}
+                                        whileTap={{ scale: 0.95 }}
+                                    >
+                                        {tool.icon}
+                                    </motion.button>
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
 
                 {/* Extra Tools */}
-                {extraTools.map(tool => (
-                    <button
+                {extraTools.map((tool, index) => (
+                    <motion.button
                         key={tool.id}
                         className={`canvas-planner-tool-btn ${activeTool === tool.id ? 'active' : ''}`}
                         onClick={() => setActiveTool(tool.id)}
                         title={tool.label}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.15 + (index * 0.05) }}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                     >
                         {tool.icon}
-                    </button>
+                    </motion.button>
                 ))}
 
                 <div className="canvas-planner-toolbar-divider" />
 
                 {/* Stroke Color Picker */}
                 <div className="canvas-planner-color-picker">
-                    <button
+                    <motion.button
                         className="canvas-planner-tool-btn"
                         onClick={() => {
                             setShowColorPicker(!showColorPicker);
                             setShowFillColorPicker(false);
                         }}
                         title="Stroke Color"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                     >
                         <div
                             className="canvas-planner-color-swatch"
                             style={{ backgroundColor: toolOptions.strokeColor }}
                         />
-                    </button>
-                    <div className={`canvas-planner-color-palette ${showColorPicker ? '' : 'hidden'}`}>
-                        {COLOR_PALETTE.map(color => (
-                            <button
-                                key={color}
-                                className={`canvas-planner-color-option ${toolOptions.strokeColor === color ? 'selected' : ''}`}
-                                style={{ backgroundColor: color }}
-                                onClick={() => {
-                                    setToolOptions(prev => ({ ...prev, strokeColor: color }));
-                                    setShowColorPicker(false);
-                                }}
-                            />
-                        ))}
-                    </div>
+                    </motion.button>
+                    <AnimatePresence>
+                        {showColorPicker && (
+                            <motion.div
+                                className="canvas-planner-color-palette"
+                                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                {COLOR_PALETTE.map((color, index) => (
+                                    <motion.button
+                                        key={color}
+                                        className={`canvas-planner-color-option ${toolOptions.strokeColor === color ? 'selected' : ''}`}
+                                        style={{ backgroundColor: color }}
+                                        onClick={() => {
+                                            setToolOptions(prev => ({ ...prev, strokeColor: color }));
+                                            setShowColorPicker(false);
+                                        }}
+                                        initial={{ opacity: 0, scale: 0.8 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{ delay: index * 0.02 }}
+                                        whileHover={{ scale: 1.15 }}
+                                        whileTap={{ scale: 0.9 }}
+                                    />
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
 
                 {/* Fill Color Picker */}
                 <div className="canvas-planner-color-picker">
-                    <button
+                    <motion.button
                         className="canvas-planner-tool-btn"
                         onClick={() => {
                             setShowFillColorPicker(!showFillColorPicker);
                             setShowColorPicker(false);
                         }}
                         title="Fill Color"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                     >
                         <Palette />
-                    </button>
-                    <div className={`canvas-planner-color-palette ${showFillColorPicker ? '' : 'hidden'}`}>
-                        {COLOR_PALETTE.map(color => (
-                            <button
-                                key={color}
-                                className={`canvas-planner-color-option ${toolOptions.fillColor === color ? 'selected' : ''}`}
-                                style={{ backgroundColor: color }}
-                                onClick={() => {
-                                    setToolOptions(prev => ({ ...prev, fillColor: color }));
-                                    setShowFillColorPicker(false);
-                                }}
-                            />
-                        ))}
-                    </div>
+                    </motion.button>
+                    <AnimatePresence>
+                        {showFillColorPicker && (
+                            <motion.div
+                                className="canvas-planner-color-palette"
+                                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                {COLOR_PALETTE.map((color, index) => (
+                                    <motion.button
+                                        key={color}
+                                        className={`canvas-planner-color-option ${toolOptions.fillColor === color ? 'selected' : ''}`}
+                                        style={{ backgroundColor: color }}
+                                        onClick={() => {
+                                            setToolOptions(prev => ({ ...prev, fillColor: color }));
+                                            setShowFillColorPicker(false);
+                                        }}
+                                        initial={{ opacity: 0, scale: 0.8 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{ delay: index * 0.02 }}
+                                        whileHover={{ scale: 1.15 }}
+                                        whileTap={{ scale: 0.9 }}
+                                    />
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
-            </div>
+            </motion.div>
 
             {/* Right Actions */}
-            <div className="canvas-planner-actions">
-                <button
+            <motion.div 
+                className="canvas-planner-actions"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+            >
+                <motion.button
                     className="canvas-planner-action-btn"
                     onClick={undo}
                     disabled={history.past.length === 0}
                     title="Undo (Ctrl+Z)"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.95 }}
                 >
                     <Undo2 />
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                     className="canvas-planner-action-btn"
                     onClick={redo}
                     disabled={history.future.length === 0}
                     title="Redo (Ctrl+Shift+Z)"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.95 }}
                 >
                     <Redo2 />
-                </button>
+                </motion.button>
 
                 <div className="canvas-planner-zoom">
-                    <button
+                    <motion.button
                         className="canvas-planner-action-btn"
                         onClick={() => handleZoom(-0.2)}
                         title="Zoom Out"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                     >
                         <ZoomOut />
-                    </button>
-                    <span className="canvas-planner-zoom-level">
+                    </motion.button>
+                    <motion.span 
+                        className="canvas-planner-zoom-level"
+                        key={viewport.zoom}
+                        initial={{ scale: 0.8 }}
+                        animate={{ scale: 1 }}
+                    >
                         {Math.round(viewport.zoom * 100)}%
-                    </span>
-                    <button
+                    </motion.span>
+                    <motion.button
                         className="canvas-planner-action-btn"
                         onClick={() => handleZoom(0.2)}
                         title="Zoom In"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                     >
                         <ZoomIn />
-                    </button>
+                    </motion.button>
                 </div>
 
-                <button
+                <motion.button
                     className={`canvas-planner-action-btn ${grid.enabled ? 'active' : ''}`}
                     onClick={() => setGrid(prev => ({ ...prev, enabled: !prev.enabled }))}
                     title="Toggle Grid"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.95 }}
                 >
                     <Grid3X3 />
-                </button>
+                </motion.button>
 
-                <button
+                <motion.button
                     className="canvas-planner-action-btn"
                     onClick={() => {
                         if (frames.length > 0) {
@@ -914,20 +1007,24 @@ export const CanvasPlanner: React.FC<CanvasPlannerProps> = ({ onClose }) => {
                     }}
                     disabled={frames.length === 0}
                     title="Presentation Mode"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.95 }}
                 >
                     <Play />
-                </button>
+                </motion.button>
 
                 {onClose && (
-                    <button
+                    <motion.button
                         className="canvas-planner-action-btn"
                         onClick={onClose}
                         title="Close"
+                        whileHover={{ scale: 1.1, rotate: 90 }}
+                        whileTap={{ scale: 0.95 }}
                     >
                         <X />
-                    </button>
+                    </motion.button>
                 )}
-            </div>
+            </motion.div>
 
             {/* Canvas Area */}
             <div
@@ -963,34 +1060,53 @@ export const CanvasPlanner: React.FC<CanvasPlannerProps> = ({ onClose }) => {
             </div>
 
             {/* Presentation Controls */}
-            {isPresentationMode && (
-                <div className="canvas-presentation-controls">
-                    <div className="canvas-presentation-nav">
-                        <button
-                            onClick={() => setPresentationFrameIndex(prev => Math.max(0, prev - 1))}
-                            disabled={presentationFrameIndex === 0}
-                        >
-                            <ChevronLeft />
-                        </button>
-                        <span className="canvas-presentation-progress">
-                            {presentationFrameIndex + 1} / {frames.length}
-                        </span>
-                        <button
-                            onClick={() => setPresentationFrameIndex(prev => Math.min(frames.length - 1, prev + 1))}
-                            disabled={presentationFrameIndex === frames.length - 1}
-                        >
-                            <ChevronRight />
-                        </button>
-                    </div>
-                    <button
-                        className="canvas-planner-action-btn"
-                        onClick={() => setIsPresentationMode(false)}
-                        title="Exit Presentation"
+            <AnimatePresence>
+                {isPresentationMode && (
+                    <motion.div
+                        className="canvas-presentation-controls"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 20 }}
+                        transition={{ duration: 0.3 }}
                     >
-                        <X />
-                    </button>
-                </div>
-            )}
+                        <div className="canvas-presentation-nav">
+                            <motion.button
+                                onClick={() => setPresentationFrameIndex(prev => Math.max(0, prev - 1))}
+                                disabled={presentationFrameIndex === 0}
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.95 }}
+                            >
+                                <ChevronLeft />
+                            </motion.button>
+                            <motion.span 
+                                className="canvas-presentation-progress"
+                                key={presentationFrameIndex}
+                                initial={{ scale: 0.8, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                            >
+                                {presentationFrameIndex + 1} / {frames.length}
+                            </motion.span>
+                            <motion.button
+                                onClick={() => setPresentationFrameIndex(prev => Math.min(frames.length - 1, prev + 1))}
+                                disabled={presentationFrameIndex === frames.length - 1}
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.95 }}
+                            >
+                                <ChevronRight />
+                            </motion.button>
+                        </div>
+                        <motion.button
+                            className="canvas-planner-action-btn"
+                            onClick={() => setIsPresentationMode(false)}
+                            title="Exit Presentation"
+                            whileHover={{ scale: 1.1, rotate: 90 }}
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <X />
+                        </motion.button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

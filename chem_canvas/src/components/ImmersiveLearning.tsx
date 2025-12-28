@@ -43,6 +43,8 @@ import GeminiLiveOverlay from './GeminiLive/GeminiLiveOverlay';
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { ConnectionState, LearningCanvasImage } from './GeminiLive/types';
 import { getCurrentUserId } from '../services/database/userService';
+import { useSourceStore } from '../store/sourceStore';
+import { extractTextFromPdf } from '../utils/pdfTextExtractor';
 import {
     putImmersiveLearningFile,
     getImmersiveLearningFile,
@@ -133,9 +135,10 @@ import { analyzeImageForLearning, generateEnhancedLabelInfo } from '../services/
 interface ImmersiveLearningProps {
     onClose: () => void;
     apiKey?: string;
+    initialMode?: LearningMode;
 }
 
-type LearningMode = 'source' | 'immersive-text' | 'audio-video' | 'mindmap' | 'simulation' | 'robotics' | 'visual-activity' | 'code-lab' | 'replicube-lab' | 'assignment' | 'latex-assignment' | 'notebook' | 'learning-theories' | 'socratic' | 'feynman-enhanced';
+type LearningMode = 'source' | 'immersive-text' | 'audio-video' | 'mindmap' | 'simulation' | 'robotics' | 'visual-activity' | 'code-lab' | 'replicube-lab' | 'assignment' | 'latex-assignment' | 'notebook' | 'learning-theories' | 'socratic' | 'feynman-enhanced' | 'pdf-study';
 
 type CodeLabLanguage = 'python' | 'javascript' | 'java' | 'cpp';
 
@@ -1380,7 +1383,8 @@ sys.stderr = StringIO()
     );
 };
 
-const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }) => {
+const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey, initialMode }) => {
+    const { addSource } = useSourceStore();
 
     // Initialize Gemini Live
     const geminiLiveState = useGeminiLive(apiKey || '');
@@ -1497,7 +1501,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
     const [userSpaces, setUserSpaces] = useState<LocalUserSpace[]>([]);
 
-    const [activeMode, setActiveMode] = useState<LearningMode>('source'); // Start with workspace manager
+    const [activeMode, setActiveMode] = useState<LearningMode>(initialMode ?? 'source'); // Start with workspace manager
     const [assignmentTab, setAssignmentTab] = useState<'exam-prep' | 'latex-prep'>('exam-prep');
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState('');
@@ -1522,6 +1526,13 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
     const [documentFileId, setDocumentFileId] = useState<string | null>(null);
     const [documentMimeType, setDocumentMimeType] = useState<string | null>(null);
     const [documentIsFallback, setDocumentIsFallback] = useState(false);
+
+    useEffect(() => {
+        if (!initialMode) {
+            return;
+        }
+        setActiveMode(initialMode);
+    }, [initialMode]);
 
     // Grounding Citation State (like Tutor)
     const [activeCitation, setActiveCitation] = useState<{ url: string; title: string; snippet?: string; pageNumber?: number; sectionId?: string } | null>(null);
@@ -1618,6 +1629,10 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey }
 
     // Audio Video mode tabs
     const [audioVideoModeTab, setAudioVideoModeTab] = useState<'video' | 'audio'>('video');
+    const [assignmentAudioVideoTab, setAssignmentAudioVideoTab] = useState<'video' | 'audio' | null>(null);
+    const [assignmentMindmapActive, setAssignmentMindmapActive] = useState(false);
+    const [assignmentVisualActivityActive, setAssignmentVisualActivityActive] = useState(false);
+    const [assignmentSimulationActive, setAssignmentSimulationActive] = useState(false);
     // Thoreo-style tabs for slides-narration
     const [videoContentTab, setVideoContentTab] = useState<'summary' | 'key-concepts' | 'clips' | 'transcript'>('summary');
     const [videoInteractiveTab, setVideoInteractiveTab] = useState<'chat' | 'quiz' | 'flashcards'>('chat');
@@ -3208,7 +3223,8 @@ Respond in JSON format only:
                         }
                         return updated;
                     });
-                }
+                },
+                assignmentSimulationActive ? { visualStyle: 'voxel' } : undefined
             );
 
             // Mark all steps as done
@@ -3703,6 +3719,30 @@ ${edgesXML}
             toggleAutoAnalysis();
         }
     }, [activeMode]);
+
+    useEffect(() => {
+        if (activeMode !== 'audio-video' && assignmentAudioVideoTab) {
+            setAssignmentAudioVideoTab(null);
+        }
+    }, [activeMode, assignmentAudioVideoTab]);
+
+    useEffect(() => {
+        if (activeMode !== 'mindmap' && assignmentMindmapActive) {
+            setAssignmentMindmapActive(false);
+        }
+    }, [activeMode, assignmentMindmapActive]);
+
+    useEffect(() => {
+        if (activeMode !== 'visual-activity' && assignmentVisualActivityActive) {
+            setAssignmentVisualActivityActive(false);
+        }
+    }, [activeMode, assignmentVisualActivityActive]);
+
+    useEffect(() => {
+        if (activeMode !== 'simulation' && assignmentSimulationActive) {
+            setAssignmentSimulationActive(false);
+        }
+    }, [activeMode, assignmentSimulationActive]);
 
     useEffect(() => {
         return () => {
@@ -6545,29 +6585,270 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
     const [showAssignmentDashboard, setShowAssignmentDashboard] = useState(true);
     const [selectedAssignmentFeature, setSelectedAssignmentFeature] = useState<string | null>(null);
 
+    // Assignment file upload state - persists file data between dashboard and workspace
+    const [assignmentFileData, setAssignmentFileData] = useState<{ mimeType: string; data: string } | null>(null);
+    const [assignmentFileContent, setAssignmentFileContent] = useState<string | null>(null);
+    const [assignmentFileName, setAssignmentFileName] = useState<string | null>(null);
+    const [assignmentTopic, setAssignmentTopic] = useState<string>('');
+    const [assignmentUseToT, setAssignmentUseToT] = useState(false);
+
+    const base64ToFile = (base64: string, mimeType: string, name: string): File => {
+        const byteChars = atob(base64);
+        const byteNumbers = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i += 1) {
+            byteNumbers[i] = byteChars.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new File([byteArray], name, { type: mimeType });
+    };
+
+    // Handle file upload from assignment dashboard
+    const handleAssignmentFileUpload = async (file: File) => {
+        setAssignmentFileName(file.name);
+
+        // Check if it's an image or PDF
+        if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const base64String = e.target?.result as string;
+                // Remove data URL prefix
+                const base64Data = base64String.split(',')[1];
+                setAssignmentFileData({
+                    mimeType: file.type,
+                    data: base64Data
+                });
+                setAssignmentFileContent(null); // Clear text content
+
+                // Add to Global Source Store
+                await addSource({
+                    name: file.name,
+                    type: file.type === 'application/pdf' ? 'pdf' : 'image',
+                    data: base64Data,
+                    mimeType: file.type,
+                    size: file.size,
+                    lastModified: file.lastModified
+                });
+            };
+            reader.readAsDataURL(file);
+        } else {
+            // Fallback for text files
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const text = e.target?.result as string;
+                setAssignmentFileContent(text);
+                setAssignmentFileData(null);
+
+                // Add to Global Source Store
+                await addSource({
+                    name: file.name,
+                    type: file.name.endsWith('.md') ? 'markdown' : file.type === 'text/html' ? 'html' : 'text',
+                    content: text,
+                    mimeType: file.type,
+                    size: file.size,
+                    lastModified: file.lastModified
+                });
+            };
+            reader.readAsText(file);
+        }
+    };
+
     const handleSelectAssignmentFeature = (featureId: string) => {
+        const openAudioVideoFromAssignment = (tab: 'audio' | 'video') => {
+            setSelectedAssignmentFeature(null);
+            setActiveMode('audio-video');
+            setAudioVideoModeTab(tab);
+            setAssignmentAudioVideoTab(tab);
+            setAssignmentMindmapActive(false);
+            setAssignmentVisualActivityActive(false);
+            setAssignmentSimulationActive(false);
+            setShowAssignmentDashboard(false);
+
+            const nextTopic =
+                assignmentTopic ||
+                (assignmentFileName ? assignmentFileName.replace(/\.[^/.]+$/, '') : '');
+            if (nextTopic) {
+                setStandaloneTopic(nextTopic);
+            }
+
+            if (assignmentFileContent?.trim()) {
+                setStandaloneNotes(assignmentFileContent);
+                setStandaloneNotesName(assignmentFileName || 'Assignment notes');
+                return;
+            }
+
+            if (assignmentFileData?.mimeType === 'application/pdf') {
+                const sourceName = assignmentFileName || 'assignment.pdf';
+                const file = base64ToFile(assignmentFileData.data, assignmentFileData.mimeType, sourceName);
+                void extractTextFromPdf(file, 6, true)
+                    .then((text) => {
+                        if (text && text.trim()) {
+                            setStandaloneNotes(text);
+                            setStandaloneNotesName(sourceName);
+                        }
+                    })
+                    .catch(() => undefined);
+            }
+        };
+
+        if (featureId === 'audio-module') {
+            openAudioVideoFromAssignment('audio');
+            return;
+        }
+        if (featureId === 'video-module') {
+            openAudioVideoFromAssignment('video');
+            return;
+        }
+        if (featureId === 'mindmap') {
+            setSelectedAssignmentFeature(null);
+            setActiveMode('mindmap');
+            setAssignmentMindmapActive(true);
+            setAssignmentVisualActivityActive(false);
+            setAssignmentSimulationActive(false);
+            setShowAssignmentDashboard(false);
+
+            const nextTopic =
+                assignmentTopic ||
+                (assignmentFileName ? assignmentFileName.replace(/\.[^/.]+$/, '') : '');
+            if (nextTopic) {
+                setStandaloneTopic(nextTopic);
+            }
+
+            if (assignmentFileContent?.trim()) {
+                setStandaloneNotes(assignmentFileContent);
+                setStandaloneNotesName(assignmentFileName || 'Assignment notes');
+                return;
+            }
+
+            if (assignmentFileData?.mimeType === 'application/pdf') {
+                const sourceName = assignmentFileName || 'assignment.pdf';
+                const file = base64ToFile(assignmentFileData.data, assignmentFileData.mimeType, sourceName);
+                void extractTextFromPdf(file, 6, true)
+                    .then((text) => {
+                        if (text && text.trim()) {
+                            setStandaloneNotes(text);
+                            setStandaloneNotesName(sourceName);
+                        }
+                    })
+                    .catch(() => undefined);
+            }
+            return;
+        }
+        if (featureId === 'visual-activity') {
+            setSelectedAssignmentFeature(null);
+            setActiveMode('visual-activity');
+            setVisualActivityTab('image');
+            setAssignmentVisualActivityActive(true);
+            setAssignmentMindmapActive(false);
+            setAssignmentSimulationActive(false);
+            setShowAssignmentDashboard(false);
+
+            const nextTopic =
+                assignmentTopic ||
+                (assignmentFileName ? assignmentFileName.replace(/\.[^/.]+$/, '') : '');
+            if (nextTopic) {
+                setStandaloneTopic(nextTopic);
+            }
+
+            if (assignmentFileContent?.trim()) {
+                setStandaloneNotes(assignmentFileContent);
+                setStandaloneNotesName(assignmentFileName || 'Assignment notes');
+                return;
+            }
+
+            if (assignmentFileData?.mimeType === 'application/pdf') {
+                const sourceName = assignmentFileName || 'assignment.pdf';
+                const file = base64ToFile(assignmentFileData.data, assignmentFileData.mimeType, sourceName);
+                void extractTextFromPdf(file, 6, true)
+                    .then((text) => {
+                        if (text && text.trim()) {
+                            setStandaloneNotes(text);
+                            setStandaloneNotesName(sourceName);
+                        }
+                    })
+                    .catch(() => undefined);
+            }
+            return;
+        }
+        if (featureId === '3d-explorer') {
+            setSelectedAssignmentFeature(null);
+            setActiveMode('visual-activity');
+            setVisualActivityTab('3d');
+            setAssignmentVisualActivityActive(true);
+            setAssignmentMindmapActive(false);
+            setAssignmentSimulationActive(false);
+            setShowAssignmentDashboard(false);
+            return;
+        }
+        if (featureId === 'simulation') {
+            setSelectedAssignmentFeature(null);
+            setActiveMode('simulation');
+            setAssignmentMindmapActive(false);
+            setAssignmentVisualActivityActive(false);
+            setAssignmentSimulationActive(true);
+            setShowAssignmentDashboard(false);
+
+            const nextTopic =
+                assignmentTopic ||
+                (assignmentFileName ? assignmentFileName.replace(/\.[^/.]+$/, '') : '');
+            if (nextTopic) {
+                setStandaloneTopic(nextTopic);
+            }
+            if (assignmentFileName) {
+                setStandaloneNotesName(assignmentFileName);
+            }
+
+            if (assignmentFileContent?.trim()) {
+                setStandaloneNotes(assignmentFileContent);
+                setStandaloneNotesName(assignmentFileName || 'Assignment notes');
+                return;
+            }
+
+            if (assignmentFileData?.mimeType === 'application/pdf') {
+                const sourceName = assignmentFileName || 'assignment.pdf';
+                const file = base64ToFile(assignmentFileData.data, assignmentFileData.mimeType, sourceName);
+                void extractTextFromPdf(file, 6, true)
+                    .then((text) => {
+                        if (text && text.trim()) {
+                            setStandaloneNotes(text);
+                            setStandaloneNotesName(sourceName);
+                        }
+                    })
+                    .catch(() => undefined);
+            }
+            return;
+        }
+
         setSelectedAssignmentFeature(featureId);
         setShowAssignmentDashboard(false);
+        setAssignmentMindmapActive(false);
+        setAssignmentVisualActivityActive(false);
+        setAssignmentSimulationActive(false);
         if (featureId === 'extract-formulas' || featureId === 'qa-generator' || featureId === 'tree-of-thoughts' || featureId === 'smart-summary' || featureId === 'flashcards' || featureId === 'timeline-generator' || featureId === 'check-my-work') {
             setAssignmentTab('exam-prep');
         }
     };
 
     const renderAssignmentWorkspace = () => {
+        const hasAssignmentFile = Boolean(assignmentFileName || assignmentFileContent || assignmentFileData);
         if (assignmentTab === 'latex-prep') {
             return <LaTeXAssignmentPrep />;
         }
 
         // Check for specific feature selection FIRST
         if (selectedAssignmentFeature === 'extract-formulas') {
-            return (
-                <FormulaExtractionWorkspace
-                    onBack={() => {
-                        setSelectedAssignmentFeature(null);
-                        setShowAssignmentDashboard(true);
-                    }}
-                />
-            );
+            if (!assignmentUseToT && !hasAssignmentFile) {
+                return (
+                    <FormulaExtractionWorkspace
+                        onBack={() => {
+                            setSelectedAssignmentFeature(null);
+                            setShowAssignmentDashboard(true);
+                        }}
+                        fileName={assignmentFileName || undefined}
+                        fileData={assignmentFileData}
+                        fileContent={assignmentFileContent}
+                    />
+                );
+            }
         }
 
         // Show dashboard when no feature is selected
@@ -6583,12 +6864,32 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                 setShowAssignmentDashboard(false);
                             }
                         }}
+                        onFileUpload={handleAssignmentFileUpload}
+                        uploadedFileName={assignmentFileName || undefined}
+                        topic={assignmentTopic}
+                        onTopicChange={setAssignmentTopic}
+                        useTreeOfThoughts={assignmentUseToT}
+                        onToggleTreeOfThoughts={setAssignmentUseToT}
                     />
                 </div>
             );
         }
 
-        return <InteractiveAssignmentWorkspace />;
+        return (
+            <InteractiveAssignmentWorkspace
+                initialFileData={assignmentFileData}
+                initialFileContent={assignmentFileContent}
+                initialFileName={assignmentFileName}
+                initialTopic={assignmentTopic}
+                initialUseToT={assignmentUseToT}
+                selectedFeature={selectedAssignmentFeature}
+                autoGenerate={Boolean(selectedAssignmentFeature && selectedAssignmentFeature !== 'check-my-work')}
+                onBack={() => {
+                    setSelectedAssignmentFeature(null);
+                    setShowAssignmentDashboard(true);
+                }}
+            />
+        );
     };
 
 
@@ -8254,6 +8555,15 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
             case 'audio-video': {
                 const selectedVideo = relevantVideos[selectedVideoIndex];
+                const activeMediaTab = assignmentAudioVideoTab ?? audioVideoModeTab;
+                const showMediaTabs = !assignmentAudioVideoTab;
+                const isAssignmentAudioView = assignmentAudioVideoTab === 'audio';
+                const isAssignmentVideoView = assignmentAudioVideoTab === 'video';
+                const handleAssignmentMediaBack = () => {
+                    setSelectedAssignmentFeature(null);
+                    setShowAssignmentDashboard(true);
+                    setActiveMode('assignment');
+                };
                 const suggestedQuestions = selectedVideo ? [
                     `What are the main concepts discussed in "${selectedVideo.title.slice(0, 40)}..."?`,
                     `How does this video explain the topic differently?`,
@@ -8265,41 +8575,52 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 return (
                     <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900" style={{ fontFamily: '"Google Sans", sans-serif' }}>
                         {/* Top Tab Bar */}
-                        <div className="absolute top-0 left-0 right-0 z-30 bg-[#1F1F1F] border-b border-slate-700 px-4 py-2">
-                            <div className="flex gap-2 max-w-7xl mx-auto">
-                                <button
-                                    onClick={() => setAudioVideoModeTab('video')}
-                                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${audioVideoModeTab === 'video'
-                                        ? 'bg-[#9334e9] text-white'
-                                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Play className="w-4 h-4" />
-                                        Video Lessons
-                                    </div>
-                                </button>
-                                <button
-                                    onClick={() => setAudioVideoModeTab('audio')}
-                                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${audioVideoModeTab === 'audio'
-                                        ? 'bg-[#9334e9] text-white'
-                                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Volume2 className="w-4 h-4" />
-                                        Audio Podcast
-                                    </div>
-                                </button>
+                        {showMediaTabs && (
+                            <div className="absolute top-0 left-0 right-0 z-30 bg-[#1F1F1F] border-b border-slate-700 px-4 py-2">
+                                <div className="flex gap-2 max-w-7xl mx-auto">
+                                    <button
+                                        onClick={() => setAudioVideoModeTab('video')}
+                                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${audioVideoModeTab === 'video'
+                                            ? 'bg-[#9334e9] text-white'
+                                            : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Play className="w-4 h-4" />
+                                            Video Lessons
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => setAudioVideoModeTab('audio')}
+                                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${audioVideoModeTab === 'audio'
+                                            ? 'bg-[#9334e9] text-white'
+                                            : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Volume2 className="w-4 h-4" />
+                                            Audio Podcast
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Video Lessons Tab */}
-                        {audioVideoModeTab === 'video' && (
+                        {activeMediaTab === 'video' && (
                             <>
                                 {/* Left Sidebar */}
                                 <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen pt-12" style={{ backgroundColor: '#171717' }}>
                                     <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                        {assignmentAudioVideoTab && (
+                                            <button
+                                                onClick={handleAssignmentMediaBack}
+                                                className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                                Back to Assignment
+                                            </button>
+                                        )}
                                         <div className="space-y-3">
                                             <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
                                             {renderStandaloneNotesPanel('dark')}
@@ -8349,41 +8670,6 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                 )}
                                             </Badge>
                                         </div>
-                                        {/* Video Playlist - Show when videos are available */}
-                                        {relevantVideos.length > 0 && (
-                                            <div className="space-y-3">
-                                                <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Playlist</p>
-                                                <div className="space-y-1 max-h-[400px] overflow-y-auto">
-                                                    {relevantVideos.map((video, idx) => (
-                                                        <button
-                                                            key={video.id}
-                                                            onClick={() => setSelectedVideoIndex(idx)}
-                                                            className={`w-full flex gap-2 p-2 rounded-lg transition-all text-left ${selectedVideoIndex === idx
-                                                                ? 'bg-[#2c4066] border border-[#34507c]'
-                                                                : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                                                                }`}
-                                                        >
-                                                            <div className="w-[72px] h-[40px] flex-shrink-0 rounded overflow-hidden bg-gray-200 relative">
-                                                                <img
-                                                                    src={video.thumbnailUrl}
-                                                                    alt={video.title}
-                                                                    className="w-full h-full object-cover"
-                                                                />
-                                                                <div className="absolute bottom-0.5 right-0.5 px-1 bg-black/80 rounded text-[8px] text-white font-medium">
-                                                                    #{idx + 1}
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-[11px] font-medium text-slate-200 line-clamp-2 leading-tight">
-                                                                    {video.title}
-                                                                </p>
-                                                                <p className="text-[10px] text-slate-400 mt-0.5 truncate">{video.channelTitle}</p>
-                                                            </div>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
 
@@ -8397,7 +8683,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                 <p className="text-sm text-slate-500">Finding relevant YouTube videos based on your content...</p>
                                             </div>
                                         </div>
-                                    ) : relevantVideos.length === 0 ? (
+                                    ) : relevantVideos.length === 0 || isAssignmentVideoView ? (
                                         <div className="flex-1 flex flex-col items-center p-8 overflow-y-auto">
                                             <div className="w-full max-w-3xl space-y-6">
                                                 {/* Header Card */}
@@ -8940,11 +9226,20 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                         )}
 
                         {/* Audio Podcast Tab */}
-                        {audioVideoModeTab === 'audio' && (
+                        {activeMediaTab === 'audio' && (
                             <>
                                 {/* Left Sidebar */}
                                 <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen pt-12" style={{ backgroundColor: '#171717' }}>
                                     <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                        {assignmentAudioVideoTab && (
+                                            <button
+                                                onClick={handleAssignmentMediaBack}
+                                                className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                                Back to Assignment
+                                            </button>
+                                        )}
                                         <div className="space-y-3">
                                             <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
                                             {renderStandaloneNotesPanel('dark')}
@@ -9024,14 +9319,31 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                 </div>
 
                                                 {!podcastScript && !isGeneratingAudio && !isGeneratingScript && (
-                                                    <button
-                                                        onClick={handleGeneratePodcast}
-                                                        disabled={isGeneratingScript || isGeneratingAudio || (!standaloneNotes.trim() && !immersiveContent)}
-                                                        className="w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#2c4066]"
-                                                    >
-                                                        <Sparkles className="w-4 h-4" />
-                                                        <span>Generate Podcast</span>
-                                                    </button>
+                                                    <>
+                                                        {!standaloneNotes.trim() && !immersiveContent ? (
+                                                            <button
+                                                                onClick={() => {
+                                                                    const notesInput = document.querySelector('textarea[placeholder*="notes"], textarea[placeholder*="Notes"]') as HTMLTextAreaElement;
+                                                                    if (notesInput) {
+                                                                        notesInput.focus();
+                                                                    }
+                                                                }}
+                                                                className="w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95"
+                                                            >
+                                                                <FileUp className="w-4 h-4" />
+                                                                <span>Add Notes or Upload Document</span>
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={handleGeneratePodcast}
+                                                                disabled={isGeneratingScript || isGeneratingAudio}
+                                                                className="w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#2c4066]"
+                                                            >
+                                                                <Sparkles className="w-4 h-4" />
+                                                                <span>Generate Podcast</span>
+                                                            </button>
+                                                        )}
+                                                    </>
                                                 )}
 
                                                 {/* Script Generation Loading State */}
@@ -9111,7 +9423,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                             )}
 
                                             {/* Script Display */}
-                                            {podcastScript && (
+                                            {!isAssignmentAudioView && podcastScript && (
                                                 <div className="p-6 space-y-6" style={{ backgroundColor: '#1F1F1F' }}>
                                                     <h3 className="text-[18px] font-medium text-slate-200 border-b border-slate-700 pb-4">Transcript</h3>
                                                     <div className="space-y-4">
@@ -9171,6 +9483,20 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                             style={{ backgroundColor: '#171717' }}
                         >
                             <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-6 gap-6">
+                                {assignmentMindmapActive && (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedAssignmentFeature(null);
+                                            setShowAssignmentDashboard(true);
+                                            setActiveMode('assignment');
+                                            setAssignmentMindmapActive(false);
+                                        }}
+                                        className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" />
+                                        Back to Assignment
+                                    </button>
+                                )}
                                 <div className="space-y-3">
                                     <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Notes</p>
                                     {renderStandaloneNotesPanel('dark')}
@@ -9257,6 +9583,20 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                             <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
                                 {/* Main Content Area */}
                                 <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                    {assignmentSimulationActive && (
+                                        <button
+                                            onClick={() => {
+                                                setSelectedAssignmentFeature(null);
+                                                setShowAssignmentDashboard(true);
+                                                setActiveMode('assignment');
+                                                setAssignmentSimulationActive(false);
+                                            }}
+                                            className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" />
+                                            Back to Assignment
+                                        </button>
+                                    )}
                                     {/* File Upload */}
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Source Material</label>
@@ -10065,31 +10405,34 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 );
 
             case 'visual-activity':
+                const showVisualActivityTabs = !assignmentVisualActivityActive || visualActivityTab === '3d';
                 return (
                     <div className="flex flex-1 w-full h-screen min-h-screen max-h-screen bg-[#eef2f7] overflow-hidden text-slate-900">
                         {/* Tab Selector */}
-                        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 flex gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-lg border border-slate-200">
-                            <button
-                                onClick={() => setVisualActivityTab('image')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${visualActivityTab === 'image'
-                                    ? 'bg-[#2c4066] text-white shadow-sm'
-                                    : 'text-slate-600 hover:bg-slate-100'
-                                    }`}
-                            >
-                                <ImageIcon className="w-4 h-4" />
-                                Image Activity
-                            </button>
-                            <button
-                                onClick={() => setVisualActivityTab('3d')}
-                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${visualActivityTab === '3d'
-                                    ? 'bg-[#2c4066] text-white shadow-sm'
-                                    : 'text-slate-600 hover:bg-slate-100'
-                                    }`}
-                            >
-                                <Box className="w-4 h-4" />
-                                3D Explorer
-                            </button>
-                        </div>
+                        {showVisualActivityTabs && (
+                            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 flex gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-lg border border-slate-200">
+                                <button
+                                    onClick={() => setVisualActivityTab('image')}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${visualActivityTab === 'image'
+                                        ? 'bg-[#2c4066] text-white shadow-sm'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                >
+                                    <ImageIcon className="w-4 h-4" />
+                                    Image Activity
+                                </button>
+                                <button
+                                    onClick={() => setVisualActivityTab('3d')}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${visualActivityTab === '3d'
+                                        ? 'bg-[#2c4066] text-white shadow-sm'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                >
+                                    <Box className="w-4 h-4" />
+                                    3D Explorer
+                                </button>
+                            </div>
+                        )}
 
                         {visualActivityTab === 'image' ? (
                             /* Image Activity Tab */
@@ -10099,6 +10442,20 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                     <div className="w-96 flex-shrink-0 border-r border-white/10 flex flex-col overflow-hidden z-20 shadow-[0_20px_60px_rgba(0,0,0,0.35)] h-screen" style={{ backgroundColor: '#1F1F1F' }}>
                                         {/* Main Content Area */}
                                         <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
+                                            {assignmentVisualActivityActive && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedAssignmentFeature(null);
+                                                        setShowAssignmentDashboard(true);
+                                                        setActiveMode('assignment');
+                                                        setAssignmentVisualActivityActive(false);
+                                                    }}
+                                                    className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
+                                                >
+                                                    <ChevronLeft className="w-4 h-4" />
+                                                    Back to Assignment
+                                                </button>
+                                            )}
                                             {/* Mode Toggle */}
                                             <div className="space-y-2">
                                                 <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Mode</label>
@@ -10924,6 +11281,20 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                 {/* Header */}
                                 <div className="flex items-center justify-between px-3 py-2 bg-white/50 backdrop-blur-sm border-b border-slate-200 flex-shrink-0">
                                     <div className="flex items-center gap-2">
+                                        {assignmentVisualActivityActive && (
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedAssignmentFeature(null);
+                                                    setShowAssignmentDashboard(true);
+                                                    setActiveMode('assignment');
+                                                    setAssignmentVisualActivityActive(false);
+                                                }}
+                                                className="mr-2 flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                                Back to Assignment
+                                            </button>
+                                        )}
                                         <div className="w-8 h-8 bg-[#1F1F1F] flex items-center justify-center">
                                             <Viewer3DIcon active />
                                         </div>
@@ -12398,8 +12769,21 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         }
     };
 
+    const handleContextMenu = (e: React.MouseEvent) => {
+        // Prevent if clicking on specific interactive elements
+        const target = e.target as HTMLElement;
+        if (target.closest('button, input, textarea, a, .react-flow__pane')) {
+            return;
+        }
+
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('canvas-context-menu', {
+            detail: { x: e.clientX, y: e.clientY }
+        }));
+    };
+
     return (
-        <div ref={containerRef} className="fixed inset-0 z-50 bg-[#0b0d12] text-slate-100 flex flex-col w-screen h-screen overflow-hidden" style={{ fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>
+        <div onContextMenu={handleContextMenu} ref={containerRef} className="fixed inset-0 z-50 bg-[#0b0d12] text-slate-100 flex flex-col w-screen h-screen overflow-hidden" style={{ fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>
             {/* Laser Cursor for Hand Tracking */}
             <LaserCursor
                 handPosition={handPosition}
