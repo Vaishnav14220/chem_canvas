@@ -155,10 +155,10 @@ export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
 
     // Initialize Gemini Live for voice chat
     const geminiLive = useGeminiLive(voiceChatApiKey, 'en', {
-        systemInstructionOverride: `You are a Feynman Tutor helping a student explain ${topic}. 
-Use the Feynman technique - ask the student to explain concepts simply.
-Identify gaps in their understanding and provide gentle feedback.
-Keep responses conversational and brief for voice interaction.`
+        systemInstructionOverride: `You are the curious learner in a Feynman session about "${topic}". 
+Let the user teach you. Ask short, friendly questions to surface clarity gaps and misconceptions.
+Do not offer help like "How can I assist?" Start by inviting their explanation.
+Keep responses conversational, brief, and focused on checking understanding.`
     });
 
     // Fetch API key for voice chat
