@@ -14,12 +14,14 @@ interface ReasoningProps {
     children?: string; // Changed to string to ensure markdown compatibility
     isStreaming?: boolean;
     className?: string;
+    title?: string;
 }
 
 export function Reasoning({
     children,
     isStreaming = false,
     className,
+    title,
 }: ReasoningProps) {
     const [isOpen, setIsOpen] = useState(isStreaming);
     const [startTime] = useState<number>(Date.now());
@@ -45,7 +47,7 @@ export function Reasoning({
                 <button className="flex items-center gap-2 p-3 w-full text-left hover:bg-slate-200 transition-colors focus:outline-none rounded-lg group">
                     <Brain className="h-4 w-4 text-slate-600 group-hover:text-slate-700 transition-colors" />
                     <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900 flex-1 transition-colors">
-                        {isStreaming ? `Thinking (${duration}s)...` : `Thought for ${duration} seconds`}
+                        {title ?? (isStreaming ? `Thinking (${duration}s)...` : `Thought for ${duration} seconds`)}
                     </span>
                     <ChevronDown
                         className={cn(

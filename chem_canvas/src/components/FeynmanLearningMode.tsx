@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
     Menu,
     User,
@@ -28,9 +28,6 @@ import {
     FileText,
     Check,
     X,
-    ChevronDown,
-    ChevronUp,
-    Brain,
     GitBranch,
     ImagePlus,
     Target
@@ -58,6 +55,8 @@ import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { extractTextFromDocument } from '../utils/documentTextExtractor';
 import { addFileToSourceLibrary } from '../utils/sourceLibrary';
+import { MessageDock, type Character } from './ui/message-dock';
+import { ConnectionState } from './GeminiLive/types';
 
 interface FeynmanLearningModeProps {
     topic: string;
@@ -100,7 +99,7 @@ export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
 
     // Current task panel state - uses dynamic topic
     const [currentTasks, setCurrentTasks] = useState<TaskItem[]>([
-        { id: '1', text: `Teach me about "${topic}" as if I were 12 years old. What is it and why does it matter?`, type: 'question' }
+        { id: '1', text: `Teach me about "${topic}" as if I am new to the topic. What is it and why does it matter?`, type: 'question' }
     ]);
 
     // Feynman progress state
@@ -138,11 +137,6 @@ export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
     const [uploadedDocument, setUploadedDocument] = useState<{ name: string; content: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Thinking/Reasoning state
-    const [thinkingContent, setThinkingContent] = useState('');
-    const [isThinkingExpanded, setIsThinkingExpanded] = useState(true);
-    const [isThinking, setIsThinking] = useState(false);
-
     // Voice chat state
     const [voiceChatApiKey, setVoiceChatApiKey] = useState<string>('');
 
@@ -150,6 +144,14 @@ export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const excalidrawRef = useRef<ExcalidrawCanvasRef>(null);
+
+    const dockCharacters: Character[] = [
+        { emoji: "*", name: "Sparkle", online: false, backgroundColor: "bg-amber-200", gradientColors: "#fde68a, #fffbeb" },
+        { emoji: "W", name: "Wizard", online: true, backgroundColor: "bg-emerald-200 dark:bg-emerald-300", gradientColors: "#a7f3d0, #ecfdf5" },
+        { emoji: "T", name: "Teacher", online: true, backgroundColor: "bg-amber-100 dark:bg-amber-200", gradientColors: "#fbbf24, #fef3c7" },
+        { emoji: "U", name: "Unicorn", online: true, backgroundColor: "bg-violet-200 dark:bg-violet-300", gradientColors: "#c4b5fd, #f5f3ff" },
+        { emoji: "R", name: "Robot", online: false, backgroundColor: "bg-rose-200 dark:bg-rose-300", gradientColors: "#fecaca, #fef2f2" },
+    ];
 
     // Initialize Gemini Live for voice chat
     const geminiLive = useGeminiLive(voiceChatApiKey, 'en', {
@@ -173,6 +175,13 @@ Keep responses conversational and brief for voice interaction.`
         } else {
             geminiLive.connect();
         }
+    }, [geminiLive]);
+
+    const handleStartSpeaking = useCallback(() => {
+        if (geminiLive.connectionState === ConnectionState.CONNECTED || geminiLive.connectionState === ConnectionState.CONNECTING) {
+            return;
+        }
+        geminiLive.connect();
     }, [geminiLive]);
 
     // Handle tool change - update both local state and canvas
@@ -211,9 +220,7 @@ Keep responses conversational and brief for voice interaction.`
         const initSession = async () => {
             setIsLoading(true);
             try {
-                const response = await startFeynmanTutorSession(topic, (chunk) => {
-                    setStreamingContent(prev => prev + chunk);
-                });
+                const response = await startFeynmanTutorSession(topic);
 
                 const assistantMessage: TutorChatMessage = {
                     role: 'assistant',
@@ -237,12 +244,13 @@ Keep responses conversational and brief for voice interaction.`
     }, [topic]);
 
     // Handle sending a message
-    const handleSendMessage = async () => {
-        if (!inputValue.trim() || isLoading) return;
+    const handleSendMessage = async (overrideMessage?: string) => {
+        const messageText = (overrideMessage ?? inputValue).trim();
+        if (!messageText || isLoading) return;
 
         const userMessage: TutorChatMessage = {
             role: 'user',
-            content: inputValue.trim(),
+            content: messageText,
             timestamp: new Date()
         };
 
@@ -250,9 +258,6 @@ Keep responses conversational and brief for voice interaction.`
         setInputValue('');
         setIsLoading(true);
         setStreamingContent('');
-        setThinkingContent('');
-        setIsThinking(true);
-        setIsThinkingExpanded(true);
 
         if (isTeachBackMode) {
             setTeachBackAttempts(prev => prev + 1);
@@ -260,18 +265,10 @@ Keep responses conversational and brief for voice interaction.`
 
         try {
             const response = await generateFeynmanResponse(
-                userMessage.content,
+                messageText,
                 currentTopic,
-                messages,
-                isTeachBackMode,
-                (chunk) => {
-                    setIsThinking(false);
-                    setIsThinkingExpanded(false);
-                    setStreamingContent(prev => prev + chunk);
-                },
-                (thought) => {
-                    setThinkingContent(prev => prev + thought);
-                }
+                [...messages, userMessage],
+                isTeachBackMode
             );
 
             const assistantMessage: TutorChatMessage = {
@@ -475,8 +472,7 @@ Keep responses conversational and brief for voice interaction.`
                 drawingContext,
                 topic,
                 messages,
-                isTeachBackMode,
-                (chunk: string) => setStreamingContent(prev => prev + chunk)
+                isTeachBackMode
             );
 
             const assistantMessage: TutorChatMessage = {
@@ -544,8 +540,7 @@ Keep responses conversational and brief for voice interaction.`
                 `The learner uploaded a document titled "${file.name}". Please acknowledge it and ask them to explain what they understand from it.`,
                 currentTopic,
                 messages,
-                isTeachBackMode,
-                (chunk: string) => setStreamingContent(prev => prev + chunk)
+                isTeachBackMode
             );
             const assistantMessage: TutorChatMessage = {
                 role: 'assistant',
@@ -569,7 +564,6 @@ Keep responses conversational and brief for voice interaction.`
         setGapMaps([]);
         setTeachBackAttempts(0);
         setUploadedDocument(null);
-        setThinkingContent('');
         if (excalidrawRef.current) {
             excalidrawRef.current.clearCanvas();
         }
@@ -832,96 +826,133 @@ Context: ${recentContext}`;
                     </div>
 
                     {/* Drawing Toolbar - Bottom of canvas, matching reference */}
-                    <div className="flex-shrink-0 flex items-center justify-center gap-6 py-3 px-4 bg-white border-t border-gray-100">
-                        {/* Drawing Tools - Dark pill */}
-                        <div className="flex items-center gap-1 bg-gray-800 rounded-full px-3 py-2">
-                            <button
-                                onClick={() => handleToolChange('pen')}
-                                className={`p-2 rounded-full transition-colors ${activeTool === 'pen' ? 'bg-gray-600' : 'hover:bg-gray-700'
-                                    }`}
-                            >
-                                <Pencil className="w-5 h-5 text-white" />
-                            </button>
-                            <button
-                                onClick={() => handleToolChange('eraser')}
-                                className={`p-2 rounded-full transition-colors ${activeTool === 'eraser' ? 'bg-gray-600' : 'hover:bg-gray-700'
-                                    }`}
-                            >
-                                <Eraser className="w-5 h-5 text-white" />
-                            </button>
-                            <button
-                                onClick={() => handleToolChange('text')}
-                                className={`p-2 rounded-full transition-colors ${activeTool === 'text' ? 'bg-gray-600' : 'hover:bg-gray-700'
-                                    }`}
-                            >
-                                <MessageSquare className="w-5 h-5 text-white" />
-                            </button>
-                        </div>
+                    <div className="flex-shrink-0 bg-white border-t border-gray-100">
+                        <div className="flex items-center justify-between gap-4 px-4 py-3">
+                            <div className="flex items-center gap-6 flex-wrap">
+                                {/* Drawing Tools - Dark pill */}
+                                <div className="flex items-center gap-1 bg-gray-800 rounded-full px-3 py-2">
+                                    <button
+                                        onClick={() => handleToolChange('pen')}
+                                        className={`p-2 rounded-full transition-colors ${activeTool === 'pen' ? 'bg-gray-600' : 'hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        <Pencil className="w-5 h-5 text-white" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleToolChange('eraser')}
+                                        className={`p-2 rounded-full transition-colors ${activeTool === 'eraser' ? 'bg-gray-600' : 'hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        <Eraser className="w-5 h-5 text-white" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleToolChange('text')}
+                                        className={`p-2 rounded-full transition-colors ${activeTool === 'text' ? 'bg-gray-600' : 'hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        <MessageSquare className="w-5 h-5 text-white" />
+                                    </button>
+                                </div>
 
-                        {/* Color Palette */}
-                        <div className="flex items-center gap-2">
-                            {COLORS.map(color => (
+                                {/* Color Palette */}
+                                <div className="flex items-center gap-2">
+                                    {COLORS.map(color => (
+                                        <button
+                                            key={color.name}
+                                            onClick={() => handleColorChange(color.name)}
+                                            className={`w-8 h-8 rounded-full transition-all ${activeColor === color.name
+                                                ? 'ring-2 ring-offset-2 ring-gray-400 scale-110'
+                                                : 'hover:scale-105'
+                                                }`}
+                                            style={{ backgroundColor: color.hex }}
+                                        />
+                                    ))}
+                                </div>
+
+                                {/* Record Button - Red pill style */}
                                 <button
-                                    key={color.name}
-                                    onClick={() => handleColorChange(color.name)}
-                                    className={`w-8 h-8 rounded-full transition-all ${activeColor === color.name
-                                        ? 'ring-2 ring-offset-2 ring-gray-400 scale-110'
-                                        : 'hover:scale-105'
+                                    onClick={() => setIsRecording(!isRecording)}
+                                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full transition-colors ${isRecording
+                                        ? 'bg-red-600 text-white'
+                                        : 'bg-red-500 text-white hover:bg-red-600'
                                         }`}
-                                    style={{ backgroundColor: color.hex }}
-                                />
-                            ))}
+                                >
+                                    <Circle className={`w-3 h-3 ${isRecording ? 'fill-white animate-pulse' : 'fill-white'}`} />
+                                    <span className="text-sm font-medium">
+                                        {isRecording ? 'Stop' : 'Record Explanation'}
+                                    </span>
+                                </button>
+
+                                {/* Share to Chat Button */}
+                                <button
+                                    onClick={handleSubmitDrawing}
+                                    disabled={isLoading}
+                                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                                >
+                                    <Share2 className="w-4 h-4" />
+                                    <span className="text-sm font-medium">
+                                        {isLoading ? 'Sharing...' : 'Share to Chat'}
+                                    </span>
+                                </button>
+
+                                {/* Show Diagram Button */}
+                                <button
+                                    onClick={handleShowDiagram}
+                                    disabled={isLoading}
+                                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50 transition-colors"
+                                >
+                                    <GitBranch className="w-4 h-4" />
+                                    <span className="text-sm font-medium">
+                                        {isLoading ? 'Generating...' : 'Show Diagram'}
+                                    </span>
+                                </button>
+
+                                <button
+                                    onClick={handleStartSpeaking}
+                                    disabled={!voiceChatApiKey}
+                                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full transition-colors ${geminiLive.connectionState === 'CONNECTED'
+                                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                        : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                                        } disabled:opacity-50`}
+                                >
+                                    <Mic className="w-4 h-4" />
+                                    <span className="text-sm font-medium">Start speaking</span>
+                                </button>
+
+                                {/* Generate Image Button */}
+                                <button
+                                    onClick={handleGenerateImage}
+                                    disabled={isGeneratingImage}
+                                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-orange-500 text-white hover:from-pink-600 hover:to-orange-600 disabled:opacity-50 transition-all"
+                                >
+                                    <ImagePlus className="w-4 h-4" />
+                                    <span className="text-sm font-medium">
+                                        {isGeneratingImage ? 'Creating...' : 'Generate Image'}
+                                    </span>
+                                </button>
+                            </div>
+
+                            <MessageDock
+                                characters={dockCharacters}
+                                className="relative"
+                                onMessageSend={(message) => handleSendMessage(message)}
+                                expandedWidth={420}
+                                placeholder={(name) => `Ask ${name} to quiz you...`}
+                                theme="dark"
+                                size="compact"
+                                isLiveActive={geminiLive.connectionState === ConnectionState.CONNECTED}
+                                isListening={geminiLive.isListening}
+                                isSpeaking={geminiLive.isSpeaking}
+                                onDisconnect={() => geminiLive.disconnect()}
+                                onSparkleClick={() => {
+                                    if (geminiLive.connectionState === ConnectionState.CONNECTED) {
+                                        geminiLive.disconnect();
+                                    } else {
+                                        geminiLive.connect();
+                                    }
+                                }}
+                            />
                         </div>
-
-                        {/* Record Button - Red pill style */}
-                        <button
-                            onClick={() => setIsRecording(!isRecording)}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-full transition-colors ${isRecording
-                                ? 'bg-red-600 text-white'
-                                : 'bg-red-500 text-white hover:bg-red-600'
-                                }`}
-                        >
-                            <Circle className={`w-3 h-3 ${isRecording ? 'fill-white animate-pulse' : 'fill-white'}`} />
-                            <span className="text-sm font-medium">
-                                {isRecording ? 'Stop' : 'Record Explanation'}
-                            </span>
-                        </button>
-
-                        {/* Share to Chat Button */}
-                        <button
-                            onClick={handleSubmitDrawing}
-                            disabled={isLoading}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 transition-colors"
-                        >
-                            <Share2 className="w-4 h-4" />
-                            <span className="text-sm font-medium">
-                                {isLoading ? 'Sharing...' : 'Share to Chat'}
-                            </span>
-                        </button>
-
-                        {/* Show Diagram Button */}
-                        <button
-                            onClick={handleShowDiagram}
-                            disabled={isLoading}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50 transition-colors"
-                        >
-                            <GitBranch className="w-4 h-4" />
-                            <span className="text-sm font-medium">
-                                {isLoading ? 'Generating...' : 'Show Diagram'}
-                            </span>
-                        </button>
-
-                        {/* Generate Image Button */}
-                        <button
-                            onClick={handleGenerateImage}
-                            disabled={isGeneratingImage}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-orange-500 text-white hover:from-pink-600 hover:to-orange-600 disabled:opacity-50 transition-all"
-                        >
-                            <ImagePlus className="w-4 h-4" />
-                            <span className="text-sm font-medium">
-                                {isGeneratingImage ? 'Creating...' : 'Generate Image'}
-                            </span>
-                        </button>
                     </div>
                 </div>
 
@@ -958,53 +989,6 @@ Context: ${recentContext}`;
 
                     {/* Messages Area */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {/* Collapsible Reasoning/Thinking Component */}
-                        {(thinkingContent || isThinking) && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl overflow-hidden"
-                            >
-                                <button
-                                    onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
-                                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-purple-100/50 transition-colors"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Brain className={`w-4 h-4 text-purple-600 ${isThinking ? 'animate-pulse' : ''}`} />
-                                        <span className="text-sm font-medium text-purple-700">
-                                            {isThinking ? 'Thinking...' : 'Thought process'}
-                                        </span>
-                                        {isThinking && (
-                                            <span className="flex gap-1">
-                                                <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                                <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                                <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                                            </span>
-                                        )}
-                                    </div>
-                                    {isThinkingExpanded ? (
-                                        <ChevronUp className="w-4 h-4 text-purple-500" />
-                                    ) : (
-                                        <ChevronDown className="w-4 h-4 text-purple-500" />
-                                    )}
-                                </button>
-                                <AnimatePresence>
-                                    {isThinkingExpanded && thinkingContent && (
-                                        <motion.div
-                                            initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: 'auto', opacity: 1 }}
-                                            exit={{ height: 0, opacity: 0 }}
-                                            className="px-4 pb-3"
-                                        >
-                                            <pre className="text-xs text-purple-800 whitespace-pre-wrap font-mono bg-white/60 rounded-lg p-3 max-h-40 overflow-y-auto">
-                                                {thinkingContent}
-                                            </pre>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </motion.div>
-                        )}
-
                         {messages.map((message, index) => (
                             <motion.div
                                 key={index}
@@ -1057,7 +1041,10 @@ Context: ${recentContext}`;
                         {isLoading && !streamingContent && (
                             <div className="flex justify-start">
                                 <div className="px-4 py-3 bg-white rounded-2xl rounded-tl-sm shadow-sm">
-                                    <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                                        <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                                        Thinking...
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1099,7 +1086,7 @@ Context: ${recentContext}`;
                                 disabled={isLoading}
                             />
                             <button
-                                onClick={handleSendMessage}
+                            onClick={() => handleSendMessage()}
                                 disabled={!inputValue.trim() || isLoading}
                                 className="p-3 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
@@ -1135,6 +1122,7 @@ Context: ${recentContext}`;
                     </button>
                 </div>
             </div>
+
         </div>
     );
 };

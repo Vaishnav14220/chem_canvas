@@ -35,6 +35,7 @@ export interface MessageDockProps {
   closeOnClickOutside?: boolean;
   closeOnEscape?: boolean;
   closeOnSend?: boolean;
+  size?: "default" | "compact";
   onSparkleClick?: () => void;
   isLiveActive?: boolean;
   onShareCanvas?: () => void;
@@ -106,6 +107,7 @@ export function MessageDock({
   closeOnClickOutside = true,
   closeOnEscape = true,
   closeOnSend = true,
+  size = "default",
   onSparkleClick,
   isLiveActive = false,
   onShareCanvas,
@@ -255,6 +257,13 @@ export function MessageDock({
     expandedCharacter !== null ? characters[expandedCharacter] : null;
   const isExpanded = expandedCharacter !== null;
   const mouseX = useMotionValue(Infinity);
+  const isCompact = size === "compact";
+  const dockHeightClass = isCompact ? "h-[56px]" : "h-[68px]";
+  const sparkleSizeClass = isCompact ? "w-10 h-10" : "w-12 h-12";
+  const actionSizeClass = isCompact ? "w-9 h-9" : "w-10 h-10";
+  const characterSizeClass = isCompact ? "w-9 h-9" : "w-10 h-10";
+  const menuSizeClass = isCompact ? "w-10 h-10" : "w-12 h-12";
+  const iconClass = isCompact ? "w-4 h-4" : "w-5 h-5";
 
   const defaultPositionClasses = position === "top" 
     ? "fixed top-6 left-1/2 -translate-x-1/2 z-[9999]"
@@ -275,7 +284,10 @@ export function MessageDock({
       onMouseLeave={() => mouseX.set(Infinity)}
     >
       <motion.div
-        className="mx-auto flex h-[68px] w-max items-center justify-center gap-2 rounded-full px-4 py-2 border backdrop-blur-xl shadow-2xl bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95 border-cyan-500/30 shadow-cyan-500/10"
+        className={cn(
+          "mx-auto flex w-max items-center justify-center gap-2 rounded-full px-4 py-2 border backdrop-blur-xl shadow-2xl bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95 border-cyan-500/30 shadow-cyan-500/10",
+          dockHeightClass
+        )}
         animate={{
           width: isExpanded ? expandedWidth : collapsedWidth,
           background: isExpanded && selectedCharacter
@@ -311,7 +323,7 @@ export function MessageDock({
           >
             <motion.button
               className={cn(
-                "w-12 h-12 flex items-center justify-center cursor-pointer rounded-full transition-all duration-200",
+                `${sparkleSizeClass} flex items-center justify-center cursor-pointer rounded-full transition-all duration-200`,
                 isLiveActive 
                   ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse ring-2 ring-red-500/60 text-red-200"
                   : "bg-gradient-to-br from-cyan-500/30 to-emerald-500/30 hover:from-cyan-500/40 hover:to-emerald-500/40 hover:ring-2 hover:ring-cyan-500/50 text-cyan-200"
@@ -332,14 +344,14 @@ export function MessageDock({
               whileTap={{ scale: 0.95 }}
               aria-label="Sparkle"
             >
-              <span className="text-2xl">✨</span>
+              <span className={cn("text-2xl", isCompact && "text-xl")}>✨</span>
             </motion.button>
 
             {/* Screen Share Button */}
             {onStartScreenShare && onStopScreenShare && (
               <motion.button
                 className={cn(
-                  "w-10 h-10 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border",
+                  `${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border`,
                   isScreenSharing
                     ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 hover:from-red-500/50 hover:to-orange-500/50 text-red-300 border-red-500/30"
                     : "bg-gradient-to-br from-blue-500/30 to-indigo-500/30 hover:from-blue-500/40 hover:to-indigo-500/40 text-blue-200 border-blue-500/30"
@@ -352,9 +364,9 @@ export function MessageDock({
                 title={isScreenSharing ? 'Stop Screen Share' : 'Start Screen Share'}
               >
                 {isScreenSharing ? (
-                  <MonitorOff className="w-5 h-5" />
+                  <MonitorOff className={iconClass} />
                 ) : (
-                  <Monitor className="w-5 h-5" />
+                  <Monitor className={iconClass} />
                 )}
               </motion.button>
             )}
@@ -362,7 +374,7 @@ export function MessageDock({
             {/* Share Canvas Button */}
             {isLiveActive && showShareCanvas && onShareCanvas && (
               <motion.button
-                className="w-10 h-10 flex items-center justify-center cursor-pointer rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-all duration-300 border border-blue-500/20"
+                className={`${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-all duration-300 border border-blue-500/20`}
                 onClick={onShareCanvas}
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -370,7 +382,7 @@ export function MessageDock({
                 whileTap={{ scale: 0.95 }}
                 title="Share Canvas"
               >
-                <ImageIcon className="w-5 h-5" />
+                <ImageIcon className={iconClass} />
               </motion.button>
             )}
 
@@ -385,9 +397,9 @@ export function MessageDock({
                 <div className="relative w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
                   <div className="relative z-10 flex items-center justify-center">
                     {isListening ? (
-                      <Mic className="w-4 h-4 text-pink-500 animate-pulse" />
+                      <Mic className={cn(iconClass, "text-pink-500 animate-pulse")} />
                     ) : isSpeaking ? (
-                      <Activity className="w-4 h-4 text-cyan-500 animate-pulse" />
+                      <Activity className={cn(iconClass, "text-cyan-500 animate-pulse")} />
                     ) : (
                       <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                     )}
@@ -401,13 +413,13 @@ export function MessageDock({
                 
                 {/* Disconnect button */}
                 <motion.button
-                  className="w-10 h-10 flex items-center justify-center cursor-pointer rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all duration-300 border border-red-500/20"
+                  className={`${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all duration-300 border border-red-500/20`}
                   onClick={onDisconnect}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   title="Disconnect"
                 >
-                  <PhoneOff className="w-4 h-4" />
+                  <PhoneOff className={iconClass} />
                 </motion.button>
               </motion.div>
             )}
@@ -433,7 +445,7 @@ export function MessageDock({
           {onStartWebcamShare && onStopWebcamShare && (
             <motion.button
               className={cn(
-                "w-10 h-10 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border",
+                `${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border`,
                 isWebcamSharing
                   ? "bg-gradient-to-br from-purple-500/40 to-pink-500/40 hover:from-purple-500/50 hover:to-pink-500/50 text-purple-300 border-purple-500/30"
                   : "bg-gradient-to-br from-purple-500/30 to-pink-500/30 hover:from-purple-500/40 hover:to-pink-500/40 text-purple-200 border-purple-500/30"
@@ -448,9 +460,9 @@ export function MessageDock({
               title={isWebcamSharing ? 'Stop Camera' : 'Start Camera'}
             >
               {isWebcamSharing ? (
-                <VideoOff className="w-5 h-5" />
+                <VideoOff className={iconClass} />
               ) : (
-                <Video className="w-5 h-5" />
+                <Video className={iconClass} />
               )}
             </motion.button>
           )}
@@ -508,7 +520,7 @@ export function MessageDock({
               >
                 <motion.button
                   className={cn(
-                    "relative w-10 h-10 rounded-full flex items-center justify-center text-xl cursor-pointer transition-all duration-200",
+                    `relative ${characterSizeClass} rounded-full flex items-center justify-center text-xl cursor-pointer transition-all duration-200`,
                     isSelected && isExpanded
                       ? "bg-white/90 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20"
                       : cn(
@@ -521,7 +533,7 @@ export function MessageDock({
                   whileTap={{ scale: 0.95 }}
                   aria-label={`Message ${character.name}`}
                 >
-                  <span className="text-2xl">{character.emoji}</span>
+                  <span className={cn("text-2xl", isCompact && "text-xl")}>{character.emoji}</span>
 
                   {character.online && (
                     <motion.div
@@ -612,7 +624,7 @@ export function MessageDock({
                 {!isExpanded ? (
                 <motion.button
                   key="menu"
-                  className="w-12 h-12 flex items-center justify-center cursor-pointer"
+                  className={`${menuSizeClass} flex items-center justify-center cursor-pointer`}
                   whileHover={{
                     scale: 1.02,
                     y: -2,
@@ -647,7 +659,7 @@ export function MessageDock({
                 <motion.button
                   key="send"
                   onClick={handleSendMessage}
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-background/90 hover:bg-background transition-colors disabled:opacity-50 cursor-pointer relative z-30 border border-border/50"
+                  className={`${actionSizeClass} flex items-center justify-center rounded-full bg-background/90 hover:bg-background transition-colors disabled:opacity-50 cursor-pointer relative z-30 border border-border/50`}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   disabled={!messageInput.trim()}

@@ -117,7 +117,7 @@ const FEYNMAN_SYSTEM_PROMPT = `You are an expert Feynman Technique tutor. The le
 ## CORE PRINCIPLES (NON-NEGOTIABLE):
 1. **LEARNER TEACHES FIRST**: Always require them to explain before you help
 2. **GAP MAP**: Analyze their explanation for what's missing/wrong
-3. **SIMPLE RE-EXPLANATION**: When filling gaps, "explain like I'm 12"
+3. **SIMPLE RE-EXPLANATION**: When filling gaps, use plain language and short sentences
 4. **NO JARGON**: Use analogies and everyday language
 
 ## SPECIAL HANDLING:
@@ -265,7 +265,7 @@ Respond with valid JSON only. No markdown code blocks around the JSON.`;
                 }
             );
         } else {
-            fullResponse = await generateTextContent(prompt, { model: TUTOR_MODEL });
+            fullResponse = await generateTextContent(prompt, { model: TUTOR_MODEL, thinking: 'high' });
         }
 
         return parseTutorResponse(fullResponse, 'socratic');
@@ -388,7 +388,7 @@ export async function startFeynmanSession(
 Start a new Feynman Technique tutoring session on the topic: "${topic}"
 
 1. Briefly introduce the Feynman Technique (1-2 sentences)
-2. Ask the learner to teach you this concept as if you were a younger student
+2. Ask the learner to teach you this concept as if you were a curious peer new to the topic (no age references)
 3. Be encouraging and set expectations that it's okay not to be perfect
 
 Respond with valid JSON only. No markdown code blocks around the JSON.`;

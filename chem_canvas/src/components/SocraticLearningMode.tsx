@@ -104,6 +104,11 @@ interface GuidedReport {
     totalTasks: number;
 }
 
+const CANVAS_ACTIVITY_COPY = {
+    misconceptions: 'Fix each misconception by rewriting the correct idea in your own words.',
+    strengths: 'Extend each strong point with a concrete example or application.'
+};
+
 export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
     topic,
     onBack,
@@ -195,6 +200,97 @@ export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
         const focus = task.label ? `Concept focus: ${task.label}.` : 'Concept focus:';
         return [focus, snippet].filter(Boolean).join(' ');
     }, []);
+
+    const buildRemediationElements = useCallback((report: GuidedReport): DiagramElement[] => {
+        const elements: DiagramElement[] = [];
+        const startX = 80;
+        const cardWidth = 640;
+        const headerHeight = 70;
+        const responseHeight = 110;
+        const gap = 28;
+        let y = 60;
+
+        elements.push({
+            type: 'text',
+            x: startX,
+            y,
+            text: `Remediation Activity: ${currentTopic}`
+        });
+        y += 50;
+
+        const focusItems = report.misconceptions.length > 0
+            ? report.misconceptions.slice(0, 3).map(text => ({ label: 'Misconception', text }))
+            : report.correctPoints.slice(0, 3).map(text => ({ label: 'Strong point', text }));
+
+        if (focusItems.length === 0) {
+            focusItems.push({ label: 'Key idea', text: currentTopic });
+        }
+
+        focusItems.forEach((item) => {
+            elements.push({
+                type: 'rectangle',
+                x: startX,
+                y,
+                width: cardWidth,
+                height: headerHeight,
+                backgroundColor: '#F8FAFC',
+                strokeColor: '#94A3B8'
+            });
+            elements.push({
+                type: 'text',
+                x: startX + 16,
+                y: y + 20,
+                text: `${item.label}: ${item.text}`
+            });
+            y += headerHeight + 12;
+
+            elements.push({
+                type: 'rectangle',
+                x: startX,
+                y,
+                width: cardWidth,
+                height: responseHeight,
+                backgroundColor: '#FFFFFF',
+                strokeColor: '#CBD5F5'
+            });
+            elements.push({
+                type: 'text',
+                x: startX + 16,
+                y: y + 20,
+                text: 'Your correction / application'
+            });
+            y += responseHeight + gap;
+        });
+
+        return elements;
+    }, [currentTopic]);
+
+    const launchRemediationCanvas = useCallback((report: GuidedReport) => {
+        setIsCanvasOpen(true);
+
+        const scheduleDraw = (attempt: number) => {
+            if (!excalidrawRef.current) {
+                if (attempt < 6) {
+                    window.setTimeout(() => scheduleDraw(attempt + 1), 200);
+                }
+                return;
+            }
+
+            excalidrawRef.current.clearCanvas();
+            excalidrawRef.current.setActiveTool('text');
+            excalidrawRef.current.setStrokeColor('#0f172a');
+
+            const elements = buildRemediationElements(report);
+            void excalidrawRef.current.drawDiagram(elements);
+
+            const helperText = report.misconceptions.length > 0
+                ? CANVAS_ACTIVITY_COPY.misconceptions
+                : CANVAS_ACTIVITY_COPY.strengths;
+            void excalidrawRef.current.addHandwrittenText(helperText);
+        };
+
+        window.setTimeout(() => scheduleDraw(0), 200);
+    }, [buildRemediationElements]);
 
     const shouldIncludeGuidedImage = useCallback((index: number) => {
         const minGap = 2;
@@ -441,6 +537,14 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
         };
         setLastEvaluation(evaluation);
 
+        const activityMessage: TutorChatMessage = {
+            role: 'assistant',
+            content: 'I opened a quick canvas activity to address the key gaps. Fill in the correction boxes to reinforce the ideas.',
+            timestamp: new Date()
+        };
+        setMessages(prev => [...prev, activityMessage]);
+        launchRemediationCanvas(report);
+
         const summaryMessage: TutorChatMessage = {
             role: 'assistant',
             content: remainingTopics.length > 0
@@ -449,7 +553,7 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
             timestamp: new Date()
         };
         setMessages(prev => [...prev, summaryMessage]);
-    }, [remainingTopics]);
+    }, [launchRemediationCanvas, remainingTopics]);
 
     const startGuidedFlow = useCallback(async (
         diagrams: DiagramExtractionResult['diagrams'],
@@ -699,9 +803,7 @@ Encourage the student to think through problems step by step.`
         const initSession = async () => {
             setIsLoading(true);
             try {
-                const response = await startSocraticSession(topic, (chunk) => {
-                    setStreamingContent(prev => prev + chunk);
-                });
+                const response = await startSocraticSession(topic);
 
                 const assistantMessage: TutorChatMessage = {
                     role: 'assistant',
@@ -745,10 +847,7 @@ Encourage the student to think through problems step by step.`
                 topic,
                 messages,
                 sessionState.hint_level,
-                sessionState.attempt_count,
-                (chunk) => {
-                    setStreamingContent(prev => prev + chunk);
-                }
+                sessionState.attempt_count
             );
 
             // Check for activity request
@@ -1245,7 +1344,6 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
                                 const showFlashcardCompletion = Boolean(
                                     guidedTask?.type === 'flashcards' && message.guided_task_id === activeGuidedTaskId
                                 );
-
                                 return (
                                     <div
                                         key={index}
@@ -1383,6 +1481,7 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
                                                                 )}
                                                             </div>
                                                         )}
+
                                                     </div>
                                                 ) : (
                                                     <p className="whitespace-pre-wrap">{message.content}</p>
@@ -1423,8 +1522,9 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
                                         <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
                                             <MessageCircle className="w-4 h-4 text-gray-500" />
                                         </div>
-                                        <div className="px-4 py-2.5 bg-white rounded-2xl rounded-bl-md shadow-sm">
+                                        <div className="px-4 py-2.5 bg-white rounded-2xl rounded-bl-md shadow-sm flex items-center gap-2 text-sm text-gray-600">
                                             <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
+                                            Thinking...
                                         </div>
                                     </div>
                                 </div>
