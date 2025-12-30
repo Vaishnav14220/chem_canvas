@@ -621,6 +621,8 @@ const VoxelScene: React.FC<{ voxels: Voxel[]; theme?: typeof SCENE_THEMES.output
     <div className="relative h-full w-full">
       <Canvas
         shadows
+        dpr={[1, 1.5]}
+        gl={{ antialias: false, powerPreference: 'low-power' }}
         camera={{ position: [8, 8, 8], fov: 45 }}
         className="h-full w-full"
       >
@@ -682,6 +684,8 @@ const ReplicubeLab: React.FC = () => {
   const [aiError, setAiError] = useState<string | null>(null);
   const ggbContainerRef = useRef<HTMLDivElement | null>(null);
   const ggbInstanceRef = useRef<any>(null);
+  const ggbCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ggbReloadAttemptsRef = useRef(0);
   const editorRef = useRef<any>(null);
   const [ggbReady, setGgbReady] = useState(false);
   const [ggbError, setGgbError] = useState<string | null>(null);
@@ -746,6 +750,46 @@ const ReplicubeLab: React.FC = () => {
     ];
   }, [puzzle.hints]);
 
+  const handleGeoGebraContextLost = useCallback((event: Event) => {
+    event.preventDefault();
+    if (ggbCanvasRef.current) {
+      ggbCanvasRef.current.removeEventListener('webglcontextlost', handleGeoGebraContextLost);
+      ggbCanvasRef.current = null;
+    }
+    if (ggbReloadAttemptsRef.current < 1) {
+      ggbReloadAttemptsRef.current += 1;
+      setGgbError('GeoGebra 3D lost its WebGL context. Reloading the panel...');
+      setGgbReady(false);
+      ggbInstanceRef.current = null;
+      if (ggbContainerRef.current) {
+        ggbContainerRef.current.innerHTML = '';
+      }
+      setGgbLoadTick((prev) => prev + 1);
+      return;
+    }
+    setGgbError('GeoGebra 3D ran out of GPU resources. Close other 3D views or use the built-in graph.');
+  }, []);
+
+  useEffect(() => {
+    if (!showGeogebra) {
+      if (ggbCanvasRef.current) {
+        ggbCanvasRef.current.removeEventListener('webglcontextlost', handleGeoGebraContextLost);
+        ggbCanvasRef.current = null;
+      }
+      return;
+    }
+    ggbReloadAttemptsRef.current = 0;
+  }, [handleGeoGebraContextLost, showGeogebra]);
+
+  useEffect(() => {
+    return () => {
+      if (ggbCanvasRef.current) {
+        ggbCanvasRef.current.removeEventListener('webglcontextlost', handleGeoGebraContextLost);
+        ggbCanvasRef.current = null;
+      }
+    };
+  }, [handleGeoGebraContextLost]);
+
   useEffect(() => {
     setLuaCode(puzzle.starter);
     setAiError(null);
@@ -785,7 +829,7 @@ const ReplicubeLab: React.FC = () => {
           return;
         }
         const params = {
-          appName: 'graphing',
+          appName: '3d',
           id: GEOGEBRA_APP_ID,
           showToolBar: true,
           showAlgebraInput: true,
@@ -799,6 +843,22 @@ const ReplicubeLab: React.FC = () => {
             ggbInstanceRef.current = (window as any)[GEOGEBRA_APP_ID];
             setGgbReady(true);
             window.clearTimeout(loadTimeout);
+            const attachCanvasListener = (attempt = 0) => {
+              if (!ggbContainerRef.current) return;
+              const canvas = ggbContainerRef.current.querySelector('canvas') as HTMLCanvasElement | null;
+              if (!canvas) {
+                if (attempt < 12) {
+                  window.setTimeout(() => attachCanvasListener(attempt + 1), 120);
+                }
+                return;
+              }
+              if (ggbCanvasRef.current && ggbCanvasRef.current !== canvas) {
+                ggbCanvasRef.current.removeEventListener('webglcontextlost', handleGeoGebraContextLost);
+              }
+              ggbCanvasRef.current = canvas;
+              canvas.addEventListener('webglcontextlost', handleGeoGebraContextLost, { passive: false });
+            };
+            attachCanvasListener();
           },
         };
         const applet = new (window as any).GGBApplet(params, true);
@@ -1360,12 +1420,12 @@ Rules:
             )}
             {showGeogebra && (
               <a
-                href="https://www.geogebra.org/graphing"
+                href="https://www.geogebra.org/3d"
                 target="_blank"
                 rel="noreferrer"
                 className="rounded-md border border-[#cbb49a] bg-white px-2 py-1 text-[11px] font-semibold text-[#5a4b3f] hover:border-[#a98d74]"
               >
-                Open GeoGebra
+                Open GeoGebra 3D
               </a>
             )}
             <button

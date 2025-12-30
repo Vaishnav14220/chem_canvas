@@ -28,12 +28,16 @@ import {
     VolumeX,
     Pencil,
     StickyNote,
-    ArrowLeft
+    ArrowLeft,
+    GraduationCap,
+    MonitorUp
 } from 'lucide-react';
 import { ExcalidrawCanvas, ExcalidrawCanvasRef } from './ExcalidrawCanvas/ExcalidrawCanvas';
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { useSourceStore } from '../store/sourceStore';
+import { generateTextContent } from '../services/geminiService';
+import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
 
 interface PdfStudyModeViewProps {
     topic: string;
@@ -45,7 +49,7 @@ interface GeneratedNote {
     id: string;
     content: string;
     timestamp: Date;
-    type: 'insight' | 'summary' | 'question' | 'definition';
+    type: 'insight' | 'summary' | 'question' | 'definition' | 'feedback';
 }
 
 const NOTE_COLORS = {
@@ -53,6 +57,7 @@ const NOTE_COLORS = {
     summary: '#dbeafe',    // blue-100
     question: '#fce7f3',   // pink-100
     definition: '#d1fae5', // emerald-100
+    feedback: '#ede9fe',   // violet-100
 };
 
 export const PdfStudyModeView: React.FC<PdfStudyModeViewProps> = ({
@@ -65,20 +70,27 @@ export const PdfStudyModeView: React.FC<PdfStudyModeViewProps> = ({
     const [inputValue, setInputValue] = useState('');
     const [generatedNotes, setGeneratedNotes] = useState<GeneratedNote[]>([]);
     const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
-    const [transcriptBuffer, setTranscriptBuffer] = useState('');
     const [isProcessingNotes, setIsProcessingNotes] = useState(false);
+    const [isTutorMode, setIsTutorMode] = useState(false);
+    const [isTutorFeedbackProcessing, setIsTutorFeedbackProcessing] = useState(false);
+    const [pendingScreenShare, setPendingScreenShare] = useState(false);
 
     // Refs
     const excalidrawRef = useRef<ExcalidrawCanvasRef>(null);
     const pdfContainerRef = useRef<HTMLDivElement>(null);
     const notesEndRef = useRef<HTMLDivElement>(null);
+    const tutorDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const pendingCanvasTextRef = useRef<string>('');
+    const lastFeedbackTextRef = useRef<string>('');
+    const tutorRequestIdRef = useRef(0);
 
     // Get sources from store
     const { sources, activeSourceId, getSource } = useSourceStore();
     const activeSource = activeSourceId ? getSource(activeSourceId) : null;
 
     // Initialize Gemini Live for voice conversation
-    const geminiLive = useGeminiLive(apiKey, 'en', {
+    const preferredGeminiLanguage = getPreferredGeminiLanguage();
+    const geminiLive = useGeminiLive(apiKey, preferredGeminiLanguage, {
         systemInstructionOverride: `You are a helpful study assistant helping the user understand a PDF document about "${topic}".
 As the user speaks, provide:
 1. Key insights from their questions
@@ -101,41 +113,207 @@ Keep responses conversational and helpful. When you identify key points, structu
         notesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [generatedNotes]);
 
+    useEffect(() => {
+        if (!isTutorMode) {
+            if (tutorDebounceRef.current) {
+                clearTimeout(tutorDebounceRef.current);
+                tutorDebounceRef.current = null;
+            }
+            pendingCanvasTextRef.current = '';
+            tutorRequestIdRef.current += 1;
+            setIsTutorFeedbackProcessing(false);
+        }
+    }, [isTutorMode]);
+
+    const processedTranscriptRef = useRef<Record<string, number>>({});
+    const processedNoteRef = useRef<Set<string>>(new Set());
+
+    const normalizeText = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+    const stripMarkdown = (text: string) => {
+        return text
+            .replace(/```[\s\S]*?```/g, '')
+            .replace(/[*_`>#]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
+    const extractBulletPoints = (text: string) => {
+        const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+        return lines
+            .filter(line => /^(\d+\.)|(-\s)|(\u2022\s)/.test(line))
+            .map(line => line.replace(/^(\d+\.)\s*|-\s*|\u2022\s*/g, '').trim())
+            .filter(line => line.length > 10);
+    };
+
+    const splitSentences = (text: string) => {
+        return text
+            .split(/[.!?]\s+/)
+            .map(sentence => sentence.trim())
+            .filter(sentence => sentence.length > 20);
+    };
+
+    const compactNote = (text: string) => {
+        if (text.length <= 220) return text;
+        return `${text.slice(0, 217).trim()}...`;
+    };
+
+    const appendNotes = useCallback((notes: GeneratedNote[], speaker: 'user' | 'model') => {
+        if (notes.length === 0) return;
+        setGeneratedNotes(prev => [...prev, ...notes]);
+        if (excalidrawRef.current) {
+            notes.forEach((note) => {
+                excalidrawRef.current?.addStickyNote({
+                    id: note.id,
+                    text: note.content,
+                    speaker,
+                    isFinal: true
+                });
+            });
+        }
+    }, []);
+
+    const buildNotesFromText = (text: string) => {
+        const cleaned = stripMarkdown(text);
+        if (!cleaned) return [];
+
+        const bullets = extractBulletPoints(text);
+        const sentences = bullets.length > 0 ? bullets : splitSentences(cleaned);
+        const candidates = sentences.length > 0 ? sentences : [cleaned];
+
+        return candidates.slice(0, bullets.length > 0 ? 5 : 3).map((candidate) => ({
+            type: determineNoteType(candidate),
+            content: compactNote(candidate)
+        }));
+    };
+
     // Process transcripts and generate notes
-    const lastProcessedIndexRef = React.useRef(0);
     useEffect(() => {
         const transcripts = geminiLive.transcripts;
-        if (transcripts.length > lastProcessedIndexRef.current) {
-            // Process new transcripts
-            for (let i = lastProcessedIndexRef.current; i < transcripts.length; i++) {
-                const transcript = transcripts[i];
-                const text = transcript.text || '';
+        const hasPendingModel = transcripts.some(t => t.sender === 'model' && !t.isComplete);
+        setIsProcessingNotes(hasPendingModel);
 
-                // Generate note from AI response
-                if (text.length > 20) {
-                    const noteType = determineNoteType(text);
-                    const newNote: GeneratedNote = {
-                        id: `note-${Date.now()}-${i}`,
-                        content: text,
-                        timestamp: new Date(),
-                        type: noteType
-                    };
-                    setGeneratedNotes(prev => [...prev, newNote]);
+        transcripts.forEach((transcript, index) => {
+            const rawText = transcript.text || '';
+            const text = rawText.trim();
+            if (!text) return;
 
-                    // Add to Excalidraw canvas as sticky note
-                    if (excalidrawRef.current) {
-                        excalidrawRef.current.addStickyNote({
-                            id: newNote.id,
-                            text: text.substring(0, 200),
-                            speaker: (transcript as any).role === 'user' ? 'user' : 'model',
-                            isFinal: true
-                        });
-                    }
-                }
+            const lastLength = processedTranscriptRef.current[transcript.id] ?? 0;
+            const isNewCompletion = transcript.isComplete && lastLength !== -1;
+
+            if (!isNewCompletion) {
+                return;
             }
-            lastProcessedIndexRef.current = transcripts.length;
+
+            processedTranscriptRef.current[transcript.id] = -1;
+
+            const notePayloads = transcript.sender === 'user'
+                ? (text.includes('?') ? [{ type: 'question' as const, content: compactNote(normalizeText(text)) }] : [])
+                : buildNotesFromText(rawText);
+
+            if (notePayloads.length === 0) {
+                return;
+            }
+
+            const timestamp = new Date();
+            const newNotes: GeneratedNote[] = [];
+
+            notePayloads.forEach((payload, payloadIndex) => {
+                const fingerprint = `${payload.type}:${payload.content.toLowerCase()}`;
+                if (processedNoteRef.current.has(fingerprint)) {
+                    return;
+                }
+                processedNoteRef.current.add(fingerprint);
+                newNotes.push({
+                    id: `note-${transcript.id}-${payloadIndex}-${index}`,
+                    content: payload.content,
+                    timestamp,
+                    type: payload.type
+                });
+            });
+
+            if (newNotes.length === 0) {
+                return;
+            }
+
+            appendNotes(newNotes, transcript.sender);
+        });
+    }, [geminiLive.transcripts, appendNotes]);
+
+    const extractCanvasText = (elements: any[]) => {
+        const textElements = elements
+            .filter(element => element?.type === 'text' && typeof element?.text === 'string')
+            .map(element => element.text.trim())
+            .filter(Boolean);
+        return textElements.join('\n').trim();
+    };
+
+    const buildTutorFeedbackPrompt = (canvasText: string) => {
+        return `You are a subject tutor reviewing what a learner wrote on a whiteboard.
+Topic: ${topic || 'General study'}.
+
+Learner notes:
+${canvasText}
+
+Provide concise feedback as bullet points:
+- Status: Correct / Partially correct / Incorrect.
+- If incorrect or incomplete, explain what is wrong or missing.
+- Provide a corrected version or next step in 1-2 sentences.
+Keep it short and factual. Avoid praise.`;
+    };
+
+    const requestTutorFeedback = useCallback(async (canvasText: string) => {
+        if (!apiKey || !canvasText || canvasText.length < 8) return;
+
+        const requestId = ++tutorRequestIdRef.current;
+        setIsTutorFeedbackProcessing(true);
+        try {
+            const response = await generateTextContent(buildTutorFeedbackPrompt(canvasText), {
+                thinking: 'low',
+                maxOutputTokens: 500
+            });
+            if (requestId !== tutorRequestIdRef.current) return;
+
+            const feedback = response.trim();
+            if (!feedback) return;
+
+            const note: GeneratedNote = {
+                id: `tutor-${Date.now()}-${requestId}`,
+                content: feedback,
+                timestamp: new Date(),
+                type: 'feedback'
+            };
+
+            appendNotes([note], 'model');
+        } catch (error) {
+            console.error('[PdfStudyMode] Tutor feedback failed:', error);
+        } finally {
+            if (requestId === tutorRequestIdRef.current) {
+                setIsTutorFeedbackProcessing(false);
+            }
         }
-    }, [geminiLive.transcripts]);
+    }, [appendNotes, topic, apiKey]);
+
+    const handleCanvasElementsChange = useCallback((elements: any[]) => {
+        if (!isTutorMode) return;
+
+        const canvasText = extractCanvasText(elements);
+        if (!canvasText) return;
+
+        pendingCanvasTextRef.current = canvasText;
+
+        if (tutorDebounceRef.current) {
+            clearTimeout(tutorDebounceRef.current);
+        }
+
+        tutorDebounceRef.current = setTimeout(() => {
+            const latestText = pendingCanvasTextRef.current;
+            if (!latestText || latestText === lastFeedbackTextRef.current) return;
+
+            lastFeedbackTextRef.current = latestText;
+            requestTutorFeedback(latestText);
+        }, 1200);
+    }, [isTutorMode, requestTutorFeedback]);
 
     // Determine note type based on content
     const determineNoteType = (content: string): GeneratedNote['type'] => {
@@ -229,6 +407,17 @@ Keep responses conversational and helpful. When you identify key points, structu
 
     const isConnected = geminiLive.connectionState === 'CONNECTED';
     const isConnecting = geminiLive.connectionState === 'CONNECTING';
+    const isScreenSharing = geminiLive.isScreenSharing;
+
+    useEffect(() => {
+        if (pendingScreenShare && isConnected) {
+            geminiLive.startScreenShare();
+            setPendingScreenShare(false);
+        }
+        if (!isConnected && pendingScreenShare && geminiLive.connectionState === 'DISCONNECTED') {
+            setPendingScreenShare(false);
+        }
+    }, [pendingScreenShare, isConnected, geminiLive]);
 
     return (
         <div className="flex flex-col h-screen w-full bg-[#0f0f0f] overflow-hidden">
@@ -332,12 +521,30 @@ Keep responses conversational and helpful. When you identify key points, structu
                                 <span className="text-sm font-medium text-white">Automated Notes & Insights</span>
                                 <span className="text-xs text-white/40">({generatedNotes.length})</span>
                             </div>
-                            {isProcessingNotes && (
-                                <div className="flex items-center gap-2 text-xs text-amber-400">
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    Generating...
-                                </div>
-                            )}
+                            <div className="flex items-center gap-3">
+                                {isProcessingNotes && (
+                                    <div className="flex items-center gap-2 text-xs text-amber-400">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Generating...
+                                    </div>
+                                )}
+                                {isTutorFeedbackProcessing && (
+                                    <div className="flex items-center gap-2 text-xs text-violet-300">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Tutoring...
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => setIsTutorMode((prev) => !prev)}
+                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${isTutorMode
+                                        ? 'bg-violet-500/20 text-violet-200 border border-violet-400/30'
+                                        : 'bg-white/5 text-white/50 border border-white/10 hover:bg-white/10'
+                                        }`}
+                                >
+                                    <GraduationCap className="w-3.5 h-3.5" />
+                                    Tutor mode
+                                </button>
+                            </div>
                         </div>
 
                         {/* Notes List */}
@@ -380,6 +587,7 @@ Keep responses conversational and helpful. When you identify key points, structu
                             embedded={true}
                             isOpen={true}
                             onClose={() => { }}
+                            onElementsChange={handleCanvasElementsChange}
                         />
                     </div>
                 </div>
@@ -405,6 +613,34 @@ Keep responses conversational and helpful. When you identify key points, structu
                             <MicOff className="w-5 h-5 text-white/70" />
                         )}
                         {isConnected && (
+                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
+                        )}
+                    </button>
+
+                    {/* Screen Share Button */}
+                    <button
+                        onClick={() => {
+                            if (isScreenSharing) {
+                                geminiLive.stopScreenShare();
+                                setPendingScreenShare(false);
+                            } else {
+                                if (!isConnected) {
+                                    setPendingScreenShare(true);
+                                    geminiLive.connect();
+                                } else {
+                                    geminiLive.startScreenShare();
+                                }
+                            }
+                        }}
+                        disabled={!apiKey || isConnecting}
+                        className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-all ${isScreenSharing
+                            ? 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/30'
+                            : 'bg-white/10 hover:bg-white/20'
+                            } ${(!apiKey || isConnecting) && 'opacity-50 cursor-not-allowed'}`}
+                        title={isScreenSharing ? 'Stop screen sharing' : 'Share screen'}
+                    >
+                        <MonitorUp className="w-5 h-5 text-white" />
+                        {isScreenSharing && (
                             <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
                         )}
                     </button>

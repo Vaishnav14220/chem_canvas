@@ -6,6 +6,7 @@ import { setStructuredReactionApiKey } from './structuredReactionService';
 import { apiKeyRotation, clearUserProvidedApiKey, executeWithRotation, registerUserProvidedApiKey, addApiKeyToRotation } from './apiKeyRotation';
 import { captureApiEvent, captureApiKey } from '../utils/errorLogger';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
+import { getGeminiPreferences, getPreferredGeminiModel } from '../utils/geminiPreferences';
 import {
   initializeVertexAI,
   generateContentWithVertexAI,
@@ -41,6 +42,68 @@ const handleGeminiError = (error: any): never => {
   }
 
   throw error;
+};
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: 'English',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  ja: 'Japanese',
+  zh: 'Chinese',
+  ru: 'Russian',
+  hi: 'Hindi',
+  ar: 'Arabic',
+};
+
+const STRUCTURED_OUTPUT_HINTS = [
+  'json',
+  'xml',
+  'yaml',
+  'csv',
+  'schema',
+  'function call',
+  'tool call',
+  'only return',
+  'only output',
+  'respond with only',
+];
+
+const shouldApplyResponsePreferences = (prompt: string) => {
+  const lowered = prompt.toLowerCase();
+  return !STRUCTURED_OUTPUT_HINTS.some((hint) => lowered.includes(hint));
+};
+
+const applyResponsePreferences = (prompt: string, options?: { applyPreferences?: boolean }) => {
+  if (options?.applyPreferences === false) {
+    return prompt;
+  }
+
+  const preferences = getGeminiPreferences();
+  if (!shouldApplyResponsePreferences(prompt)) {
+    return prompt;
+  }
+
+  const directives: string[] = [];
+  if (preferences.language && preferences.language !== 'auto') {
+    const label = LANGUAGE_LABELS[preferences.language] || preferences.language;
+    directives.push(`Respond in ${label}.`);
+  }
+
+  if (preferences.responseStyle === 'concise') {
+    directives.push('Keep the response concise and focused.');
+  }
+  if (preferences.responseStyle === 'detailed') {
+    directives.push('Provide a detailed response with clear explanations.');
+  }
+
+  if (directives.length === 0) {
+    return prompt;
+  }
+
+  return `${directives.join(' ')}\n\n${prompt}`;
 };
 
 // Initialize Gemini API
@@ -186,7 +249,16 @@ const getAvailableModel = async (
   });
 };
 
-export const generateTextContent = async (prompt: string, options?: { maxOutputTokens?: number, model?: string, thinking?: boolean | 'high' | 'low', timeout?: number }): Promise<string> => {
+export const generateTextContent = async (
+  prompt: string,
+  options?: {
+    maxOutputTokens?: number,
+    model?: string,
+    thinking?: boolean | 'high' | 'low',
+    timeout?: number,
+    applyPreferences?: boolean
+  }
+): Promise<string> => {
   await ensureInitializedAsync();
   if (!genAI) {
     throw new Error('Gemini API not initialized. Please provide an API key.');
@@ -195,6 +267,8 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
   // Internal retry for 503 errors with exponential backoff
   const maxRetries = 10;
   const timeoutMs = options?.timeout ?? 60000; // Default 60s timeout
+  const promptWithPreferences = applyResponsePreferences(prompt, { applyPreferences: options?.applyPreferences });
+  const preferredModel = options?.model ?? getPreferredGeminiModel();
 
   let lastError: any;
 
@@ -208,7 +282,7 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
           cachedModelName = null; // Reset model cache with new key
         }
 
-        const modelName = options?.model ?? await getAvailableModel(genAI!, { skipRotation: true });
+        const modelName = preferredModel ?? await getAvailableModel(genAI!, { skipRotation: true });
 
         let config: any = undefined;
         if (options?.maxOutputTokens) {
@@ -242,7 +316,7 @@ export const generateTextContent = async (prompt: string, options?: { maxOutputT
 
         const fetchPromise = genAI!.models.generateContent({
           model: modelName,
-          contents: prompt,
+          contents: promptWithPreferences,
           config: config,
         });
 
@@ -710,7 +784,8 @@ export const streamTextContent = async (
     thinking?: boolean | 'high' | 'low',
     onThought?: (thought: string) => void,
     inlineData?: { mimeType: string, data: string },
-    timeout?: number
+    timeout?: number,
+    applyPreferences?: boolean
   }
 ): Promise<string> => {
   await ensureInitializedAsync();
@@ -721,6 +796,8 @@ export const streamTextContent = async (
   // Default timeout: 60s for standard models, 180s for thinking models (which are slower)
   const isThinkingModel = options?.thinking || options?.model?.includes('thinking') || options?.model?.includes('gemini-3');
   const timeoutMs = options?.timeout ?? (isThinkingModel ? 180000 : 60000);
+  const promptWithPreferences = applyResponsePreferences(prompt, { applyPreferences: options?.applyPreferences });
+  const preferredModel = options?.model ?? getPreferredGeminiModel();
 
   try {
     return await executeWithRotation(async (apiKey) => {
@@ -731,7 +808,7 @@ export const streamTextContent = async (
       }
 
       console.log('DEBUG: streamTextContent called with options:', JSON.stringify(options));
-      const modelName = options?.model ?? (await getAvailableModel(genAI!, { skipRotation: true }));
+      const modelName = preferredModel ?? (await getAvailableModel(genAI!, { skipRotation: true }));
       console.log('DEBUG: streamTextContent using model:', modelName);
 
       let config: any = undefined;
@@ -786,7 +863,7 @@ export const streamTextContent = async (
           role: 'user',
           parts: [
             ...(options?.inlineData ? [{ inlineData: options.inlineData }] : []),
-            { text: prompt }
+            { text: promptWithPreferences }
           ]
         }
       ];

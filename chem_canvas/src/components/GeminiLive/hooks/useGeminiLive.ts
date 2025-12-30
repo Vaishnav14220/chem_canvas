@@ -907,7 +907,6 @@ export const useGeminiLive = (
   const setExcalidrawOnlyMode = useCallback((enabled: boolean) => {
     // Always keep Excalidraw-only mode enabled to bypass learning canvas
     excalidrawOnlyModeRef.current = true;
-    console.log('[GeminiLive] Excalidraw-only mode: FORCED ENABLED');
   }, []);
 
   const stopScreenShare = useCallback(() => {

@@ -120,6 +120,7 @@ const GeminiLivePortalIcon: React.FC<GeminiLivePortalIconProps> = ({ isActive })
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     rendererRef.current = renderer;
     renderer.setPixelRatio(window.devicePixelRatio || 1);
+
     const scene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const uniforms = uniformsRef.current;
@@ -142,6 +143,15 @@ const GeminiLivePortalIcon: React.FC<GeminiLivePortalIconProps> = ({ isActive })
       rendererRef.current.setSize(width, height);
       uniforms.iResolution.value.set(width, height, 1);
     };
+
+    // Handle WebGL context loss/restore gracefully (placed after handleResize is defined)
+    renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+    }, false);
+
+    renderer.domElement.addEventListener('webglcontextrestored', () => {
+      handleResize();
+    }, false);
 
     handleResize();
     window.addEventListener('resize', handleResize);

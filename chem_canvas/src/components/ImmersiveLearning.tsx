@@ -22,6 +22,7 @@ import { InteractiveAssignmentWorkspace } from './InteractiveAssignmentWorkspace
 import { LaTeXAssignmentPrep } from './LaTeXAssignmentPrep';
 import { AssignmentDashboard } from './AssignmentDashboard';
 import { FormulaExtractionWorkspace } from './FormulaExtractionWorkspace';
+import { LabManualExplorer } from './LabManualExplorer';
 import { HyperbookNotebook } from '@/hyperbook/components/HyperbookNotebook';
 import { javascript } from '@codemirror/lang-javascript';
 import { java } from '@codemirror/lang-java';
@@ -45,6 +46,7 @@ import { ConnectionState, LearningCanvasImage } from './GeminiLive/types';
 import { getCurrentUserId } from '../services/database/userService';
 import { useSourceStore } from '../store/sourceStore';
 import { extractTextFromPdf } from '../utils/pdfTextExtractor';
+import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
 import {
     putImmersiveLearningFile,
     getImmersiveLearningFile,
@@ -379,7 +381,7 @@ const allLearningModes: LearningModeCard[] = [
     { id: 'visual-activity', icon: <Viewer3DIcon />, label: 'Visual Activity', activeColor: '#4fc3f7', activeBg: 'rgba(79, 195, 247, 0.1)' },
     { id: 'code-lab', icon: <CodeLabIcon />, label: 'Code Lab', activeColor: '#10b981', activeBg: 'rgba(16, 185, 129, 0.1)' },
     { id: 'replicube-lab', icon: <VoxelLabIcon />, label: 'Voxel Lab', activeColor: '#06b6d4', activeBg: 'rgba(6, 182, 212, 0.12)' },
-    { id: 'assignment', icon: <AssignmentIcon />, label: 'Assignment', activeColor: '#f59e0b', activeBg: 'rgba(245, 158, 11, 0.1)' },
+    { id: 'assignment', icon: <AssignmentIcon />, label: 'Study Tools', activeColor: '#f59e0b', activeBg: 'rgba(245, 158, 11, 0.1)' },
     { id: 'notebook', icon: <NotebookIcon />, label: 'Notebook', activeColor: '#3b82f6', activeBg: 'rgba(59, 130, 246, 0.1)' },
 ];
 
@@ -1387,7 +1389,8 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey, 
     const { addSource } = useSourceStore();
 
     // Initialize Gemini Live
-    const geminiLiveState = useGeminiLive(apiKey || '');
+    const preferredGeminiLanguage = getPreferredGeminiLanguage();
+    const geminiLiveState = useGeminiLive(apiKey || '', preferredGeminiLanguage);
 
     // Dock characters for MessageDock
     const dockCharacters: Character[] = [
@@ -2343,7 +2346,7 @@ Respond in JSON format only:
             'visual-activity': { name: 'Visual Activity', description: '3D visualization and image generation activities', emoji: '🎨' },
             'code-lab': { name: 'Code Lab', description: 'Interactive coding environment', emoji: '💻' },
             'replicube-lab': { name: 'Voxel Lab', description: 'Lua-powered voxel programming puzzles', emoji: '[vox]' },
-            'assignment': { name: 'Assignment', description: 'Interactive assignments and exercises', emoji: '📝' },
+            'assignment': { name: 'Study Tools', description: 'Practice tools and study workflows', emoji: '📝' },
             'latex-assignment': { name: 'LaTeX', description: 'LaTeX document preparation and editing', emoji: '📄' },
             'notebook': { name: 'Notebook', description: 'Research notebook and AI-powered learning workspace', emoji: '📓' },
             'learning-theories': { name: 'Learning Theories', description: 'AI-powered optimal learning approach selection', emoji: '🎓' },
@@ -4132,7 +4135,7 @@ ${edgesXML}
         { id: 'visual-activity', icon: <Viewer3DIcon active={activeMode === 'visual-activity'} />, label: 'Visual Activity', activeColor: '#7c3aed', activeBg: '#ede9fe' },
         { id: 'code-lab', icon: <CodeLabIcon active={activeMode === 'code-lab'} />, label: 'Code Lab', activeColor: '#10b981', activeBg: '#d1fae5' },
         { id: 'replicube-lab', icon: <VoxelLabIcon active={activeMode === 'replicube-lab'} />, label: 'Voxel Lab', activeColor: '#06b6d4', activeBg: '#cffafe' },
-        { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Assignment', activeColor: '#1a73e8', activeBg: '#e8f0fe' },
+        { id: 'assignment', icon: <AssignmentIcon active={activeMode === 'assignment'} />, label: 'Study Tools', activeColor: '#1a73e8', activeBg: '#e8f0fe' },
         { id: 'notebook', icon: <NotebookIcon active={activeMode === 'notebook'} />, label: 'Notebook', activeColor: '#8b5cf6', activeBg: '#ede9fe' }
     ];
 
@@ -6672,7 +6675,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
             if (assignmentFileContent?.trim()) {
                 setStandaloneNotes(assignmentFileContent);
-                setStandaloneNotesName(assignmentFileName || 'Assignment notes');
+                setStandaloneNotesName(assignmentFileName || 'Study tools notes');
                 return;
             }
 
@@ -6715,7 +6718,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
             if (assignmentFileContent?.trim()) {
                 setStandaloneNotes(assignmentFileContent);
-                setStandaloneNotesName(assignmentFileName || 'Assignment notes');
+                setStandaloneNotesName(assignmentFileName || 'Study tools notes');
                 return;
             }
 
@@ -6751,7 +6754,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
             if (assignmentFileContent?.trim()) {
                 setStandaloneNotes(assignmentFileContent);
-                setStandaloneNotesName(assignmentFileName || 'Assignment notes');
+                setStandaloneNotesName(assignmentFileName || 'Study tools notes');
                 return;
             }
 
@@ -6799,7 +6802,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
             if (assignmentFileContent?.trim()) {
                 setStandaloneNotes(assignmentFileContent);
-                setStandaloneNotesName(assignmentFileName || 'Assignment notes');
+                setStandaloneNotesName(assignmentFileName || 'Study tools notes');
                 return;
             }
 
@@ -6849,6 +6852,29 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                     />
                 );
             }
+        }
+
+        // Lab Manual Explorer feature
+        if (selectedAssignmentFeature === 'lab-manual-explorer') {
+            // Convert file data to File object if available
+            let uploadedFile: File | undefined;
+            if (assignmentFileData?.data && assignmentFileData?.mimeType) {
+                uploadedFile = base64ToFile(
+                    assignmentFileData.data,
+                    assignmentFileData.mimeType,
+                    assignmentFileName || 'document.pdf'
+                );
+            }
+            return (
+                <LabManualExplorer
+                    onClose={() => {
+                        setSelectedAssignmentFeature(null);
+                        setShowAssignmentDashboard(true);
+                    }}
+                    uploadedFile={uploadedFile}
+                    topic={assignmentTopic}
+                />
+            );
         }
 
         // Show dashboard when no feature is selected
@@ -8618,7 +8644,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                 className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
                                             >
                                                 <ChevronLeft className="w-4 h-4" />
-                                                Back to Assignment
+                                                Back to Study Tools
                                             </button>
                                         )}
                                         <div className="space-y-3">
@@ -9237,7 +9263,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                 className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
                                             >
                                                 <ChevronLeft className="w-4 h-4" />
-                                                Back to Assignment
+                                                Back to Study Tools
                                             </button>
                                         )}
                                         <div className="space-y-3">
@@ -9494,7 +9520,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                         className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
                                     >
                                         <ChevronLeft className="w-4 h-4" />
-                                        Back to Assignment
+                                        Back to Study Tools
                                     </button>
                                 )}
                                 <div className="space-y-3">
@@ -9594,7 +9620,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                             className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
                                         >
                                             <ChevronLeft className="w-4 h-4" />
-                                            Back to Assignment
+                                            Back to Study Tools
                                         </button>
                                     )}
                                     {/* File Upload */}
@@ -10453,7 +10479,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                     className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors"
                                                 >
                                                     <ChevronLeft className="w-4 h-4" />
-                                                    Back to Assignment
+                                                    Back to Study Tools
                                                 </button>
                                             )}
                                             {/* Mode Toggle */}
@@ -11292,7 +11318,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                 className="mr-2 flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
                                             >
                                                 <ChevronLeft className="w-4 h-4" />
-                                                Back to Assignment
+                                                Back to Study Tools
                                             </button>
                                         )}
                                         <div className="w-8 h-8 bg-[#1F1F1F] flex items-center justify-center">

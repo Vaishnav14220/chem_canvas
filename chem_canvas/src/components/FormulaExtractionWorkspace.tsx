@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft,
     CheckCircle2,
@@ -20,6 +20,9 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { useSourceStore } from '../store/sourceStore';
 import { SourceSelector } from './ui/SourceSelector';
+import { generateTextContent, generateVisionContent } from '../services/geminiService';
+import { extractTextFromPdf } from '../utils/pdfTextExtractor';
+import { extractPDFPages } from '../services/ocrService';
 
 export interface FormulaItem {
     id: string;
@@ -40,41 +43,6 @@ interface FormulaExtractionWorkspaceProps {
     isLoading?: boolean;
 }
 
-const MOCK_FORMULAS: FormulaItem[] = [
-    {
-        id: '1',
-        label: 'FIRST LAW',
-        page: 4,
-        latex: '\\Delta U = Q - W',
-        variables: [
-            { symbol: '\\Delta U', definition: 'Change in internal energy' },
-            { symbol: 'Q', definition: 'Heat added to system' },
-            { symbol: 'W', definition: 'Work done by system' }
-        ],
-        status: 'verified'
-    },
-    {
-        id: '2',
-        label: 'ENTROPY',
-        page: 5,
-        latex: 'S = k_B \\ln \\Omega',
-        variables: [
-            { symbol: 'S', definition: 'Entropy' },
-            { symbol: 'k_B', definition: 'Boltzmann constant' },
-            { symbol: '\\Omega', definition: 'Number of microstates' }
-        ],
-        status: 'verified'
-    },
-    {
-        id: '3',
-        label: 'UNKNOWN',
-        page: 5,
-        latex: 'dS \\ge \\delta Q / T',
-        variables: [],
-        status: 'unknown'
-    }
-];
-
 type SimulationInput = {
     key: string;
     label: string;
@@ -94,6 +62,7 @@ type SimulationModel = {
     compute: (values: Record<string, number>) => number;
     evaluation?: (values: Record<string, number>) => { label: string; ok: boolean; detail: string };
     isApproximate?: boolean;
+    visualization?: { type: 'wave' | 'rotation'; label?: string };
 };
 
 const InlineMath = ({ value, className }: { value: string; className?: string }) => (
@@ -171,6 +140,35 @@ const buildSimulationModel = (item: FormulaItem): SimulationModel => {
         };
     }
 
+    if (/f=\\frac{1}{T}|f=1\/T/.test(normalized)) {
+        return {
+            title: 'Frequency & period',
+            description: 'Adjust the period to see how the wave frequency changes.',
+            outputLabel: 'f',
+            inputs: [
+                { key: 'T', label: 'T', min: 0.2, max: 4, step: 0.05, unit: 's', defaultValue: 1 }
+            ],
+            chart: { xKey: 'T', xLabel: 'T', min: 0.2, max: 4 },
+            compute: (values) => 1 / Math.max(values.T ?? 1, 0.1),
+            visualization: { type: 'wave', label: 'Signal wave' }
+        };
+    }
+
+    if (/n=.*f.*z.*60/.test(normalized)) {
+        return {
+            title: 'Rotational speed',
+            description: 'See how frequency and tooth count drive rotational speed.',
+            outputLabel: 'n',
+            inputs: [
+                { key: 'f', label: 'f', min: 1, max: 200, step: 1, unit: 'Hz', defaultValue: 20 },
+                { key: 'z', label: 'z', min: 1, max: 120, step: 1, defaultValue: 20 }
+            ],
+            chart: { xKey: 'f', xLabel: 'f', min: 1, max: 200 },
+            compute: (values) => ((values.f ?? 1) / Math.max(values.z ?? 1, 1)) * 60,
+            visualization: { type: 'rotation', label: 'Rotation' }
+        };
+    }
+
     if (normalized.includes('S=k_B\\ln\\Omega') || normalized.includes('S=k_{B}\\ln\\Omega')) {
         return {
             title: 'Entropy growth',
@@ -215,6 +213,26 @@ const buildSimulationModel = (item: FormulaItem): SimulationModel => {
                     detail: `dS ${ok ? '>=' : '<'} deltaQ/T (${formatNumeric(dS)} vs ${formatNumeric(ratio)})`
                 };
             }
+        };
+    }
+
+    if (/sin|\\sin/.test(normalized) && /t/.test(normalized)) {
+        return {
+            title: 'Signal wave',
+            description: 'Adjust amplitude and frequency to shape the waveform.',
+            outputLabel: 'v(t)',
+            inputs: [
+                { key: 'A', label: 'A', min: 0.5, max: 5, step: 0.1, defaultValue: 1 },
+                { key: 'f', label: 'f', min: 0.5, max: 6, step: 0.1, unit: 'Hz', defaultValue: 2 }
+            ],
+            chart: { xKey: 't', xLabel: 't', min: 0, max: 1 },
+            compute: (values) => {
+                const amplitude = values.A ?? 1;
+                const frequency = values.f ?? 1;
+                const t = values.t ?? 0;
+                return amplitude * Math.sin(2 * Math.PI * frequency * t);
+            },
+            visualization: { type: 'wave', label: 'Signal wave' }
         };
     }
 
@@ -284,6 +302,172 @@ const buildChartData = (model: SimulationModel, values: Record<string, number>) 
         xMin: min,
         xMax: max
     };
+};
+
+const WaveVisualization = ({ frequency, label }: { frequency: number; label?: string }) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const width = 260;
+        const height = 120;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        let frameId: number;
+        const draw = (time: number) => {
+            const t = time / 1000;
+            const freq = Math.max(frequency, 0.2);
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            const cycles = 2;
+            for (let x = 0; x <= width; x += 1) {
+                const phase = 2 * Math.PI * (cycles * (x / width) + freq * t);
+                const y = height / 2 + Math.sin(phase) * (height * 0.32);
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+
+            const dotX = width * 0.75;
+            const dotPhase = 2 * Math.PI * (cycles * (dotX / width) + freq * t);
+            const dotY = height / 2 + Math.sin(dotPhase) * (height * 0.32);
+            ctx.fillStyle = '#22d3ee';
+            ctx.beginPath();
+            ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            frameId = requestAnimationFrame(draw);
+        };
+
+        frameId = requestAnimationFrame(draw);
+        return () => cancelAnimationFrame(frameId);
+    }, [frequency]);
+
+    return (
+        <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {label || 'Waveform'}
+            </div>
+            <div className="mt-2 flex justify-center">
+                <canvas ref={canvasRef} />
+            </div>
+        </div>
+    );
+};
+
+const RotationVisualization = ({ rpm, label }: { rpm: number; label?: string }) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const width = 220;
+        const height = 140;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        let frameId: number;
+        const draw = (time: number) => {
+            const t = time / 1000;
+            const safeRpm = Math.max(rpm, 5);
+            const angle = t * (safeRpm / 60) * Math.PI * 2;
+            const centerX = width / 2;
+            const centerY = height / 2 + 6;
+            const radius = 46;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(
+                centerX + Math.cos(angle) * radius,
+                centerY + Math.sin(angle) * radius
+            );
+            ctx.stroke();
+
+            ctx.fillStyle = '#22d3ee';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            frameId = requestAnimationFrame(draw);
+        };
+
+        frameId = requestAnimationFrame(draw);
+        return () => cancelAnimationFrame(frameId);
+    }, [rpm]);
+
+    return (
+        <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {label || 'Rotation'}
+            </div>
+            <div className="mt-2 flex justify-center">
+                <canvas ref={canvasRef} />
+            </div>
+        </div>
+    );
+};
+
+const VisualizationPanel = ({
+    model,
+    values,
+    outputValue
+}: {
+    model: SimulationModel;
+    values: Record<string, number>;
+    outputValue: number;
+}) => {
+    if (!model.visualization) return null;
+    if (model.visualization.type === 'rotation') {
+        return <RotationVisualization rpm={outputValue} label={model.visualization.label} />;
+    }
+    const frequency =
+        (values.f ??
+            (values.T ? 1 / Math.max(values.T, 0.1) : undefined) ??
+            (values['\\omega'] ? values['\\omega'] / (2 * Math.PI) : undefined) ??
+            outputValue) ||
+        1;
+    return <WaveVisualization frequency={Number(frequency)} label={model.visualization.label} />;
 };
 
 const SimulationPanel = ({
@@ -375,6 +559,7 @@ const SimulationPanel = ({
                             <span className="text-lg font-semibold text-slate-900">{formatNumeric(outputValue)}</span>
                         </div>
                     </div>
+                    <VisualizationPanel model={model} values={resolvedValues} outputValue={outputValue} />
                     {evaluation && (
                         <div
                             className={`rounded-lg border px-3 py-2 text-xs ${evaluation.ok
@@ -441,15 +626,335 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
     const effectiveFileName = (fileName !== 'Lecture_Notes_Ch4.pdf' && fileName) ? fileName : (activeSource?.name || fileName);
 
     const [viewMode, setViewMode] = useState<'extraction' | 'slides'>('extraction');
-    const [formulas, setFormulas] = useState<FormulaItem[]>(MOCK_FORMULAS);
+    const isControlled = formulasProp !== undefined;
+    const [formulas, setFormulas] = useState<FormulaItem[]>(formulasProp ?? []);
     const [activeSimulationId, setActiveSimulationId] = useState<string | null>(null);
     const [simulationValues, setSimulationValues] = useState<Record<string, Record<string, number>>>({});
+    const [isAutoSimulating, setIsAutoSimulating] = useState(false);
+    const autoSimPhaseRef = useRef(0);
+    const [isAutoExtracting, setIsAutoExtracting] = useState(false);
+    const autoExtractKeyRef = useRef<string | null>(null);
+    const isBusy = isLoading || isAutoExtracting;
+
+    const FALLBACK_DEFINITION = 'Definition not found in document.';
 
     useEffect(() => {
-        if (formulasProp) {
-            setFormulas(formulasProp);
+        if (isControlled) {
+            setFormulas(formulasProp ?? []);
         }
-    }, [formulasProp]);
+    }, [formulasProp, isControlled]);
+
+    const normalizeFormulaItem = (item: any, index: number): FormulaItem | null => {
+        const variables = Array.isArray(item?.variables)
+            ? item.variables
+                  .map((variable: any) => ({
+                      symbol: String(variable?.symbol || variable?.name || '').trim(),
+                      definition: String(variable?.definition || variable?.meaning || '').trim(),
+                      unit: variable?.unit ? String(variable.unit).trim() : undefined
+                  }))
+                  .filter((variable: any) => variable.symbol && variable.definition)
+            : [];
+        const latex = String(item?.latex || item?.equation || item?.formula || '').trim();
+        if (!latex) return null;
+        return {
+            id: item?.id ? String(item.id) : `${index + 1}`,
+            label: item?.label || item?.title || undefined,
+            page: typeof item?.page === 'number' ? item.page : item?.pageNumber,
+            latex,
+            variables,
+            status: item?.status === 'unknown' ? 'unknown' : 'verified'
+        };
+    };
+
+    const normalizeFormulaItems = (items: any[]): FormulaItem[] =>
+        items.map((item, index) => normalizeFormulaItem(item, index)).filter(Boolean) as FormulaItem[];
+
+    const sanitizeJson = (value: string) => value.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+
+    const parseFormulaResponse = (raw: string): FormulaItem[] => {
+        const cleaned = raw.replace(/```json/gi, '```').replace(/```/g, '').trim();
+        const startArr = cleaned.indexOf('[');
+        const startObj = cleaned.indexOf('{');
+        let jsonPayload = cleaned;
+        if (startArr !== -1 && (startArr < startObj || startObj === -1)) {
+            const endArr = cleaned.lastIndexOf(']');
+            if (endArr !== -1) {
+                jsonPayload = cleaned.slice(startArr, endArr + 1);
+            }
+        } else if (startObj !== -1) {
+            const endObj = cleaned.lastIndexOf('}');
+            if (endObj !== -1) {
+                jsonPayload = cleaned.slice(startObj, endObj + 1);
+            }
+        }
+        try {
+            const parsed = JSON.parse(jsonPayload);
+            if (Array.isArray(parsed)) {
+                return normalizeFormulaItems(parsed);
+            }
+            if (parsed && Array.isArray(parsed.formulas)) {
+                return normalizeFormulaItems(parsed.formulas);
+            }
+            return [];
+        } catch {
+            const parsed = JSON.parse(sanitizeJson(jsonPayload));
+            if (Array.isArray(parsed)) {
+                return normalizeFormulaItems(parsed);
+            }
+            if (parsed && Array.isArray(parsed.formulas)) {
+                return normalizeFormulaItems(parsed.formulas);
+            }
+            return [];
+        }
+    };
+
+    const getFormulaKey = (item: FormulaItem) => item.latex;
+
+    const mergeFormulaItem = (current: FormulaItem, incoming: FormulaItem): FormulaItem => ({
+        ...current,
+        label: current.label || incoming.label,
+        page: current.page ?? incoming.page,
+        variables: incoming.variables.length > 0 ? incoming.variables : current.variables,
+        status: current.status === 'verified' || incoming.status === 'verified' ? 'verified' : current.status
+    });
+
+    const mergeFormulaItems = (current: FormulaItem[], incoming: FormulaItem[]) => {
+        const map = new Map(current.map((item) => [getFormulaKey(item), item]));
+        incoming.forEach((item) => {
+            const key = getFormulaKey(item);
+            const existing = map.get(key);
+            map.set(key, existing ? mergeFormulaItem(existing, item) : item);
+        });
+        return Array.from(map.values());
+    };
+
+    const extractVariableSymbols = (latex: string): string[] => {
+        const blacklist = new Set([
+            '\\frac',
+            '\\sqrt',
+            '\\ln',
+            '\\log',
+            '\\sin',
+            '\\cos',
+            '\\tan',
+            '\\cdot',
+            '\\times',
+            '\\left',
+            '\\right',
+            '\\sum',
+            '\\int'
+        ]);
+        const tokens = latex.match(/\\[A-Za-z]+|[A-Za-z]+/g) ?? [];
+        const symbols: string[] = [];
+        for (let i = 0; i < tokens.length; i += 1) {
+            const token = tokens[i];
+            if (token.startsWith('\\') && blacklist.has(token)) {
+                continue;
+            }
+            if (token.startsWith('\\') && i + 1 < tokens.length && /^[A-Za-z]+$/.test(tokens[i + 1])) {
+                const combined = `${token} ${tokens[i + 1]}`;
+                symbols.push(combined);
+                i += 1;
+                continue;
+            }
+            if (/^[A-Za-z]+$/.test(token) || token.startsWith('\\')) {
+                symbols.push(token);
+            }
+        }
+        return Array.from(new Set(symbols));
+    };
+
+    const ensureVariableDefinitions = (items: FormulaItem[]): FormulaItem[] =>
+        items.map((item) => {
+            if (item.variables && item.variables.length > 0) return item;
+            const symbols = extractVariableSymbols(item.latex);
+            if (!symbols.length) return item;
+            return {
+                ...item,
+                variables: symbols.map((symbol) => ({
+                    symbol,
+                    definition: FALLBACK_DEFINITION
+                }))
+            };
+        });
+
+    const detectAssignmentText = (text: string) =>
+        /(assignment|problem|question|exercise|worksheet|homework|aufgabe|task|solve)/i.test(text);
+
+    const chunkSourceText = (text: string, chunkSize = 12000) => {
+        const chunks: string[] = [];
+        for (let i = 0; i < text.length; i += chunkSize) {
+            chunks.push(text.slice(i, i + chunkSize));
+        }
+        return chunks;
+    };
+
+    const buildFormulaExtractionPrompt = (chunk: string, isAssignment: boolean, index: number, total: number) => `
+You are a formula extraction engine. Return ONLY JSON.
+
+Output format:
+{
+  "formulas": [
+    {
+      "label": "SHORT LABEL",
+      "page": 4,
+      "latex": "\\\\Delta U = Q - W",
+      "variables": [
+        { "symbol": "\\\\Delta U", "definition": "Change in internal energy" },
+        { "symbol": "Q", "definition": "Heat added to system" }
+      ],
+      "status": "verified"
+    }
+  ]
+}
+
+Rules:
+- Extract every explicit formula in the text.
+- If this is an assignment/problem set, ALSO include formulas required to solve the questions, even if not explicitly written.
+- Use LaTeX for the formula string without surrounding $$.
+- Use "unknown" status for inferred/required formulas.
+- If page number is unknown, omit it.
+- Provide variable definitions from the text when possible. If missing, use "${FALLBACK_DEFINITION}".
+- Keep latex and symbols precise (no prose).
+
+Context:
+- File: ${effectiveFileName || 'Document'}
+- Chunk: ${index + 1} of ${total}
+- Assignment mode: ${isAssignment ? 'yes' : 'no'}
+
+Content:
+${chunk}
+`;
+
+    const extractFormulasFromText = async (sourceText: string) => {
+        if (!sourceText.trim()) return [];
+        const isAssignment = detectAssignmentText(sourceText);
+        const chunks = chunkSourceText(sourceText, 12000);
+        let combined: FormulaItem[] = [];
+
+        for (let i = 0; i < chunks.length; i += 1) {
+            const prompt = buildFormulaExtractionPrompt(chunks[i], isAssignment, i, chunks.length);
+            try {
+                const raw = await generateTextContent(prompt, {
+                    model: 'gemini-3-pro-preview',
+                    maxOutputTokens: 4096
+                });
+                const parsed = parseFormulaResponse(raw);
+                if (parsed.length > 0) {
+                    combined = mergeFormulaItems(combined, parsed);
+                }
+            } catch (error) {
+                console.warn('Formula extraction chunk failed:', error);
+            }
+            setFormulas(ensureVariableDefinitions(combined));
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+
+        return ensureVariableDefinitions(combined);
+    };
+
+    const extractFormulasFromPdfPages = async (pdfFile: File) => {
+        const pages = await extractPDFPages(pdfFile);
+        if (!pages.length) return [];
+
+        let combined: FormulaItem[] = [];
+        for (let index = 0; index < pages.length; index += 1) {
+            const dataUrl = pages[index];
+            const base64 = dataUrl.split(',')[1] || dataUrl;
+            const prompt = `
+Extract ALL formulas from this PDF page image and return ONLY JSON.
+
+Output format:
+{
+  "formulas": [
+    {
+      "label": "SHORT LABEL",
+      "page": ${index + 1},
+      "latex": "\\\\Delta U = Q - W",
+      "variables": [
+        { "symbol": "\\\\Delta U", "definition": "Change in internal energy" },
+        { "symbol": "Q", "definition": "Heat added to system" }
+      ],
+      "status": "verified"
+    }
+  ]
+}
+
+Rules:
+- Extract every explicit formula visible on the page.
+- If the page contains assignment questions, ALSO include formulas required to solve them.
+- Use LaTeX for the formula string without surrounding $$.
+- Use "unknown" status for inferred/required formulas.
+- If a definition is missing, use "${FALLBACK_DEFINITION}".
+`;
+            try {
+                const raw = await generateVisionContent(prompt, base64, 'image/png', { model: 'gemini-3-pro-preview' });
+                const parsed = parseFormulaResponse(raw).map((item) => ({
+                    ...item,
+                    page: item.page ?? index + 1
+                }));
+                combined = mergeFormulaItems(combined, parsed);
+            } catch (error) {
+                console.warn('Vision extraction failed for page', index + 1, error);
+            }
+            setFormulas(ensureVariableDefinitions(combined));
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+
+        return ensureVariableDefinitions(combined);
+    };
+
+    useEffect(() => {
+        if (isControlled) return;
+        const key = [
+            effectiveFileName || 'unknown',
+            effectiveFileContent?.length || 0,
+            effectiveFileData ? effectiveFileData.data.length : 0
+        ].join(':');
+        if (autoExtractKeyRef.current === key) return;
+        autoExtractKeyRef.current = key;
+
+        const run = async () => {
+            setIsAutoExtracting(true);
+            setFormulas([]);
+
+            if (effectiveFileContent?.trim()) {
+                await extractFormulasFromText(effectiveFileContent);
+                setIsAutoExtracting(false);
+                return;
+            }
+
+            if (effectiveFileData?.mimeType === 'application/pdf') {
+                const file = new File(
+                    [Uint8Array.from(atob(effectiveFileData.data), (c) => c.charCodeAt(0))],
+                    effectiveFileName || 'document.pdf',
+                    { type: effectiveFileData.mimeType }
+                );
+                const extracted = await extractTextFromPdf(file, 12, true);
+                if (extracted?.trim()) {
+                    await extractFormulasFromText(extracted);
+                } else {
+                    await extractFormulasFromPdfPages(file);
+                }
+                setIsAutoExtracting(false);
+                return;
+            }
+
+            if (effectiveFileData?.mimeType?.startsWith('image/')) {
+                const prompt = 'Extract all readable text from this image. Preserve formulas in LaTeX where possible.';
+                const extracted = await generateVisionContent(prompt, effectiveFileData.data, effectiveFileData.mimeType, {
+                    model: 'gemini-3-pro-preview'
+                });
+                if (extracted?.trim()) {
+                    await extractFormulasFromText(extracted);
+                }
+            }
+
+            setIsAutoExtracting(false);
+        };
+
+        void run();
+    }, [effectiveFileContent, effectiveFileData, effectiveFileName, isControlled]);
 
     useEffect(() => {
         if (!formulas.length) return;
@@ -475,13 +980,24 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
         return map;
     }, [formulas]);
 
+    const simulationWindowRef = useRef<HTMLDivElement | null>(null);
+
     const handleSimulateToggle = (item: FormulaItem) => {
-        setActiveSimulationId((prev) => (prev === item.id ? null : item.id));
+        const isSame = activeSimulationId === item.id;
+        if (isSame) {
+            setActiveSimulationId(null);
+            setIsAutoSimulating(false);
+            return;
+        }
+        autoSimPhaseRef.current = 0;
+        setActiveSimulationId(item.id);
+        setIsAutoSimulating(true);
         setSimulationValues((prev) => {
             if (prev[item.id]) return prev;
             const model = simulationModels.get(item.id) ?? buildSimulationModel(item);
             return { ...prev, [item.id]: buildSimulationDefaults(model) };
         });
+        simulationWindowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     const handleSimulationValueChange = (itemId: string, key: string, value: number) => {
@@ -491,7 +1007,47 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
         }));
     };
 
+    useEffect(() => {
+        if (!isAutoSimulating || !activeSimulationId) return;
+        const model = simulationModels.get(activeSimulationId);
+        if (!model) return;
+        const { xKey, min, max } = model.chart;
+        if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
+
+        let frameId: number;
+        const range = max - min;
+
+        const animate = () => {
+            autoSimPhaseRef.current += 0.02;
+            const progress = (Math.sin(autoSimPhaseRef.current) + 1) / 2;
+            const value = min + range * progress;
+            setSimulationValues((prev) => {
+                const existing = prev[activeSimulationId] ?? buildSimulationDefaults(model);
+                return {
+                    ...prev,
+                    [activeSimulationId]: {
+                        ...existing,
+                        [xKey]: Number(value.toFixed(2))
+                    }
+                };
+            });
+            frameId = requestAnimationFrame(animate);
+        };
+
+        frameId = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(frameId);
+    }, [activeSimulationId, isAutoSimulating, simulationModels]);
+
     const sourcePreview = useMemo(() => {
+        if (effectiveFileData?.mimeType === 'application/pdf') {
+            return (
+                <iframe
+                    title="Source PDF"
+                    className="h-full w-full rounded-lg border border-slate-200 bg-white"
+                    src={`data:${effectiveFileData.mimeType};base64,${effectiveFileData.data}`}
+                />
+            );
+        }
         if (sourceMarkdown) {
             return (
                 <div className="h-full w-full overflow-auto rounded-lg border border-slate-200 bg-white p-8 text-slate-700">
@@ -517,15 +1073,6 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
                         {sourceMarkdown}
                     </ReactMarkdown>
                 </div>
-            );
-        }
-        if (effectiveFileData?.mimeType === 'application/pdf') {
-            return (
-                <iframe
-                    title="Source PDF"
-                    className="h-full w-full rounded-lg border border-slate-200 bg-white"
-                    src={`data:${effectiveFileData.mimeType};base64,${effectiveFileData.data}`}
-                />
             );
         }
         if (effectiveFileData?.mimeType?.startsWith('image/')) {
@@ -559,7 +1106,7 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
             ''
         ];
 
-        if (isLoading) {
+        if (isBusy) {
             return [
                 ...headerLines,
                 '---',
@@ -603,7 +1150,7 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
         });
 
         return [...headerLines, ...slides].join('\n---\n');
-    }, [fileName, formulas, hasFormulas, isLoading]);
+    }, [fileName, formulas, hasFormulas, isBusy]);
 
     const remarkSlideDoc = useMemo(() => {
         const slideSource = JSON.stringify(formulaSlidesMarkdown);
@@ -648,16 +1195,51 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
       }
       .remark-slide-content strong { color: #f8fafc; }
     </style>
-    <script>
-      MathJax = {
-        tex: { inlineMath: [['$', '$'], ['\\\\(', '\\\\)']], displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']] },
-        svg: { fontCache: 'global' }
+      <script>
+        (function () {
+          try {
+            void window.localStorage;
+          } catch (error) {
+            const storage = {
+              getItem: () => null,
+              setItem: () => undefined,
+              removeItem: () => undefined,
+              clear: () => undefined
+            };
+            try {
+              Object.defineProperty(window, 'localStorage', { value: storage });
+            } catch (defineError) {
+              window.localStorage = storage;
+            }
+          }
+        })();
+      </script>
+      <script>
+        MathJax = {
+          tex: { inlineMath: [['$', '$'], ['\\\\(', '\\\\)']], displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']] },
+          svg: { fontCache: 'none' },
+          options: { enableMenu: false }
+        };
+      </script>
+      <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+  <script>
+    (function () {
+      const wrap = (fn) => function () {
+        try {
+          return fn.apply(this, arguments);
+        } catch (error) {
+          return null;
+        }
       };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
-  </head>
-  <body>
-    <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+      if (window.history) {
+        window.history.replaceState = wrap(window.history.replaceState);
+        window.history.pushState = wrap(window.history.pushState);
+      }
+    })();
+  </script>
+    </head>
+    <body>
+      <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
     <script>
       var slideshow = remark.create({ source: ${slideSource}, ratio: '16:9' });
       var typeset = function () {
@@ -713,7 +1295,7 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
 
                     <div className="h-6 w-px bg-slate-200 mx-1" />
 
-                    {isLoading ? (
+                    {isBusy ? (
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-full border border-amber-100 text-xs font-medium">
                             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                             Analyzing...
@@ -825,6 +1407,69 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
                         </div>
                     </div>
 
+                    {viewMode === 'extraction' && (
+                        <div className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-6 py-4">
+                            <div ref={simulationWindowRef} className="rounded-2xl border border-cyan-200 bg-white shadow-sm">
+                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                                    <div>
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-cyan-600">
+                                            Simulation Window
+                                        </div>
+                                        <div className="text-sm font-semibold text-slate-800">
+                                            {formulas.find((item) => item.id === activeSimulationId)?.label || 'Select a formula to simulate'}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsAutoSimulating((prev) => !prev)}
+                                            disabled={!activeSimulationId}
+                                            className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                                                isAutoSimulating
+                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                    : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                                            } ${!activeSimulationId ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            {isAutoSimulating ? 'Auto Mode On' : 'Auto Mode'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setActiveSimulationId(null);
+                                                setIsAutoSimulating(false);
+                                            }}
+                                            disabled={!activeSimulationId}
+                                            className={`rounded-full border border-slate-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-slate-50 ${
+                                                !activeSimulationId ? 'opacity-60 cursor-not-allowed' : ''
+                                            }`}
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="max-h-[320px] overflow-auto p-4">
+                                    {activeSimulationId ? (
+                                        (() => {
+                                            const model = simulationModels.get(activeSimulationId);
+                                            if (!model) return null;
+                                            return (
+                                                <SimulationPanel
+                                                    model={model}
+                                                    values={simulationValues[activeSimulationId] ?? {}}
+                                                    onChange={(key, value) => handleSimulationValueChange(activeSimulationId, key, value)}
+                                                />
+                                            );
+                                        })()
+                                    ) : (
+                                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                                            Click “Simulate” on any formula to render the animated panel here.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex-1 overflow-auto p-6 space-y-4">
                         {viewMode === 'slides' ? (
                             <div className="h-full min-h-[520px] rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -832,13 +1477,13 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
                                     key={remarkSlideDoc}
                                     title="Formula Slide Deck"
                                     className="h-full w-full"
-                                    sandbox="allow-scripts allow-same-origin"
+                                    sandbox="allow-scripts"
                                     srcDoc={remarkSlideDoc}
                                 />
                             </div>
                         ) : (
                             <>
-                                {!hasFormulas && !isLoading && (
+                                {!hasFormulas && !isBusy && (
                                     <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
                                         No formulas detected yet. Try uploading a clearer document or add a topic.
                                     </div>
@@ -891,35 +1536,33 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
                                                     </div>
                                                 </div>
 
-                                                {item.status !== 'unknown' && (
-                                                    <div className="mb-4">
-                                                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-                                                            Variables
-                                                        </h4>
-                                                        <div className="space-y-2">
-                                                            {(item.variables || []).length > 0 ? (
-                                                                (item.variables || []).map((v, i) => (
-                                                                    <div key={i} className="flex items-start gap-3 text-sm">
-                                                                        <span className="font-bold text-cyan-600 min-w-[24px] text-right font-serif">
-                                                                            <ReactMarkdown
-                                                                                remarkPlugins={[remarkMath]}
-                                                                                rehypePlugins={[rehypeKatex]}
-                                                                                components={{
-                                                                                    p: ({ node, ...props }) => <span {...props} />
-                                                                                }}
-                                                                            >
-                                                                                {`$${v.symbol}$`}
-                                                                            </ReactMarkdown>
-                                                                        </span>
-                                                                        <span className="text-slate-600">{v.definition}</span>
-                                                                    </div>
-                                                                ))
-                                                            ) : (
-                                                                <div className="text-sm text-slate-400 italic">No variables detected</div>
-                                                            )}
-                                                        </div>
+                                                <div className="mb-4">
+                                                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                                                        Variables
+                                                    </h4>
+                                                    <div className="space-y-2">
+                                                        {(item.variables || []).length > 0 ? (
+                                                            (item.variables || []).map((v, i) => (
+                                                                <div key={i} className="flex items-start gap-3 text-sm">
+                                                                    <span className="font-bold text-cyan-600 min-w-[24px] text-right font-serif">
+                                                                        <ReactMarkdown
+                                                                            remarkPlugins={[remarkMath]}
+                                                                            rehypePlugins={[rehypeKatex]}
+                                                                            components={{
+                                                                                p: ({ node, ...props }) => <span {...props} />
+                                                                            }}
+                                                                        >
+                                                                            {`$${v.symbol}$`}
+                                                                        </ReactMarkdown>
+                                                                    </span>
+                                                                    <span className="text-slate-600">{v.definition}</span>
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-sm text-slate-400 italic">No variables detected</div>
+                                                        )}
                                                     </div>
-                                                )}
+                                                </div>
 
                                                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                                                     <div className="flex items-center gap-2 bg-slate-50/50 px-2 py-1 rounded">
@@ -944,13 +1587,6 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
                                                     </div>
                                                 </div>
 
-                                                {isSimulating && simulationModel && (
-                                                    <SimulationPanel
-                                                        model={simulationModel}
-                                                        values={simulationValues[item.id] ?? {}}
-                                                        onChange={(key, value) => handleSimulationValueChange(item.id, key, value)}
-                                                    />
-                                                )}
                                             </div>
 
                                             {item.status === 'unknown' && (

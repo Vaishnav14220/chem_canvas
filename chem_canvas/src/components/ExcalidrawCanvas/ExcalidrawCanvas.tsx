@@ -77,6 +77,7 @@ interface ExcalidrawCanvasProps {
   className?: string;
   title?: string;
   embedded?: boolean; // When true, renders inline without modal wrapper
+  onElementsChange?: (elements: any[], appState: any) => void;
 }
 
 // Track position for adding new text elements
@@ -215,7 +216,7 @@ const wrapText = (text: string, maxChars: number): string => {
 };
 
 export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvasProps>(
-  ({ isOpen, onClose, className = '', title = 'Gemini Live Canvas', embedded = false }, ref) => {
+  ({ isOpen, onClose, className = '', title = 'Gemini Live Canvas', embedded = false, onElementsChange }, ref) => {
     const excalidrawAPIRef = useRef<ExcalidrawAPI | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [elementsCount, setElementsCount] = useState(0);
@@ -1103,6 +1104,10 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
       console.log('[ExcalidrawCanvas] Excalidraw API ready');
     }, []);
 
+    const handleCanvasChange = useCallback((elements: any[], appState: any) => {
+      onElementsChange?.(elements, appState);
+    }, [onElementsChange]);
+
     // Shared Excalidraw component
     const ExcalidrawComponent = (
       <Suspense
@@ -1117,6 +1122,7 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
       >
         <Excalidraw
           excalidrawAPI={handleExcalidrawAPIReady}
+          onChange={handleCanvasChange}
           theme="light"
           initialData={{
             appState: {
@@ -1152,6 +1158,7 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
       >
         <Excalidraw
           excalidrawAPI={handleExcalidrawAPIReady}
+          onChange={handleCanvasChange}
           theme="light"
           initialData={{
             appState: {

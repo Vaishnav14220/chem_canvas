@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight, ChevronLeft, X, GitBranch, FileText, CheckCircle } from 'lucide-react';
-import { streamTextContent, annotateImageWithFeedback } from '../services/geminiService';
+import { generateTextContent, generateVisionContent, streamTextContent, annotateImageWithFeedback } from '../services/geminiService';
 import { extractTextFromPdf } from '../utils/pdfTextExtractor';
+import { extractPDFPages } from '../services/ocrService';
 import {
     generateStudyPlanTree,
     expandTreeNode,
@@ -188,13 +189,24 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
     const normalizeFormulaItems = (items: any[]): FormulaItem[] =>
         items.map((item, index) => normalizeFormulaItem(item, index)).filter(Boolean) as FormulaItem[];
 
+    const FALLBACK_DEFINITION = 'Definition not found in document.';
+
+    const getVariableScore = (variables: FormulaItem['variables']) =>
+        variables.reduce((score, variable) => {
+            if (!variable.definition) return score;
+            if (variable.definition.trim().toLowerCase() === FALLBACK_DEFINITION.toLowerCase()) return score;
+            return score + 1;
+        }, 0);
+
     const getFormulaKey = (item: FormulaItem) => item.latex;
 
     const mergeFormulaItem = (current: FormulaItem, incoming: FormulaItem): FormulaItem => ({
         ...current,
         label: current.label || incoming.label,
         page: current.page ?? incoming.page,
-        variables: current.variables.length ? current.variables : incoming.variables,
+        variables: getVariableScore(incoming.variables) > getVariableScore(current.variables)
+            ? incoming.variables
+            : current.variables,
         status: current.status === 'verified' || incoming.status === 'verified' ? 'verified' : current.status
     });
 
@@ -210,6 +222,7 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
 
     const parseFormulaResponse = (raw: string): FormulaItem[] => {
         const cleaned = raw.replace(/```json/gi, '```').replace(/```/g, '').trim();
+        const sanitizeJson = (value: string) => value.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
         const startArr = cleaned.indexOf('[');
         const startObj = cleaned.indexOf('{');
         let jsonPayload = cleaned;
@@ -224,14 +237,25 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
                 jsonPayload = cleaned.slice(startObj, endObj + 1);
             }
         }
-        const parsed = JSON.parse(jsonPayload);
-        if (Array.isArray(parsed)) {
-            return normalizeFormulaItems(parsed);
+        try {
+            const parsed = JSON.parse(jsonPayload);
+            if (Array.isArray(parsed)) {
+                return normalizeFormulaItems(parsed);
+            }
+            if (parsed && Array.isArray(parsed.formulas)) {
+                return normalizeFormulaItems(parsed.formulas);
+            }
+            return [];
+        } catch {
+            const parsed = JSON.parse(sanitizeJson(jsonPayload));
+            if (Array.isArray(parsed)) {
+                return normalizeFormulaItems(parsed);
+            }
+            if (parsed && Array.isArray(parsed.formulas)) {
+                return normalizeFormulaItems(parsed.formulas);
+            }
+            return [];
         }
-        if (parsed && Array.isArray(parsed.formulas)) {
-            return normalizeFormulaItems(parsed.formulas);
-        }
-        return [];
     };
 
     const extractFormulaCandidatesFromText = (text: string): string[] => {
@@ -270,6 +294,56 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
         return Array.from(candidates);
     };
 
+    const extractVariableSymbols = (latex: string): string[] => {
+        const blacklist = new Set([
+            '\\frac',
+            '\\sqrt',
+            '\\ln',
+            '\\log',
+            '\\sin',
+            '\\cos',
+            '\\tan',
+            '\\cdot',
+            '\\times',
+            '\\left',
+            '\\right',
+            '\\sum',
+            '\\int'
+        ]);
+        const tokens = latex.match(/\\[A-Za-z]+|[A-Za-z]+/g) ?? [];
+        const symbols: string[] = [];
+        for (let i = 0; i < tokens.length; i += 1) {
+            const token = tokens[i];
+            if (token.startsWith('\\') && blacklist.has(token)) {
+                continue;
+            }
+            if (token.startsWith('\\') && i + 1 < tokens.length && /^[A-Za-z]+$/.test(tokens[i + 1])) {
+                const combined = `${token} ${tokens[i + 1]}`;
+                symbols.push(combined);
+                i += 1;
+                continue;
+            }
+            if (/^[A-Za-z]+$/.test(token) || token.startsWith('\\')) {
+                symbols.push(token);
+            }
+        }
+        return Array.from(new Set(symbols));
+    };
+
+    const ensureVariableDefinitions = (items: FormulaItem[]): FormulaItem[] =>
+        items.map((item) => {
+            if (item.variables && item.variables.length > 0) return item;
+            const symbols = extractVariableSymbols(item.latex);
+            if (!symbols.length) return item;
+            return {
+                ...item,
+                variables: symbols.map((symbol) => ({
+                    symbol,
+                    definition: FALLBACK_DEFINITION
+                }))
+            };
+        });
+
     const buildFormulaItemsFromText = (text: string): FormulaItem[] =>
         extractFormulaCandidatesFromText(text).map((latex, index) => ({
             id: `f-${index + 1}`,
@@ -279,86 +353,58 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
             status: 'unknown'
         }));
 
-    const extractSourceMarkdown = async (): Promise<string | null> => {
-        if (fileContent) {
-            setSourceMarkdown(fileContent);
-            return fileContent;
+    const detectAssignmentText = (text: string) =>
+        /(assignment|problem|question|exercise|worksheet|homework|aufgabe|task|solve)/i.test(text);
+
+    const chunkSourceText = (text: string, chunkSize = 12000) => {
+        const chunks: string[] = [];
+        for (let i = 0; i < text.length; i += chunkSize) {
+            chunks.push(text.slice(i, i + chunkSize));
+        }
+        return chunks;
+    };
+
+    const extractSourceTextForFormulas = async (): Promise<string> => {
+        if (fileContent?.trim()) {
+            return fileContent.trim();
         }
         if (!fileData) {
-            setSourceMarkdown(null);
-            return null;
+            return '';
         }
         setIsExtractingSource(true);
-        setLoadingStep('Extracting notes...');
-        setThoughtLog(prev => [...prev, 'Extracting document into markdown...']);
-
-        if (fileData.mimeType === 'application/pdf') {
-            try {
+        try {
+            if (fileData.mimeType === 'application/pdf') {
+                setLoadingStep('Reading PDF text...');
                 const file = base64ToFile(fileData.data, fileData.mimeType, fileName || 'document.pdf');
                 const extracted = await withTimeout(
-                    extractTextFromPdf(file, 6, true),
-                    30000,
+                    extractTextFromPdf(file, 12, true),
+                    45000,
                     'PDF text extraction'
                 );
-                if (extracted && extracted.trim().length > 0) {
-                    const markdown = toMarkdownFromExtractedText(extracted);
-                    setSourceMarkdown(markdown);
-                    return markdown;
-                }
-            } catch (error) {
-                console.warn('PDF text extraction failed, falling back to Gemini markdown extraction.', error);
+                return extracted?.trim() ?? '';
             }
-        }
-
-        const prompt = `
-Extract the uploaded document into clean Markdown.
-- Preserve headings and section structure.
-- Use LaTeX for formulas (inline $...$ or block $$...$$).
-- Keep paragraphs readable and concise.
-- Return ONLY Markdown (no code fences).
-
-Topic: ${topic || fileName || 'General'}
-`;
-
-        let accumulated = '';
-        try {
-            await withTimeout(
-                streamTextContent(
-                    prompt,
-                    chunk => {
-                        accumulated += chunk;
-                    },
-                    {
-                        model: 'gemini-3-pro-preview',
-                        thinking: 'high',
-                        inlineData: fileData || undefined
-                    }
-                ),
-                45000,
-                'Markdown extraction'
-            );
-            const cleaned = stripMarkdownFence(accumulated);
-            setSourceMarkdown(cleaned || null);
-            return cleaned || null;
+            if (fileData.mimeType.startsWith('image/')) {
+                setLoadingStep('Reading image text...');
+                const prompt = `Extract all readable text from this image. Preserve formulas in LaTeX where possible.`;
+                const extracted = await withTimeout(
+                    generateVisionContent(prompt, fileData.data, fileData.mimeType, {
+                        model: 'gemini-3-pro-preview'
+                    }),
+                    45000,
+                    'Image text extraction'
+                );
+                return extracted?.trim() ?? '';
+            }
         } catch (error) {
-            console.error('Markdown extraction failed:', error);
-            setThoughtLog(prev => [...prev, 'Markdown extraction failed.']);
-            setSourceMarkdown(null);
-            return null;
+            console.error('Source text extraction failed:', error);
         } finally {
             setIsExtractingSource(false);
         }
+        return '';
     };
 
-    const extractFormulasFromSource = async (sourceText?: string | null) => {
-        setIsExtractingFormulas(true);
-        setLoadingStep('Extracting formulas...');
-        setThoughtLog(prev => [...prev, 'Extracting formulas from source...']);
-        const seenFormulaKeys = new Set<string>();
-        let streamIndex = 0;
-
-        const prompt = `
-You are extracting formulas from study material. Return ONLY JSON (no markdown).
+    const buildFormulaExtractionPrompt = (chunk: string, isAssignment: boolean, index: number, total: number) => `
+You are a formula extraction engine. Return ONLY JSON.
 
 Output format:
 {
@@ -377,162 +423,170 @@ Output format:
 }
 
 Rules:
-- Include every formula/equation found in the source.
+- Extract every explicit formula in the text.
+- If this is an assignment/problem set, ALSO include formulas required to solve the questions, even if not explicitly written.
 - Use LaTeX for the formula string without surrounding $$.
-- Use "unknown" status if the formula is unclear.
+- Use "unknown" status for inferred/required formulas.
 - If page number is unknown, omit it.
+- Provide variable definitions from the text when possible. If missing, use "${FALLBACK_DEFINITION}".
+- Keep latex and symbols precise (no prose).
 
-Topic: ${topic || fileName || 'General'}
+Context:
+- File: ${fileName || 'Document'}
+- Chunk: ${index + 1} of ${total}
+- Assignment mode: ${isAssignment ? 'yes' : 'no'}
 
-${fileContent ? `Source Content:\n${fileContent.slice(0, 20000)}\n` : ''}
-${sourceText ? `Extract from this markdown:\n${sourceText.slice(0, 20000)}\n` : ''}
+Content:
+${chunk}
 `;
 
-        let accumulated = '';
-        let streamBuffer = '';
-        let scanIndex = 0;
-        let inString = false;
-        let escapeNext = false;
-        const braceStack: number[] = [];
+    const extractFormulasFromText = async (sourceText: string): Promise<FormulaItem[]> => {
+        if (!sourceText.trim()) return [];
+        const isAssignment = detectAssignmentText(sourceText);
+        const chunks = chunkSourceText(sourceText, 12000);
+        let combined: FormulaItem[] = [];
 
-        const addFormulaItem = (item: FormulaItem) => {
-            const key = getFormulaKey(item);
-            if (!seenFormulaKeys.has(key)) {
-                seenFormulaKeys.add(key);
-            }
-            setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], [item]));
-        };
-
-        const ingestParsedValue = (value: any) => {
-            if (!value) return;
-            if (Array.isArray(value)) {
-                value.forEach((entry) => {
-                    const normalized = normalizeFormulaItem(entry, streamIndex++);
-                    if (normalized) addFormulaItem(normalized);
-                });
-                return;
-            }
-            if (Array.isArray(value.formulas)) {
-                value.formulas.forEach((entry: any) => {
-                    const normalized = normalizeFormulaItem(entry, streamIndex++);
-                    if (normalized) addFormulaItem(normalized);
-                });
-                return;
-            }
-            const normalized = normalizeFormulaItem(value, streamIndex++);
-            if (normalized) addFormulaItem(normalized);
-        };
-
-        const tryParseObject = (jsonText: string) => {
-            if (!jsonText.includes('"latex"') && !jsonText.includes('"formulas"')) {
-                return;
-            }
+        for (let i = 0; i < chunks.length; i += 1) {
+            setThoughtLog(prev => [...prev, `Scanning formulas (chunk ${i + 1}/${chunks.length})...`]);
+            setLoadingStep(`Extracting formulas (${i + 1}/${chunks.length})...`);
+            const prompt = buildFormulaExtractionPrompt(chunks[i], isAssignment, i, chunks.length);
             try {
-                const parsed = JSON.parse(jsonText);
-                ingestParsedValue(parsed);
-            } catch {
-                // Ignore partial/invalid JSON segments while streaming
-            }
-        };
-
-        const handleStreamChunk = (chunk: string) => {
-            accumulated += chunk;
-            streamBuffer += chunk;
-
-            for (; scanIndex < streamBuffer.length; scanIndex += 1) {
-                const char = streamBuffer[scanIndex];
-                if (escapeNext) {
-                    escapeNext = false;
-                    continue;
-                }
-                if (char === '\\' && inString) {
-                    escapeNext = true;
-                    continue;
-                }
-                if (char === '"') {
-                    inString = !inString;
-                    continue;
-                }
-                if (inString) continue;
-
-                if (char === '{') {
-                    braceStack.push(scanIndex);
-                    continue;
-                }
-                if (char === '}' && braceStack.length > 0) {
-                    const start = braceStack.pop() as number;
-                    const jsonText = streamBuffer.slice(start, scanIndex + 1);
-                    tryParseObject(jsonText);
-                }
-            }
-        };
-
-        try {
-            await withTimeout(
-                streamTextContent(
-                    prompt,
-                    handleStreamChunk,
-                    {
+                const raw = await withTimeout(
+                    generateTextContent(prompt, {
                         model: 'gemini-3-pro-preview',
-                        thinking: 'high',
-                        inlineData: fileData || undefined
-                    }
-                ),
-                45000,
-                'Formula extraction'
-            );
-
-            let parsed: FormulaItem[] = [];
-            try {
-                parsed = parseFormulaResponse(accumulated);
-            } catch (parseError) {
-                console.warn('Formula JSON parse failed, falling back to markdown extraction.', parseError);
-            }
-
-            if (parsed.length === 0) {
-                const fallbackText = sourceText || sourceMarkdown || fileContent || '';
-                const fallback = fallbackText ? buildFormulaItemsFromText(fallbackText) : [];
-                setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], fallback));
-                if (fallback.length === 0) {
-                    setThoughtLog(prev => [...prev, 'No formulas detected from the source.']);
+                        maxOutputTokens: 4096
+                    }),
+                    45000,
+                    'Formula extraction'
+                );
+                const parsed = parseFormulaResponse(raw);
+                if (parsed.length > 0) {
+                    combined = mergeFormulaItems(combined, parsed);
                 } else {
-                    setThoughtLog(prev => [...prev, 'Gemini response empty or invalid, using markdown-based extraction.']);
-                    setThoughtLog(prev => [...prev, `Extracted ${fallback.length} formulas from markdown.`]);
+                    const fallback = buildFormulaItemsFromText(chunks[i]);
+                    combined = mergeFormulaItems(combined, fallback);
                 }
-            } else {
-                setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], parsed));
-                setThoughtLog(prev => [...prev, `Extracted ${parsed.length} formulas.`]);
+                const nextPreview = ensureVariableDefinitions(combined);
+                setExtractedFormulas(nextPreview);
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                continue;
+            } catch (error) {
+                console.warn('Formula extraction chunk failed:', error);
             }
-        } catch (error) {
-            console.error('Formula extraction failed:', error);
-            setThoughtLog(prev => [...prev, 'Formula extraction failed.']);
-            const fallbackText = sourceText || sourceMarkdown || fileContent || '';
-            setExtractedFormulas(fallbackText ? buildFormulaItemsFromText(fallbackText) : []);
-        } finally {
-            setIsExtractingFormulas(false);
+
+            const fallback = buildFormulaItemsFromText(chunks[i]);
+            combined = mergeFormulaItems(combined, fallback);
+            const nextPreview = ensureVariableDefinitions(combined);
+            setExtractedFormulas(nextPreview);
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+
+        return ensureVariableDefinitions(combined);
+    };
+
+    const extractFormulasFromPdfPages = async (pdfFile: File) => {
+        setThoughtLog(prev => [...prev, 'Rendering PDF pages for vision extraction...']);
+        const pages = await extractPDFPages(pdfFile, (progress, status) => {
+            setLoadingStep(status);
+        });
+        if (!pages.length) {
+            setThoughtLog(prev => [...prev, 'No pages rendered for vision extraction.']);
+            return;
+        }
+
+        for (let index = 0; index < pages.length; index += 1) {
+            setLoadingStep(`Analyzing page ${index + 1}/${pages.length}...`);
+            const dataUrl = pages[index];
+            const base64 = dataUrl.split(',')[1] || dataUrl;
+            const prompt = `
+Extract ALL formulas from this PDF page image and return ONLY JSON.
+
+Output format:
+{
+  "formulas": [
+    {
+      "label": "SHORT LABEL",
+      "page": ${index + 1},
+      "latex": "\\\\Delta U = Q - W",
+      "variables": [
+        { "symbol": "\\\\Delta U", "definition": "Change in internal energy" },
+        { "symbol": "Q", "definition": "Heat added to system" }
+      ],
+      "status": "verified"
+    }
+  ]
+}
+
+Rules:
+- Extract every explicit formula visible on the page.
+- If the page contains assignment questions, ALSO include formulas required to solve them.
+- Use LaTeX for the formula string without surrounding $$.
+- Use "unknown" status for inferred/required formulas.
+- If a definition is missing, use "${FALLBACK_DEFINITION}".
+`;
+            try {
+                const raw = await withTimeout(
+                    generateVisionContent(prompt, base64, 'image/png', { model: 'gemini-3-pro-preview' }),
+                    45000,
+                    'Vision formula extraction'
+                );
+                const parsed = parseFormulaResponse(raw).map((item) => ({
+                    ...item,
+                    page: item.page ?? index + 1
+                }));
+                if (parsed.length > 0) {
+                    setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], ensureVariableDefinitions(parsed)));
+                }
+            } catch (error) {
+                console.warn('Vision extraction failed for page', index + 1, error);
+            }
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
     };
 
     const runFormulaExtractionFlow = async () => {
-        const markdownPromise = extractSourceMarkdown();
-        const seedText = fileContent || '';
-        if (seedText) {
-            const provisional = buildFormulaItemsFromText(seedText);
-            if (provisional.length > 0) {
-                setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], provisional));
-                setThoughtLog(prev => [...prev, `Showing ${provisional.length} formulas from fast scan...`]);
+        setIsExtractingFormulas(true);
+        setExtractedFormulas([]);
+        setLoadingStep('Extracting formulas...');
+        setThoughtLog(prev => [...prev, 'Analyzing document for formulas...']);
+
+        const sourceText = await extractSourceTextForFormulas();
+        if (!sourceText.trim()) {
+            setSourceMarkdown(null);
+            setThoughtLog(prev => [...prev, 'No readable text found in the document.']);
+            if (fileData?.mimeType === 'application/pdf') {
+                setThoughtLog(prev => [...prev, 'Switching to vision-based formula extraction...']);
+                const pdfFile = base64ToFile(fileData.data, fileData.mimeType, fileName || 'document.pdf');
+                await extractFormulasFromPdfPages(pdfFile);
+                setIsExtractingFormulas(false);
+                return;
             }
+            setIsExtractingFormulas(false);
+            return;
         }
 
-        const extractionPromise = extractFormulasFromSource(fileContent);
-        const markdown = await markdownPromise;
-        if (markdown) {
-            const provisional = buildFormulaItemsFromText(markdown);
-            if (provisional.length > 0) {
-                setExtractedFormulas((prev) => mergeFormulaItems(prev ?? [], provisional));
-            }
+        setSourceMarkdown(toMarkdownFromExtractedText(sourceText.slice(0, 20000)));
+        const fastCandidates = buildFormulaItemsFromText(sourceText);
+        if (fastCandidates.length > 0) {
+            setThoughtLog(prev => [...prev, `Quick scan found ${fastCandidates.length} formulas.`]);
+            setExtractedFormulas(ensureVariableDefinitions(fastCandidates));
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
-        await extractionPromise;
+
+        const formulas = await extractFormulasFromText(sourceText);
+        if (formulas.length === 0) {
+            setThoughtLog(prev => [...prev, 'No formulas detected from the source.']);
+        } else {
+            setThoughtLog(prev => [...prev, `Extracted ${formulas.length} formulas.`]);
+        }
+        setExtractedFormulas(formulas);
+
+        if (fileData?.mimeType === 'application/pdf' && (formulas.length === 0 || sourceText.length < 400)) {
+            const pdfFile = base64ToFile(fileData.data, fileData.mimeType, fileName || 'document.pdf');
+            await extractFormulasFromPdfPages(pdfFile);
+        }
+
+        setIsExtractingFormulas(false);
     };
 
     // Animated cursor effect
@@ -1181,6 +1235,24 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                 }
                 setIsStreamingThoughts(false);
             }
+            return;
+        }
+
+        if (isFormulaMode) {
+            setIsToTReviewing(false);
+            const extractionStart = Date.now();
+            setLoadingStep('Extracting formulas...');
+            setThoughtLog(prev => [...prev, 'Extracting source into markdown...']);
+            await runFormulaExtractionFlow();
+            const elapsed = Date.now() - extractionStart;
+            const minViewMs = 0;
+            if (elapsed < minViewMs) {
+                await new Promise(resolve => setTimeout(resolve, minViewMs - elapsed));
+            }
+            setIsGenerating(false);
+            setIsToTGenerating(false);
+            setIsStreamingThoughts(false);
+            setLoadingStep('Complete!');
             return;
         }
 

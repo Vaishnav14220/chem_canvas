@@ -1,10 +1,48 @@
 import { GoogleGenAI } from '@google/genai';
 import { assignRandomApiKey, initializeApiKeys, checkApiKeysInitialized } from '../firebase/apiKeys';
+import { getGeminiPreferences, getPreferredGeminiModel } from '../utils/geminiPreferences';
 
 // Initialize Gemini AI instance
 let genAI: GoogleGenAI | null = null;
 let isInitialized = false;
 let cachedModelName: string | null = null;
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: 'English',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  ja: 'Japanese',
+  zh: 'Chinese',
+  ru: 'Russian',
+  hi: 'Hindi',
+  ar: 'Arabic',
+};
+
+const applyResponsePreferences = (prompt: string) => {
+  const preferences = getGeminiPreferences();
+  const directives: string[] = [];
+
+  if (preferences.language && preferences.language !== 'auto') {
+    const label = LANGUAGE_LABELS[preferences.language] || preferences.language;
+    directives.push(`Respond in ${label}.`);
+  }
+
+  if (preferences.responseStyle === 'concise') {
+    directives.push('Keep the response concise and focused.');
+  }
+  if (preferences.responseStyle === 'detailed') {
+    directives.push('Provide a detailed response with clear explanations.');
+  }
+
+  if (!directives.length) {
+    return prompt;
+  }
+
+  return `${directives.join(' ')}\n\n${prompt}`;
+};
 
 // Helper function to get the best available model
 const getAvailableModel = async (): Promise<string> => {
@@ -119,6 +157,7 @@ Please format your response using proper markdown:
 - Use > for blockquotes when citing sources
 - Use tables when comparing data
 - Structure your response clearly with headers and proper formatting`;
+    const promptWithPreferences = applyResponsePreferences(formattedPrompt);
 
     const config = {
       thinkingConfig: {
@@ -127,13 +166,13 @@ Please format your response using proper markdown:
       },
     };
 
-    const model = modelName || await getAvailableModel();
+    const model = modelName || getPreferredGeminiModel() || await getAvailableModel();
     const contents = [
       {
         role: 'user' as const,
         parts: [
           {
-            text: formattedPrompt,
+            text: promptWithPreferences,
           },
         ],
       },

@@ -6,8 +6,8 @@ declare global {
 if (typeof globalThis.process === 'undefined') {
   globalThis.process = {
     env: {},
-    stdout: { write: () => {} },
-    stderr: { write: () => {} },
+    stdout: { write: () => { } },
+    stderr: { write: () => { } },
     stdin: {},
   };
 }
@@ -15,7 +15,8 @@ if (typeof globalThis.process === 'undefined') {
 if (typeof (globalThis as any).Buffer === 'undefined') {
   (globalThis as any).Buffer = {
     from: (value: any) => value,
+    isBuffer: () => false,
   };
 }
 
-export {};
+export { };

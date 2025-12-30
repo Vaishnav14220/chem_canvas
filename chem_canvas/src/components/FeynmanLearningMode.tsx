@@ -55,8 +55,10 @@ import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { extractTextFromDocument } from '../utils/documentTextExtractor';
 import { addFileToSourceLibrary } from '../utils/sourceLibrary';
+import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
 import { MessageDock, type Character } from './ui/message-dock';
 import { ConnectionState } from './GeminiLive/types';
+import { Button } from './ui/button';
 
 interface FeynmanLearningModeProps {
     topic: string;
@@ -154,10 +156,12 @@ export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
     ];
 
     // Initialize Gemini Live for voice chat
-    const geminiLive = useGeminiLive(voiceChatApiKey, 'en', {
-        systemInstructionOverride: `You are the curious learner in a Feynman session about "${topic}". 
+    const preferredGeminiLanguage = getPreferredGeminiLanguage();
+    const geminiLive = useGeminiLive(voiceChatApiKey, preferredGeminiLanguage, {
+        systemInstructionOverride: `You are the student in a Feynman session about "${topic}". 
 Let the user teach you. Ask short, friendly questions to surface clarity gaps and misconceptions.
-Do not offer help like "How can I assist?" Start by inviting their explanation.
+Avoid affirmations like "Exactly", "Great job", or "That's right" — respond as a learner who needs clarification.
+Do not offer help like "How can I assist?" Start with: "Can you tell me about this topic in your own words?"
 Keep responses conversational, brief, and focused on checking understanding.`
     });
 
@@ -870,66 +874,65 @@ Context: ${recentContext}`;
                                 </div>
 
                                 {/* Record Button - Red pill style */}
-                                <button
+                                <Button
                                     onClick={() => setIsRecording(!isRecording)}
-                                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full transition-colors ${isRecording
-                                        ? 'bg-red-600 text-white'
-                                        : 'bg-red-500 text-white hover:bg-red-600'
-                                        }`}
+                                    variant="outline"
+                                    className={`rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 ${isRecording ? 'ring-2 ring-rose-400/60' : ''}`}
                                 >
                                     <Circle className={`w-3 h-3 ${isRecording ? 'fill-white animate-pulse' : 'fill-white'}`} />
                                     <span className="text-sm font-medium">
                                         {isRecording ? 'Stop' : 'Record Explanation'}
                                     </span>
-                                </button>
+                                </Button>
 
                                 {/* Share to Chat Button */}
-                                <button
+                                <Button
                                     onClick={handleSubmitDrawing}
                                     disabled={isLoading}
-                                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                                    variant="outline"
+                                    className="rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
                                 >
                                     <Share2 className="w-4 h-4" />
                                     <span className="text-sm font-medium">
                                         {isLoading ? 'Sharing...' : 'Share to Chat'}
                                     </span>
-                                </button>
+                                </Button>
 
                                 {/* Show Diagram Button */}
-                                <button
+                                <Button
                                     onClick={handleShowDiagram}
                                     disabled={isLoading}
-                                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50 transition-colors"
+                                    variant="outline"
+                                    className="rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
                                 >
                                     <GitBranch className="w-4 h-4" />
                                     <span className="text-sm font-medium">
                                         {isLoading ? 'Generating...' : 'Show Diagram'}
                                     </span>
-                                </button>
+                                </Button>
 
-                                <button
+                                <Button
                                     onClick={handleStartSpeaking}
                                     disabled={!voiceChatApiKey}
-                                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full transition-colors ${geminiLive.connectionState === 'CONNECTED'
-                                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                        : 'bg-emerald-500 text-white hover:bg-emerald-600'
-                                        } disabled:opacity-50`}
+                                    variant="outline"
+                                    className={`rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 ${geminiLive.connectionState === 'CONNECTED' ? 'ring-2 ring-emerald-400/60' : ''} disabled:opacity-50`}
                                 >
                                     <Mic className="w-4 h-4" />
                                     <span className="text-sm font-medium">Start speaking</span>
-                                </button>
+                                </Button>
 
                                 {/* Generate Image Button */}
-                                <button
+                                <Button
                                     onClick={handleGenerateImage}
                                     disabled={isGeneratingImage}
-                                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-orange-500 text-white hover:from-pink-600 hover:to-orange-600 disabled:opacity-50 transition-all"
+                                    variant="outline"
+                                    className="rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
                                 >
                                     <ImagePlus className="w-4 h-4" />
                                     <span className="text-sm font-medium">
                                         {isGeneratingImage ? 'Creating...' : 'Generate Image'}
                                     </span>
-                                </button>
+                                </Button>
                             </div>
 
                             <MessageDock

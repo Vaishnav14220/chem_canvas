@@ -67,6 +67,7 @@ import { generateGeminiImage } from '../services/geminiService';
 import { ExcalidrawCanvas, ExcalidrawCanvasRef } from './ExcalidrawCanvas/ExcalidrawCanvas';
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
+import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
 import { ConceptNetworkGraph, ConceptNodeData, generateConceptNetwork } from './ConceptNetworkGraph';
 import { FlashcardDeck } from './ChemistryFlashcardDeck';
 import { QuizPanel } from './QuizPanel';
@@ -667,7 +668,8 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
     }, [documentData]);
 
     // Initialize Gemini Live for two-way voice chat
-    const geminiLive = useGeminiLive(voiceChatApiKey, 'en', {
+    const preferredGeminiLanguage = getPreferredGeminiLanguage();
+    const geminiLive = useGeminiLive(voiceChatApiKey, preferredGeminiLanguage, {
         systemInstructionOverride: `You are a Socratic tutor helping a student learn about ${topic}. 
 Use the Socratic method - ask probing questions, guide student thinking, don't give direct answers.
 Keep responses conversational and brief since this is a real-time voice conversation.
