@@ -22,6 +22,7 @@ import {
     Eye,
     X,
     Microscope,
+    GraduationCap,
 } from 'lucide-react';
 import {
     DEFAULT_GEMINI_PREFERENCES,
@@ -88,6 +89,17 @@ const features = [
         iconBg: 'bg-blue-100',
         iconColor: 'text-blue-600',
         decorationColor: 'text-blue-200',
+    },
+    {
+        id: 'tile-tutor',
+        title: 'ChatTutor Whiteboard',
+        description: 'Chat + multi-page whiteboard with Mermaid, GeoGebra, and notes.',
+        icon: 'tutor',
+        color: 'indigo',
+        bgColor: 'bg-indigo-50',
+        iconBg: 'bg-indigo-100',
+        iconColor: 'text-indigo-600',
+        decorationColor: 'text-indigo-200',
     },
     {
         id: 'flashcards',
@@ -285,6 +297,8 @@ const FeatureIcon: React.FC<{ icon: string; className?: string }> = ({ icon, cla
             return <Eye className={className} />;
         case 'lab-manual':
             return <Microscope className={className} />;
+        case 'tutor':
+            return <GraduationCap className={className} />;
         default:
             return <Sparkles className={className} />;
     }
@@ -348,6 +362,8 @@ const DecorationIcon: React.FC<{ icon: string; className?: string }> = ({ icon, 
             return <Eye className={className} />;
         case 'lab-manual':
             return <Microscope className={className} />;
+        case 'tutor':
+            return <GraduationCap className={className} />;
         default:
             return null;
     }
@@ -399,6 +415,18 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
     const handleResetPreferences = () => {
         setPreferences(DEFAULT_GEMINI_PREFERENCES);
         setGeminiPreferences(DEFAULT_GEMINI_PREFERENCES);
+    };
+
+    const handleFeatureClick = (featureId: string) => {
+        if (featureId === 'tile-tutor') {
+            const nextPreferences: GeminiPreferences = {
+                ...getGeminiPreferences(),
+                model: 'gemini-3-flash-preview',
+            };
+            setPreferences(nextPreferences);
+            setGeminiPreferences(nextPreferences);
+        }
+        onSelectFeature(featureId);
     };
 
     return (
@@ -566,7 +594,7 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
                         {features.map((feature) => (
                             <div
                                 key={feature.id}
-                                onClick={() => onSelectFeature(feature.id)}
+                                onClick={() => handleFeatureClick(feature.id)}
                                 className={`relative group rounded-2xl p-6 cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02] ${feature.bgColor} border border-white/50`}
                             >
                                 {/* Decoration */}

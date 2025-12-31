@@ -807,6 +807,7 @@ export const streamTextContent = async (
     thinking?: boolean | 'high' | 'low',
     onThought?: (thought: string) => void,
     inlineData?: { mimeType: string, data: string },
+    inlineDataList?: { mimeType: string, data: string }[],
     timeout?: number,
     applyPreferences?: boolean
   }
@@ -881,11 +882,16 @@ export const streamTextContent = async (
       }
 
       // Construct content with inline data if present
+      const inlineParts = [
+        ...(options?.inlineDataList?.map((item) => ({ inlineData: item })) ?? []),
+        ...(options?.inlineData ? [{ inlineData: options.inlineData }] : []),
+      ];
+
       const contents = [
         {
           role: 'user',
           parts: [
-            ...(options?.inlineData ? [{ inlineData: options.inlineData }] : []),
+            ...inlineParts,
             { text: promptWithPreferences }
           ]
         }

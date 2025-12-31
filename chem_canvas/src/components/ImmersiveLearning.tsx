@@ -23,6 +23,7 @@ import { LaTeXAssignmentPrep } from './LaTeXAssignmentPrep';
 import { AssignmentDashboard } from './AssignmentDashboard';
 import { FormulaExtractionWorkspace } from './FormulaExtractionWorkspace';
 import { LabManualExplorer } from './LabManualExplorer';
+import ChatTutorWorkspace from './ChatTutorWorkspace';
 import FlashcardsQuizletWorkspace from './FlashcardsQuizletWorkspace';
 import { HyperbookNotebook } from '@/hyperbook/components/HyperbookNotebook';
 import { javascript } from '@codemirror/lang-javascript';
@@ -6817,6 +6818,26 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
             }
             return;
         }
+        if (featureId === 'tile-tutor') {
+            setSelectedAssignmentFeature(featureId);
+            setAssignmentMindmapActive(false);
+            setAssignmentVisualActivityActive(false);
+            setAssignmentSimulationActive(false);
+            setShowAssignmentDashboard(false);
+
+            if (!assignmentFileContent && assignmentFileData?.mimeType === 'application/pdf') {
+                const sourceName = assignmentFileName || 'assignment.pdf';
+                const file = base64ToFile(assignmentFileData.data, assignmentFileData.mimeType, sourceName);
+                void extractTextFromPdf(file, 6, true)
+                    .then((text) => {
+                        if (text && text.trim()) {
+                            setAssignmentFileContent(text);
+                        }
+                    })
+                    .catch(() => undefined);
+            }
+            return;
+        }
 
         setSelectedAssignmentFeature(featureId);
         setShowAssignmentDashboard(false);
@@ -6886,6 +6907,24 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                         setShowAssignmentDashboard(true);
                     }}
                 />
+            );
+        }
+
+        if (selectedAssignmentFeature === 'tile-tutor') {
+            const fallbackTopic = assignmentTopic ||
+                (assignmentFileName ? assignmentFileName.replace(/\.[^/.]+$/, '') : undefined);
+
+            return (
+                <div className="flex h-full w-full min-h-0 flex-col">
+                    <ChatTutorWorkspace
+                        onBack={() => {
+                            setSelectedAssignmentFeature(null);
+                            setShowAssignmentDashboard(true);
+                        }}
+                        initialTopic={fallbackTopic}
+                        initialNotes={assignmentFileContent}
+                    />
+                </div>
             );
         }
 
