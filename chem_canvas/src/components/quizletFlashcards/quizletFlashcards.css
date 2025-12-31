@@ -1,0 +1,296 @@
+.flashcard-array-wrapper {
+  --prev-arrow-color: #1c1b1e;
+  --next-arrow-color: #1c1b1e;
+  --disabled-arrow-color: #a9a9a9;
+  gap: 15px;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 625px) {
+  .flashcard-array-wrapper {
+    width: 90%;
+  }
+}
+
+.flashcard-array {
+  position: relative;
+  perspective: 1000px;
+  width: 100%;
+  height: 340px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.flashcard-array > .flashcard-wrapper:nth-child(1),
+.flashcard-array > .flashcard-wrapper:nth-child(3) {
+  opacity: 0;
+  box-shadow: none;
+  visibility: hidden;
+  pointer-events: none;
+  background: transparent;
+  display: block !important;
+  transform-style: preserve-3d;
+  transition: transform 0.24s ease, opacity 0.12s linear !important;
+}
+
+.flashcard-array > .flashcard-wrapper:nth-child(1) {
+  z-index: 5;
+  right: unset;
+  width: 0 !important;
+  transform: translateX(-10%) rotateY(10deg) translateZ(0) !important;
+}
+
+.flashcard-array > .flashcard-wrapper:nth-child(1) .flashcard__front,
+.flashcard-array > .flashcard-wrapper:nth-child(1) .flashcard__back {
+  display: none;
+}
+
+.flashcard-array > .flashcard-wrapper:nth-child(3) {
+  z-index: 5;
+  width: 0 !important;
+  left: unset;
+  transform: translateX(10%) rotateY(-10deg) translateZ(0) !important;
+}
+
+.flashcard-array > .flashcard-wrapper:nth-child(3) .flashcard__front,
+.flashcard-array > .flashcard-wrapper:nth-child(3) .flashcard__back {
+  display: none;
+}
+
+.flashcard-array > .flashcard-wrapper:nth-child(2) {
+  z-index: 6;
+  box-shadow: none;
+  background: transparent;
+  display: block !important;
+  transform-style: preserve-3d;
+  transition: transform 0.24s ease, opacity 0.12s linear;
+}
+
+.flashcard-array__progress-bar {
+  gap: 12px;
+  width: 80%;
+  height: 6px;
+  overflow: hidden;
+  position: relative;
+  border-radius: 3px;
+  background-color: #d0d0d0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.flashcard-array__progress-bar-fill {
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  position: absolute;
+  background-color: #4a4a4a;
+  transition: width 0.25s ease-out;
+}
+
+.flashcard-array__controls {
+  gap: 35px;
+  width: 100%;
+  height: 40px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.flashcard-array__controls button {
+  padding: 0;
+  border: none;
+  font-size: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  transition: all 0.12s cubic-bezier(0.47, 0, 0.745, 0.715);
+}
+
+.flashcard-array__controls button svg {
+  height: 80%;
+  cursor: pointer;
+}
+
+.flashcard-array__controls button svg path[data-name='Left'] {
+  fill: var(--prev-arrow-color);
+}
+
+.flashcard-array__controls button svg path[data-name='Right'] {
+  fill: var(--next-arrow-color);
+}
+
+.flashcard-array__controls button:disabled {
+  cursor: not-allowed;
+}
+
+.flashcard-array__controls button:disabled svg path {
+  fill: var(--disabled-arrow-color);
+}
+
+.flashcard-array__controls--count {
+  font-size: 15px;
+}
+
+.flashcard-wrapper {
+  --border-radius: 16px;
+  --back-bg: #ffffff;
+  --front-bg: #ffffff;
+  --box-shadow: 0 0 2.5rem 0 rgba(0, 0, 0, 0.16);
+  bottom: 10%;
+  clear: left;
+  perspective: 1000px;
+  transform: none !important;
+  width: 100%;
+  max-width: 560px;
+  height: 340px;
+  border-radius: var(--border-radius);
+}
+
+.flashcard {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  border-radius: inherit;
+  transform-style: preserve-3d;
+  background-color: transparent;
+  transition: transform 0.45s ease, opacity 0.45s ease;
+}
+
+.flashcard * {
+  box-sizing: border-box;
+}
+
+.flashcard__front {
+  background-color: var(--front-bg);
+}
+
+.flashcard__back {
+  background-color: var(--back-bg);
+}
+
+.flashcard__front,
+.flashcard__back {
+  top: 0;
+  left: 0;
+  color: black;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  border-radius: inherit;
+  backface-visibility: hidden;
+  box-shadow: var(--box-shadow);
+}
+
+.flashcard__front[data-flip-type='disable'],
+.flashcard__back[data-flip-type='disable'] {
+  cursor: not-allowed;
+}
+
+.flashcard__front[data-flip-type='manual'],
+.flashcard__back[data-flip-type='manual'] {
+  cursor: auto;
+}
+
+.flashcard__front[data-flip-type='auto'],
+.flashcard__back[data-flip-type='auto'] {
+  cursor: pointer;
+}
+
+.flashcard[data-flip='true'][data-dir='rtl'] {
+  transform: rotateY(-180deg) !important;
+}
+
+.flashcard[data-flip='true'][data-dir='ltr'] {
+  transform: rotateY(180deg) !important;
+}
+
+.flashcard[data-flip='true'][data-dir='tb'] {
+  transform: rotateX(-180deg) !important;
+}
+
+.flashcard[data-flip='true'][data-dir='bt'] {
+  transform: rotateX(180deg) !important;
+}
+
+.flashcard[data-dir='rtl'] .flashcard__back {
+  transform: rotateY(-180deg) !important;
+}
+
+.flashcard[data-dir='ltr'] .flashcard__back {
+  transform: rotateY(180deg) !important;
+}
+
+.flashcard[data-dir='tb'] .flashcard__back {
+  transform: rotateX(-180deg) !important;
+}
+
+.flashcard[data-dir='bt'] .flashcard__back {
+  transform: rotateX(180deg) !important;
+}
+
+.quizlet-card-face {
+  width: 100%;
+  height: 100%;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.quizlet-card-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #94a3b8;
+}
+
+.quizlet-card-text {
+  font-size: 20px;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.4;
+}
+
+.quizlet-card-meta {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.quizlet-card-subtext {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.quizlet-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.quizlet-card-tag {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+}

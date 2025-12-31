@@ -23,6 +23,7 @@ import { LaTeXAssignmentPrep } from './LaTeXAssignmentPrep';
 import { AssignmentDashboard } from './AssignmentDashboard';
 import { FormulaExtractionWorkspace } from './FormulaExtractionWorkspace';
 import { LabManualExplorer } from './LabManualExplorer';
+import FlashcardsQuizletWorkspace from './FlashcardsQuizletWorkspace';
 import { HyperbookNotebook } from '@/hyperbook/components/HyperbookNotebook';
 import { javascript } from '@codemirror/lang-javascript';
 import { java } from '@codemirror/lang-java';
@@ -374,11 +375,7 @@ const LearningTheoriesIcon = ({ active }: { active?: boolean }) => (
 const allLearningModes: LearningModeCard[] = [
     { id: 'source', icon: <SourceIcon />, label: 'My Library', activeColor: '#5f6368', activeBg: 'rgba(95, 99, 104, 0.1)' },
     { id: 'immersive-text', icon: <ImmersiveTextIcon />, label: 'Immersive Text', activeColor: '#8ab4f8', activeBg: 'rgba(138, 180, 248, 0.1)' },
-    { id: 'audio-video', icon: <SlidesIcon />, label: 'Audio Video', activeColor: '#f28b82', activeBg: 'rgba(242, 139, 130, 0.1)' },
-    { id: 'mindmap', icon: <MindmapIcon />, label: 'Mindmap', activeColor: '#fdd663', activeBg: 'rgba(253, 214, 99, 0.1)' },
-    { id: 'simulation', icon: <SimulationIcon />, label: 'Simulation', activeColor: '#c4b5fd', activeBg: 'rgba(196, 181, 253, 0.1)' },
     { id: 'robotics', icon: <RoboticsIcon />, label: 'Robotics Vision', activeColor: '#ff8bcb', activeBg: 'rgba(255, 139, 203, 0.1)' },
-    { id: 'visual-activity', icon: <Viewer3DIcon />, label: 'Visual Activity', activeColor: '#4fc3f7', activeBg: 'rgba(79, 195, 247, 0.1)' },
     { id: 'code-lab', icon: <CodeLabIcon />, label: 'Code Lab', activeColor: '#10b981', activeBg: 'rgba(16, 185, 129, 0.1)' },
     { id: 'replicube-lab', icon: <VoxelLabIcon />, label: 'Voxel Lab', activeColor: '#06b6d4', activeBg: 'rgba(6, 182, 212, 0.12)' },
     { id: 'assignment', icon: <AssignmentIcon />, label: 'Study Tools', activeColor: '#f59e0b', activeBg: 'rgba(245, 158, 11, 0.1)' },
@@ -6877,6 +6874,21 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
             );
         }
 
+        if (selectedAssignmentFeature === 'flashcards') {
+            return (
+                <FlashcardsQuizletWorkspace
+                    fileData={assignmentFileData}
+                    fileContent={assignmentFileContent}
+                    fileName={assignmentFileName}
+                    topic={assignmentTopic}
+                    onBack={() => {
+                        setSelectedAssignmentFeature(null);
+                        setShowAssignmentDashboard(true);
+                    }}
+                />
+            );
+        }
+
         // Show dashboard when no feature is selected
         if (showAssignmentDashboard) {
             return (
@@ -9931,69 +9943,55 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
             case 'robotics':
                 return (
-                    <div className="flex flex-col h-full p-6" style={{ backgroundColor: '#1F1F1F' }}>
-                        {/* Header */}
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 flex items-center justify-center">
-                                    <RoboticsIcon active />
-                                </div>
-                                <div>
-                                    <h2 className="text-[18px] font-medium text-white">Robotics Vision</h2>
-                                    <p className="text-[13px] text-slate-300">Real-time object detection & spatial understanding with Gemini</p>
-                                </div>
+                    <div className="flex flex-col h-full" style={{ backgroundColor: '#ffffff' }}>
+                        {isWebcamActive && (
+                            <div className="flex items-center justify-end gap-2 px-4 pt-4">
+                                <button
+                                    onClick={toggleAutoAnalysis}
+                                    className={`px-3 py-1.5 text-[13px] transition-colors flex items-center gap-1.5 ${isAutoAnalyzing
+                                        ? 'bg-[#2c4066] text-white'
+                                        : 'text-slate-700 hover:bg-slate-100 border border-slate-300'
+                                        }`}
+                                >
+                                    {isAutoAnalyzing ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Auto-Analyzing
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Play className="w-4 h-4" />
+                                            Auto Analyze
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={runRoboticsAnalysis}
+                                    disabled={isAnalyzing}
+                                    className="px-3 py-1.5 text-[13px] text-white bg-[#2c4066] hover:bg-[#34507c] disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                                >
+                                    {isAnalyzing ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Sparkles className="w-4 h-4" />
+                                    )}
+                                    Analyze Frame
+                                </button>
                             </div>
-                            <div className="flex items-center gap-2">
-                                {isWebcamActive && (
-                                    <>
-                                        <button
-                                            onClick={toggleAutoAnalysis}
-                                            className={`px-3 py-1.5 text-[13px] transition-colors flex items-center gap-1.5 ${isAutoAnalyzing
-                                                ? 'bg-[#2c4066] text-white'
-                                                : 'text-slate-300 hover:bg-slate-700 border border-slate-600'
-                                                }`}
-                                        >
-                                            {isAutoAnalyzing ? (
-                                                <>
-                                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                                    Auto-Analyzing
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Play className="w-4 h-4" />
-                                                    Auto Analyze
-                                                </>
-                                            )}
-                                        </button>
-                                        <button
-                                            onClick={runRoboticsAnalysis}
-                                            disabled={isAnalyzing}
-                                            className="px-3 py-1.5 text-[13px] text-white bg-[#2c4066] hover:bg-[#34507c] disabled:opacity-50 transition-colors flex items-center gap-1.5"
-                                        >
-                                            {isAnalyzing ? (
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                            ) : (
-                                                <Sparkles className="w-4 h-4" />
-                                            )}
-                                            Analyze Frame
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
+                        )}
 
                         {/* Main Content */}
-                        <div className="flex-1 min-h-0 flex gap-4">
+                        <div className="flex-1 min-h-0 flex flex-row-reverse">
                             {/* Webcam View */}
-                            <div className="flex-1 min-h-0 relative border border-slate-700 overflow-hidden bg-black">
+                            <div className="flex-1 min-h-0 relative border border-slate-200 overflow-hidden bg-white">
                                 {!isWebcamActive ? (
-                                    <div className="flex items-center justify-center h-full" style={{ backgroundColor: '#1F1F1F' }}>
+                                    <div className="flex items-center justify-center h-full" style={{ backgroundColor: '#ffffff' }}>
                                         <div className="text-center max-w-md px-6">
                                             <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center">
-                                                <RoboticsIcon active />
+                                                <RoboticsIcon />
                                             </div>
-                                            <h3 className="text-[22px] font-medium text-white mb-3">Start Robotics Vision</h3>
-                                            <p className="text-[15px] text-slate-300 mb-6">
+                                            <h3 className="text-[22px] font-medium text-slate-900 mb-3">Start Robotics Vision</h3>
+                                            <p className="text-[15px] text-slate-600 mb-6">
                                                 Use your webcam to detect objects, understand scenes, and explore spatial reasoning with Gemini Robotics-ER.
                                             </p>
                                             {webcamError ? (
@@ -10214,10 +10212,10 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                             </div>
 
                             {/* Control Panel */}
-                            <div className="w-[280px] min-h-0 flex flex-col gap-2 overflow-y-auto flex-shrink-0">
+                            <div className="w-96 min-h-0 flex flex-col gap-3 overflow-y-auto flex-shrink-0 border-r border-white/10 bg-[#1F1F1F] p-4">
                                 {/* Analysis Mode Selector */}
-                                <div className="p-4 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
-                                    <h3 className="text-[14px] font-medium text-white mb-3">Analysis Mode</h3>
+                                <div className="p-4 border border-white/10 bg-white/5">
+                                    <h3 className="text-[14px] font-medium text-slate-200 mb-3">Analysis Mode</h3>
                                     <div className="flex flex-wrap gap-2">
                                         {[
                                             { id: 'detect', label: 'Detect Objects', icon: '🔍' },
@@ -10232,7 +10230,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                 onClick={() => setAnalysisMode(mode.id as any)}
                                                 className={`px-3 py-2 text-[13px] transition-colors flex items-center gap-1.5 ${analysisMode === mode.id
                                                     ? 'bg-[#2c4066] text-white'
-                                                    : 'border border-slate-600 text-slate-300 hover:bg-slate-700'
+                                                    : 'border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white'
                                                     }`}
                                             >
                                                 <span>{mode.icon}</span>
@@ -10244,8 +10242,8 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
                                 {/* Query Input (for count/question modes) */}
                                 {(analysisMode === 'count' || analysisMode === 'question') && (
-                                    <div className="p-4 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
-                                        <h3 className="text-[14px] font-medium text-white mb-2">
+                                    <div className="p-4 border border-white/10 bg-white/5">
+                                        <h3 className="text-[14px] font-medium text-slate-200 mb-2">
                                             {analysisMode === 'count' ? 'What to count?' : 'Your question'}
                                         </h3>
                                         <input
@@ -10253,22 +10251,21 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                             value={roboticsQuery}
                                             onChange={(e) => setRoboticsQuery(e.target.value)}
                                             placeholder={analysisMode === 'count' ? 'e.g., people, cups, books...' : 'e.g., What should I move to make space?'}
-                                            className="w-full px-3 py-2 border border-slate-600 text-[14px] text-white bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent"
-                                            style={{ backgroundColor: '#1F1F1F' }}
+                                            className="w-full px-3 py-2 border border-white/10 text-[14px] text-white bg-white/5 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent"
                                         />
                                     </div>
                                 )}
 
                                 {/* Auto-Analysis Settings */}
-                                <div className="p-4 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
-                                    <h3 className="text-[14px] font-medium text-white mb-2">
+                                <div className="p-4 border border-white/10 bg-white/5">
+                                    <h3 className="text-[14px] font-medium text-slate-200 mb-2">
                                         Real-time Speed
-                                        <span className="ml-2 text-[12px] text-slate-300 font-normal">
+                                        <span className="ml-2 text-[12px] text-slate-400 font-normal">
                                             {analysisInterval <= 300 ? '⚡ Fast' : analysisInterval <= 1000 ? '🔄 Normal' : '🐢 Slow'}
                                         </span>
                                     </h3>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-[11px] text-slate-300">Fast</span>
+                                        <span className="text-[11px] text-slate-400">Fast</span>
                                         <input
                                             type="range"
                                             min="100"
@@ -10286,26 +10283,26 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                             }}
                                             className="flex-1 accent-[#3b5b8a]"
                                         />
-                                        <span className="text-[11px] text-slate-300">Slow</span>
-                                        <span className="text-[13px] text-slate-300 w-14 text-right">{analysisInterval}ms</span>
+                                        <span className="text-[11px] text-slate-400">Slow</span>
+                                        <span className="text-[13px] text-slate-400 w-14 text-right">{analysisInterval}ms</span>
                                     </div>
                                 </div>
 
                                 {/* Results Panel */}
-                                <div className="flex-1 p-4 border border-slate-700 overflow-y-auto" style={{ backgroundColor: '#1F1F1F' }}>
-                                    <h3 className="text-[14px] font-medium text-white mb-3">Results</h3>
+                                <div className="flex-1 p-4 border border-white/10 overflow-y-auto bg-white/5">
+                                    <h3 className="text-[14px] font-medium text-slate-200 mb-3">Results</h3>
 
                                     {/* Count Result */}
                                     {countResult && (
-                                        <div className="mb-4 p-3 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
-                                            <div className="text-[32px] font-bold text-white">{countResult.count}</div>
+                                        <div className="mb-4 p-3 border border-white/10 bg-white/5">
+                                            <div className="text-[32px] font-bold text-slate-100">{countResult.count}</div>
                                             <div className="text-[13px] text-slate-300">{roboticsQuery} found</div>
                                         </div>
                                     )}
 
                                     {/* Scene Description */}
                                     {sceneDescription && (
-                                        <div className="mb-4 p-3 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
+                                        <div className="mb-4 p-3 border border-white/10 bg-white/5">
                                             <p className="text-[14px] text-slate-200 leading-relaxed">{sceneDescription}</p>
                                         </div>
                                     )}
@@ -10314,11 +10311,11 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                     {classificationResult && classificationResult.length > 0 && (
                                         <div className="space-y-2">
                                             {classificationResult.map((item, idx) => (
-                                                <div key={idx} className="p-3 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
-                                                    <div className="font-medium text-[14px] text-white">{item.label}</div>
+                                                <div key={idx} className="p-3 border border-white/10 bg-white/5">
+                                                    <div className="font-medium text-[14px] text-slate-200">{item.label}</div>
                                                     <div className="flex flex-wrap gap-1 mt-1">
                                                         {item.attributes.map((attr, i) => (
-                                                            <span key={i} className="px-2 py-0.5 border border-slate-600 text-slate-300 text-[11px]" style={{ backgroundColor: '#1F1F1F' }}>
+                                                            <span key={i} className="px-2 py-0.5 border border-white/10 text-slate-300 text-[11px] bg-white/5">
                                                                 {attr}
                                                             </span>
                                                         ))}
@@ -10332,9 +10329,9 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                     {!classificationResult && detectedObjects.length > 0 && (
                                         <div className="space-y-1">
                                             {detectedObjects.map((obj, idx) => (
-                                                <div key={idx} className="flex items-center justify-between p-2 border border-slate-700" style={{ backgroundColor: '#1F1F1F' }}>
-                                                    <span className="text-[14px] text-white">{obj.label}</span>
-                                                    <span className="text-[12px] text-slate-300">
+                                                <div key={idx} className="flex items-center justify-between p-2 border border-white/10 bg-white/5">
+                                                    <span className="text-[14px] text-slate-200">{obj.label}</span>
+                                                    <span className="text-[12px] text-slate-400">
                                                         ({Math.round(obj.point[1] / 10)}%, {Math.round(obj.point[0] / 10)}%)
                                                     </span>
                                                 </div>
@@ -10346,12 +10343,12 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                     {boundingBoxes.length > 0 && (
                                         <div className="space-y-1">
                                             {boundingBoxes.map((box, idx) => (
-                                                <div key={idx} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-[#e8eaed]">
+                                                <div key={idx} className="flex items-center gap-2 p-2 bg-white/5 rounded-lg border border-white/10">
                                                     <div
                                                         className="w-3 h-3 rounded"
                                                         style={{ backgroundColor: ['#ff5722', '#4caf50', '#2196f3', '#ff9800', '#9c27b0', '#00bcd4'][idx % 6] }}
                                                     />
-                                                    <span className="text-[14px] text-[#1f1f1f]">{box.label}</span>
+                                                    <span className="text-[14px] text-slate-200">{box.label}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -10360,38 +10357,38 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                     {/* Hand Tracking Info */}
                                     {analysisMode === 'hand' && (
                                         <div className="space-y-3">
-                                            <div className="p-3 bg-gradient-to-r from-pink-50 to-cyan-50 rounded-lg border border-[#e8eaed]">
+                                            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <Hand className="w-5 h-5 text-[#00bcd4]" />
-                                                    <span className="font-medium text-[14px] text-[#1f1f1f]">Hand Skeleton Tracking</span>
+                                                    <span className="font-medium text-[14px] text-slate-200">Hand Skeleton Tracking</span>
                                                 </div>
-                                                <div className={`text-[13px] ${handLandmarks ? 'text-green-600' : 'text-yellow-600'}`}>
+                                                <div className={`text-[13px] ${handLandmarks ? 'text-emerald-400' : 'text-amber-400'}`}>
                                                     {handLandmarks ? '✓ Hand detected with 21 landmarks' : '⏳ Waiting for hand...'}
                                                 </div>
                                             </div>
 
                                             {handLandmarks && (
                                                 <>
-                                                    <div className="p-3 bg-white rounded-lg border border-[#e8eaed]">
-                                                        <div className="text-[13px] font-medium text-[#1f1f1f] mb-2">Landmark Legend</div>
+                                                    <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                                                        <div className="text-[13px] font-medium text-slate-200 mb-2">Landmark Legend</div>
                                                         <div className="space-y-1.5 text-[12px]">
                                                             <div className="flex items-center gap-2">
                                                                 <div className="w-3 h-3 rounded-full bg-[#00bcd4]"></div>
-                                                                <span className="text-[#5f6368]">Wrist (base)</span>
+                                                                <span className="text-slate-300">Wrist (base)</span>
                                                             </div>
                                                             <div className="flex items-center gap-2">
                                                                 <div className="w-3 h-3 rounded-full bg-[#ff4081]"></div>
-                                                                <span className="text-[#5f6368]">Fingertips</span>
+                                                                <span className="text-slate-300">Fingertips</span>
                                                             </div>
                                                             <div className="flex items-center gap-2">
                                                                 <div className="w-3 h-3 rounded-full bg-[#00ff88]"></div>
-                                                                <span className="text-[#5f6368]">Joints</span>
+                                                                <span className="text-slate-300">Joints</span>
                                                             </div>
                                                         </div>
                                                     </div>
 
-                                                    <div className="p-3 bg-white rounded-lg border border-[#e8eaed]">
-                                                        <div className="text-[13px] font-medium text-[#1f1f1f] mb-2">Fingertip Positions</div>
+                                                    <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                                                        <div className="text-[13px] font-medium text-slate-200 mb-2">Fingertip Positions</div>
                                                         <div className="space-y-1 text-[12px]">
                                                             {[
                                                                 { idx: 4, name: 'Thumb' },
@@ -10404,8 +10401,8 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                                 if (!landmark) return null;
                                                                 return (
                                                                     <div key={idx} className="flex justify-between">
-                                                                        <span className="text-[#5f6368]">{name}</span>
-                                                                        <span className="text-[#1f1f1f] font-mono">
+                                                                        <span className="text-slate-300">{name}</span>
+                                                                        <span className="text-slate-200 font-mono">
                                                                             x:{Math.round((1 - landmark.x) * 100)}% y:{Math.round(landmark.y * 100)}%
                                                                         </span>
                                                                     </div>
@@ -10420,7 +10417,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
                                     {/* Empty State */}
                                     {!countResult && !sceneDescription && !classificationResult && detectedObjects.length === 0 && boundingBoxes.length === 0 && analysisMode !== 'hand' && (
-                                        <p className="text-[14px] text-[#9aa0a6] text-center py-4">
+                                        <p className="text-[14px] text-slate-400 text-center py-4">
                                             {isWebcamActive ? 'Click "Analyze Frame" to detect objects' : 'Start webcam to begin'}
                                         </p>
                                     )}

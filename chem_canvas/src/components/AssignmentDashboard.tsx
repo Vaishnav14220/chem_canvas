@@ -405,16 +405,16 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
         <div className="flex h-full w-full bg-[#f6f8fc] overflow-hidden">
             {/* Left Sidebar */}
             {!sidebarCollapsed && (
-                <div className="w-72 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col h-full">
+                <div className="w-72 flex-shrink-0 bg-[#1F1F1F] border-r border-white/10 flex flex-col h-full">
                     <div className="flex-1 overflow-y-auto p-5 space-y-6">
                         {/* Upload Section */}
                         <div className="space-y-2">
-                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
                                 1. Upload Source Material
                             </label>
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="border-2 border-dashed border-slate-200 rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all group"
+                                className="border border-dashed border-white/15 rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer hover:border-cyan-300/60 hover:bg-white/5 transition-all group"
                             >
                                 <input
                                     ref={fileInputRef}
@@ -424,13 +424,13 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
                                     onChange={handleFileChange}
                                 />
                                 {uploadedFileName ? (
-                                    <div className="flex flex-col items-center text-slate-700">
-                                        <Check className="w-8 h-8 mb-2 text-green-500" />
+                                    <div className="flex flex-col items-center text-slate-100">
+                                        <Check className="w-8 h-8 mb-2 text-emerald-400" />
                                         <span className="text-xs font-medium text-center break-all">{uploadedFileName}</span>
                                         <span className="text-[10px] text-slate-400 mt-1">Click to replace</span>
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center text-slate-400 group-hover:text-blue-500 transition-colors">
+                                    <div className="flex flex-col items-center text-slate-400 group-hover:text-white transition-colors">
                                         <FileUp className="w-8 h-8 mb-2" />
                                         <span className="text-sm font-medium">Upload / Paste Notes</span>
                                         <span className="text-[11px] mt-1">PDF, Text, or Markdown</span>
@@ -442,15 +442,15 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
                         {/* Tree of Thoughts Toggle */}
                         {showToTToggle && (
                             <div className="space-y-2">
-                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
                                     2. Tree of Thoughts
                                 </label>
                                 <button
                                     type="button"
                                     onClick={() => onToggleTreeOfThoughts?.(!useTreeOfThoughts)}
                                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${useTreeOfThoughts
-                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                        : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white'
                                         }`}
                                 >
                                     <span className="flex items-center gap-2">
@@ -458,14 +458,14 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
                                         Tree of Thoughts
                                     </span>
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${useTreeOfThoughts
-                                        ? 'bg-amber-200 text-amber-800'
-                                        : 'bg-slate-100 text-slate-500'
+                                        ? 'bg-amber-500/30 text-amber-200'
+                                        : 'bg-white/10 text-slate-400'
                                         }`}
                                     >
                                         {useTreeOfThoughts ? 'On' : 'Off'}
                                     </span>
                                 </button>
-                                <p className="text-[11px] text-slate-500">
+                                <p className="text-[11px] text-slate-400">
                                     Plan the best approach before generating any module output.
                                 </p>
                             </div>
@@ -473,24 +473,24 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
 
                         {/* Topic Input */}
                         <div className="space-y-2">
-                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
                                 {topicLabelNumber}. Topic / Concept
                             </label>
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                                 <input
                                     type="text"
                                     placeholder="e.g. Projectile Motion..."
                                     value={localTopic}
                                     onChange={handleTopicInputChange}
-                                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                                    className="w-full pl-10 pr-4 py-2.5 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 bg-white/5 focus:outline-none focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent transition-all"
                                 />
                             </div>
                         </div>
 
                         {/* Recent Sessions */}
                         <div className="space-y-3">
-                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
                                 Recent Sessions
                             </label>
                             <div className="space-y-2">
@@ -498,21 +498,21 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
                                     recentSessions.map((session) => (
                                         <button
                                             key={session.id}
-                                            className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 text-left transition-colors"
+                                            className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 text-left transition-colors"
                                         >
                                             <Brain className="w-4 h-4 text-slate-400" />
-                                            <span className="text-sm text-slate-700 truncate">{session.title}</span>
+                                            <span className="text-sm text-slate-200 truncate">{session.title}</span>
                                         </button>
                                     ))
                                 ) : (
                                     <>
-                                        <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 text-left transition-colors">
+                                        <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 text-left transition-colors">
                                             <Brain className="w-4 h-4 text-slate-400" />
-                                            <span className="text-sm text-slate-700">Thermodynamics Intro</span>
+                                            <span className="text-sm text-slate-200">Thermodynamics Intro</span>
                                         </button>
-                                        <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 text-left transition-colors">
+                                        <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 text-left transition-colors">
                                             <Brain className="w-4 h-4 text-slate-400" />
-                                            <span className="text-sm text-slate-700">Linear Algebra Basics</span>
+                                            <span className="text-sm text-slate-200">Linear Algebra Basics</span>
                                         </button>
                                     </>
                                 )}
@@ -521,21 +521,21 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
                     </div>
 
                     {/* Bottom Links */}
-                    <div className="border-t border-slate-200 p-4 space-y-2">
+                    <div className="border-t border-slate-700 p-4 space-y-2">
                         <button
                             type="button"
                             onClick={openPreferences}
-                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 text-left transition-colors"
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 text-left transition-colors"
                         >
                             <Settings className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm text-slate-600">Settings & Preferences</span>
+                            <span className="text-sm text-slate-300">Settings & Preferences</span>
                         </button>
                         <button
                             onClick={() => setSidebarCollapsed(true)}
-                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 text-left transition-colors"
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 text-left transition-colors"
                         >
                             <ChevronLeft className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm text-slate-600">Collapse Panel</span>
+                            <span className="text-sm text-slate-300">Collapse Panel</span>
                         </button>
                     </div>
                 </div>
@@ -545,9 +545,9 @@ export const AssignmentDashboard: React.FC<AssignmentDashboardProps> = ({
             {sidebarCollapsed && (
                 <button
                     onClick={() => setSidebarCollapsed(false)}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2 bg-white border border-slate-200 rounded-lg shadow-sm hover:bg-slate-50 transition-colors"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2 bg-slate-900 border border-slate-700 rounded-lg shadow-sm hover:bg-slate-800 transition-colors"
                 >
-                    <ChevronRight className="w-5 h-5 text-slate-600" />
+                    <ChevronRight className="w-5 h-5 text-slate-300" />
                 </button>
             )}
 

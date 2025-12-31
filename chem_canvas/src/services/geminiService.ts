@@ -290,7 +290,30 @@ export const generateTextContent = async (
         }
 
         if (options?.thinking) {
-          if (modelName.includes('thinking')) {
+          const isGemini3 = modelName.includes('gemini-3');
+          const isGemini25 = modelName.includes('gemini-2.5') || modelName.includes('gemini-2.0');
+
+          if (isGemini3) {
+            const thinkingLevel = typeof options.thinking === 'string' ? options.thinking : 'high';
+            config = {
+              ...config,
+              thinkingConfig: {
+                includeThoughts: true,
+                thinking_level: thinkingLevel
+              }
+            };
+          } else if (isGemini25) {
+            const thinkingBudget = typeof options.thinking === 'string'
+              ? (options.thinking === 'high' ? -1 : 1024)
+              : (options.thinking === true ? -1 : 1024);
+            config = {
+              ...config,
+              thinkingConfig: {
+                includeThoughts: true,
+                thinkingBudget: thinkingBudget
+              }
+            };
+          } else if (modelName.includes('thinking')) {
             config = {
               ...config,
               thinkingConfig: {
@@ -1836,6 +1859,9 @@ interface FlashcardGenerationOptions {
   count?: number;
   learnerLevel?: 'beginner' | 'intermediate' | 'advanced';
   emphasis?: string[];
+  sourceText?: string;
+  model?: string;
+  thinking?: boolean | 'high' | 'low';
 }
 
 export interface GeneratedFlashcard {
@@ -2476,22 +2502,30 @@ export const generateFlashcardDeck = async ({
   topic,
   count = 6,
   learnerLevel = 'intermediate',
-  emphasis = []
+  emphasis = [],
+  sourceText,
+  model,
+  thinking
 }: FlashcardGenerationOptions): Promise<GeneratedFlashcard[]> => {
+  await ensureInitializedAsync();
   if (!genAI) {
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
 
   try {
-    const modelName = await getAvailableModel(genAI);
-    const model = genAI.getGenerativeModel({ model: modelName });
-
     const emphasisLine = emphasis.length ? `Prioritise these subtopics when possible: ${emphasis.join(', ')}.` : '';
+    const trimmedSource = sourceText?.trim().slice(0, 6000);
+    const sourceLine = trimmedSource
+      ? 'Use the source notes to ground the flashcards and avoid adding off-topic facts.'
+      : '';
 
     const prompt = [
       'You are a chemistry coach creating a tight flashcard sprint for spaced repetition.',
       `Build ${count} flashcards about "${topic}" for a ${learnerLevel} learner.`,
       emphasisLine,
+      sourceLine,
+      trimmedSource ? 'Source notes:' : '',
+      trimmedSource || '',
       'Return only valid JSON shaped exactly like:',
       '{',
       '  "cards": [',
@@ -2512,9 +2546,13 @@ export const generateFlashcardDeck = async ({
       '- Do not include any commentary outside the JSON.'
     ].join('\n');
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const jsonPayload = extractJsonBlock(response.text());
+    const responseText = await generateTextContent(prompt, {
+      model,
+      thinking,
+      maxOutputTokens: 4096,
+      applyPreferences: false
+    });
+    const jsonPayload = extractJsonBlock(responseText);
     const parsed = JSON.parse(jsonPayload);
     const rawCards: any[] = Array.isArray(parsed?.cards) ? parsed.cards : Array.isArray(parsed) ? parsed : [];
 
