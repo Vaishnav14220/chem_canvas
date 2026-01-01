@@ -23,6 +23,7 @@ import {
     X,
     Microscope,
     GraduationCap,
+    BarChart3,
 } from 'lucide-react';
 import {
     DEFAULT_GEMINI_PREFERENCES,
@@ -69,26 +70,15 @@ const features = [
         decorationColor: 'text-emerald-200',
     },
     {
-        id: 'qa-generator',
-        title: 'Q&A Generator',
-        description: 'Create interactive quizzes and flashcards to test your understanding of the core concepts.',
-        icon: 'qa',
-        color: 'purple',
-        bgColor: 'bg-purple-50',
-        iconBg: 'bg-purple-100',
-        iconColor: 'text-purple-600',
-        decorationColor: 'text-purple-200',
-    },
-    {
-        id: 'smart-summary',
-        title: 'Smart Summary',
-        description: 'Get a concise summary of the key points, extracting only the most vital information.',
-        icon: 'summary',
-        color: 'blue',
-        bgColor: 'bg-blue-50',
-        iconBg: 'bg-blue-100',
-        iconColor: 'text-blue-600',
-        decorationColor: 'text-blue-200',
+        id: 'data-plotter',
+        title: 'Data Plotter',
+        description: 'Build Chart.js visualizations, tune interactions, and browse the Awesome Chart.js library catalog.',
+        icon: 'data-plotter',
+        color: 'lime',
+        bgColor: 'bg-lime-50',
+        iconBg: 'bg-lime-100',
+        iconColor: 'text-lime-700',
+        decorationColor: 'text-lime-200',
     },
     {
         id: 'tile-tutor',
@@ -299,6 +289,8 @@ const FeatureIcon: React.FC<{ icon: string; className?: string }> = ({ icon, cla
             return <Microscope className={className} />;
         case 'tutor':
             return <GraduationCap className={className} />;
+        case 'data-plotter':
+            return <BarChart3 className={className} />;
         default:
             return <Sparkles className={className} />;
     }
@@ -364,6 +356,8 @@ const DecorationIcon: React.FC<{ icon: string; className?: string }> = ({ icon, 
             return <Microscope className={className} />;
         case 'tutor':
             return <GraduationCap className={className} />;
+        case 'data-plotter':
+            return <BarChart3 className={className} />;
         default:
             return null;
     }

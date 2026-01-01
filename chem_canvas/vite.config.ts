@@ -1,5 +1,4 @@
-import { defineConfig } from 'vite'; // Trigger restart 2
-
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -12,7 +11,8 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
     exclude: ['lucide-react'],
-    include: ['dagre', 'reactflow']
+    // Pre-bundle these to avoid AMD/UMD conflicts at runtime
+    include: ['dagre', 'reactflow', 'es6-promise-pool', '@excalidraw/excalidraw']
   },
   resolve: {
     alias: {

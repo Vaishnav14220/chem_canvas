@@ -502,7 +502,8 @@ export const generateVisionContent = async (
 export const annotateImageWithFeedback = async (
   imageBase64: string,
   mimeType: string = 'image/jpeg',
-  analysisPrompt?: string
+  analysisPrompt?: string,
+  reference?: { data: string; mimeType: string; label?: string } | null
 ): Promise<{ annotatedImageBase64: string; feedback: string; mimeType: string }> => {
   await ensureInitializedAsync();
   if (!genAI) {
@@ -512,6 +513,7 @@ export const annotateImageWithFeedback = async (
   const modelName = 'gemini-3-pro-image-preview';
   const isPdf = mimeType === 'application/pdf';
 
+  const referenceLabel = reference?.label ? reference.label : 'reference material';
   const annotationPrompt = `You are a teacher grading student work on an exam or assignment.
 
 Analyze the student's work in this ${isPdf ? 'PDF document' : 'image'}. For EACH answer or solution shown:
@@ -531,6 +533,8 @@ IMPORTANT:
 - Only ADD annotations on top - never remove or obscure the student's work
 - Use realistic handwriting that looks like a real teacher's marks
 - Keep comments concise but helpful
+
+${reference ? `You are also provided with ${referenceLabel}. Use it as the authoritative reference when marking.` : ''}
 
 ${analysisPrompt ? `Additional context: ${analysisPrompt}` : ''}
 
@@ -553,6 +557,12 @@ After annotating, also provide a text summary of your feedback.`;
             role: 'user',
             parts: [
               { inlineData: { mimeType, data: imageBase64 } },
+              ...(reference
+                ? [
+                    { inlineData: { mimeType: reference.mimeType, data: reference.data } },
+                    { text: `Reference attached: ${referenceLabel}.` }
+                  ]
+                : []),
               { text: annotationPrompt }
             ]
           }

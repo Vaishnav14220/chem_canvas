@@ -189,6 +189,7 @@ const buildAutoNotesPrompt = (input: {
   page: Page;
   assistantText: string;
   topic?: string;
+  mathOnly?: boolean;
 }) => {
   const context = [
     `Page title: ${input.page.title || input.page.id}`,
@@ -199,6 +200,18 @@ const buildAutoNotesPrompt = (input: {
   ]
     .filter(Boolean)
     .join('\n\n');
+
+  if (input.mathOnly) {
+    return [
+      'You are creating math-only notes for a tutoring whiteboard.',
+      'Return ONLY mathematical steps as a numbered list.',
+      'Each line must be an equation or expression. Use minimal labels like (1), (2).',
+      'Do not write sentences, explanations, or headings.',
+      'Use LaTeX math like $x^2+1=0$ when needed.',
+      '',
+      context,
+    ].join('\n');
+  }
 
   return [
     'You are creating page notes for a tutoring whiteboard.',
@@ -223,6 +236,14 @@ const sanitizeNotesMarkdown = (raw: string) => {
     text = text.replace(/\$/g, '');
   }
   return text.trim();
+};
+
+const stripMarkdownInline = (value: string) => {
+  return value
+    .replace(/`/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .trim();
 };
 
 const hasListLines = (text: string) => {
@@ -288,6 +309,73 @@ const buildNotesFromChat = (assistantText: string, pageTitle?: string) => {
   return noteLines.join('\n');
 };
 
+const MATH_SIGNAL_REGEX = /\\(sin|cos|tan|sec|csc|cot|ln|log|frac|int|sum|pi|theta|sqrt|lim|to|cdot|times|partial)|[=^+*/]/i;
+
+const isMathContext = (...blocks: Array<string | undefined>) => {
+  const text = blocks.filter(Boolean).join(' ').toLowerCase();
+  if (!text) return false;
+  return MATH_SIGNAL_REGEX.test(text);
+};
+
+const normalizeMathNotes = (raw: string) => {
+  return buildMathOnlyDisplay(raw);
+};
+
+const buildMathNotesFromChat = (assistantText: string) => {
+  const cleaned = sanitizeNotesMarkdown(assistantText);
+  if (!cleaned) return '';
+  return normalizeMathNotes(cleaned);
+};
+
+const extractMathSegments = (line: string) => {
+  const segments: string[] = [];
+  const inlineMatches = [...line.matchAll(/\$([^$]+)\$/g)].map((match) => match[1].trim());
+  if (inlineMatches.length > 0) {
+    segments.push(...inlineMatches.filter(Boolean));
+  }
+  if (segments.length > 0) return segments;
+
+  const colonSplit = line.split(':');
+  if (colonSplit.length > 1) {
+    const afterColon = colonSplit.slice(1).join(':').trim();
+    if (MATH_SIGNAL_REGEX.test(afterColon)) {
+      segments.push(afterColon);
+    }
+  }
+
+  if (segments.length === 0 && MATH_SIGNAL_REGEX.test(line)) {
+    segments.push(line);
+  }
+
+  return segments;
+};
+
+const buildMathOnlyDisplay = (raw: string) => {
+  const cleaned = sanitizeNotesMarkdown(raw);
+  if (!cleaned) return '';
+  const lines = extractLines(cleaned)
+    .map((line) => line.replace(/^(\d+\.|\-|\*)\s+/, '').trim());
+
+  const mathLines: string[] = [];
+  const stripLeadingLabels = (segment: string) => {
+    const cleaned = stripMarkdownInline(segment);
+    return cleaned.replace(/^[A-Za-z\\s]+[:\\-]?\\s*/, '').trim();
+  };
+
+  lines.forEach((line) => {
+    const segments = extractMathSegments(line)
+      .map((segment) => stripLeadingLabels(segment))
+      .filter((segment) => segment && MATH_SIGNAL_REGEX.test(segment));
+    segments.forEach((segment) => {
+      const wrapped = segment.includes('$') ? segment : `$${segment}$`;
+      mathLines.push(wrapped);
+    });
+  });
+
+  if (mathLines.length === 0) return '';
+  return mathLines.map((line, index) => `${index + 1}. ${line}`).join('\n');
+};
+
 const ensureNumberedSteps = (text: string) => {
   const lines = text
     .split('\n')
@@ -327,9 +415,13 @@ const ensureNumberedSteps = (text: string) => {
   return [...steps, ...preserved].join('\n');
 };
 
-const normalizeNotes = (raw: string) => {
+const normalizeNotes = (raw: string, options?: { mathOnly?: boolean }) => {
   const cleaned = sanitizeNotesMarkdown(raw);
   if (!cleaned) return '';
+  if (options?.mathOnly) {
+    const mathNotes = normalizeMathNotes(cleaned);
+    return mathNotes || '';
+  }
   if (!hasListLines(cleaned)) {
     return ensureNumberedSteps(cleaned);
   }
@@ -406,6 +498,7 @@ const buildFallbackNotesPrompt = (input: {
   page: Page;
   assistantText: string;
   topic?: string;
+  mathOnly?: boolean;
 }) => {
   const context = [
     `Page title: ${input.page.title || input.page.id}`,
@@ -416,6 +509,16 @@ const buildFallbackNotesPrompt = (input: {
   ]
     .filter(Boolean)
     .join('\n\n');
+
+  if (input.mathOnly) {
+    return [
+      'Write ONLY mathematical steps as a numbered list.',
+      'Each line must be an equation or expression. No sentences.',
+      'Use LaTeX math like $a^2+b^2=c^2$ where needed.',
+      '',
+      context,
+    ].join('\n');
+  }
 
   return [
     'Write study notes in plain English.',
@@ -800,7 +903,8 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
   }, [currentPageId, updatePages]);
 
   const appendPageNotes = useCallback((pageId: string, noteContent: string) => {
-    const normalizedNotes = normalizeNotes(noteContent);
+    const mathOnly = isMathContext(noteContent);
+    const normalizedNotes = normalizeNotes(noteContent, { mathOnly });
     if (!normalizedNotes) return;
     updatePages((prev) => {
       const normalizedId = normalizePageId(pageId);
@@ -888,30 +992,61 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
   }, [ensurePage, pushAction, queueAutoNotes, updatePageContent]);
 
   const applyBlocks = useCallback((blocks: Block[]) => {
+    const resolvedByType = new Map<PageType, string>();
+    let didSetCurrentPage = false;
+
+    const resolveTargetPage = (block: Block) => {
+      const normalizedId = normalizePageId(block.pageId);
+      const existingById = pagesRef.current.find((page) => page.id === normalizedId);
+      if (existingById) return { id: existingById.id, created: false };
+
+      const mapped = resolvedByType.get(block.type);
+      if (mapped) return { id: mapped, created: false };
+
+      const current = pagesRef.current.find((page) => page.id === currentPageId);
+      if (current && current.type === block.type) return { id: current.id, created: false };
+
+      const existingType = pagesRef.current.find((page) => page.type === block.type);
+      if (existingType) return { id: existingType.id, created: false };
+
+      return { id: normalizedId || `${block.type}_${pagesRef.current.length + 1}`, created: true };
+    };
+
+    const maybeSelectPage = (pageId: string, created: boolean) => {
+      if (didSetCurrentPage) return;
+      if (created || !currentPageId) {
+        setCurrentPageId(pageId);
+        didSetCurrentPage = true;
+      }
+    };
+
     blocks.forEach((block) => {
-      const key = `${block.type}:${block.pageId}:${block.content}`;
+      const resolved = resolveTargetPage(block);
+      if (!resolvedByType.has(block.type)) {
+        resolvedByType.set(block.type, resolved.id);
+      }
+      const key = `${block.type}:${resolved.id}:${block.content}`;
       if (processedBlocksRef.current.has(key)) return;
       processedBlocksRef.current.add(key);
 
       if (block.type === 'note') {
-        const normalizedId = normalizePageId(block.pageId);
-        const existed = pagesRef.current.some((page) => page.id === normalizedId);
-        appendPageNotes(normalizedId, block.content);
+        const existed = pagesRef.current.some((page) => page.id === resolved.id);
+        appendPageNotes(resolved.id, block.content);
         pushAction({
           id: uuidv4(),
           role: 'action',
-          content: existed ? `Updated notes on ${normalizedId}` : 'Created a canvas page',
+          content: existed ? `Updated notes on ${resolved.id}` : 'Created a canvas page',
           actionType: existed ? 'update' : 'create',
           pageType: 'note',
-          pageId: normalizedId,
+          pageId: resolved.id,
         });
         return;
       }
 
       if (block.type === 'mermaid') {
-        const result = ensurePage(block.pageId, 'mermaid', block.title);
+        const result = ensurePage(resolved.id, 'mermaid', block.title);
         updatePageContent(result.id, 'mermaid', block.content, block.title);
-        setCurrentPageId(result.id);
+        maybeSelectPage(result.id, result.created);
         queueAutoNotes(result.id);
         pushAction({
           id: uuidv4(),
@@ -925,9 +1060,9 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
       }
 
       if (block.type === 'ggbscript') {
-        const result = ensurePage(block.pageId, 'ggb', block.title);
+        const result = ensurePage(resolved.id, 'ggb', block.title);
         updatePageContent(result.id, 'ggb', normalizeGgbScript(block.content), block.title);
-        setCurrentPageId(result.id);
+        maybeSelectPage(result.id, result.created);
         queueAutoNotes(result.id);
         pushAction({
           id: uuidv4(),
@@ -940,9 +1075,9 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
       }
 
       if (block.type === 'canvas') {
-        const result = ensurePage(block.pageId, 'canvas', block.title);
+        const result = ensurePage(resolved.id, 'canvas', block.title);
         updatePageContent(result.id, 'canvas', block.content, block.title);
-        setCurrentPageId(result.id);
+        maybeSelectPage(result.id, result.created);
         queueAutoNotes(result.id);
         pushAction({
           id: uuidv4(),
@@ -954,7 +1089,7 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
         });
       }
     });
-  }, [appendPageNotes, ensurePage, pushAction, queueAutoNotes, updatePageContent]);
+  }, [appendPageNotes, currentPageId, ensurePage, pushAction, queueAutoNotes, updatePageContent]);
 
   useEffect(() => {
     if (!initialNotes?.trim()) return;
@@ -991,10 +1126,12 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
         const promptAssistantText = assistantText || fallbackContext;
         if (!promptAssistantText) continue;
 
+        const mathOnly = isMathContext(promptAssistantText, page.content, page.title, initialTopic);
         const prompt = buildAutoNotesPrompt({
           page,
           assistantText: promptAssistantText,
           topic: initialTopic,
+          mathOnly,
         });
 
         let response = await generateTextContent(prompt, {
@@ -1003,22 +1140,26 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
           applyPreferences: false,
         });
 
-        let normalized = normalizeNotes(response);
-        if (countListItems(normalized) < 3) {
+        const minimumSteps = mathOnly ? 2 : 3;
+        let normalized = normalizeNotes(response, { mathOnly });
+        if (countListItems(normalized) < minimumSteps) {
           response = await generateTextContent(buildFallbackNotesPrompt({
             page,
             assistantText: promptAssistantText,
             topic: initialTopic,
+            mathOnly,
           }), {
             model,
             maxOutputTokens: 320,
             applyPreferences: false,
           });
-          normalized = normalizeNotes(response);
+          normalized = normalizeNotes(response, { mathOnly });
         }
-        if (countListItems(normalized) < 3) {
-          const extracted = buildNotesFromChat(promptAssistantText, page.title || page.id);
-          normalized = normalizeNotes(extracted);
+        if (countListItems(normalized) < minimumSteps) {
+          const extracted = mathOnly
+            ? buildMathNotesFromChat(promptAssistantText)
+            : buildNotesFromChat(promptAssistantText, page.title || page.id);
+          normalized = normalizeNotes(extracted, { mathOnly });
         }
         if (countListItems(normalized) < 2) continue;
 
@@ -1199,7 +1340,12 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
     return <NotePage content={currentPage.content} />;
   };
 
-  const renderNotesPanel = () => (
+  const renderNotesPanel = () => {
+    const rawNotes = currentPage?.notes?.trim() || '';
+    const mathOnly = isMathContext(rawNotes, currentPage?.content, currentPage?.title, initialTopic);
+    const displayNotes = mathOnly ? buildMathOnlyDisplay(rawNotes) : rawNotes;
+
+    return (
     <div className="flex h-full w-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
         <StickyNote className="h-3.5 w-3.5" />
@@ -1208,13 +1354,14 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
       <div className="mt-2 text-xs font-semibold text-slate-500">
         {currentPage ? `Note on ${currentPage.title || currentPage.id}` : 'Note'}
       </div>
-      <div className="prose prose-sm mt-2 flex-1 max-w-none overflow-auto text-slate-700">
+      <div className="prose prose-sm mt-2 flex-1 max-w-none overflow-auto text-slate-900 prose-p:text-slate-900 prose-li:text-slate-900 prose-strong:text-slate-900 prose-headings:text-slate-900">
         <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-          {currentPage?.notes?.trim() || 'No notes yet.'}
+          {displayNotes || 'No notes yet.'}
         </ReactMarkdown>
       </div>
     </div>
-  );
+    );
+  };
 
   const actionIcon = (message: Message) => {
     if (message.pageType === 'ggb') return <Sigma className="h-4 w-4 text-indigo-500" />;
@@ -1274,7 +1421,7 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
               <LayoutGrid className="h-3.5 w-3.5" />
               Pages
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-2 flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
               {pages.map((page, index) => (
                 <button
                   key={page.id}

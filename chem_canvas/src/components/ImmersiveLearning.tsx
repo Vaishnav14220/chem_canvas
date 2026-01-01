@@ -24,6 +24,7 @@ import { AssignmentDashboard } from './AssignmentDashboard';
 import { FormulaExtractionWorkspace } from './FormulaExtractionWorkspace';
 import { LabManualExplorer } from './LabManualExplorer';
 import ChatTutorWorkspace from './ChatTutorWorkspace';
+import ChartJsDataPlotter from './ChartJsDataPlotter';
 import FlashcardsQuizletWorkspace from './FlashcardsQuizletWorkspace';
 import { HyperbookNotebook } from '@/hyperbook/components/HyperbookNotebook';
 import { javascript } from '@codemirror/lang-javascript';
@@ -6818,6 +6819,15 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
             }
             return;
         }
+        if (featureId === 'data-plotter') {
+            setSelectedAssignmentFeature(featureId);
+            setAssignmentMindmapActive(false);
+            setAssignmentVisualActivityActive(false);
+            setAssignmentSimulationActive(false);
+            setAssignmentTab('exam-prep');
+            setShowAssignmentDashboard(false);
+            return;
+        }
         if (featureId === 'tile-tutor') {
             setSelectedAssignmentFeature(featureId);
             setAssignmentMindmapActive(false);
@@ -6902,6 +6912,21 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                     fileContent={assignmentFileContent}
                     fileName={assignmentFileName}
                     topic={assignmentTopic}
+                    onBack={() => {
+                        setSelectedAssignmentFeature(null);
+                        setShowAssignmentDashboard(true);
+                    }}
+                />
+            );
+        }
+
+        if (selectedAssignmentFeature === 'data-plotter') {
+            const fallbackTitle = assignmentTopic ||
+                (assignmentFileName ? assignmentFileName.replace(/\.[^/.]+$/, '') : undefined);
+
+            return (
+                <ChartJsDataPlotter
+                    initialTitle={fallbackTitle}
                     onBack={() => {
                         setSelectedAssignmentFeature(null);
                         setShowAssignmentDashboard(true);

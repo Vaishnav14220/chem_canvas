@@ -1,34 +1,93 @@
 import React, { lazy, Suspense, useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
-import "@excalidraw/excalidraw/index.css";
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Maximize2, Minimize2, Eraser, PenTool, Type } from 'lucide-react';
 
+// Track AMD disable state globally to prevent race conditions
+let amdDisableCount = 0;
+let savedDefine: any = undefined;
+let savedRequire: any = undefined;
+
+// Disable AMD loader (Monaco/GeoGebra) to prevent conflicts with Excalidraw dependencies
+function disableAmd(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const globalAny = window as typeof window & { define?: any; require?: any };
+
+  if (amdDisableCount === 0) {
+    savedDefine = globalAny.define;
+    savedRequire = globalAny.require;
+    if (typeof savedDefine === 'function' && savedDefine.amd) {
+      globalAny.define = undefined;
+      globalAny.require = undefined;
+    }
+  }
+  amdDisableCount++;
+  return true;
+}
+
+// Re-enable AMD loader after Excalidraw import completes
+function enableAmd(): void {
+  if (typeof window === 'undefined') return;
+
+  amdDisableCount--;
+  if (amdDisableCount === 0 && savedDefine !== undefined) {
+    const globalAny = window as typeof window & { define?: any; require?: any };
+    globalAny.define = savedDefine;
+    globalAny.require = savedRequire;
+    savedDefine = undefined;
+    savedRequire = undefined;
+  }
+}
+
+// Helper to run async code with AMD disabled
+async function withAmdDisabled<T>(loader: () => Promise<T>): Promise<T> {
+  disableAmd();
+  try {
+    return await loader();
+  } finally {
+    enableAmd();
+  }
+}
+
+// Pre-disable AMD before lazy loading starts to prevent race conditions
+disableAmd();
+
 // Lazy load Excalidraw for Vite compatibility (similar to Next.js dynamic import)
 const Excalidraw = lazy(async () => {
-  const module = await import("@excalidraw/excalidraw");
-  return { default: module.Excalidraw };
+  try {
+    // Import CSS separately to avoid AMD conflicts
+    await import("@excalidraw/excalidraw/index.css");
+    const module = await import("@excalidraw/excalidraw");
+    return { default: module.Excalidraw };
+  } finally {
+    // Re-enable AMD after initial Excalidraw load (lazy() already wrapped)
+    enableAmd();
+  }
 });
 
 // Also lazy load the convertToExcalidrawElements utility
-const loadConvertToExcalidrawElements = async () => {
-  const module = await import("@excalidraw/excalidraw");
-  return module.convertToExcalidrawElements;
-};
+const loadConvertToExcalidrawElements = async () =>
+  withAmdDisabled(async () => {
+    const module = await import("@excalidraw/excalidraw");
+    return module.convertToExcalidrawElements;
+  });
 
 // Load export utilities
-const loadExportUtils = async () => {
-  const module = await import("@excalidraw/excalidraw");
-  return {
-    exportToBlob: module.exportToBlob,
-    exportToCanvas: module.exportToCanvas
-  };
-};
+const loadExportUtils = async () =>
+  withAmdDisabled(async () => {
+    const module = await import("@excalidraw/excalidraw");
+    return {
+      exportToBlob: module.exportToBlob,
+      exportToCanvas: module.exportToCanvas
+    };
+  });
 
 // Load mermaid-to-excalidraw parser
-const loadMermaidParser = async () => {
-  const module = await import("@excalidraw/mermaid-to-excalidraw");
-  return module.parseMermaidToExcalidraw;
-};
+const loadMermaidParser = async () =>
+  withAmdDisabled(async () => {
+    const module = await import("@excalidraw/mermaid-to-excalidraw");
+    return module.parseMermaidToExcalidraw;
+  });
 
 // Types for Excalidraw API - use any to avoid strict type conflicts
 type ExcalidrawAPI = any;
@@ -502,27 +561,27 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
           const rawElements = [
             {
               id: rectId,
-              type: 'rectangle',
+              type: 'rectangle' as const,
               x: noteX,
               y: noteY,
               width: STICKY_NOTE_WIDTH,
               height: noteHeight,
               strokeColor: styles.strokeColor,
               backgroundColor: styles.backgroundColor,
-              fillStyle: 'solid',
+              fillStyle: 'solid' as const,
               strokeWidth: 2,
-              roundness: { type: 3, value: 6 },
+              roundness: { type: 3 as const, value: 6 },
             },
             {
               id: textId,
-              type: 'text',
+              type: 'text' as const,
               x: noteX + STICKY_NOTE_PADDING,
               y: noteY + STICKY_NOTE_PADDING,
               text: wrappedText,
               fontSize: STICKY_NOTE_FONT_SIZE,
               fontFamily: 1,
               strokeColor: styles.textColor,
-              textAlign: 'left',
+              textAlign: 'left' as const,
             },
           ];
 
@@ -1106,8 +1165,8 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
       console.log('[ExcalidrawCanvas] Excalidraw API ready');
     }, []);
 
-    const handleCanvasChange = useCallback((elements: any[], appState: any) => {
-      onElementsChange?.(elements, appState);
+    const handleCanvasChange = useCallback((elements: readonly any[], appState: any) => {
+      onElementsChange?.([...elements], appState);
     }, [onElementsChange]);
 
     // Shared Excalidraw component

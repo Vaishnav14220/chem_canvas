@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight, ChevronLeft, X, GitBranch, FileText, CheckCircle } from 'lucide-react';
+import dayjs from 'dayjs';
+import { FileUp, Loader2, Sparkles, Download, Check, RefreshCw, BookOpen, ChevronRight, ChevronLeft, X, GitBranch, FileText, CheckCircle, Lock } from 'lucide-react';
 import { generateTextContent, generateVisionContent, streamTextContent, annotateImageWithFeedback } from '../services/geminiService';
 import { extractTextFromPdf } from '../utils/pdfTextExtractor';
 import { extractPDFPages } from '../services/ocrService';
@@ -14,6 +15,9 @@ import {
 import { ExamPrepToTViewer } from './ExamPrepToTViewer';
 import { ToTLiveViewer } from './ToTLiveViewer';
 import { FormulaExtractionWorkspace, type FormulaItem } from './FormulaExtractionWorkspace';
+import StudyTimeline from './StudyTimeline';
+import { generateStudyTimelinePlan } from '../services/studyTimelineService';
+import type { StudyTimelineItem, StudyTimelinePlan, StudyTimelinePreferences } from '../types/studyTimeline';
 
 // Props interface for receiving initial file data from parent
 interface InteractiveAssignmentWorkspaceProps {
@@ -41,6 +45,9 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
     const [fileData, setFileData] = useState<{ mimeType: string, data: string } | null>(initialFileData);
     const [fileContent, setFileContent] = useState<string | null>(initialFileContent); // Legacy text content
     const [fileName, setFileName] = useState<string | null>(initialFileName);
+    const [referenceFileData, setReferenceFileData] = useState<{ mimeType: string, data: string } | null>(null);
+    const [referenceFileName, setReferenceFileName] = useState<string | null>(null);
+    const [referenceText, setReferenceText] = useState<string | null>(null);
     const [topic, setTopic] = useState<string>(initialTopic);
 
     // Set options based on selectedFeature prop
@@ -77,6 +84,18 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
     const [isExtractingSource, setIsExtractingSource] = useState(false);
     const autoGenerateRef = useRef<string | null>(null);
 
+    // Study timeline state
+    const [timelineItems, setTimelineItems] = useState<StudyTimelineItem[] | null>(null);
+    const [timelineSummary, setTimelineSummary] = useState<string | null>(null);
+    const [timelineNotice, setTimelineNotice] = useState<string | null>(null);
+    const [timelinePreferences, setTimelinePreferences] = useState<StudyTimelinePreferences>({
+        effortHoursPerDay: 2.5,
+        blockedDays: [],
+        preferredStudyTime: 'evening',
+        reminderDays: [7, 3, 1],
+        targetDate: '',
+    });
+
     // Sync state from props when initial values change (from dashboard upload)
     useEffect(() => {
         if (initialFileData) {
@@ -109,6 +128,9 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
     useEffect(() => {
         setExtractFormulaSheet(selectedFeature === 'extract-formulas');
         setQuestionAndAnswer(selectedFeature === 'qa-generator');
+        if (selectedFeature === 'timeline-generator') {
+            setUseToT(false);
+        }
     }, [selectedFeature]);
 
     useEffect(() => {
@@ -117,6 +139,12 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
 
     useEffect(() => {
         setSourceMarkdown(null);
+    }, [selectedFeature, fileName, fileContent, fileData]);
+
+    useEffect(() => {
+        setTimelineItems(null);
+        setTimelineSummary(null);
+        setTimelineNotice(null);
     }, [selectedFeature, fileName, fileContent, fileData]);
 
     // Remove any external polyfill.io scripts the model might inject so previews don't fail on blocked domains
@@ -128,6 +156,30 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
 
     const stripMarkdownFence = (markdown: string) =>
         markdown.replace(/^\s*```(?:markdown)?/i, '').replace(/```\s*$/i, '').trim();
+
+    const WEEKDAY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    const updateTimelinePreferences = (updates: Partial<StudyTimelinePreferences>) => {
+        setTimelinePreferences((prev) => ({ ...prev, ...updates }));
+    };
+
+    const toggleBlockedDay = (day: string) => {
+        setTimelinePreferences((prev) => {
+            const blocked = prev.blockedDays.includes(day)
+                ? prev.blockedDays.filter((item) => item !== day)
+                : [...prev.blockedDays, day];
+            return { ...prev, blockedDays: blocked };
+        });
+    };
+
+    const toggleReminderDay = (day: number) => {
+        setTimelinePreferences((prev) => {
+            const reminders = prev.reminderDays.includes(day)
+                ? prev.reminderDays.filter((item) => item !== day)
+                : [...prev.reminderDays, day];
+            return { ...prev, reminderDays: reminders.sort((a, b) => b - a) };
+        });
+    };
 
     const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -403,6 +455,75 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
         return '';
     };
 
+    const buildFallbackTimeline = (label: string): StudyTimelinePlan => {
+        const start = dayjs().startOf('day');
+        const items: StudyTimelineItem[] = [
+            {
+                id: 'week-1-reading',
+                date: start.add(1, 'day').format('YYYY-MM-DD'),
+                type: 'reading',
+                title: `Read core notes for ${label}`,
+                description: 'Skim the syllabus and highlight key chapters or lecture units.',
+                status: 'planned',
+                estimateHours: 2,
+                reminders: timelinePreferences.reminderDays,
+                studyTime: `${timelinePreferences.preferredStudyTime} focus`,
+            },
+            {
+                id: 'week-1-lecture',
+                date: start.add(3, 'day').format('YYYY-MM-DD'),
+                type: 'lecture',
+                title: 'Lecture recap + flash review',
+                description: 'Summarize key concepts and build a quick cheat sheet.',
+                status: 'planned',
+                estimateHours: 1.5,
+                reminders: timelinePreferences.reminderDays,
+                studyTime: `${timelinePreferences.preferredStudyTime} focus`,
+            },
+            {
+                id: 'week-2-assignment',
+                date: start.add(7, 'day').format('YYYY-MM-DD'),
+                type: 'assignment',
+                title: 'Assignment draft',
+                description: 'Outline the submission and identify any missing resources.',
+                status: 'planned',
+                startDate: start.add(5, 'day').format('YYYY-MM-DD'),
+                endDate: start.add(9, 'day').format('YYYY-MM-DD'),
+                estimateHours: 3,
+                reminders: timelinePreferences.reminderDays,
+                studyTime: `${timelinePreferences.preferredStudyTime} focus`,
+            },
+            {
+                id: 'week-2-review',
+                date: start.add(10, 'day').format('YYYY-MM-DD'),
+                type: 'reading',
+                title: 'Review + practice problems',
+                description: 'Work through problem sets and annotate tricky steps.',
+                status: 'planned',
+                estimateHours: 2,
+                reminders: timelinePreferences.reminderDays,
+                studyTime: `${timelinePreferences.preferredStudyTime} focus`,
+            },
+            {
+                id: 'week-3-exam',
+                date: start.add(14, 'day').format('YYYY-MM-DD'),
+                type: 'exam',
+                title: 'Mock exam checkpoint',
+                description: 'Run a timed review to validate readiness.',
+                status: 'planned',
+                estimateHours: 2,
+                reminders: timelinePreferences.reminderDays,
+                studyTime: `${timelinePreferences.preferredStudyTime} focus`,
+            },
+        ];
+
+        return {
+            summary: 'Starter timeline generated locally. Regenerate to personalize the schedule.',
+            notice: 'Using a starter timeline because the AI plan could not be generated.',
+            items,
+        };
+    };
+
     const buildFormulaExtractionPrompt = (chunk: string, isAssignment: boolean, index: number, total: number) => `
 You are a formula extraction engine. Return ONLY JSON.
 
@@ -609,8 +730,11 @@ Rules:
     }, [thoughtLog]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const referenceInputRef = useRef<HTMLInputElement>(null);
+    const isTimelineFeature = selectedFeature === 'timeline-generator';
     const canGenerate = Boolean(fileContent || fileData || topic);
-    const autoGenerateKey = `${selectedFeature || 'none'}:${fileName || ''}:${topic || ''}:${fileContent?.length || 0}:${fileData ? fileData.data.length : 0}:${useToT ? 'tot' : 'no'}`;
+    const timelinePreferenceKey = `${timelinePreferences.effortHoursPerDay}:${timelinePreferences.preferredStudyTime}:${timelinePreferences.targetDate || 'none'}:${timelinePreferences.blockedDays.join(',')}:${timelinePreferences.reminderDays.join(',')}`;
+    const autoGenerateKey = `${selectedFeature || 'none'}:${fileName || ''}:${topic || ''}:${fileContent?.length || 0}:${fileData ? fileData.data.length : 0}:${useToT ? 'tot' : 'no'}:${isTimelineFeature ? timelinePreferenceKey : 'no-timeline'}`;
     const handleToTContinue = () => {
         setIsToTGenerating(false);
         setIsToTReviewing(false);
@@ -651,6 +775,44 @@ Rules:
         }
     };
 
+    const handleReferenceUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setReferenceFileName(file.name);
+
+        if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const base64String = e.target?.result as string;
+                const base64Data = base64String.split(',')[1];
+                setReferenceFileData({
+                    mimeType: file.type,
+                    data: base64Data
+                });
+                setReferenceText(null);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target?.result as string;
+                setReferenceText(text);
+                setReferenceFileData(null);
+            };
+            reader.readAsText(file);
+        }
+    };
+
+    const clearReference = () => {
+        setReferenceFileData(null);
+        setReferenceFileName(null);
+        setReferenceText(null);
+        if (referenceInputRef.current) {
+            referenceInputRef.current.value = '';
+        }
+    };
+
     /**
      * Check My Work - Annotates uploaded image/PDF with red checkmarks/green comments
      */
@@ -678,10 +840,24 @@ Rules:
         try {
             setThoughtLog(prev => [...prev, '✏️ Adding annotations with Gemini 3 Pro Image...']);
 
+            const promptParts = [];
+            if (topic?.trim()) {
+                promptParts.push(`Topic: ${topic.trim()}`);
+            }
+            if (referenceText?.trim()) {
+                promptParts.push(`Reference text (marking scheme or model answer): ${referenceText.trim()}`);
+            }
+            const analysisPrompt = promptParts.length > 0 ? promptParts.join('\n') : undefined;
+
+            const referencePayload = referenceFileData
+                ? { data: referenceFileData.data, mimeType: referenceFileData.mimeType, label: 'marking scheme or model answer' }
+                : null;
+
             const result = await annotateImageWithFeedback(
                 fileData.data,
                 fileData.mimeType,
-                topic || undefined
+                analysisPrompt,
+                referencePayload
             );
 
             setAnnotatedImage({
@@ -710,6 +886,9 @@ Rules:
         setTotResponse(null);
         setExtractedFormulas(null);
         setSourceMarkdown(null);
+        setTimelineItems(null);
+        setTimelineSummary(null);
+        setTimelineNotice(null);
         setThoughtLog([]);
         setIsStreamingThoughts(true);
         setIsToTReviewing(false);
@@ -735,15 +914,52 @@ Rules:
                                                 ? 'question_answer'
                                                 : 'comprehensive';
 
-        const useToTPlanning = useToT || resolvedMode === 'tree_of_thoughts';
         const isFormulaMode = resolvedMode === 'formula_extraction';
         const isQaMode = resolvedMode === 'question_answer';
         const isSummaryMode = resolvedMode === 'smart_summary';
         const isFlashcardsMode = resolvedMode === 'flashcards';
         const isTimelineMode = resolvedMode === 'timeline';
+        const useToTPlanning = (useToT || resolvedMode === 'tree_of_thoughts') && !isTimelineMode;
         const isTreeMode = resolvedMode === 'tree_of_thoughts';
         const isCheckMyWorkMode = resolvedMode === 'check_my_work';
         const isComprehensiveMode = resolvedMode === 'comprehensive';
+
+        if (isTimelineMode) {
+            setTimelineItems(null);
+            setTimelineSummary(null);
+            setTimelineNotice(null);
+            setLoadingStep('Building study timeline...');
+
+            let sourceText = fileContent?.trim() ?? '';
+            if (!sourceText && fileData) {
+                sourceText = await extractSourceTextForFormulas();
+            }
+
+            try {
+                const plan = await generateStudyTimelinePlan({
+                    topic: topic || fileName || 'Exam preparation',
+                    fileName: fileName || undefined,
+                    sourceText: sourceText || undefined,
+                    preferences: timelinePreferences,
+                });
+                setTimelineItems(plan.items);
+                setTimelineSummary(plan.summary || null);
+                setTimelineNotice(plan.notice || null);
+                setLoadingStep('Complete!');
+            } catch (error) {
+                console.error('Timeline generation failed:', error);
+                const fallback = buildFallbackTimeline(topic || fileName || 'Study plan');
+                setTimelineItems(fallback.items);
+                setTimelineSummary(fallback.summary || null);
+                setTimelineNotice(fallback.notice || 'Using a starter timeline because the AI plan could not be generated.');
+                setLoadingStep('Starter timeline ready');
+            } finally {
+                setIsGenerating(false);
+                setIsToTGenerating(false);
+                setIsStreamingThoughts(false);
+            }
+            return;
+        }
 
         // Tree of Thoughts Enhanced Mode: Use ToT internally for better reasoning, then generate HTML
         if (useToTPlanning) {
@@ -1623,23 +1839,24 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
         return (
             <div className="flex flex-1 w-full h-full min-h-0 bg-[#eef2f7] overflow-hidden text-slate-900">
                 <div className="flex-1 flex flex-col min-h-0">
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white shadow-sm">
-                        <div className="flex items-center gap-3">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-wrap items-center gap-4">
                             {onBack && (
                                 <button
                                     onClick={onBack}
-                                    className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors text-sm"
+                                    className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors text-sm font-semibold uppercase tracking-[0.12em]"
                                 >
                                     <ChevronLeft className="w-4 h-4" />
-                                    <span>Back to Assignment</span>
+                                    <span>Back</span>
                                 </button>
                             )}
-                            <div className="hidden sm:block">
-                                <div className="text-sm font-semibold text-slate-800">Check My Work</div>
-                                <div className="text-xs text-slate-500">Upload a PDF or image and get annotated feedback.</div>
+                            <span className="hidden h-6 w-px bg-slate-200 sm:block"></span>
+                            <div className="flex flex-col">
+                                <div className="text-xl font-semibold text-slate-900 leading-tight">Check My Work</div>
+                                <div className="text-sm text-slate-600">Upload a PDF or image and get annotated feedback.</div>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
                             <input
                                 type="file"
                                 ref={fileInputRef}
@@ -1649,25 +1866,59 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                             />
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="px-3 py-2 text-xs font-semibold uppercase tracking-wide bg-[#2c4066] text-white hover:bg-[#34507c] transition-colors"
+                                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold uppercase tracking-wide rounded-xl bg-[#2c4066] text-white shadow-sm hover:bg-[#34507c] transition-colors"
                             >
+                                <FileUp className="w-4 h-4" />
                                 Upload Submission
                             </button>
                             {fileName && (
-                                <span className="text-xs text-slate-500 truncate max-w-[220px]">{fileName}</span>
+                                <span className="text-xs text-slate-500 truncate max-w-[200px]">{fileName}</span>
                             )}
                         </div>
                     </div>
 
-                    <div className="flex-1 min-h-0 flex bg-white">
-                        <div className="flex h-full w-1/2 flex-col border-r border-slate-200 bg-white">
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-                                <div className="text-sm font-semibold text-slate-700">Submission</div>
+                    <div className="flex-1 min-h-0 flex flex-col lg:flex-row bg-[#f5f7fb] p-6 gap-6">
+                        <div className="flex h-full w-full lg:w-1/2 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-white">
+                                <div className="text-sm font-semibold text-slate-800 uppercase tracking-[0.12em]">Submission</div>
                                 {fileName && (
-                                    <span className="text-xs text-slate-400 truncate max-w-[200px]">{fileName}</span>
+                                    <span className="text-sm text-slate-500 truncate max-w-[240px]">{fileName}</span>
                                 )}
                             </div>
-                            <div className="flex-1 bg-slate-50 overflow-auto">
+                            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-slate-100 bg-slate-50">
+                                <div className="text-sm text-slate-600">
+                                    Optional: add a marking scheme or model answer
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <input
+                                        type="file"
+                                        ref={referenceInputRef}
+                                        className="hidden"
+                                        accept="application/pdf,image/*,.txt,.md"
+                                        onChange={handleReferenceUpload}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => referenceInputRef.current?.click()}
+                                        className="px-3 py-2 text-xs font-semibold uppercase tracking-wide rounded-lg border border-slate-200 text-slate-700 hover:text-slate-900 hover:border-slate-300 transition-colors bg-white"
+                                    >
+                                        Upload reference
+                                    </button>
+                                    {referenceFileName && (
+                                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                                            <span className="truncate max-w-[200px]">{referenceFileName}</span>
+                                            <button
+                                                type="button"
+                                                onClick={clearReference}
+                                                className="text-xs text-slate-500 hover:text-slate-700"
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex-1 bg-white overflow-auto p-5">
                                 {sourcePreviewUrl ? (
                                     isSubmissionPdf ? (
                                         <iframe
@@ -1676,7 +1927,7 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                             title="Submission PDF"
                                         />
                                     ) : isSubmissionImage ? (
-                                        <div className="w-full h-full flex items-center justify-center p-4">
+                                        <div className="w-full h-full flex items-center justify-center p-6 bg-slate-50 rounded-xl border border-slate-200">
                                             <img
                                                 src={sourcePreviewUrl}
                                                 alt="Submission"
@@ -1689,18 +1940,32 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                         </div>
                                     )
                                 ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center text-center text-slate-400 gap-2 px-6">
-                                        <FileUp className="w-8 h-8 text-slate-300" />
-                                        <p className="text-sm font-medium text-slate-500">Upload a PDF or image to review.</p>
-                                        <p className="text-xs text-slate-400">Use the upload button above.</p>
+                                    <div className="w-full h-full flex items-center justify-center px-8 py-10">
+                                        <div className="w-full max-w-md rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-10 text-center">
+                                            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm">
+                                                <FileUp className="w-6 h-6 text-blue-500" />
+                                            </div>
+                                            <p className="text-base font-semibold text-slate-700">Drag &amp; Drop your file here</p>
+                                            <p className="text-xs text-slate-400 mt-2">
+                                                Supports PDF, PNG, or JPG. Maximum file size 25MB.
+                                            </p>
+                                            <p className="text-xs text-slate-400 mt-4 uppercase tracking-[0.3em]">Or</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="mt-4 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                                            >
+                                                Browse files from your computer
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        <div className="flex h-full w-1/2 flex-col bg-white">
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-                                <div className="text-sm font-semibold text-slate-700">Corrections & Feedback</div>
+                        <div className="flex h-full w-full lg:w-1/2 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-white">
+                                <div className="text-sm font-semibold text-slate-800 uppercase tracking-[0.12em]">Corrections &amp; Feedback</div>
                                 <div className="flex items-center gap-2">
                                     {annotatedImage && (
                                         <>
@@ -1728,7 +1993,7 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                     )}
                                 </div>
                             </div>
-                            <div className="flex-1 bg-slate-50 overflow-auto p-4">
+                            <div className="flex-1 bg-white overflow-auto p-6">
                                 {isChecking ? (
                                     <div className="flex flex-col items-center justify-center text-center text-slate-500 gap-3 h-full">
                                         <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
@@ -1754,18 +2019,31 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center text-center text-slate-500 gap-4 h-full">
-                                        <CheckCircle className="w-9 h-9 text-emerald-400" />
-                                        <p className="text-sm font-medium">Run "Check My Work" to see corrections.</p>
+                                        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50">
+                                            <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-100">
+                                                <CheckCircle className="w-6 h-6 text-emerald-500" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p className="text-base font-semibold text-slate-700">Ready to Analyze</p>
+                                            <p className="text-xs text-slate-400 mt-2 max-w-xs">
+                                                Upload your document on the left to unlock AI-powered corrections and detailed feedback on your work.
+                                            </p>
+                                        </div>
                                         <button
                                             onClick={handleCheckMyWork}
                                             disabled={isChecking || !fileData}
-                                            className={`px-4 py-2 text-xs font-semibold uppercase tracking-wide rounded
+                                            className={`inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold uppercase tracking-wide rounded-lg
                                                     ${isChecking || !fileData
-                                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                                 : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
                                         >
+                                            {!fileData && <Lock className="w-3.5 h-3.5" />}
                                             Check My Work
                                         </button>
+                                        {!fileData && (
+                                            <p className="text-[11px] text-slate-400">Upload a file to enable checking</p>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -1861,25 +2139,114 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                     Question and Answer
                                 </button>
                             </div>
-                            {/* Tree of Thoughts Toggle */}
-                            <div className="mt-3 pt-3 border-t border-slate-700">
-                                <button
-                                    type="button"
-                                    onClick={() => setUseToT(!useToT)}
-                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${useToT
-                                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-md'
-                                        : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
-                                        }`}
-                                >
-                                    <GitBranch className="w-4 h-4" />
-                                    Tree of Thoughts
-                                    {useToT && <Check className="w-3 h-3" />}
-                                </button>
-                                <p className="text-[10px] text-slate-500 mt-1.5 text-center">
-                                    {useToT ? 'Generates structured study plan tree' : 'Generates interactive HTML lesson'}
-                                </p>
-                            </div>
+                            {!isTimelineFeature && (
+                                <div className="mt-3 pt-3 border-t border-slate-700">
+                                    <button
+                                        type="button"
+                                        onClick={() => setUseToT(!useToT)}
+                                        className={`w-full px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${useToT
+                                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-md'
+                                            : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
+                                            }`}
+                                    >
+                                        <GitBranch className="w-4 h-4" />
+                                        Tree of Thoughts
+                                        {useToT && <Check className="w-3 h-3" />}
+                                    </button>
+                                    <p className="text-[10px] text-slate-500 mt-1.5 text-center">
+                                        {useToT ? 'Generates structured study plan tree' : 'Generates interactive HTML lesson'}
+                                    </p>
+                                </div>
+                            )}
                         </div>
+
+                        {isTimelineFeature && (
+                            <div className="space-y-4 border-t border-slate-700 pt-4">
+                                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Timeline settings</label>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                                        <span>Daily effort</span>
+                                        <span className="text-slate-200">{timelinePreferences.effortHoursPerDay}h/day</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={6}
+                                        step={0.5}
+                                        value={timelinePreferences.effortHoursPerDay}
+                                        onChange={(event) => updateTimelinePreferences({ effortHoursPerDay: Number(event.target.value) })}
+                                        className="w-full accent-blue-400"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Preferred study time</label>
+                                    <select
+                                        value={timelinePreferences.preferredStudyTime}
+                                        onChange={(event) =>
+                                            updateTimelinePreferences({
+                                                preferredStudyTime: event.target.value as StudyTimelinePreferences['preferredStudyTime'],
+                                            })
+                                        }
+                                        className="w-full rounded border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100"
+                                    >
+                                        <option value="morning">Morning</option>
+                                        <option value="afternoon">Afternoon</option>
+                                        <option value="evening">Evening</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Blocked days</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {WEEKDAY_OPTIONS.map((day) => {
+                                            const isBlocked = timelinePreferences.blockedDays.includes(day);
+                                            return (
+                                                <button
+                                                    key={day}
+                                                    type="button"
+                                                    onClick={() => toggleBlockedDay(day)}
+                                                    className={`rounded border px-2 py-1 text-[11px] font-semibold transition ${isBlocked
+                                                        ? 'border-rose-400/60 bg-rose-500/20 text-rose-200'
+                                                        : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                                                        }`}
+                                                >
+                                                    {day.slice(0, 3)}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Reminder cadence</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {[7, 3, 1].map((day) => {
+                                            const isActive = timelinePreferences.reminderDays.includes(day);
+                                            return (
+                                                <button
+                                                    key={day}
+                                                    type="button"
+                                                    onClick={() => toggleReminderDay(day)}
+                                                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${isActive
+                                                        ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200'
+                                                        : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                                                        }`}
+                                                >
+                                                    {day}d
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Target date (optional)</label>
+                                    <input
+                                        type="date"
+                                        value={timelinePreferences.targetDate || ''}
+                                        onChange={(event) => updateTimelinePreferences({ targetDate: event.target.value })}
+                                        className="w-full rounded border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100"
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         {/* Generate Button */}
                         <button
@@ -2114,6 +2481,10 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                     </details>
                                 </div>
                             )}
+                        </div>
+                    ) : isTimelineFeature && timelineItems ? (
+                        <div className="absolute inset-0 w-full h-full overflow-auto">
+                            <StudyTimeline items={timelineItems} summary={timelineSummary} notice={timelineNotice} />
                         </div>
                     ) : previewDoc ? (
                         <iframe

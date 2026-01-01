@@ -1,46 +1,73 @@
 <!doctype html>
 <html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ChemStudio AI - Intelligent Chemistry Workspace</title>
 
-    <!-- Google Fonts & Icons -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,slnt,wght,GRAD@6..144,0,600..700,100&display=swap">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
-    <!-- Handwriting Font for Canvas -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Satisfy&display=swap" />
-    <!-- RDKit WASM Module -->
-    <script src="https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js"></script>
-    
-    <!-- JSmol for 3D Molecular Visualization -->
-    <script src="https://chemapps.stolaf.edu/jmol/jsmol/JSmol.min.js"></script>
-    <script src="/swiftlatex/XeTeXEngine.js?v=2"></script>
-    <script src="/swiftlatex/DvipdfmxEngine.js?v=2"></script>
-    
-    <!-- Custom Styling -->
-    <style>
-      .loading-spinner {
-        display: inline-block;
-        width: 30px;
-        height: 30px;
-        border: 3px solid rgba(59, 130, 246, 0.3);
-        border-radius: 50%;
-        border-top-color: #3b82f6;
-        animation: spin 0.8s linear infinite;
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChemStudio AI - Intelligent Chemistry Workspace</title>
+
+  <!-- AMD Loader Conflict Prevention: Disable AMD define before any external scripts -->
+  <script>
+    // Store original AMD functions if they exist
+    window.__amdDefineBackup = window.define;
+    window.__amdRequireBackup = window.require;
+    // Delete to prevent UMD modules from using AMD (conflicts with Excalidraw)
+    if (window.define && window.define.amd) {
+      delete window.define;
+      delete window.require;
+    }
+    // Hook to restore AMD after specific scripts (for GeoGebra compatibility)
+    window.__restoreAmd = function () {
+      if (window.__amdDefineBackup) {
+        window.define = window.__amdDefineBackup;
+        window.require = window.__amdRequireBackup;
       }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
+    };
+  </script>
+
+  <!-- Google Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700" />
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,slnt,wght,GRAD@6..144,0,600..700,100&display=swap">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <!-- Handwriting Font for Canvas -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Satisfy&display=swap" />
+  <!-- RDKit WASM Module -->
+  <script src="https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js"></script>
+
+  <!-- JSmol for 3D Molecular Visualization -->
+  <script src="https://chemapps.stolaf.edu/jmol/jsmol/JSmol.min.js"></script>
+  <script src="/swiftlatex/XeTeXEngine.js?v=2"></script>
+  <script src="/swiftlatex/DvipdfmxEngine.js?v=2"></script>
+
+  <!-- Custom Styling -->
+  <style>
+    .loading-spinner {
+      display: inline-block;
+      width: 30px;
+      height: 30px;
+      border: 3px solid rgba(59, 130, 246, 0.3);
+      border-radius: 50%;
+      border-top-color: #3b82f6;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
       }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>

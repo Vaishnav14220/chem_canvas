@@ -56,7 +56,6 @@ import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { extractTextFromDocument } from '../utils/documentTextExtractor';
 import { addFileToSourceLibrary } from '../utils/sourceLibrary';
 import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
-import { MessageDock, type Character } from './ui/message-dock';
 import { ConnectionState } from './GeminiLive/types';
 import { Button } from './ui/button';
 
@@ -146,14 +145,6 @@ export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const excalidrawRef = useRef<ExcalidrawCanvasRef>(null);
-
-    const dockCharacters: Character[] = [
-        { emoji: "*", name: "Sparkle", online: false, backgroundColor: "bg-amber-200", gradientColors: "#fde68a, #fffbeb" },
-        { emoji: "W", name: "Wizard", online: true, backgroundColor: "bg-emerald-200 dark:bg-emerald-300", gradientColors: "#a7f3d0, #ecfdf5" },
-        { emoji: "T", name: "Teacher", online: true, backgroundColor: "bg-amber-100 dark:bg-amber-200", gradientColors: "#fbbf24, #fef3c7" },
-        { emoji: "U", name: "Unicorn", online: true, backgroundColor: "bg-violet-200 dark:bg-violet-300", gradientColors: "#c4b5fd, #f5f3ff" },
-        { emoji: "R", name: "Robot", online: false, backgroundColor: "bg-rose-200 dark:bg-rose-300", gradientColors: "#fecaca, #fef2f2" },
-    ];
 
     // Initialize Gemini Live for voice chat
     const preferredGeminiLanguage = getPreferredGeminiLanguage();
@@ -495,15 +486,33 @@ Keep responses conversational, brief, and focused on checking understanding.`
         }
     };
 
+    // Clear session and canvas
+    const handleClearSession = useCallback(() => {
+        setMessages([]);
+        setStreamingContent('');
+        setGapMaps([]);
+        setTeachBackAttempts(0);
+        setUploadedDocument(null);
+        if (excalidrawRef.current) {
+            excalidrawRef.current.clearCanvas();
+        }
+    }, []);
+
     // Topic editing handlers
     const handleSaveTopic = useCallback(() => {
-        if (editTopicValue.trim()) {
-            setCurrentTopic(editTopicValue.trim());
-            setIsEditingTopic(false);
-            // Optionally restart session with new topic
-            handleClearSession();
+        const nextTopic = editTopicValue.trim();
+        if (!nextTopic) {
+            return;
         }
-    }, [editTopicValue]);
+        setCurrentTopic(nextTopic);
+        setEditTopicValue(nextTopic);
+        setIsEditingTopic(false);
+        setCurrentTasks([
+            { id: '1', text: `Teach me about "${nextTopic}" as if I am new to the topic. What is it and why does it matter?`, type: 'question' }
+        ]);
+        onTopicChange?.(nextTopic);
+        handleClearSession();
+    }, [editTopicValue, handleClearSession, onTopicChange]);
 
     const handleCancelEdit = useCallback(() => {
         setEditTopicValue(currentTopic);
@@ -560,18 +569,6 @@ Keep responses conversational, brief, and focused on checking understanding.`
             setIsLoading(false);
         }
     }, [currentTopic, messages, isTeachBackMode]);
-
-    // Clear session and canvas
-    const handleClearSession = useCallback(() => {
-        setMessages([]);
-        setStreamingContent('');
-        setGapMaps([]);
-        setTeachBackAttempts(0);
-        setUploadedDocument(null);
-        if (excalidrawRef.current) {
-            excalidrawRef.current.clearCanvas();
-        }
-    }, []);
 
     // Generate and show Mermaid diagram on canvas
     const handleShowDiagram = useCallback(async () => {
@@ -653,7 +650,7 @@ Context: ${recentContext}`;
                 <div className="flex items-center gap-4">
                     <button
                         onClick={onBack}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="p-2 hover:bg-gray-100 rounded-none transition-colors"
                     >
                         <Menu className="w-5 h-5 text-gray-600" />
                     </button>
@@ -665,7 +662,7 @@ Context: ${recentContext}`;
                     <div className="flex bg-gray-100 rounded-lg p-0.5 ml-2">
                         <button
                             onClick={() => setFeynmanSubMode('tutor')}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${feynmanSubMode === 'tutor'
+                            className={`px-3 py-1 text-xs font-medium rounded-none transition-colors ${feynmanSubMode === 'tutor'
                                 ? 'bg-white text-gray-800 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
@@ -674,7 +671,7 @@ Context: ${recentContext}`;
                         </button>
                         <button
                             onClick={() => setFeynmanSubMode('classroom')}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${feynmanSubMode === 'classroom'
+                            className={`px-3 py-1 text-xs font-medium rounded-none transition-colors ${feynmanSubMode === 'classroom'
                                 ? 'bg-white text-gray-800 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
@@ -711,17 +708,44 @@ Context: ${recentContext}`;
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handleClearSession}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1 text-gray-600 text-sm"
+                        className="p-2 hover:bg-gray-100 rounded-none transition-colors flex items-center gap-1 text-gray-600 text-sm"
                         title="Clear session and canvas"
                     >
                         <RotateCcw className="w-4 h-4" />
                         <span className="hidden sm:inline">Reset</span>
                     </button>
-                    <button className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                    <button className="w-10 h-10 rounded-none bg-gray-100 flex items-center justify-center overflow-hidden">
                         <User className="w-5 h-5 text-gray-500" />
                     </button>
                 </div>
             </header>
+
+            {/* Next Topics Strip - Shows remaining topics for quick switching */}
+            {remainingTopics.length > 0 && (
+                <div className="flex-shrink-0 px-4 py-2 bg-gradient-to-r from-blue-50 to-slate-50 border-b border-blue-100 flex items-center gap-2 overflow-x-auto">
+                    <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider whitespace-nowrap">Next Topics:</span>
+                    <div className="flex gap-2">
+                        {remainingTopics.slice(0, 5).map((nextTopic, idx) => (
+                            <button
+                                key={`${nextTopic}-${idx}`}
+                                onClick={() => {
+                                    setCurrentTopic(nextTopic);
+                                    setEditTopicValue(nextTopic);
+                                    setIsEditingTopic(false);
+                                    setCurrentTasks([
+                                        { id: '1', text: `Teach me about "${nextTopic}" as if I am new to the topic. What is it and why does it matter?`, type: 'question' }
+                                    ]);
+                                    onTopicChange?.(nextTopic);
+                                    handleClearSession();
+                                }}
+                                className="px-3 py-1 text-sm bg-white text-blue-700 rounded-none border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all whitespace-nowrap shadow-sm"
+                            >
+                                {nextTopic}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Main Split Layout */}
             <div className="flex flex-1 overflow-hidden">
@@ -745,10 +769,10 @@ Context: ${recentContext}`;
                                     }}
                                 />
                                 <span className="text-2xl font-bold text-gray-900">" simply</span>
-                                <button onClick={handleSaveTopic} className="p-1 hover:bg-green-100 rounded text-green-600">
+                                <button onClick={handleSaveTopic} className="p-1 hover:bg-green-100 rounded-none text-green-600">
                                     <Check className="w-5 h-5" />
                                 </button>
-                                <button onClick={handleCancelEdit} className="p-1 hover:bg-red-100 rounded text-red-600">
+                                <button onClick={handleCancelEdit} className="p-1 hover:bg-red-100 rounded-none text-red-600">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
@@ -759,14 +783,14 @@ Context: ${recentContext}`;
                                 </h1>
                                 <button
                                     onClick={() => setIsEditingTopic(true)}
-                                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                                    className="p-1.5 hover:bg-gray-100 rounded-none transition-colors"
                                     title="Change topic"
                                 >
                                     <Edit3 className="w-4 h-4 text-gray-500" />
                                 </button>
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1"
+                                    className="p-1.5 hover:bg-gray-100 rounded-none transition-colors flex items-center gap-1"
                                     title="Upload study material"
                                 >
                                     <Upload className="w-4 h-4 text-gray-500" />
@@ -811,7 +835,7 @@ Context: ${recentContext}`;
                                             onClick={() => setCurrentTasks(prev =>
                                                 prev.map(t => t.id === currentTasks[0].id ? { ...t, completed: true } : t)
                                             )}
-                                            className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-full hover:bg-green-600 transition-colors flex-shrink-0"
+                                            className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-none hover:bg-green-600 transition-colors flex-shrink-0"
                                         >
                                             Done
                                         </button>
@@ -837,21 +861,21 @@ Context: ${recentContext}`;
                                 <div className="flex items-center gap-1 bg-gray-800 rounded-full px-3 py-2">
                                     <button
                                         onClick={() => handleToolChange('pen')}
-                                        className={`p-2 rounded-full transition-colors ${activeTool === 'pen' ? 'bg-gray-600' : 'hover:bg-gray-700'
+                                        className={`p-2 rounded-none transition-colors ${activeTool === 'pen' ? 'bg-gray-600' : 'hover:bg-gray-700'
                                             }`}
                                     >
                                         <Pencil className="w-5 h-5 text-white" />
                                     </button>
                                     <button
                                         onClick={() => handleToolChange('eraser')}
-                                        className={`p-2 rounded-full transition-colors ${activeTool === 'eraser' ? 'bg-gray-600' : 'hover:bg-gray-700'
+                                        className={`p-2 rounded-none transition-colors ${activeTool === 'eraser' ? 'bg-gray-600' : 'hover:bg-gray-700'
                                             }`}
                                     >
                                         <Eraser className="w-5 h-5 text-white" />
                                     </button>
                                     <button
                                         onClick={() => handleToolChange('text')}
-                                        className={`p-2 rounded-full transition-colors ${activeTool === 'text' ? 'bg-gray-600' : 'hover:bg-gray-700'
+                                        className={`p-2 rounded-none transition-colors ${activeTool === 'text' ? 'bg-gray-600' : 'hover:bg-gray-700'
                                             }`}
                                     >
                                         <MessageSquare className="w-5 h-5 text-white" />
@@ -864,7 +888,7 @@ Context: ${recentContext}`;
                                         <button
                                             key={color.name}
                                             onClick={() => handleColorChange(color.name)}
-                                            className={`w-8 h-8 rounded-full transition-all ${activeColor === color.name
+                                            className={`w-8 h-8 rounded-none transition-all ${activeColor === color.name
                                                 ? 'ring-2 ring-offset-2 ring-gray-400 scale-110'
                                                 : 'hover:scale-105'
                                                 }`}
@@ -877,7 +901,7 @@ Context: ${recentContext}`;
                                 <Button
                                     onClick={() => setIsRecording(!isRecording)}
                                     variant="outline"
-                                    className={`rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 ${isRecording ? 'ring-2 ring-rose-400/60' : ''}`}
+                                    className={`rounded-none border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 ${isRecording ? 'ring-2 ring-rose-400/60' : ''}`}
                                 >
                                     <Circle className={`w-3 h-3 ${isRecording ? 'fill-white animate-pulse' : 'fill-white'}`} />
                                     <span className="text-sm font-medium">
@@ -890,7 +914,7 @@ Context: ${recentContext}`;
                                     onClick={handleSubmitDrawing}
                                     disabled={isLoading}
                                     variant="outline"
-                                    className="rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
+                                    className="rounded-none border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
                                 >
                                     <Share2 className="w-4 h-4" />
                                     <span className="text-sm font-medium">
@@ -903,7 +927,7 @@ Context: ${recentContext}`;
                                     onClick={handleShowDiagram}
                                     disabled={isLoading}
                                     variant="outline"
-                                    className="rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
+                                    className="rounded-none border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
                                 >
                                     <GitBranch className="w-4 h-4" />
                                     <span className="text-sm font-medium">
@@ -915,7 +939,7 @@ Context: ${recentContext}`;
                                     onClick={handleStartSpeaking}
                                     disabled={!voiceChatApiKey}
                                     variant="outline"
-                                    className={`rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 ${geminiLive.connectionState === 'CONNECTED' ? 'ring-2 ring-emerald-400/60' : ''} disabled:opacity-50`}
+                                    className={`rounded-none border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 ${geminiLive.connectionState === 'CONNECTED' ? 'ring-2 ring-emerald-400/60' : ''} disabled:opacity-50`}
                                 >
                                     <Mic className="w-4 h-4" />
                                     <span className="text-sm font-medium">Start speaking</span>
@@ -926,7 +950,7 @@ Context: ${recentContext}`;
                                     onClick={handleGenerateImage}
                                     disabled={isGeneratingImage}
                                     variant="outline"
-                                    className="rounded-full border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
+                                    className="rounded-none border-slate-200/80 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
                                 >
                                     <ImagePlus className="w-4 h-4" />
                                     <span className="text-sm font-medium">
@@ -935,26 +959,6 @@ Context: ${recentContext}`;
                                 </Button>
                             </div>
 
-                            <MessageDock
-                                characters={dockCharacters}
-                                className="relative"
-                                onMessageSend={(message) => handleSendMessage(message)}
-                                expandedWidth={420}
-                                placeholder={(name) => `Ask ${name} to quiz you...`}
-                                theme="dark"
-                                size="compact"
-                                isLiveActive={geminiLive.connectionState === ConnectionState.CONNECTED}
-                                isListening={geminiLive.isListening}
-                                isSpeaking={geminiLive.isSpeaking}
-                                onDisconnect={() => geminiLive.disconnect()}
-                                onSparkleClick={() => {
-                                    if (geminiLive.connectionState === ConnectionState.CONNECTED) {
-                                        geminiLive.disconnect();
-                                    } else {
-                                        geminiLive.connect();
-                                    }
-                                }}
-                            />
                         </div>
                     </div>
                 </div>
@@ -969,7 +973,7 @@ Context: ${recentContext}`;
                             </div>
                             <span className="font-semibold text-gray-800">Feynman Tutor</span>
                         </div>
-                        <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <button className="p-2 hover:bg-gray-100 rounded-none transition-colors">
                             <MoreHorizontal className="w-5 h-5 text-gray-400" />
                         </button>
                     </div>
@@ -1067,7 +1071,7 @@ Context: ${recentContext}`;
                                 </span>
                                 <button
                                     onClick={() => setCurrentTasks(prev => prev.map(t => t.id === currentTasks[0].id ? { ...t, completed: true } : t))}
-                                    className="text-xs px-2 py-1 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                                    className="text-xs px-2 py-1 bg-green-500 text-white rounded-none hover:bg-green-600 transition-colors"
                                 >
                                     Done
                                 </button>
@@ -1091,7 +1095,7 @@ Context: ${recentContext}`;
                             <button
                             onClick={() => handleSendMessage()}
                                 disabled={!inputValue.trim() || isLoading}
-                                className="p-3 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="p-3 bg-blue-500 text-white rounded-none hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 <Send className="w-4 h-4" />
                             </button>
@@ -1102,7 +1106,7 @@ Context: ${recentContext}`;
                     <button
                         onClick={handleVoiceChatToggle}
                         disabled={!voiceChatApiKey}
-                        className={`absolute bottom-28 right-6 w-16 h-16 rounded-full shadow-xl transition-all flex items-center justify-center ${geminiLive.connectionState === 'CONNECTED'
+                        className={`absolute bottom-28 right-6 w-16 h-16 rounded-none shadow-xl transition-all flex items-center justify-center ${geminiLive.connectionState === 'CONNECTED'
                             ? 'bg-green-500 hover:bg-green-600'
                             : geminiLive.connectionState === 'CONNECTING'
                                 ? 'bg-yellow-500'
