@@ -614,15 +614,8 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
 
         const [nextTopic] = remainingTopics;
         setShowGuidedReport(false);
-        setGuidedReport(null);
-        setGuidedTasks([]);
-        setGuidedTaskIndex(-1);
-        setGuidedResults([]);
-        setIsGuidedFlowActive(false);
         setCurrentTopic(nextTopic);
         setEditTopicValue(nextTopic);
-        lastGuidedImageIndexRef.current = -999;
-        flashcardAutoAdvanceRef.current.clear();
         onTopicChange(nextTopic);
     }, [onTopicChange, remainingTopics]);
 
@@ -633,12 +626,13 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
         const extractDiagrams = async () => {
             const dataSampleStart = documentData.data.slice(0, 48);
             const dataSampleEnd = documentData.data.slice(-48);
-            const analysisKey = `${documentData.mimeType}:${documentData.data.length}:${dataSampleStart}:${dataSampleEnd}`;
+            const analysisKey = `${currentTopic}:${documentData.mimeType}:${documentData.data.length}:${dataSampleStart}:${dataSampleEnd}`;
             if (lastAnalyzedDocumentKeyRef.current === analysisKey) {
                 return;
             }
             lastAnalyzedDocumentKeyRef.current = analysisKey;
 
+            const topicSnapshot = currentTopic;
             setIsExtractingDiagrams(true);
             try {
                 const result = await extractDiagramsFromPdf(
@@ -646,6 +640,7 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
                     documentData.mimeType,
                     (stage) => console.log('[Socratic] Diagram extraction:', stage)
                 );
+                if (topicSnapshot !== currentTopic) return;
                 setDiagramAnalysis(result);
 
                 const plan = await recommendActivityPlanFromPdf({
@@ -656,21 +651,24 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
                     suggestedQuestions: result.suggestedQuestions
                 });
 
+                if (topicSnapshot !== currentTopic) return;
                 await startGuidedFlow(result.diagrams, plan.steps);
             } catch (error) {
                 console.error('[Socratic] Failed to extract diagrams:', error);
             } finally {
-                setIsExtractingDiagrams(false);
+                if (topicSnapshot === currentTopic) {
+                    setIsExtractingDiagrams(false);
+                }
             }
         };
 
         extractDiagrams();
-    }, [documentData]);
+    }, [currentTopic, documentData, startGuidedFlow]);
 
     // Initialize Gemini Live for two-way voice chat
     const preferredGeminiLanguage = getPreferredGeminiLanguage();
     const geminiLive = useGeminiLive(voiceChatApiKey, preferredGeminiLanguage, {
-        systemInstructionOverride: `You are a Socratic tutor helping a student learn about ${topic}. 
+        systemInstructionOverride: `You are a Socratic tutor helping a student learn about ${currentTopic}. 
 Use the Socratic method - ask probing questions, guide student thinking, don't give direct answers.
 Keep responses conversational and brief since this is a real-time voice conversation.
 Encourage the student to think through problems step by step.`
@@ -728,17 +726,17 @@ Encourage the student to think through problems step by step.`
 
     // Initialize concept network on mount
     useEffect(() => {
-        const defaultConcepts = getDefaultConcepts(topic);
+        const defaultConcepts = getDefaultConcepts(currentTopic);
         const { nodes, edges } = generateConceptNetwork(
-            topic,
+            currentTopic,
             defaultConcepts,
             [],
-            topic
+            currentTopic
         );
-        console.log('[Socratic] Initializing network with', nodes.length, 'nodes for topic:', topic);
+        console.log('[Socratic] Initializing network with', nodes.length, 'nodes for topic:', currentTopic);
         setConceptNodes(nodes);
         setConceptEdges(edges);
-    }, [topic, getDefaultConcepts]);
+    }, [currentTopic, getDefaultConcepts]);
 
     // Update concept network when evaluation changes
     useEffect(() => {
@@ -751,29 +749,29 @@ Encourage the student to think through problems step by step.`
         if (correctConcepts.length > 0 || misconceptions.length > 0) {
             // Accumulate concepts
             const existingConcepts = conceptNodes
-                .filter(n => n.data.type === 'concept')
+                .filter(n => n.data.type === 'concept' || n.data.type === 'neutral')
                 .map(n => n.data.label);
 
             const allConcepts = [...new Set([...existingConcepts, ...correctConcepts])];
 
             // Accumulate misconceptions
             const existingMisconceptions = conceptNodes
-                .filter(n => n.data.type === 'misconception')
+                .filter(n => n.data.isMisconception || n.data.type === 'misconception')
                 .map(n => n.data.label);
 
             const allMisconceptions = [...new Set([...existingMisconceptions, ...misconceptions])];
 
             const { nodes, edges } = generateConceptNetwork(
-                topic,
+                currentTopic,
                 allConcepts,
                 allMisconceptions,
-                topic
+                currentTopic
             );
             console.log('[Socratic] Updating network with', nodes.length, 'nodes,', allMisconceptions.length, 'misconceptions');
             setConceptNodes(nodes);
             setConceptEdges(edges);
         }
-    }, [lastEvaluation, topic]);
+    }, [currentTopic, lastEvaluation]);
 
     // Fetch API key for voice chat
     useEffect(() => {
@@ -791,6 +789,51 @@ Encourage the student to think through problems step by step.`
         }
     }, [geminiLive]);
 
+    const resetSessionState = useCallback((topicValue: string) => {
+        setMessages([]);
+        messagesRef.current = [];
+        setInputValue('');
+        setStreamingContent('');
+        setIsLoading(false);
+        setLastEvaluation(null);
+        setShowEvaluation(false);
+        setModeSwitchSuggestion(null);
+        setIsCanvasOpen(false);
+        setSessionState(createSessionState(topicValue, 'socratic'));
+        setGuidedTasks([]);
+        guidedTasksRef.current = [];
+        setGuidedTaskIndex(-1);
+        setGuidedResults([]);
+        guidedResultsRef.current = [];
+        setGuidedReport(null);
+        setShowGuidedReport(false);
+        setIsGuidedFlowActive(false);
+        setIsGuidedFlowGenerating(false);
+        setFlashcards([]);
+        setQuiz(null);
+        setActiveTab('graph');
+        setIsGeneratingContent(false);
+        setDiagramAnalysis(null);
+        setIsExtractingDiagrams(false);
+        setIsGeneratingDiagram(false);
+        lastGuidedImageIndexRef.current = -999;
+        lastAnalyzedDocumentKeyRef.current = null;
+        flashcardAutoAdvanceRef.current.clear();
+
+        // Reset to initial network state
+        const defaultConcepts = getDefaultConcepts(topicValue);
+        const { nodes, edges } = generateConceptNetwork(
+            topicValue,
+            defaultConcepts,
+            [],
+            topicValue
+        );
+        setConceptNodes(nodes);
+        setConceptEdges(edges);
+
+        setConfidence(50);
+    }, [getDefaultConcepts]);
+
     // Auto-scroll to bottom
     const scrollToBottom = useCallback(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -800,12 +843,18 @@ Encourage the student to think through problems step by step.`
         scrollToBottom();
     }, [messages, streamingContent, scrollToBottom]);
 
-    // Start session on mount
+    useEffect(() => {
+        setCurrentTopic(topic);
+        setEditTopicValue(topic);
+        setIsEditingTopic(false);
+    }, [topic]);
+
+    // Start session when topic changes
     useEffect(() => {
         const initSession = async () => {
             setIsLoading(true);
             try {
-                const response = await startSocraticSession(topic);
+                const response = await startSocraticSession(currentTopic);
 
                 const assistantMessage: TutorChatMessage = {
                     role: 'assistant',
@@ -824,8 +873,9 @@ Encourage the student to think through problems step by step.`
             }
         };
 
+        resetSessionState(currentTopic);
         initSession();
-    }, [topic]);
+    }, [currentTopic, resetSessionState]);
 
     // Handle sending a message
     const handleSendMessage = async () => {
@@ -846,7 +896,7 @@ Encourage the student to think through problems step by step.`
         try {
             const response = await generateSocraticResponse(
                 userMessage.content,
-                topic,
+                currentTopic,
                 messages,
                 sessionState.hint_level,
                 sessionState.attempt_count
@@ -925,42 +975,18 @@ Encourage the student to think through problems step by step.`
 
     // Clear session
     const handleClearSession = useCallback(() => {
-        setMessages([]);
-        setStreamingContent('');
-        setLastEvaluation(null);
-        setSessionState(createSessionState(currentTopic, 'socratic'));
-        setGuidedTasks([]);
-        setGuidedTaskIndex(-1);
-        setGuidedResults([]);
-        setGuidedReport(null);
-        setShowGuidedReport(false);
-        setIsGuidedFlowActive(false);
-        lastGuidedImageIndexRef.current = -999;
-        lastAnalyzedDocumentKeyRef.current = null;
-        flashcardAutoAdvanceRef.current.clear();
-
-        // Reset to initial network state
-        const defaultConcepts = getDefaultConcepts(currentTopic);
-        const { nodes, edges } = generateConceptNetwork(
-            currentTopic,
-            defaultConcepts,
-            [],
-            currentTopic
-        );
-        setConceptNodes(nodes);
-        setConceptEdges(edges);
-
-        setConfidence(50);
-    }, [currentTopic, getDefaultConcepts]);
+        resetSessionState(currentTopic);
+    }, [currentTopic, resetSessionState]);
 
     // Topic editing handlers
     const handleSaveTopic = useCallback(() => {
         if (editTopicValue.trim()) {
-            setCurrentTopic(editTopicValue.trim());
+            const nextTopic = editTopicValue.trim();
+            setCurrentTopic(nextTopic);
             setIsEditingTopic(false);
-            handleClearSession();
+            onTopicChange?.(nextTopic);
         }
-    }, [editTopicValue, handleClearSession]);
+    }, [editTopicValue, onTopicChange]);
 
     const handleCancelEdit = useCallback(() => {
         setEditTopicValue(currentTopic);
@@ -998,11 +1024,11 @@ Encourage the student to think through problems step by step.`
 
             // Get the last question from the chat
             const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
-            const currentQuestion = lastAssistantMessage?.content || topic;
+            const currentQuestion = lastAssistantMessage?.content || currentTopic;
 
             // Analyze the drawing using vision API
             const response = await analyzeDrawingForSocratic(
-                topic,
+                currentTopic,
                 currentQuestion,
                 sessionState.hint_level,
                 imageBase64 // Pass the actual image
@@ -1034,24 +1060,24 @@ Encourage the student to think through problems step by step.`
     // Handle AI diagram generation in the dialogue panel
     const handleShowOnCanvas = async () => {
         const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
-        const context = lastAssistantMessage?.content || `Explain ${topic}`;
+        const context = lastAssistantMessage?.content || `Explain ${currentTopic}`;
 
         setIsGeneratingDiagram(true);
 
         try {
-            const prompt = `Create a clean, academic diagram on a light background that helps explain: ${topic}.
+            const prompt = `Create a clean, academic diagram on a light background that helps explain: ${currentTopic}.
 Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid stylized art.`;
             const imageResult = await generateGeminiImage(prompt, { aspectRatio: '16:9' });
             const imageUrl = `data:${imageResult.mimeType};base64,${imageResult.imageBase64}`;
 
             const imageMessage: TutorChatMessage = {
                 role: 'assistant',
-                content: `Generated diagram for ${topic}.`,
+                content: `Generated diagram for ${currentTopic}.`,
                 timestamp: new Date(),
                 image: {
                     src: imageUrl,
-                    alt: `Diagram for ${topic}`,
-                    caption: `Generated diagram for ${topic}`
+                    alt: `Diagram for ${currentTopic}`,
+                    caption: `Generated diagram for ${currentTopic}`
                 }
             };
             setMessages(prev => [...prev, imageMessage]);
@@ -1074,7 +1100,7 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
         setIsGeneratingContent(true);
         try {
             const context = messages.slice(-10).map(m => m.content).join('\n');
-            const result = await generateInteractiveContent(topic, context, 'flashcards');
+            const result = await generateInteractiveContent(currentTopic, context, 'flashcards');
             if (result.flashcards) {
                 setFlashcards(result.flashcards);
             }
@@ -1089,7 +1115,7 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
         setIsGeneratingContent(true);
         try {
             const context = messages.slice(-10).map(m => m.content).join('\n');
-            const result = await generateInteractiveContent(topic, context, 'quiz');
+            const result = await generateInteractiveContent(currentTopic, context, 'quiz');
             if (result.quiz) {
                 setQuiz(result.quiz);
             }
@@ -1286,7 +1312,11 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
                         {remainingTopics.slice(0, 5).map((topic, idx) => (
                             <button
                                 key={idx}
-                                onClick={() => onTopicChange?.(topic)}
+                                onClick={() => {
+                                    setCurrentTopic(topic);
+                                    setEditTopicValue(topic);
+                                    onTopicChange?.(topic);
+                                }}
                                 className="px-3 py-1 text-sm bg-white text-emerald-700 rounded-full border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all whitespace-nowrap shadow-sm"
                             >
                                 {topic}
@@ -1660,7 +1690,7 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
                         </p>
                         <div className="flex gap-2">
                             <button
-                                onClick={() => onSwitchToFeynman(topic)}
+                                onClick={() => onSwitchToFeynman(currentTopic)}
                                 className="px-4 py-2 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600"
                             >
                                 Try Feynman Mode

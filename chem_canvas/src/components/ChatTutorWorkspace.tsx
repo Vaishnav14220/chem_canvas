@@ -17,7 +17,7 @@ const GEOGEBRA_SCRIPT_URL = 'https://www.geogebra.org/apps/deployggb.js';
 const DEFAULT_MODEL = 'gemini-3-flash-preview';
 const MAX_HISTORY = 12;
 
-type PageType = 'note' | 'mermaid' | 'ggb';
+type PageType = 'note' | 'mermaid' | 'ggb' | 'canvas';
 
 type Page = {
   id: string;
@@ -45,7 +45,7 @@ type Message = {
 };
 
 type Block = {
-  type: 'mermaid' | 'ggbscript' | 'note';
+  type: 'mermaid' | 'ggbscript' | 'note' | 'canvas';
   pageId: string;
   title?: string;
   content: string;
@@ -77,6 +77,7 @@ const SYSTEM_PROMPT = [
   '  Use simple LaTeX for formulas, e.g., $CH_3CHO$, and avoid mhchem.',
   '- Math: show equations in LaTeX and list steps in order.',
   '- Coding: use fenced code blocks with a language tag.',
+  '- If a visualization is requested (reaction, mechanism, diagram), include a canvas block with a clear image prompt.',
   '',
   'TOOLS',
   '1) Mermaid page (diagram)',
@@ -103,6 +104,11 @@ const SYSTEM_PROMPT = [
   '2. Step and why it matters.',
   '### Key Results',
   '- Optional formulas or outcomes.',
+  '```',
+  '',
+  '4) Canvas image (visualization prompt)',
+  '```canvas[page_id;page_title]',
+  'Create a clean educational diagram of the mechanism with labeled arrows.',
   '```',
   '',
   'TEACHING STYLE',
@@ -137,7 +143,7 @@ const buildPrompt = (history: Message[], input: string, pages: Page[], initialNo
 };
 
 const parseBlocks = (text: string): { cleaned: string; blocks: Block[] } => {
-  const regex = /```(mermaid|ggbscript|note)\[([^\];\n]+)(?:;([^\]\n]+))?\]\s*([\s\S]*?)```/g;
+  const regex = /```(mermaid|ggbscript|note|canvas)\[([^\];\n]+)(?:;([^\]\n]+))?\]\s*([\s\S]*?)```/g;
   const blocks: Block[] = [];
   let match: RegExpExecArray | null = null;
 
@@ -233,6 +239,55 @@ const hasHeadingLines = (text: string) => {
 
 const ensureSentencePeriod = (line: string) => (line.endsWith('.') ? line : `${line}.`);
 
+const extractLines = (text: string) => {
+  return text
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+};
+
+const buildNotesFromChat = (assistantText: string, pageTitle?: string) => {
+  const cleaned = sanitizeNotesMarkdown(assistantText);
+  if (!cleaned) return '';
+  const lines = extractLines(cleaned);
+
+  const reactionLine = lines.find((line) => /^reaction\s*:/i.test(line));
+  const conditionsLine = lines.find((line) => /^conditions\s*:/i.test(line));
+
+  const stepCandidates = lines.filter((line) => (
+    /^(\d+\.|step\s*\d+|deprotonation|nucleophilic|protonation|elimination|addition|substitution)/i.test(line)
+  ));
+
+  let steps = stepCandidates.map((line) => line.replace(/^step\s*\d+[:\-]?\s*/i, '').trim());
+
+  if (steps.length < 2) {
+    const sentences = cleaned
+      .split(/(?<=[.!?])\s+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    steps = sentences;
+  }
+
+  const noteLines: string[] = [];
+  if (pageTitle) {
+    noteLines.push(`### Note on ${pageTitle}`);
+  }
+  noteLines.push('### Key Steps');
+  steps.forEach((step, index) => {
+    noteLines.push(`${index + 1}. ${ensureSentencePeriod(step)}`);
+  });
+
+  if (reactionLine || conditionsLine) {
+    noteLines.push('### Reaction');
+    if (reactionLine) noteLines.push(reactionLine);
+    if (conditionsLine) noteLines.push(conditionsLine);
+  }
+
+  return noteLines.join('\n');
+};
+
 const ensureNumberedSteps = (text: string) => {
   const lines = text
     .split('\n')
@@ -296,6 +351,55 @@ const countListItems = (notes: string) => {
     .split('\n')
     .filter((line) => /^(\d+\.|\-|\*)\s+/.test(line.trim()))
     .length;
+};
+
+const VISUAL_KEYWORDS = [
+  'reaction',
+  'mechanism',
+  'diagram',
+  'visual',
+  'visualize',
+  'draw',
+  'structure',
+  'scheme',
+  'pathway',
+  'energy profile',
+  'reaction coordinate',
+  'graph',
+  'plot',
+  'geometry',
+  'vector',
+  'molecule',
+  'orbital',
+  'synthesis',
+];
+
+const MAX_VISUAL_PROMPT_CHARS = 220;
+
+const shouldGenerateVisualization = (text: string) => {
+  const normalized = text.toLowerCase();
+  return VISUAL_KEYWORDS.some((keyword) => normalized.includes(keyword));
+};
+
+const buildVisualizationTitle = (text: string) => {
+  const cleaned = text.replace(/[^A-Za-z0-9 ]/g, ' ').trim();
+  const words = cleaned.split(/\s+/).filter(Boolean).slice(0, 3);
+  return words.length ? words.join(' ') : 'Visualization';
+};
+
+const buildVisualizationPrompt = (text: string, topic?: string) => {
+  const focus = text.trim().replace(/\s+/g, ' ').slice(0, MAX_VISUAL_PROMPT_CHARS);
+  const topicLine = topic ? `Topic focus: ${topic}.` : '';
+  return [
+    'Create a clean educational diagram on a white background.',
+    `Visualize: ${focus}.`,
+    topicLine,
+    'Use clear labels and arrows, minimal color, and readable text.',
+    'If chemistry, show reaction scheme, conditions, and key mechanism steps.',
+    'If math, include axes, curves, and key points/annotations.',
+  ]
+    .filter(Boolean)
+    .join(' ');
 };
 
 const buildFallbackNotesPrompt = (input: {
@@ -517,6 +621,86 @@ const MermaidPage: React.FC<{ code: string }> = ({ code }) => {
   );
 };
 
+const CanvasPage: React.FC<{ prompt: string; title: string }> = ({ prompt, title }) => {
+  const excalidrawRef = useRef<ExcalidrawCanvasRef>(null);
+  const lastPromptRef = useRef('');
+  const lastAttemptRef = useRef('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+
+  useEffect(() => {
+    const normalized = prompt.trim();
+    if (!normalized) return;
+    const attemptKey = `${normalized}::${retryToken}`;
+    if (attemptKey === lastAttemptRef.current) return;
+    let active = true;
+    lastPromptRef.current = normalized;
+    lastAttemptRef.current = attemptKey;
+    setIsGenerating(true);
+    setError(null);
+    const TIMEOUT_MS = 20000;
+
+    const run = async () => {
+      const result = await Promise.race([
+        excalidrawRef.current?.generateAndInsertImage(normalized, { model: 'nano-banana-pro' }) ?? Promise.resolve(false),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), TIMEOUT_MS)),
+      ]).catch(() => false);
+
+      if (!active) return;
+      if (result) {
+        setIsGenerating(false);
+        setError(null);
+        return;
+      }
+
+      setIsGenerating(false);
+      setError('Visualization is taking too long. Tap retry to generate again.');
+    };
+
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [prompt, retryToken]);
+
+  const handleRetry = () => {
+    lastPromptRef.current = '';
+    setRetryToken((prev) => prev + 1);
+  };
+
+  return (
+    <div className="relative h-full w-full">
+      <ExcalidrawCanvas
+        ref={excalidrawRef}
+        isOpen
+        embedded
+        onClose={() => undefined}
+        className="h-full w-full"
+        title={title}
+      />
+      {isGenerating && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 text-xs font-semibold text-slate-500">
+          <div>Generating visualization...</div>
+          <div className="text-[11px] font-medium text-slate-400">This can take up to 20 seconds.</div>
+        </div>
+      )}
+      {error && (
+        <div className="absolute bottom-3 left-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+          <div>{error}</div>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="mt-2 rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50"
+          >
+            Retry image
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const NotePage: React.FC<{ content: string }> = ({ content }) => (
   <div className="h-full w-full overflow-auto rounded-xl bg-white p-6 text-sm text-slate-700 shadow-inner">
     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
@@ -684,6 +868,25 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
     autoNotesQueueRef.current.add(pageId);
   }, []);
 
+  const addVisualizationPage = useCallback((prompt: string, titleSource: string) => {
+    const title = buildVisualizationTitle(titleSource);
+    const currentCanvas = pagesRef.current.find((page) => page.type === 'canvas');
+    const pageId = currentCanvas?.id || `visual_${pagesRef.current.length + 1}`;
+    const result = ensurePage(pageId, 'canvas', title);
+    updatePageContent(result.id, 'canvas', prompt, title);
+    setCurrentPageId(result.id);
+    queueAutoNotes(result.id);
+    pushAction({
+      id: uuidv4(),
+      role: 'action',
+      content: result.created ? 'Created a canvas page' : `Painted on ${result.id}`,
+      actionType: result.created ? 'create' : 'update',
+      pageType: 'canvas',
+      pageId: result.id,
+    });
+    return result.id;
+  }, [ensurePage, pushAction, queueAutoNotes, updatePageContent]);
+
   const applyBlocks = useCallback((blocks: Block[]) => {
     blocks.forEach((block) => {
       const key = `${block.type}:${block.pageId}:${block.content}`;
@@ -732,6 +935,21 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
           content: result.created ? 'Created a GeoGebra page' : `Painted on ${result.id}`,
           actionType: result.created ? 'create' : 'update',
           pageType: 'ggb',
+          pageId: result.id,
+        });
+      }
+
+      if (block.type === 'canvas') {
+        const result = ensurePage(block.pageId, 'canvas', block.title);
+        updatePageContent(result.id, 'canvas', block.content, block.title);
+        setCurrentPageId(result.id);
+        queueAutoNotes(result.id);
+        pushAction({
+          id: uuidv4(),
+          role: 'action',
+          content: result.created ? 'Created a canvas page' : `Painted on ${result.id}`,
+          actionType: result.created ? 'create' : 'update',
+          pageType: 'canvas',
           pageId: result.id,
         });
       }
@@ -798,7 +1016,11 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
           });
           normalized = normalizeNotes(response);
         }
-        if (countListItems(normalized) < 3) continue;
+        if (countListItems(normalized) < 3) {
+          const extracted = buildNotesFromChat(promptAssistantText, page.title || page.id);
+          normalized = normalizeNotes(extracted);
+        }
+        if (countListItems(normalized) < 2) continue;
 
         appendPageNotes(page.id, normalized);
         autoNotesGeneratedRef.current.add(key);
@@ -896,6 +1118,11 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
       content: '',
     };
 
+    if (shouldGenerateVisualization(userMessage.content)) {
+      const visualPrompt = buildVisualizationPrompt(userMessage.content, initialTopic);
+      addVisualizationPage(visualPrompt, userMessage.content);
+    }
+
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setInput('');
     setAttachments([]);
@@ -965,6 +1192,10 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
       return <GeoGebraPage pageId={currentPage.id} script={currentPage.content} />;
     }
 
+    if (currentPage.type === 'canvas') {
+      return <CanvasPage prompt={currentPage.content} title={currentPage.title} />;
+    }
+
     return <NotePage content={currentPage.content} />;
   };
 
@@ -974,7 +1205,10 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
         <StickyNote className="h-3.5 w-3.5" />
         Page Notes
       </div>
-      <div className="prose prose-sm mt-3 flex-1 max-w-none overflow-auto text-slate-700">
+      <div className="mt-2 text-xs font-semibold text-slate-500">
+        {currentPage ? `Note on ${currentPage.title || currentPage.id}` : 'Note'}
+      </div>
+      <div className="prose prose-sm mt-2 flex-1 max-w-none overflow-auto text-slate-700">
         <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
           {currentPage?.notes?.trim() || 'No notes yet.'}
         </ReactMarkdown>

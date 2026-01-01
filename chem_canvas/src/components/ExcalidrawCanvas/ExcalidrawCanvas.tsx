@@ -939,9 +939,11 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
 
           // Import and call generateNanoBananaImage
           const { generateNanoBananaImage } = await import('../../services/geminiService');
+          const model = options?.model || 'nano-banana';
           const result = await generateNanoBananaImage(prompt, {
-            model: options?.model || 'nano-banana',
+            model,
             aspectRatio: '1:1',
+            imageSize: model === 'nano-banana-pro' ? '1K' : undefined,
           });
 
           // Create a file ID for the image

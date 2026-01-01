@@ -22,7 +22,7 @@ import 'reactflow/dist/style.css';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 // Node types
-export type ConceptNodeType = 'concept' | 'misconception' | 'central' | 'neutral';
+export type ConceptNodeType = 'concept' | 'misconception' | 'central' | 'neutral' | 'misconceptionHub' | 'misconceptionDetail';
 
 export interface ConceptNodeData {
     label: string;
@@ -42,12 +42,12 @@ export interface ConceptNetworkProps {
 // Central node - prominent emerald colored
 const CentralNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
     return (
-        <div className="px-3 py-2 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-200 border-2 border-emerald-500 shadow-lg max-w-[160px]">
-            <Handle type="target" position={Position.Top} className="!bg-emerald-500 !w-2 !h-2 !border-0" />
-            <Handle type="target" position={Position.Left} className="!bg-emerald-500 !w-2 !h-2 !border-0" />
-            <span className="text-emerald-900 font-bold text-[11px] text-center block leading-tight">{data.label}</span>
-            <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-2 !h-2 !border-0" />
-            <Handle type="source" position={Position.Right} className="!bg-emerald-500 !w-2 !h-2 !border-0" />
+        <div className="px-6 py-4 rounded-2xl bg-emerald-500 border-2 border-emerald-600 shadow-[0_12px_24px_rgba(16,185,129,0.35)] max-w-[240px]">
+            <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="target" position={Position.Left} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <span className="text-white font-semibold text-[12px] text-center block leading-snug">{data.label}</span>
+            <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="source" position={Position.Right} className="!opacity-0 !w-0 !h-0 !border-0" />
         </div>
     );
 };
@@ -55,12 +55,12 @@ const CentralNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
 // Concept node - clean green with readable text
 const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
     return (
-        <div className="px-2.5 py-1.5 rounded-lg bg-white border-2 border-green-500 shadow-sm max-w-[180px]">
-            <Handle type="target" position={Position.Top} className="!bg-green-500 !w-2 !h-2 !border-0" />
-            <Handle type="target" position={Position.Left} className="!bg-green-500 !w-2 !h-2 !border-0" />
-            <span className="text-green-800 font-medium text-[10px] text-center block leading-tight">{data.label}</span>
-            <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-2 !h-2 !border-0" />
-            <Handle type="source" position={Position.Right} className="!bg-green-500 !w-2 !h-2 !border-0" />
+        <div className="px-4 py-2 rounded-full bg-emerald-500 border border-emerald-600 shadow-[0_6px_12px_rgba(16,185,129,0.25)] max-w-[200px]">
+            <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="target" position={Position.Left} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <span className="text-white font-semibold text-[11px] text-center block leading-snug">{data.label}</span>
+            <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="source" position={Position.Right} className="!opacity-0 !w-0 !h-0 !border-0" />
         </div>
     );
 };
@@ -68,28 +68,51 @@ const ConceptNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
 // Neutral node - warm amber with readable text
 const NeutralNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
     return (
-        <div className="px-2.5 py-1.5 rounded-lg bg-white border-2 border-amber-500 shadow-sm max-w-[180px]">
-            <Handle type="target" position={Position.Top} className="!bg-amber-500 !w-2 !h-2 !border-0" />
-            <Handle type="target" position={Position.Left} className="!bg-amber-500 !w-2 !h-2 !border-0" />
-            <span className="text-amber-800 font-medium text-[10px] text-center block leading-tight">{data.label}</span>
-            <Handle type="source" position={Position.Bottom} className="!bg-amber-500 !w-2 !h-2 !border-0" />
-            <Handle type="source" position={Position.Right} className="!bg-amber-500 !w-2 !h-2 !border-0" />
+        <div className="px-4 py-2 rounded-full bg-orange-500 border border-orange-600 shadow-[0_6px_12px_rgba(249,115,22,0.25)] max-w-[200px]">
+            <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="target" position={Position.Left} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <span className="text-white font-semibold text-[11px] text-center block leading-snug">{data.label}</span>
+            <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="source" position={Position.Right} className="!opacity-0 !w-0 !h-0 !border-0" />
         </div>
     );
 };
 
-// Misconception node - red with full readable text
+// Misconception hub - orange pill
+const MisconceptionHubNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
+    return (
+        <div className="px-4 py-2 rounded-full bg-orange-600 border border-orange-700 shadow-[0_6px_12px_rgba(234,88,12,0.25)] max-w-[200px]">
+            <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="target" position={Position.Left} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <span className="text-white font-semibold text-[11px] text-center block leading-snug">{data.label}</span>
+            <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="source" position={Position.Right} className="!opacity-0 !w-0 !h-0 !border-0" />
+        </div>
+    );
+};
+
+// Misconception detail node - orange card
+const MisconceptionDetailNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
+    return (
+        <div className="px-4 py-3 rounded-2xl bg-orange-100 border border-orange-300 shadow-md max-w-[240px]">
+            <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="target" position={Position.Left} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <span className="text-orange-900 font-medium text-[11px] leading-snug block">{data.label}</span>
+            <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="source" position={Position.Right} className="!opacity-0 !w-0 !h-0 !border-0" />
+        </div>
+    );
+};
+
+// Misconception node - red with full readable text (legacy)
 const MisconceptionNode: React.FC<NodeProps<ConceptNodeData>> = ({ data }) => {
     return (
-        <div className="px-2.5 py-1.5 rounded-lg bg-red-50 border-2 border-red-500 shadow-md max-w-[200px]">
-            <Handle type="target" position={Position.Top} className="!bg-red-500 !w-2 !h-2 !border-0" />
-            <Handle type="target" position={Position.Left} className="!bg-red-500 !w-2 !h-2 !border-0" />
-            <div className="flex items-start gap-1">
-                <AlertTriangle className="w-3 h-3 text-red-600 flex-shrink-0 mt-0.5" />
-                <span className="text-red-800 font-medium text-[10px] leading-tight">{data.label}</span>
-            </div>
-            <Handle type="source" position={Position.Bottom} className="!bg-red-500 !w-2 !h-2 !border-0" />
-            <Handle type="source" position={Position.Right} className="!bg-red-500 !w-2 !h-2 !border-0" />
+        <div className="px-3 py-2 rounded-lg bg-orange-600 border border-orange-700 shadow-md max-w-[200px]">
+            <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="target" position={Position.Left} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <span className="text-white font-medium text-[10px] leading-tight block">{data.label}</span>
+            <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0 !border-0" />
+            <Handle type="source" position={Position.Right} className="!opacity-0 !w-0 !h-0 !border-0" />
         </div>
     );
 };
@@ -99,6 +122,8 @@ const nodeTypes = {
     central: CentralNode,
     neutral: NeutralNode,
     misconception: MisconceptionNode,
+    misconceptionHub: MisconceptionHubNode,
+    misconceptionDetail: MisconceptionDetailNode,
 };
 
 export const ConceptNetworkGraph: React.FC<ConceptNetworkProps> = ({
@@ -174,10 +199,10 @@ export const ConceptNetworkGraph: React.FC<ConceptNetworkProps> = ({
                     zoomOnScroll={true}
                     defaultEdgeOptions={{
                         type: 'smoothstep',
-                        style: { strokeWidth: 2 }
+                        style: { strokeWidth: 2, stroke: '#34a853' }
                     }}
                 >
-                    <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#cbd5e1" />
+                    <Background variant={BackgroundVariant.Lines} gap={24} size={1} color="#e5e7eb" />
                 </ReactFlow>
             </div>
 
@@ -190,7 +215,7 @@ export const ConceptNetworkGraph: React.FC<ConceptNetworkProps> = ({
                     </span>
                     {hasMisconceptions && (
                         <>
-                            <span className="text-slate-300 mx-1">•</span>
+                            <span className="text-slate-300 mx-1">|</span>
                             <span className="text-amber-600 flex items-center gap-1 font-medium">
                                 <AlertTriangle className="w-4 h-4" />
                                 Potential Misconception Detected.
@@ -199,7 +224,7 @@ export const ConceptNetworkGraph: React.FC<ConceptNetworkProps> = ({
                     )}
                     {!hasMisconceptions && understandingLevel === 'Good' && (
                         <>
-                            <span className="text-slate-300 mx-1">•</span>
+                            <span className="text-slate-300 mx-1">|</span>
                             <span className="text-emerald-600 flex items-center gap-1 font-medium">
                                 <CheckCircle2 className="w-4 h-4" />
                                 On track!
@@ -224,122 +249,164 @@ export const generateConceptNetwork = (
 
     // Central node - positioned in the center
     const central = centralConcept || topic;
+    const centerX = 320;
+    const centerY = 210;
     nodes.push({
         id: 'central',
         type: 'central',
-        position: { x: 300, y: 200 },
+        position: { x: centerX, y: centerY },
         data: { label: central, type: 'central', isCorrect: true },
     });
 
     // Position concepts in a clean grid/arc layout around center
     const conceptCount = correctConcepts.length;
 
-    if (conceptCount <= 6) {
-        // Arrange in two rows: top and bottom
-        const topConcepts = correctConcepts.slice(0, Math.ceil(conceptCount / 2));
-        const bottomConcepts = correctConcepts.slice(Math.ceil(conceptCount / 2));
+    if (conceptCount <= 4) {
+        const slots = [
+            { x: centerX - 190, y: 60 },
+            { x: centerX + 150, y: 60 },
+            { x: centerX + 150, y: 320 },
+            { x: centerX - 190, y: 320 },
+        ];
 
-        // Top row
-        topConcepts.forEach((concept, index) => {
-            const spacing = 160; // Increased spacing for wider nodes
-            const startX = 300 - ((topConcepts.length - 1) * spacing) / 2;
-            const x = startX + index * spacing;
-            const y = 50;
-
+        correctConcepts.forEach((concept, index) => {
+            const slot = slots[index] || { x: centerX, y: 60 + index * 80 };
             const nodeId = `concept-${index}`;
+            const isExample = concept.toLowerCase().includes('example');
+            const nodeType = isExample ? 'neutral' : 'concept';
             nodes.push({
                 id: nodeId,
-                type: 'concept',
-                position: { x, y },
-                data: { label: concept, type: 'concept', isCorrect: true },
+                type: nodeType,
+                position: { x: slot.x, y: slot.y },
+                data: { label: concept, type: nodeType as ConceptNodeType, isCorrect: true },
             });
 
             edges.push({
                 id: `edge-${nodeId}`,
                 source: 'central',
                 target: nodeId,
-                style: { stroke: '#86efac', strokeWidth: 2 },
+                style: { stroke: '#34a853', strokeWidth: 2 },
+                type: 'smoothstep',
+            });
+        });
+    } else if (conceptCount <= 6) {
+        const topConcepts = correctConcepts.slice(0, Math.ceil(conceptCount / 2));
+        const bottomConcepts = correctConcepts.slice(Math.ceil(conceptCount / 2));
+
+        topConcepts.forEach((concept, index) => {
+            const spacing = 180;
+            const startX = centerX - ((topConcepts.length - 1) * spacing) / 2;
+            const x = startX + index * spacing;
+            const y = 70;
+
+            const nodeId = `concept-${index}`;
+            const isExample = concept.toLowerCase().includes('example');
+            nodes.push({
+                id: nodeId,
+                type: isExample ? 'neutral' : 'concept',
+                position: { x, y },
+                data: { label: concept, type: isExample ? 'neutral' : 'concept', isCorrect: true },
+            });
+
+            edges.push({
+                id: `edge-${nodeId}`,
+                source: 'central',
+                target: nodeId,
+                style: { stroke: '#34a853', strokeWidth: 2 },
                 type: 'smoothstep',
             });
         });
 
-        // Bottom row
         bottomConcepts.forEach((concept, index) => {
-            const spacing = 160; // Increased spacing for wider nodes
-            const startX = 300 - ((bottomConcepts.length - 1) * spacing) / 2;
+            const spacing = 180;
+            const startX = centerX - ((bottomConcepts.length - 1) * spacing) / 2;
             const x = startX + index * spacing;
-            const y = 350;
+            const y = 330;
 
             const nodeId = `concept-${topConcepts.length + index}`;
+            const isExample = concept.toLowerCase().includes('example');
             nodes.push({
                 id: nodeId,
-                type: index === 0 ? 'neutral' : 'concept',
+                type: isExample ? 'neutral' : 'concept',
                 position: { x, y },
-                data: { label: concept, type: index === 0 ? 'neutral' : 'concept', isCorrect: true },
+                data: { label: concept, type: isExample ? 'neutral' : 'concept', isCorrect: true },
             });
 
             edges.push({
                 id: `edge-${nodeId}`,
                 source: 'central',
                 target: nodeId,
-                style: { stroke: '#86efac', strokeWidth: 2 },
+                style: { stroke: '#34a853', strokeWidth: 2 },
                 type: 'smoothstep',
             });
         });
     } else {
-        // Circular layout for more concepts
-        const radius = 160; // Increased radius
+        const radius = 190;
         correctConcepts.forEach((concept, index) => {
             const angle = (2 * Math.PI * index) / conceptCount - Math.PI / 2;
-            const x = 300 + radius * Math.cos(angle);
-            const y = 200 + radius * Math.sin(angle);
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
 
             const nodeId = `concept-${index}`;
+            const isExample = concept.toLowerCase().includes('example');
             nodes.push({
                 id: nodeId,
-                type: 'concept',
+                type: isExample ? 'neutral' : 'concept',
                 position: { x, y },
-                data: { label: concept, type: 'concept', isCorrect: true },
+                data: { label: concept, type: isExample ? 'neutral' : 'concept', isCorrect: true },
             });
 
             edges.push({
                 id: `edge-${nodeId}`,
                 source: 'central',
                 target: nodeId,
-                style: { stroke: '#86efac', strokeWidth: 2 },
+                style: { stroke: '#34a853', strokeWidth: 2 },
                 type: 'smoothstep',
             });
         });
     }
 
-    // Add misconception nodes to the right side
-    misconceptions.forEach((misconception, index) => {
-        const x = 550; // Moved slightly further right
-        const y = 180 + index * 90; // Increased vertical spacing
-
-        const nodeId = `misconception-${index}`;
+    if (misconceptions.length > 0) {
+        const hubId = 'misconception-hub';
+        const hubX = centerX - 200;
+        const hubY = centerY + 80;
         nodes.push({
-            id: nodeId,
-            type: 'misconception',
-            position: { x, y },
-            data: {
-                label: misconception,
-                type: 'misconception',
-                isMisconception: true
-            },
+            id: hubId,
+            type: 'misconceptionHub',
+            position: { x: hubX, y: hubY },
+            data: { label: 'Misconceptions', type: 'misconceptionHub' },
         });
 
-        // Connect to nearest concept or central
-        const sourceId = nodes.length > 2 ? `concept-${index % (nodes.length - 1)}` : 'central';
         edges.push({
-            id: `edge-${nodeId}`,
-            source: sourceId,
-            target: nodeId,
-            style: { stroke: '#f87171', strokeWidth: 2, strokeDasharray: '8,4' },
+            id: `edge-${hubId}`,
+            source: 'central',
+            target: hubId,
+            style: { stroke: '#f59e0b', strokeWidth: 2 },
             type: 'smoothstep',
-            animated: true,
         });
-    });
+
+        misconceptions.slice(0, 3).forEach((misconception, index) => {
+            const nodeId = `misdetail-${index}`;
+            nodes.push({
+                id: nodeId,
+                type: 'misconceptionDetail',
+                position: { x: hubX - 40, y: hubY + 70 + index * 90 },
+                data: {
+                    label: misconception,
+                    type: 'misconceptionDetail',
+                    isMisconception: true
+                },
+            });
+
+            edges.push({
+                id: `edge-${nodeId}`,
+                source: hubId,
+                target: nodeId,
+                style: { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '6 6' },
+                type: 'smoothstep',
+            });
+        });
+    }
 
     return { nodes, edges };
 };
