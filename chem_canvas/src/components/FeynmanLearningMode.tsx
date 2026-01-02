@@ -56,6 +56,7 @@ import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { extractTextFromDocument } from '../utils/documentTextExtractor';
 import { addFileToSourceLibrary } from '../utils/sourceLibrary';
 import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
+import { loadFeatureSession, saveFeatureSession } from '../utils/featureSessionStorage';
 import { ConnectionState } from './GeminiLive/types';
 import { Button } from './ui/button';
 
@@ -75,6 +76,54 @@ const COLORS = [
     { name: 'blue', hex: '#3b82f6' },
     { name: 'purple', hex: '#a855f7' }
 ];
+
+type PersistedTutorMessage = Omit<TutorChatMessage, 'timestamp'> & { timestamp: string };
+
+type FeynmanSessionSnapshot = {
+    version: 1;
+    subMode: 'tutor' | 'classroom';
+    topic: string;
+    editTopicValue: string;
+    messages: PersistedTutorMessage[];
+    inputValue: string;
+    sessionState: TutorSessionState;
+    streamingContent: string;
+    gapMaps: GapMapAnalysis[];
+    isTeachBackMode: boolean;
+    teachBackAttempts: number;
+    currentTasks: TaskItem[];
+    currentStage: FeynmanStage;
+    completedStages: FeynmanStage[];
+    gapsIdentified: number;
+    gapsResolved: number;
+    masteryScore: number;
+    conceptsCleared: number;
+    insightsGained: number;
+    misconceptionsList: MisconceptionItem[];
+    conceptsList: ConceptItem[];
+    insightsList: InsightItem[];
+    activeTool: 'pen' | 'eraser' | 'text';
+    activeColor: string;
+    isRecording: boolean;
+    uploadedDocument: { name: string; content: string } | null;
+    canvas?: {
+        elements: any[];
+        appState?: any;
+        files?: Record<string, any>;
+    };
+};
+
+const serializeMessages = (items: TutorChatMessage[]): PersistedTutorMessage[] =>
+    items.map((message) => ({
+        ...message,
+        timestamp: message.timestamp.toISOString(),
+    }));
+
+const deserializeMessages = (items: PersistedTutorMessage[]): TutorChatMessage[] =>
+    items.map((message) => ({
+        ...message,
+        timestamp: new Date(message.timestamp),
+    }));
 
 export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
     topic,
@@ -145,11 +194,13 @@ export const FeynmanLearningMode: React.FC<FeynmanLearningModeProps> = ({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const excalidrawRef = useRef<ExcalidrawCanvasRef>(null);
+    const hasRestoredSessionRef = useRef(false);
+    const skipInitialSessionRef = useRef(false);
 
     // Initialize Gemini Live for voice chat
     const preferredGeminiLanguage = getPreferredGeminiLanguage();
     const geminiLive = useGeminiLive(voiceChatApiKey, preferredGeminiLanguage, {
-        systemInstructionOverride: `You are the student in a Feynman session about "${topic}". 
+        systemInstructionOverride: `You are the student in a Feynman session about "${currentTopic}". 
 Let the user teach you. Ask short, friendly questions to surface clarity gaps and misconceptions.
 Avoid affirmations like "Exactly", "Great job", or "That's right" — respond as a learner who needs clarification.
 Do not offer help like "How can I assist?" Start with: "Can you tell me about this topic in your own words?"
@@ -162,6 +213,49 @@ Keep responses conversational, brief, and focused on checking understanding.`
             setVoiceChatApiKey(key || '');
         });
     }, []);
+
+    useEffect(() => {
+        const stored = loadFeatureSession<FeynmanSessionSnapshot>('feynman');
+        if (!stored) return;
+
+        const restoredTopic = stored.topic || topic;
+        const restoredTasks = stored.currentTasks?.length
+            ? stored.currentTasks
+            : [{ id: '1', text: `Teach me about "${restoredTopic}" as if I am new to the topic. What is it and why does it matter?`, type: 'question' }];
+
+        hasRestoredSessionRef.current = true;
+        skipInitialSessionRef.current = true;
+
+        setFeynmanSubMode(stored.subMode || 'tutor');
+        setCurrentTopic(restoredTopic);
+        setEditTopicValue(stored.editTopicValue || restoredTopic);
+        setMessages(stored.messages ? deserializeMessages(stored.messages) : []);
+        setInputValue(stored.inputValue || '');
+        setSessionState(stored.sessionState || createSessionState(restoredTopic, 'feynman'));
+        setStreamingContent(stored.streamingContent || '');
+        setGapMaps(stored.gapMaps || []);
+        setIsTeachBackMode(Boolean(stored.isTeachBackMode));
+        setTeachBackAttempts(stored.teachBackAttempts || 0);
+        setCurrentTasks(restoredTasks);
+        setCurrentStage(stored.currentStage || 'introduction');
+        setCompletedStages(stored.completedStages || []);
+        setGapsIdentified(stored.gapsIdentified || 0);
+        setGapsResolved(stored.gapsResolved || 0);
+        setMasteryScore(stored.masteryScore || 0);
+        setConceptsCleared(stored.conceptsCleared || 0);
+        setInsightsGained(stored.insightsGained || 0);
+        if (stored.misconceptionsList) setMisconceptionsList(stored.misconceptionsList);
+        if (stored.conceptsList?.length) setConceptsList(stored.conceptsList);
+        if (stored.insightsList) setInsightsList(stored.insightsList);
+        setActiveTool(stored.activeTool || 'pen');
+        setActiveColor(stored.activeColor || 'blue');
+        setIsRecording(Boolean(stored.isRecording));
+        setUploadedDocument(stored.uploadedDocument || null);
+
+        if (stored.canvas?.elements && excalidrawRef.current) {
+            excalidrawRef.current.loadScene(stored.canvas.elements, stored.canvas.appState, stored.canvas.files);
+        }
+    }, [topic]);
 
     // Toggle voice chat
     const handleVoiceChatToggle = useCallback(() => {
@@ -212,10 +306,14 @@ Keep responses conversational, brief, and focused on checking understanding.`
 
     // Start session on mount
     useEffect(() => {
+        if (skipInitialSessionRef.current) {
+            skipInitialSessionRef.current = false;
+            return;
+        }
         const initSession = async () => {
             setIsLoading(true);
             try {
-                const response = await startFeynmanTutorSession(topic);
+                const response = await startFeynmanTutorSession(currentTopic);
 
                 const assistantMessage: TutorChatMessage = {
                     role: 'assistant',
@@ -236,7 +334,75 @@ Keep responses conversational, brief, and focused on checking understanding.`
         };
 
         initSession();
-    }, [topic]);
+    }, [currentTopic]);
+
+    useEffect(() => {
+        const saveTimeout = setTimeout(() => {
+            const canvasElements = excalidrawRef.current?.getElements?.() || [];
+            const canvasAppState = excalidrawRef.current?.getAppState?.();
+            const snapshot: FeynmanSessionSnapshot = {
+                version: 1,
+                subMode: feynmanSubMode,
+                topic: currentTopic,
+                editTopicValue,
+                messages: serializeMessages(messages),
+                inputValue,
+                sessionState,
+                streamingContent,
+                gapMaps,
+                isTeachBackMode,
+                teachBackAttempts,
+                currentTasks,
+                currentStage,
+                completedStages,
+                gapsIdentified,
+                gapsResolved,
+                masteryScore,
+                conceptsCleared,
+                insightsGained,
+                misconceptionsList,
+                conceptsList,
+                insightsList,
+                activeTool,
+                activeColor,
+                isRecording,
+                uploadedDocument,
+                canvas: {
+                    elements: canvasElements,
+                    appState: canvasAppState ?? undefined
+                }
+            };
+            saveFeatureSession('feynman', snapshot);
+        }, 800);
+
+        return () => clearTimeout(saveTimeout);
+    }, [
+        feynmanSubMode,
+        currentTopic,
+        editTopicValue,
+        messages,
+        inputValue,
+        sessionState,
+        streamingContent,
+        gapMaps,
+        isTeachBackMode,
+        teachBackAttempts,
+        currentTasks,
+        currentStage,
+        completedStages,
+        gapsIdentified,
+        gapsResolved,
+        masteryScore,
+        conceptsCleared,
+        insightsGained,
+        misconceptionsList,
+        conceptsList,
+        insightsList,
+        activeTool,
+        activeColor,
+        isRecording,
+        uploadedDocument
+    ]);
 
     // Handle sending a message
     const handleSendMessage = async (overrideMessage?: string) => {
@@ -850,6 +1016,7 @@ Context: ${recentContext}`;
                             onClose={() => { }}
                             embedded={true}
                             className="w-full h-full"
+                            persistenceKey="feynman-canvas"
                         />
                     </div>
 

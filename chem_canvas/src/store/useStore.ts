@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { clearAllFeatureSessions } from '../utils/featureSessionStorage';
 
 // --- Types ---
 
@@ -258,6 +259,7 @@ const useStore = create<AppState>((set) => ({
         localStorage.removeItem('permissions');
         localStorage.removeItem('features');
         // localStorage.removeItem('token');
+        clearAllFeatureSessions();
 
         set((state) => ({
             auth: {

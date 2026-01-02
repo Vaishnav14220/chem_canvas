@@ -66,7 +66,6 @@ import {
 import { generateTextContent, extractJsonBlock } from '../services/geminiService';
 import { LabManualVisualizer } from './LabManualVisualizer';
 import { ConceptMapDrawIO } from './ConceptMapDrawIO';
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -75,6 +74,8 @@ interface LabManualExplorerProps {
     onClose?: () => void;
     uploadedFile?: File;
     topic?: string;
+    initialDraft?: LabManualDraftState | null;
+    onDraftChange?: (draft: LabManualDraftState) => void;
 }
 
 type ExplorerTab = 'topics' | 'chat' | 'schematic' | 'visual';
@@ -87,6 +88,18 @@ interface VisualExplainer {
     animation?: string;
     variables?: { name: string; value: number; min: number; max: number }[];
 }
+
+export type LabManualDraftState = {
+    fileLabel?: string;
+    documentText?: string;
+    analysis?: LabManualAnalysis | null;
+    chatMessages?: ChatMessage[];
+    schematic?: { imageBase64: string; mimeType: string } | null;
+    visualExplainers?: VisualExplainer[];
+    expandedExplainer?: string | null;
+    activeTab?: ExplorerTab;
+    selectedTopicId?: string | null;
+};
 
 // ============================================================================
 // Custom Node Component with proper handles
@@ -554,39 +567,49 @@ export const LabManualExplorer: React.FC<LabManualExplorerProps> = ({
     onClose,
     uploadedFile,
     topic,
+    initialDraft,
+    onDraftChange,
 }) => {
     // File upload state
     const [file, setFile] = useState<File | null>(uploadedFile || null);
-    const [documentText, setDocumentText] = useState<string>('');
+    const [fileLabel, setFileLabel] = useState<string>(initialDraft?.fileLabel || uploadedFile?.name || '');
+    const [documentText, setDocumentText] = useState<string>(initialDraft?.documentText || '');
     const [isExtracting, setIsExtracting] = useState(false);
     const [extractError, setExtractError] = useState<string | null>(null);
 
     // Analysis state
-    const [analysis, setAnalysis] = useState<LabManualAnalysis | null>(null);
+    const [analysis, setAnalysis] = useState<LabManualAnalysis | null>(initialDraft?.analysis ?? null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisProgress, setAnalysisProgress] = useState({ stage: '', progress: 0 });
     const [analysisError, setAnalysisError] = useState<string | null>(null);
 
     // Chat state
-    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialDraft?.chatMessages ?? []);
     const [chatInput, setChatInput] = useState('');
     const [isChatting, setIsChatting] = useState(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
     // Schematic state
-    const [schematic, setSchematic] = useState<{ imageBase64: string; mimeType: string } | null>(null);
+    const [schematic, setSchematic] = useState<{ imageBase64: string; mimeType: string } | null>(initialDraft?.schematic ?? null);
     const [isGeneratingSchematic, setIsGeneratingSchematic] = useState(false);
     const [schematicError, setSchematicError] = useState<string | null>(null);
 
     // Visual Explainer state
-    const [visualExplainers, setVisualExplainers] = useState<VisualExplainer[]>([]);
+    const [visualExplainers, setVisualExplainers] = useState<VisualExplainer[]>(initialDraft?.visualExplainers ?? []);
     const [isGeneratingVisuals, setIsGeneratingVisuals] = useState(false);
-    const [expandedExplainer, setExpandedExplainer] = useState<string | null>(null);
+    const [expandedExplainer, setExpandedExplainer] = useState<string | null>(initialDraft?.expandedExplainer ?? null);
 
     // UI state
-    const [activeTab, setActiveTab] = useState<ExplorerTab>('topics');
+    const [activeTab, setActiveTab] = useState<ExplorerTab>(initialDraft?.activeTab ?? 'topics');
     const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+
+    useEffect(() => {
+        if (analysis?.conceptGraph) {
+            generateGraphFromAnalysis(analysis.conceptGraph);
+        }
+    }, [analysis, generateGraphFromAnalysis]);
+    const selectedTopicId = selectedTopic?.id || null;
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // ReactFlow state
@@ -599,6 +622,7 @@ export const LabManualExplorer: React.FC<LabManualExplorerProps> = ({
 
     const handleFileUpload = useCallback(async (uploadedFile: File) => {
         setFile(uploadedFile);
+        setFileLabel(uploadedFile.name);
         setExtractError(null);
         setIsExtracting(true);
         setAnalysis(null);
@@ -639,10 +663,64 @@ export const LabManualExplorer: React.FC<LabManualExplorerProps> = ({
 
     // Handle pre-uploaded file
     useEffect(() => {
-        if (uploadedFile && !file) {
+        if (uploadedFile && !file && !analysis && !documentText) {
             handleFileUpload(uploadedFile);
         }
-    }, [uploadedFile, file, handleFileUpload]);
+    }, [uploadedFile, file, analysis, documentText, handleFileUpload]);
+
+    useEffect(() => {
+        if (!initialDraft) return;
+        setFileLabel(initialDraft.fileLabel || '');
+        setDocumentText(initialDraft.documentText || '');
+        setAnalysis(initialDraft.analysis ?? null);
+        setChatMessages(initialDraft.chatMessages ?? []);
+        setSchematic(initialDraft.schematic ?? null);
+        setVisualExplainers(initialDraft.visualExplainers ?? []);
+        setExpandedExplainer(initialDraft.expandedExplainer ?? null);
+        setActiveTab(initialDraft.activeTab ?? 'topics');
+        if (initialDraft.selectedTopicId && initialDraft.analysis?.outline) {
+            const topics = flattenTopics(initialDraft.analysis.outline.topics);
+            const found = topics.find((topic) => topic.id === initialDraft.selectedTopicId) || null;
+            setSelectedTopic(found);
+        } else {
+            setSelectedTopic(null);
+        }
+    }, [initialDraft]);
+
+    useEffect(() => {
+        if (!onDraftChange) return;
+        const hasContent = Boolean(
+            fileLabel ||
+            documentText ||
+            analysis ||
+            chatMessages.length > 0 ||
+            schematic ||
+            visualExplainers.length > 0
+        );
+        if (!hasContent) return;
+        onDraftChange({
+            fileLabel,
+            documentText,
+            analysis,
+            chatMessages,
+            schematic,
+            visualExplainers,
+            expandedExplainer,
+            activeTab,
+            selectedTopicId,
+        });
+    }, [
+        fileLabel,
+        documentText,
+        analysis,
+        chatMessages,
+        schematic,
+        visualExplainers,
+        expandedExplainer,
+        activeTab,
+        selectedTopicId,
+        onDraftChange
+    ]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
@@ -888,7 +966,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                     <div>
                         <h1 className="text-lg font-bold text-slate-900">Lab Manual Explorer</h1>
                         <p className="text-xs text-slate-500">
-                            {file ? file.name : 'Upload a lab manual to get started'}
+                            {file?.name || fileLabel || 'Upload a lab manual to get started'}
                         </p>
                     </div>
                 </div>
@@ -934,7 +1012,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                     <div className="flex flex-col items-center text-green-600">
                                         <CheckCircle className="w-8 h-8 mb-2" />
                                         <span className="text-xs font-medium text-center truncate max-w-full">
-                                            {file.name}
+                                            {file?.name || fileLabel}
                                         </span>
                                         <span className="text-[10px] text-slate-400 mt-1">Click to replace</span>
                                     </div>

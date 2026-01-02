@@ -35,19 +35,19 @@ import { GoogleGenAI } from '@google/genai';
 // ==========================================
 
 export interface DeepAgentEvent {
-  type: 
-    | 'workflow-start'
-    | 'agent-thinking'
-    | 'agent-working'
-    | 'agent-delegating'
-    | 'agent-complete'
-    | 'agent-error'
-    | 'tool-call'
-    | 'tool-result'
-    | 'data-flow'
-    | 'subagent-spawn'
-    | 'subagent-complete'
-    | 'simulation-ready';
+  type:
+  | 'workflow-start'
+  | 'agent-thinking'
+  | 'agent-working'
+  | 'agent-delegating'
+  | 'agent-complete'
+  | 'agent-error'
+  | 'tool-call'
+  | 'tool-result'
+  | 'data-flow'
+  | 'subagent-spawn'
+  | 'subagent-complete'
+  | 'simulation-ready';
   agentId: string;
   agentName: string;
   taskId: string;
@@ -543,10 +543,17 @@ Be thorough and scientifically accurate.`
 ## Technical Requirements:
 - Use Three.js via importmap from unpkg CDN
 - Generate ALL geometry procedurally
-- Use OrbitControls for camera manipulation
+- Use OrbitControls for FREE camera rotation, zoom, and pan
 - Implement hover highlight and click-to-select
 - Create smooth easing animations
 - Follow PhET-style control patterns
+
+## CRITICAL - 3D STYLE (DO NOT IGNORE):
+- **NEVER USE VOXEL/CUBE STYLE** - no grid of cubes, no Minecraft-style, no unit cubes
+- **USE SMOOTH GEOMETRY**: SphereGeometry, CylinderGeometry, TorusGeometry, TubeGeometry, LatheGeometry
+- **HIGH-QUALITY MATERIALS**: MeshStandardMaterial or MeshPhysicalMaterial with metalness/roughness
+- **PROPER LIGHTING**: DirectionalLight + AmbientLight/HemisphereLight
+- **ORGANIC SHAPES for science topics**: molecules = spheres, bonds = cylinders, etc.
 
 ## Output Format
 Generate ONLY the JavaScript code for:
@@ -724,42 +731,135 @@ NEVER leave the simulation broken - always provide a working fix.`
 };
 
 // ==========================================
-// Master Integration Prompt
+// Master Integration Prompt - Comprehensive PDF → 3D Simulation
 // ==========================================
 
-const MASTER_SIMULATION_PROMPT = `You are creating a complete, self-contained HTML5 educational simulation.
+const MASTER_SIMULATION_PROMPT = `You are an expert instructional designer + simulation engineer. You are creating a complete, self-contained interactive 3D simulation that teaches concepts through visualization + interaction.
 
-## CRITICAL OUTPUT REQUIREMENTS:
+## A) UNDERSTAND THE CONTENT (do this first)
+
+1. **Identify the system/process**
+   - What is the "thing" being explained? (mechanism, organ, reaction, cycle, algorithm, network, geology process, etc.)
+
+2. **Extract the model**
+   - List the **entities/components** (parts, variables, actors)
+   - List **relationships** (cause→effect, inputs→outputs, flows, constraints)
+   - List **states & transitions** (steps, phases, modes)
+   - If formulas or parameters exist, capture them with units
+
+3. **Pick the best simulation form**
+   - Choose: **3D spatial model**, **2D schematic**, or **hybrid**
+   - Use 3D only where it meaningfully helps understanding
+
+## B) DEFINE LEARNING INTERACTIONS (must include)
+
+Build the simulation so a student can learn by doing:
+- **Click-to-explain:** clicking a component highlights it and updates an Info Panel
+- **Step-by-step mode:** guided walkthrough (Next/Back, progress indicator)
+- **Free exploration mode:** user can play, rotate/zoom, and change parameters
+- **Controls (sliders/toggles):** at least 3 meaningful parameters
+- **Run/Pause/Reset** controls
+- **Observables:** show live readouts (rates, levels, temperature, pressure, etc.)
+- **Checkpoints/mini-questions (optional):** quick concept checks
+
+## C) TECHNICAL REQUIREMENTS (strict)
+
+**Output exactly ONE runnable HTML file** (no extra files):
+- **3D:** Three.js via CDN + OrbitControls for free camera rotation/zoom
+- **UI:** Vanilla JS (no frameworks unless truly needed)
+- **Styling:** Tailwind CSS via CDN
+- **No external assets** (no models, textures, images) - everything procedural
+- **Performance:** run smoothly on typical student laptop
+
+**CRITICAL - 3D STYLE REQUIREMENTS:**
+- **DO NOT USE VOXEL/BLOCKY CUBE STYLE** - no grid of cubes, no Minecraft-style, no unit cubes
+- **USE SMOOTH 3D GEOMETRY**: SphereGeometry, CylinderGeometry, TorusGeometry, TubeGeometry, custom BufferGeometry
+- **REALISTIC MATERIALS**: MeshStandardMaterial or MeshPhysicalMaterial with proper lighting
+- **FREE CAMERA**: OrbitControls for rotate/zoom/pan - NOT fixed camera angles
+- **ORGANIC SHAPES**: For biology/chemistry use smooth spheres, for physics use proper shapes matching the subject
+- **NO "Voxel Explorer" or cube-based representations**
+
+CDN imports:
+\`\`\`html
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+\`\`\`
+
+## D) VISUAL/UX STYLE
+
+- **Light mode**, clean white/light-gray background
+- Minimal, "Apple-esque": rounded corners, soft shadows, clear typography, generous spacing
+- **Academic color palette** with consistent meaning:
+  - Structure/components = one set of colors
+  - Flows/energy/matter/info = another set
+  - Warnings/errors = subtle red/orange
+- Glassmorphism info panels with backdrop-filter blur
+
+## E) SIMULATION BEHAVIOR RULES
+
+- Animate the **actual sequence** described in the content (cycle/phases/steps)
+- If content is descriptive but not quantitative:
+  - Use a **conceptual model** with sensible defaults
+  - Label it "conceptual" in the UI
+- If contradictory/ambiguous:
+  - Choose the most standard interpretation
+  - Note assumptions in an **Assumptions** section
+- Include a **Legend** and **Glossary** (short, student-friendly)
+
+## F) OUTPUT FORMAT (must follow)
+
 1. Output ONLY the complete HTML file - NO markdown, NO explanations
 2. Start DIRECTLY with <!DOCTYPE html>
 3. The file must be 100% self-contained and functional
 
-## Required Features:
-- Three.js 3D visualization via importmap CDN
-- Procedural geometry (NO external 3D assets)
-- OrbitControls for camera
-- Hover highlight + click-to-select interactivity
-- Glassmorphism info panel (top-left)
-- Pill-shaped control bar (bottom-center): Play, Pause, Speed slider, Reset
-- Gemini AI integration: Scientific Insights, ELI5, Narrate buttons
-- Light mode "Modern Academic" aesthetic
+HTML Structure:
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>[Topic] - Interactive 3D Simulation</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js importmap -->
+  <script type="importmap">...</script>
+  <style>/* Custom styles */</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <!-- 3D Canvas Area -->
+  <div id="canvas-container" class="fixed inset-0"></div>
+  
+  <!-- Info Panel (top-left, glassmorphism) -->
+  <div id="info-panel" class="fixed top-4 left-4 ...">...</div>
+  
+  <!-- Step-by-step Guide Panel -->
+  <div id="tutorial-panel" class="fixed top-4 right-4 ...">...</div>
+  
+  <!-- Control Bar (bottom-center) -->
+  <div id="controls" class="fixed bottom-4 left-1/2 ...">...</div>
+  
+  <!-- Legend + Glossary + Assumptions -->
+  <div id="legend" class="fixed bottom-4 left-4 ...">...</div>
+  
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    
+    // Scene setup, interactivity, animations...
+  </script>
+</body>
+</html>
+\`\`\`
 
-## CSS Variables:
-:root {
-  --bg-primary: #f8fafc;
-  --bg-glass: rgba(255, 255, 255, 0.7);
-  --text-primary: #1e293b;
-  --accent: #6366f1;
-}
-
-## JavaScript Structure:
-- import * as THREE from 'three';
-- import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-- const apiKey = ""; // Placeholder
-- createScene() - builds all 3D objects
-- updateAnimations(delta) - animation logic
-- objectData Map for component info
-- interactiveObjects array for raycasting`;
+Now read the provided content and produce the simulation.`;
 
 // ==========================================
 // Agent Execution Engine - Enhanced with Thinking & Artifact Storage
@@ -769,12 +869,12 @@ let genAI: GoogleGenAI | null = null;
 
 const initializeGenAI = async (): Promise<GoogleGenAI> => {
   if (genAI) return genAI;
-  
+
   const apiKey = await getSharedGeminiApiKey();
   if (!apiKey) {
     throw new Error('Gemini API key not available');
   }
-  
+
   genAI = new GoogleGenAI({ apiKey });
   return genAI;
 };
@@ -808,29 +908,30 @@ const executeSubAgent = async (
     agentId: agent.id,
     agentName: agent.name,
     taskId,
-    message: `${agent.name} is working with Gemini 2.5 Flash thinking enabled...`,
+    message: `${agent.name} is working with Gemini 3 Pro Preview thinking enabled...`,
     status: 'working',
-    data: { progress: 0, model: agent.model }
+    data: { progress: 0 }
   });
 
   try {
-    // Use Gemini 2.5 Flash with thinking enabled for all agents
+    // Use Gemini 3 Pro Preview with thinking: high for deep reasoning
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: input,
       config: {
         systemInstruction: agent.systemPrompt,
         temperature: 0.7,
         maxOutputTokens: 65536,
-        // Enable thinking for all agents with generous budget
+        // Enable high thinking for comprehensive reasoning
         thinkingConfig: {
-          thinkingBudget: 16384 // Increased thinking budget for better reasoning
+          includeThoughts: true,
+          thinkingLevel: 'high'
         }
       },
     });
 
     const result = response.text || '';
-    
+
     // Extract thinking from response if available
     let thinkingContent: string | undefined;
     try {
@@ -856,7 +957,7 @@ const executeSubAgent = async (
       taskId,
       message: `${agent.name} completed successfully${thinkingContent ? ' (with thinking)' : ''}`,
       status: 'completed',
-      data: { 
+      data: {
         output: result.substring(0, 500) + '...',
         thinking: thinkingContent?.substring(0, 300),
         hasThinking: !!thinkingContent
@@ -888,7 +989,7 @@ const generateComponentImages = async (
 ): Promise<string[]> => {
   const ai = await initializeGenAI();
   const images: string[] = [];
-  
+
   try {
     emitDeepAgentEvent({
       type: 'tool-call',
@@ -967,21 +1068,21 @@ const emitDataFlow = (
 
 const cleanHtmlOutput = (html: string): string => {
   if (!html) return '';
-  
+
   let cleaned = html
     .replace(/^```html?\s*\n?/gi, '')
     .replace(/\n?```\s*$/gi, '')
     .replace(/^```\s*\n?/gi, '')
     .trim();
-  
+
   if (!cleaned.toLowerCase().startsWith('<!doctype') && !cleaned.toLowerCase().startsWith('<html')) {
-    const htmlMatch = cleaned.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) || 
-                      cleaned.match(/<html[\s\S]*<\/html>/i);
+    const htmlMatch = cleaned.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) ||
+      cleaned.match(/<html[\s\S]*<\/html>/i);
     if (htmlMatch) {
       cleaned = htmlMatch[0];
     }
   }
-  
+
   return cleaned;
 };
 
@@ -995,7 +1096,7 @@ export const runDeepSimulationPipeline = async (
   const taskId = `deep-sim-${Date.now()}`;
   const totalSteps = 9; // Updated to 9 agents including Resolver
   let currentStep = 0;
-  
+
   clearDeepSimulationState();
 
   emitDeepAgentEvent({
@@ -1012,12 +1113,12 @@ export const runDeepSimulationPipeline = async (
     // STEP 1: Prompt Enhancer - Educational Structuring
     // ============================================
     currentStep = 1;
-    
+
     // Get grade level description for context
     const gradeLevel = request.gradeLevel || 'high-school';
     const gradeLevelLabel = GRADE_LEVEL_LABELS[gradeLevel];
     const gradeLevelDescription = GRADE_LEVEL_DESCRIPTIONS[gradeLevel];
-    
+
     const promptEnhancerInput = `Enhance this user topic for educational simulation creation:
 
 TOPIC: "${request.topic}"
@@ -1026,16 +1127,20 @@ GRADE CONTEXT: ${gradeLevelDescription}
 STYLE: ${request.style || 'interactive'}
 COMPLEXITY: ${request.complexity || 'medium'}
 ${request.pdfContent ? `
-REFERENCE DOCUMENT: ${request.pdfFileName || 'document.pdf'}
-CONTENT EXCERPT:
-${request.pdfContent.slice(0, 15000)}
+## SOURCE PDF DOCUMENT (CRITICAL - SIMULATION MUST BE BASED ON THIS)
+File: ${request.pdfFileName || 'document.pdf'}
+
+The simulation MUST be built to teach the concepts from this PDF. Extract all entities, relationships, processes, formulas, and parameters from this content:
+
+${request.pdfContent.slice(0, 30000)}
 ` : ''}
 
-CRITICAL: Tailor ALL content for ${gradeLevelLabel} level:
-- Use vocabulary appropriate for ${gradeLevel} students
-- Adjust concept complexity for the target age group
-- Include age-appropriate examples and analogies
-- Set learning objectives that match curriculum standards for this level
+CRITICAL: 
+1. If a PDF is provided, the simulation MUST teach the specific content from that PDF
+2. Extract all entities, processes, relationships, and states from the PDF
+3. Tailor ALL content for ${gradeLevelLabel} level
+4. Use vocabulary appropriate for ${gradeLevel} students
+5. Include age-appropriate examples and analogies
 
 Create a comprehensive educational enhancement with learning objectives, key concepts, and PhET inspiration.`;
 
@@ -1054,7 +1159,7 @@ Create a comprehensive educational enhancement with learning objectives, key con
       content: enhancedPrompt,
       step: currentStep,
       totalSteps,
-      metadata: { 
+      metadata: {
         originalTopic: request.topic,
         thinking: enhancedPromptResult.thinking,
         gradeLevel: gradeLevel
@@ -1075,7 +1180,7 @@ Create a comprehensive educational enhancement with learning objectives, key con
     // STEP 2: Grounding Researcher - Scientific Research
     // ============================================
     currentStep = 2;
-    
+
     emitDataFlow('promptEnhancer', 'groundingResearcher', taskId, 'enhanced prompt');
 
     const researcherInput = `Research the following educational topic thoroughly:
@@ -1123,7 +1228,7 @@ Output comprehensive research data in JSON format.`;
     // STEP 3: Image Generator - Multi-View Component Images
     // ============================================
     currentStep = 3;
-    
+
     emitDataFlow('groundingResearcher', 'imageGenerator', taskId, 'research data');
 
     const imageGenInput = `Based on this research and educational topic, create detailed image generation prompts:
@@ -1160,7 +1265,7 @@ Include style guidance for educational, scientific illustration style.`;
       content: imagePrompts,
       step: currentStep,
       totalSteps,
-      metadata: { 
+      metadata: {
         views: ['front', 'back', 'top', 'side'],
         imageCount: 'Multiple components × 4 views each',
         thinking: imagePromptsResult.thinking
@@ -1181,7 +1286,7 @@ Include style guidance for educational, scientific illustration style.`;
     // STEP 4: Planner - Technical Specification
     // ============================================
     currentStep = 4;
-    
+
     emitDataFlow('promptEnhancer', 'planner', taskId, 'enhanced prompt');
     emitDataFlow('groundingResearcher', 'planner', taskId, 'research data');
 
@@ -1234,7 +1339,7 @@ Create a comprehensive JSON specification including:
     // STEP 5: Component Builder + Visualist (Parallel)
     // ============================================
     currentStep = 5;
-    
+
     emitDataFlow('imageGenerator', 'componentBuilder', taskId, 'image references');
     emitDataFlow('planner', 'visualist', taskId, 'specification');
 
@@ -1256,7 +1361,7 @@ Create Three.js code for each component that matches all view angles.
 Include proper geometry, materials, and component registration.`;
 
         const resultObj = await executeSubAgent(SUBAGENTS.componentBuilder, componentInput, taskId);
-        
+
         createArtifact({
           type: 'threejs-code',
           agentId: 'componentBuilder',
@@ -1288,7 +1393,7 @@ Generate:
 5. PhET-style control handlers`;
 
         const resultObj = await executeSubAgent(SUBAGENTS.visualist, visualInput, taskId);
-        
+
         createArtifact({
           type: 'threejs-code',
           agentId: 'visualist',
@@ -1317,7 +1422,7 @@ Generate:
     // STEP 6: Interface Designer - PhET-style UI
     // ============================================
     currentStep = 6;
-    
+
     emitDataFlow('planner', 'interface', taskId, 'specification');
 
     const uiInput = `Create PhET-style UI code based on this specification:
@@ -1337,7 +1442,7 @@ Generate:
 
     const uiCodeResult = await executeSubAgent(SUBAGENTS.interface, uiInput, taskId);
     const uiCode = uiCodeResult.result;
-    
+
     createArtifact({
       type: 'ui-code',
       agentId: 'interface',
@@ -1362,7 +1467,7 @@ Generate:
     // STEP 7: PhET Inspector - Quality Assurance
     // ============================================
     currentStep = 7;
-    
+
     emitDataFlow('componentBuilder', 'phetInspector', taskId, 'component code');
     emitDataFlow('visualist', 'phetInspector', taskId, 'visual code');
 
@@ -1397,7 +1502,7 @@ Provide:
 
     const phetReviewResult = await executeSubAgent(SUBAGENTS.phetInspector, inspectorInput, taskId);
     const phetReview = phetReviewResult.result;
-    
+
     createArtifact({
       type: 'phet-review',
       agentId: 'phetInspector',
@@ -1422,7 +1527,7 @@ Provide:
     // STEP 8: Integrator - Final Assembly
     // ============================================
     currentStep = 8;
-    
+
     emitDataFlow('componentBuilder', 'integrator', taskId, 'components');
     emitDataFlow('visualist', 'integrator', taskId, 'scene code');
     emitDataFlow('interface', 'integrator', taskId, 'UI code');
@@ -1433,6 +1538,12 @@ Provide:
 ## ORIGINAL TOPIC
 ${request.topic}
 
+${request.pdfContent ? `## SOURCE PDF CONTENT (CRITICAL - BUILD SIMULATION BASED ON THIS)
+The following is the actual content from the uploaded PDF. The simulation MUST be based on this content:
+
+${request.pdfContent.slice(0, 50000)}
+
+` : ''}
 ## ENHANCED EDUCATIONAL CONTEXT
 ${enhancedPrompt}
 
@@ -1530,7 +1641,7 @@ Output ONLY the complete HTML file starting with <!DOCTYPE html>.`;
     // STEP 9: Resolver - Error Detection & Auto-Fix
     // ============================================
     currentStep = 9;
-    
+
     emitDataFlow('integrator', 'resolver', taskId, 'integrated HTML');
 
     const resolverInput = `Analyze and fix any issues in this simulation HTML:
@@ -1577,12 +1688,12 @@ CRITICAL: Always output valid JSON. The fixedHtml MUST be a complete, working HT
 If no issues found, set issuesFound to empty array and return the original HTML in fixedHtml.`;
 
     const resolverResult = await executeSubAgent(SUBAGENTS.resolver, resolverInput, taskId);
-    
+
     // Parse resolver output
     let finalHtml = integratorHtml;
     let issuesFound: any[] = [];
     let validationScore = 100;
-    
+
     try {
       // Try to extract JSON from the response
       const jsonMatch = resolverResult.result.match(/\{[\s\S]*\}/);
@@ -1607,7 +1718,7 @@ If no issues found, set issuesFound to empty array and return the original HTML 
       content: finalHtml,
       step: currentStep,
       totalSteps,
-      metadata: { 
+      metadata: {
         thinking: resolverResult.thinking,
         issuesFound: issuesFound.length,
         validationScore,
@@ -1622,7 +1733,7 @@ If no issues found, set issuesFound to empty array and return the original HTML 
       taskId,
       message: `Step ${currentStep}/${totalSteps}: Validation complete - ${issuesFound.length} issues fixed, score: ${validationScore}/100`,
       status: 'completed',
-      data: { 
+      data: {
         issuesFixed: issuesFound.length,
         validationScore
       }

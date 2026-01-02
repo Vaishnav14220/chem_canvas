@@ -24,9 +24,11 @@ import {
     XCircle,
     Target
 } from 'lucide-react';
-import { extractLatexCode } from '../utils/latexUtils';
-import { streamTextContent } from '../services/geminiService';
-import { compileLatexWithGemini } from '../services/latexAgentService';
+import { sanitizeLatexOutput } from '../utils/latexUtils';
+import { extractTextFromDocument, isImageFile, isPdfFile } from '../utils/documentTextExtractor';
+import { extractPDFContent } from '../services/ocrService';
+import { streamTextContent, generateNanoBananaImage } from '../services/geminiService';
+import { compileLatexWithAssets } from '../services/latexAgentService';
 import {
     generateLaTeXPlanTree,
     generateLaTeXWithToTReAct,
@@ -47,6 +49,15 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 
 interface LaTeXAssignmentPrepProps {
 }
+
+type LaTeXImageAsset = {
+    id: string;
+    filename: string;
+    base64: string;
+    mimeType: string;
+    caption: string;
+    source: 'pdf-extract' | 'nano-banana-pro' | 'uploaded-image';
+};
 
 // Tree Node Component for ToT visualization
 const TreeNode: React.FC<{
@@ -139,9 +150,12 @@ const TreeNode: React.FC<{
 };
 
 export const LaTeXAssignmentPrep: React.FC<LaTeXAssignmentPrepProps> = () => {
-    const [topic, setTopic] = useState('');
+    const [taskSheet, setTaskSheet] = useState('');
     const [fileContent, setFileContent] = useState('');
+    const [fileLabel, setFileLabel] = useState('');
     const [fileData, setFileData] = useState<{ content: string; type: string } | null>(null);
+    const [assets, setAssets] = useState<LaTeXImageAsset[]>([]);
+    const [isParsing, setIsParsing] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [latexOutput, setLatexOutput] = useState('');
     const [error, setError] = useState('');
@@ -150,9 +164,6 @@ export const LaTeXAssignmentPrep: React.FC<LaTeXAssignmentPrepProps> = () => {
     const [isStreamingLatex, setIsStreamingLatex] = useState(false);
     const [copied, setCopied] = useState(false);
     const [generationMode, setGenerationMode] = useState<'quick' | 'tot'>('tot');
-    const [flashThinkingEnabled, setFlashThinkingEnabled] = useState(false);
-    const [proThinkingEnabled, setProThinkingEnabled] = useState(true);
-
     // ToT State
     const [totPlan, setTotPlan] = useState<LaTeXToTResponse | null>(null);
     const [isPlanning, setIsPlanning] = useState(false);
@@ -185,56 +196,237 @@ export const LaTeXAssignmentPrep: React.FC<LaTeXAssignmentPrepProps> = () => {
         }
     }, [latexOutput]);
 
+    const MAX_PROMPT_CHARS = 20000;
+    const MAX_EXTRACTED_IMAGES = 6;
+    const MAX_GENERATED_IMAGES = 2;
+
+    const trimContent = (value: string, limit: number = MAX_PROMPT_CHARS) => {
+        const trimmed = value.trim();
+        if (trimmed.length <= limit) return trimmed;
+        return `${trimmed.slice(0, limit)}\n[Truncated]`;
+    };
+
+    const fileToBase64 = async (file: File): Promise<string> => {
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    };
+
+    const parseDataUrl = (dataUrl: string) => {
+        const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+        if (match) {
+            return { mimeType: match[1], base64: match[2] };
+        }
+        return { mimeType: 'image/png', base64: dataUrl };
+    };
+
+    const inferImageExtension = (mimeType: string) => {
+        if (mimeType.includes('png')) return 'png';
+        if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg';
+        if (mimeType.includes('webp')) return 'webp';
+        return 'png';
+    };
+
+    const sanitizeFilename = (name: string) =>
+        name.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+    const buildAssetManifest = (items: LaTeXImageAsset[]) => {
+        if (!items.length) return 'None';
+        return items
+            .map((asset, index) =>
+                `${index + 1}. filename: ${asset.filename} | caption: ${asset.caption} | source: ${asset.source}`
+            )
+            .join('\n');
+    };
+
+    const buildLatexPrompt = (lectureSource: string, taskSheetText: string, assetList: LaTeXImageAsset[]) => {
+        const lectureText = lectureSource
+            ? trimContent(lectureSource)
+            : 'Not provided. If missing, infer theory from the task sheet and state assumptions.';
+        const taskText = taskSheetText
+            ? trimContent(taskSheetText)
+            : 'Not provided. Infer tasks from the lecture source and state assumptions.';
+
+        return `Role: You are an expert University Teaching Assistant and academic tutor. Your goal is to prepare students for upcoming laboratory sessions or exams by synthesizing their specific course materials into a single, comprehensive "Preparation Guide."
+
+Context: I will provide you with two types of documents:
+
+The Lecture Source: (e.g., Scripts, Slides, Textbook excerpts). This contains the theory, definitions, and formulas.
+The Task Sheet: (e.g., Lab Manual, Worksheet, Assignment, Exam questions). This contains the specific problems, coding tasks, or experiments I need to perform.
+
+Your Task: Generate a complete, self-contained LaTeX document that helps me prepare for the tasks in the Task Sheet using the theory from the Lecture Source.
+
+Output Structure (LaTeX):
+
+Create a single .tex file using the article class. The document must contain two main parts:
+
+Part 1: Theoretical Foundations & Test Prep
+- Analyze the Task Sheet to identify the core topics.
+- Search the Lecture Source for the corresponding definitions, physical principles, equations, or algorithms.
+- Summarize this theory clearly. Explain why things work the way they do.
+- Goal: If there is a pre-lab quiz or oral exam, this section should provide all the answers based on the script.
+
+Part 2: Worksheet Solutions & Practical Guide
+- Go through the Task Sheet item by item.
+- For calculation questions: Provide step-by-step mathematical derivations using LaTeX math mode. Show how formulas from the Lecture Source are applied to the specific values in the Task Sheet.
+- For conceptual questions: Provide reasoned, academic answers citing principles from the Lecture Source.
+- For coding/implementation tasks: If the worksheet requires writing code (Python, C++, MATLAB, etc.), provide the complete, commented code solution inside lstlisting environments. Explain critical parts of the code.
+
+Additional required sections:
+- Further Questions & Solutions: provide at least 10-20 possible further questions and their solutions.
+- Formula Sheet & Glossary: include all formulas and a glossary of key terms.
+- Figures & Diagrams: include extracted or generated visuals listed below with captions. If a figure is not provided, create a TikZ diagram instead.
+
+LaTeX Formatting Rules:
+- Use packages: geometry (A4, reasonable margins), amsmath, amssymb, listings, xcolor, hyperref, enumitem, graphicx.
+- Ensure the document compiles without errors.
+- Use \\section{} and \\subsection{} to organize by task number.
+- If you need to make assumptions (e.g., missing variable values), state them clearly.
+- Tone: Educational, professional, encouraging, and precise.
+- Output only LaTeX. Do not include markdown code blocks or explanations outside LaTeX.
+
+Lecture Source:
+${lectureText}
+
+Task Sheet:
+${taskText}
+
+Generated images (nano-banana-pro) are included in the asset list when available.
+
+Extracted and generated visual assets (include in LaTeX with \\includegraphics using the filenames exactly):
+${buildAssetManifest(assetList)}`;
+    };
+
+    const generateNanoBananaAssets = async (context: string, existingAssets: LaTeXImageAsset[]) => {
+        const existingGenerated = existingAssets.filter((asset) => asset.source === 'nano-banana-pro');
+        if (existingGenerated.length >= MAX_GENERATED_IMAGES) {
+            return existingAssets;
+        }
+
+        const contextSnippet = trimContent(context, 400).replace(/\s+/g, ' ');
+        const prompts = [
+            `Create a clean academic diagram summarizing key theory and variables from: ${contextSnippet}. Use clear labels and a white background.`,
+            `Create a process or workflow diagram that explains the tasks or experiments from: ${contextSnippet}. Use clean typography and minimal colors.`
+        ];
+
+        const newAssets: LaTeXImageAsset[] = [];
+        setProgressMessage('Generating supplemental images...');
+        for (let i = 0; i < prompts.length; i++) {
+            if (existingGenerated.length + newAssets.length >= MAX_GENERATED_IMAGES) break;
+            try {
+                const result = await generateNanoBananaImage(prompts[i], {
+                    model: 'nano-banana-pro',
+                    aspectRatio: '4:3',
+                    imageSize: '1K'
+                });
+                const ext = inferImageExtension(result.mimeType);
+                newAssets.push({
+                    id: `nano-${Date.now()}-${i}`,
+                    filename: sanitizeFilename(`nano_banana_${i + 1}.${ext}`),
+                    base64: result.imageBase64,
+                    mimeType: result.mimeType,
+                    caption: `AI-generated diagram ${i + 1}`,
+                    source: 'nano-banana-pro'
+                });
+            } catch (err) {
+                console.warn('Failed to generate nano-banana image:', err);
+            }
+        }
+
+        const merged = [...existingAssets, ...newAssets];
+        setAssets(merged);
+        return merged;
+    };
+
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
         setError('');
-        const reader = new FileReader();
+        setIsParsing(true);
+        setFileLabel(file.name);
+        setFileContent('');
+        setFileData(null);
+        setAssets([]);
+        setThinkingContent('');
+        setPdfUrl(null);
 
-        reader.onload = async (e) => {
-            const content = e.target?.result as string;
-            if (file.type === 'application/pdf') {
+        try {
+            const extracted = await extractTextFromDocument(file);
+            const extractedText = extracted.text?.trim();
+            setFileContent(extractedText || `[Uploaded file: ${file.name}]`);
+
+            if (isPdfFile(file)) {
+                const base64 = await fileToBase64(file);
+                setFileData({ content: base64, type: file.type || 'application/pdf' });
+
                 try {
-                    const base64 = content.split(',')[1] || content;
-                    setFileData({ content: base64, type: 'application/pdf' });
-                    setFileContent(file.name);
+                    const pdfContent = await extractPDFContent(file);
+                    const extractedFigures = (pdfContent?.figures || []).slice(0, MAX_EXTRACTED_IMAGES);
+                    const extractedAssets = extractedFigures
+                        .map((figure, index) => {
+                            if (!figure.base64) return null;
+                            const parsed = parseDataUrl(figure.base64);
+                            const ext = inferImageExtension(parsed.mimeType);
+                            const filename = sanitizeFilename(
+                                figure.filename || `extracted_figure_${index + 1}.${ext}`
+                            );
+                            return {
+                                id: `pdf-${Date.now()}-${index}`,
+                                filename,
+                                base64: parsed.base64,
+                                mimeType: parsed.mimeType,
+                                caption: figure.caption || `Extracted figure ${index + 1}`,
+                                source: 'pdf-extract'
+                            } as LaTeXImageAsset;
+                        })
+                        .filter((asset): asset is LaTeXImageAsset => !!asset);
+                    setAssets(extractedAssets);
                 } catch (err) {
-                    setError('Failed to process PDF');
+                    console.warn('PDF image extraction failed:', err);
                 }
-            } else if (file.type.startsWith('image/')) {
-                try {
-                    const base64 = content.split(',')[1] || content;
-                    setFileData({ content: base64, type: file.type });
-                    setFileContent(file.name);
-                } catch (err) {
-                    setError('Failed to process image');
-                }
-            } else {
-                setFileContent(content);
-                setFileData(null);
+            } else if (isImageFile(file)) {
+                const base64 = await fileToBase64(file);
+                setFileData({ content: base64, type: file.type || 'image/png' });
+                const ext = inferImageExtension(file.type || 'image/png');
+                setAssets([
+                    {
+                        id: `image-${Date.now()}`,
+                        filename: sanitizeFilename(`uploaded_image.${ext}`),
+                        base64,
+                        mimeType: file.type || 'image/png',
+                        caption: file.name,
+                        source: 'uploaded-image'
+                    }
+                ]);
             }
-        };
-
-        reader.readAsDataURL(file);
+        } catch (err) {
+            setError('Failed to parse the uploaded file');
+        } finally {
+            setIsParsing(false);
+        }
     };
 
     // ToT Planning - automatically triggers generation after planning
     const handlePlanWithToT = async () => {
-        if (!fileContent && !topic) {
-            setError('Please upload a file or enter a topic');
+        if (!fileContent && !taskSheet && !fileLabel) {
+            setError('Please upload a file or enter task sheet details');
             return;
         }
 
         setIsPlanning(true);
         setError('');
         setTotPlan(null);
-        setThinkingContent('Analyzing topic and exploring document structure approaches...');
+        setThinkingContent('Analyzing materials and exploring document structure approaches...');
 
         try {
             const plan = await generateLaTeXPlanTree(
-                topic || fileContent,
-                fileData ? undefined : fileContent, // Pass text content if not binary
+                taskSheet || fileLabel || 'Preparation Guide',
+                fileContent,
                 []
             );
 
@@ -264,11 +456,25 @@ export const LaTeXAssignmentPrep: React.FC<LaTeXAssignmentPrepProps> = () => {
         setLatexOutput('');
         setIsStreamingLatex(true);
         setActiveTab('code');
+        setPdfUrl(null);
 
         try {
+            const contextText = taskSheet || fileContent || fileLabel;
+            const enrichedAssets = contextText
+                ? await generateNanoBananaAssets(contextText, assets)
+                : assets;
+            const assetManifest = buildAssetManifest(enrichedAssets);
+            const mergedDocumentContent = [
+                fileContent ? `Lecture Source:\n${fileContent}` : '',
+                taskSheet ? `Task Sheet:\n${taskSheet}` : '',
+                assetManifest ? `Visual assets:\n${assetManifest}` : ''
+            ]
+                .filter(Boolean)
+                .join('\n\n');
+
             await generateLaTeXWithToTReAct(
-                topic || fileContent,
-                fileData ? undefined : fileContent,
+                taskSheet || fileLabel || fileContent,
+                mergedDocumentContent,
                 plan,
                 (message, progress) => {
                     setProgressMessage(message);
@@ -302,49 +508,41 @@ export const LaTeXAssignmentPrep: React.FC<LaTeXAssignmentPrepProps> = () => {
 
     // Quick generation (original method)
     const handleQuickGenerate = async () => {
-        if (!fileContent && !topic) {
-            setError('Please upload a file or enter a topic');
+        if (!fileContent && !taskSheet && !fileLabel) {
+            setError('Please upload a file or enter task sheet details');
             return;
         }
 
         setIsGenerating(true);
         setError('');
         setLatexOutput('');
+        setThinkingContent('');
         setIsStreamingLatex(true);
         setActiveTab('code');
+        setProgressMessage('Preparing sources...');
+        setPdfUrl(null);
 
         try {
-            const prompt_text = `Role: You are an expert University Teaching Assistant. Generate a complete, self-contained LaTeX document.
+            const contextText = taskSheet || fileContent || fileLabel;
+            const enrichedAssets = contextText
+                ? await generateNanoBananaAssets(contextText, assets)
+                : assets;
 
-Material provided:
-${fileContent ? `Source: ${fileContent}` : 'No file uploaded'}
-${topic ? `Topic/Description: ${topic}` : 'User will provide context through file'}
-
-Generate a comprehensive LaTeX preparation guide with:
-1. Theoretical Foundations
-2. Worked Examples
-3. Practice Questions
-4. Formula Sheet & Glossary
-
-Output Requirements:
-- Start with \\documentclass{article}
-- End with \\end{document}
-- NO explanations outside LaTeX
-- Must compile in Overleaf`;
-
-            let fullOutput = '';
+            const promptText = buildLatexPrompt(fileContent, taskSheet, enrichedAssets);
+            setProgressMessage('Generating LaTeX...');
 
             await streamTextContent(
-                prompt_text,
+                promptText,
                 (chunk: string) => {
-                    fullOutput += chunk;
                     setLatexOutput((prev) => prev + chunk);
                 },
                 {
-                    model: 'gemini-3-flash-preview',
-                    thinking: flashThinkingEnabled ? 'low' : undefined,
+                    model: 'gemini-3-pro-preview',
+                    thinking: 'high',
                     timeout: 300000,
-                    onThought: () => { },
+                    onThought: (thought: string) => {
+                        setThinkingContent((prev) => (prev ? `${prev}\n${thought}` : thought));
+                    },
                     inlineData: fileData ? {
                         mimeType: fileData.type,
                         data: fileData.content
@@ -358,13 +556,14 @@ Output Requirements:
             setIsStreamingLatex(false);
         } finally {
             setIsGenerating(false);
+            setProgressMessage('');
         }
     };
 
     const handleDownload = () => {
         if (!latexOutput) return;
 
-        const cleanLatex = extractLatexCode(latexOutput);
+        const cleanLatex = sanitizeLatexOutput(latexOutput);
 
         const element = document.createElement('a');
         element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(cleanLatex));
@@ -375,9 +574,21 @@ Output Requirements:
         document.body.removeChild(element);
     };
 
+    const handleDownloadPdf = () => {
+        if (!pdfUrl) return;
+
+        const element = document.createElement('a');
+        element.setAttribute('href', pdfUrl);
+        element.setAttribute('download', 'assignment.pdf');
+        element.style.display = 'none';
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+    };
+
     const handleCopy = async () => {
         try {
-            const cleanLatex = extractLatexCode(latexOutput);
+            const cleanLatex = sanitizeLatexOutput(latexOutput);
             await navigator.clipboard.writeText(cleanLatex);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -395,8 +606,14 @@ Output Requirements:
         setActiveTab('pdf');
 
         try {
-            const cleanLatex = extractLatexCode(latexOutput);
-            const result = await compileLatexWithGemini(cleanLatex, 'main.tex');
+            const cleanLatex = sanitizeLatexOutput(latexOutput);
+            const assetPayload = assets
+                .filter((asset) => asset.base64)
+                .map((asset) => ({
+                filename: asset.filename,
+                base64: asset.base64
+            }));
+            const result = await compileLatexWithAssets(cleanLatex, assetPayload, 'main.tex');
 
             if (result.success && result.pdfUrl) {
                 setPdfUrl(result.pdfUrl);
@@ -441,32 +658,35 @@ Output Requirements:
                                     type="file"
                                     ref={fileInputRef}
                                     className="hidden"
-                                    accept=".pdf,.txt,.md,image/*"
+                                    accept=".pdf,.txt,.md,.doc,.docx,.docm,.rtf,.csv,.tsv,.json,image/*"
                                     onChange={handleFileUpload}
                                 />
-                                {fileContent ? (
+                                {fileLabel ? (
                                     <div className="flex flex-col items-center text-slate-100">
                                         <Check className="w-7 h-7 mb-2" />
-                                        <span className="text-xs font-medium text-center break-all">{fileContent.substring(0, 50)}...</span>
+                                        <span className="text-xs font-medium text-center break-all">{fileLabel.substring(0, 50)}...</span>
                                         <span className="text-[11px] text-slate-400 mt-1">Click to replace</span>
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center text-slate-400 group-hover:text-white transition-colors">
                                         <FileUp className="w-6 h-6 mb-2" />
                                         <span className="text-xs font-medium">Upload / Paste Notes</span>
-                                        <span className="text-[11px] mt-1">PDF, Text, or Markdown</span>
+                                        <span className="text-[11px] mt-1">PDF, DOCX, Text, or Markdown</span>
                                     </div>
                                 )}
                             </div>
+                            {isParsing && (
+                                <p className="text-[11px] text-slate-400">Parsing and extracting content...</p>
+                            )}
                         </div>
 
                         {/* Topic Input */}
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Topic / Concept</label>
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. Task Sheet / Tasks</label>
                             <textarea
-                                value={topic}
-                                onChange={(e) => setTopic(e.target.value)}
-                                placeholder="e.g., Board exam quadratic equations, AP & GP practice"
+                                value={taskSheet}
+                                onChange={(e) => setTaskSheet(e.target.value)}
+                                placeholder="Paste the worksheet, lab tasks, or exam questions here"
                                 className="w-full px-4 py-2 bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:ring-2 focus:ring-[#3b5b8a] focus:border-transparent outline-none transition-all resize-none"
                                 rows={4}
                             />
@@ -518,8 +738,8 @@ Output Requirements:
                                 {/* Step 1: Plan & Generate */}
                                 <button
                                     onClick={handlePlanWithToT}
-                                    disabled={isPlanning || isGenerating || (!fileContent && !topic)}
-                                    className={`w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all ${(isPlanning || isGenerating || (!fileContent && !topic))
+                                    disabled={isPlanning || isGenerating || isParsing || (!fileContent && !taskSheet && !fileLabel)}
+                                    className={`w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all ${(isPlanning || isGenerating || isParsing || (!fileContent && !taskSheet && !fileLabel))
                                         ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                                         : 'bg-purple-600 text-white hover:bg-purple-700 active:scale-95'
                                         }`}
@@ -564,8 +784,8 @@ Output Requirements:
                         ) : (
                             <button
                                 onClick={handleQuickGenerate}
-                                disabled={isGenerating || (!fileContent && !topic)}
-                                className={`w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all ${(isGenerating || (!fileContent && !topic))
+                                disabled={isGenerating || isParsing || (!fileContent && !taskSheet && !fileLabel)}
+                                className={`w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all ${(isGenerating || isParsing || (!fileContent && !taskSheet && !fileLabel))
                                     ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                                     : 'bg-[#2c4066] text-white hover:bg-[#34507c] active:scale-95'
                                     }`}
@@ -609,6 +829,17 @@ Output Requirements:
                                         )}
                                     </button>
                                     <button
+                                        onClick={handleDownloadPdf}
+                                        disabled={!pdfUrl}
+                                        className={`w-full px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${!pdfUrl
+                                            ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                            : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
+                                            }`}
+                                    >
+                                        <Download className="w-4 h-4" />
+                                        Download PDF
+                                    </button>
+                                    <button
                                         onClick={handleCopy}
                                         className="w-full px-4 py-2.5 bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white text-sm font-medium transition-all flex items-center justify-center gap-2"
                                     >
@@ -619,8 +850,8 @@ Output Requirements:
                                             </>
                                         ) : (
                                             <>
-                                                <Copy className="w-4 h-4" />
-                                                Copy LaTeX
+                                            <Copy className="w-4 h-4" />
+                                            Copy LaTeX (Overleaf)
                                             </>
                                         )}
                                     </button>
@@ -634,11 +865,14 @@ Output Requirements:
                                     <button
                                         onClick={() => {
                                             setLatexOutput('');
-                                            setTopic('');
+                                            setTaskSheet('');
                                             setFileContent('');
+                                            setFileLabel('');
                                             setFileData(null);
+                                            setAssets([]);
                                             setTotPlan(null);
                                             setThinkingContent('');
+                                            setPdfUrl(null);
                                         }}
                                         className="w-full px-4 py-2.5 bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white text-sm font-medium transition-all flex items-center justify-center gap-2"
                                     >
@@ -830,7 +1064,7 @@ Output Requirements:
                             </div>
                         </div>
                     ) : activeTab === 'code' ? (
-                        !latexOutput ? (
+                        !latexOutput && !thinkingContent ? (
                             <div className="w-full h-full flex flex-col items-center justify-center bg-[#f6f8fc] text-slate-500 px-8 overflow-auto">
                                 <div className="flex flex-col items-center gap-6 text-center max-w-xl">
                                     <div className="w-24 h-24 bg-[#e4e9f2] flex items-center justify-center">
@@ -841,39 +1075,58 @@ Output Requirements:
                                         <p className="text-slate-500 mb-6">
                                             {generationMode === 'tot'
                                                 ? 'Plan your document structure first, then generate with ReAct.'
-                                                : 'Upload a file or enter a topic, then generate LaTeX content.'}
+                                                : 'Upload a file or enter task sheet details, then generate LaTeX content.'}
                                         </p>
                                     </div>
                                 </div>
                             </div>
+                        ) : !latexOutput ? (
+                            <div className="w-full h-full flex flex-col px-6 pt-6">
+                                <Reasoning isStreaming={isGenerating || isStreamingLatex} title="Model reasoning">
+                                    {thinkingContent}
+                                </Reasoning>
+                                <div className="mt-4 text-sm text-slate-500 flex items-center gap-2">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Generating LaTeX...
+                                </div>
+                            </div>
                         ) : (
-                            <div ref={latexOutputRef} className="w-full h-full">
-                                <CodeMirror
-                                    value={latexOutput + (isStreamingLatex && showCursor ? '|' : '')}
-                                    theme={vscodeDark}
-                                    height="100%"
-                                    editable={false}
-                                    extensions={[]}
-                                    className="w-full h-full"
-                                    basicSetup={{
-                                        lineNumbers: true,
-                                        foldGutter: true,
-                                        dropCursor: false,
-                                        allowMultipleSelections: false,
-                                        indentOnInput: false,
-                                        bracketMatching: true,
-                                        closeBrackets: false,
-                                        autocompletion: false,
-                                        rectangularSelection: false,
-                                        highlightSelectionMatches: false,
-                                        searchKeymap: false,
-                                        lintKeymap: false,
-                                    }}
-                                    style={{
-                                        fontSize: '13px',
-                                        fontFamily: 'Fira Code, monospace',
-                                    }}
-                                />
+                            <div className="w-full h-full flex flex-col">
+                                {thinkingContent && (
+                                    <div className="px-6 pt-4">
+                                        <Reasoning isStreaming={isGenerating || isStreamingLatex} title="Model reasoning">
+                                            {thinkingContent}
+                                        </Reasoning>
+                                    </div>
+                                )}
+                                <div ref={latexOutputRef} className="flex-1 min-h-0">
+                                    <CodeMirror
+                                        value={latexOutput + (isStreamingLatex && showCursor ? '|' : '')}
+                                        theme={vscodeDark}
+                                        height="100%"
+                                        editable={false}
+                                        extensions={[]}
+                                        className="w-full h-full"
+                                        basicSetup={{
+                                            lineNumbers: true,
+                                            foldGutter: true,
+                                            dropCursor: false,
+                                            allowMultipleSelections: false,
+                                            indentOnInput: false,
+                                            bracketMatching: true,
+                                            closeBrackets: false,
+                                            autocompletion: false,
+                                            rectangularSelection: false,
+                                            highlightSelectionMatches: false,
+                                            searchKeymap: false,
+                                            lintKeymap: false,
+                                        }}
+                                        style={{
+                                            fontSize: '13px',
+                                            fontFamily: 'Fira Code, monospace',
+                                        }}
+                                    />
+                                </div>
                             </div>
                         )
                     ) : (

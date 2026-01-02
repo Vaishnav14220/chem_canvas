@@ -19,6 +19,25 @@ import StudyTimeline from './StudyTimeline';
 import { generateStudyTimelinePlan } from '../services/studyTimelineService';
 import type { StudyTimelineItem, StudyTimelinePlan, StudyTimelinePreferences } from '../types/studyTimeline';
 
+type StudyToolsFeatureId = '3d-simulation' | 'extract-formulas' | 'check-my-work';
+
+export type StudyToolsDraftState = {
+    featureId: StudyToolsFeatureId;
+    fileData?: { mimeType: string; data: string } | null;
+    fileContent?: string | null;
+    fileName?: string | null;
+    topic?: string;
+    generatedHtml?: string | null;
+    previewHtml?: string | null;
+    extractedFormulas?: FormulaItem[] | null;
+    sourceMarkdown?: string | null;
+    annotatedImage?: { data: string; mimeType: string } | null;
+    checkingFeedback?: string | null;
+    referenceFileData?: { mimeType: string; data: string } | null;
+    referenceFileName?: string | null;
+    referenceText?: string | null;
+};
+
 // Props interface for receiving initial file data from parent
 interface InteractiveAssignmentWorkspaceProps {
     initialFileData?: { mimeType: string; data: string } | null;
@@ -27,6 +46,8 @@ interface InteractiveAssignmentWorkspaceProps {
     initialTopic?: string;
     initialUseToT?: boolean;
     selectedFeature?: string | null;
+    initialDraft?: StudyToolsDraftState | null;
+    onDraftChange?: (draft: StudyToolsDraftState) => void;
     autoGenerate?: boolean;
     onBack?: () => void;
 }
@@ -38,25 +59,27 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
     initialTopic = '',
     initialUseToT = false,
     selectedFeature = null,
+    initialDraft = null,
+    onDraftChange,
     autoGenerate = false,
     onBack,
 }) => {
     // Initialize state from props
-    const [fileData, setFileData] = useState<{ mimeType: string, data: string } | null>(initialFileData);
-    const [fileContent, setFileContent] = useState<string | null>(initialFileContent); // Legacy text content
-    const [fileName, setFileName] = useState<string | null>(initialFileName);
-    const [referenceFileData, setReferenceFileData] = useState<{ mimeType: string, data: string } | null>(null);
-    const [referenceFileName, setReferenceFileName] = useState<string | null>(null);
-    const [referenceText, setReferenceText] = useState<string | null>(null);
-    const [topic, setTopic] = useState<string>(initialTopic);
+    const [fileData, setFileData] = useState<{ mimeType: string, data: string } | null>(initialDraft?.fileData ?? initialFileData);
+    const [fileContent, setFileContent] = useState<string | null>(initialDraft?.fileContent ?? initialFileContent); // Legacy text content
+    const [fileName, setFileName] = useState<string | null>(initialDraft?.fileName ?? initialFileName);
+    const [referenceFileData, setReferenceFileData] = useState<{ mimeType: string, data: string } | null>(initialDraft?.referenceFileData ?? null);
+    const [referenceFileName, setReferenceFileName] = useState<string | null>(initialDraft?.referenceFileName ?? null);
+    const [referenceText, setReferenceText] = useState<string | null>(initialDraft?.referenceText ?? null);
+    const [topic, setTopic] = useState<string>(initialDraft?.topic ?? initialTopic);
 
     // Set options based on selectedFeature prop
     const [extractFormulaSheet, setExtractFormulaSheet] = useState<boolean>(selectedFeature === 'extract-formulas');
     const [questionAndAnswer, setQuestionAndAnswer] = useState<boolean>(selectedFeature === 'qa-generator');
 
     const [isGenerating, setIsGenerating] = useState(false);
-    const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
-    const [previewHtml, setPreviewHtml] = useState<string>('');
+    const [generatedHtml, setGeneratedHtml] = useState<string | null>(initialDraft?.generatedHtml ?? null);
+    const [previewHtml, setPreviewHtml] = useState<string>(initialDraft?.previewHtml ?? '');
     const [loadingStep, setLoadingStep] = useState<string>('Ready');
     const [thoughtLog, setThoughtLog] = useState<string[]>([]);
     const [isStreamingThoughts, setIsStreamingThoughts] = useState(false);
@@ -74,15 +97,16 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
 
     // Answer checking / image annotation state
     const [isChecking, setIsChecking] = useState(false);
-    const [annotatedImage, setAnnotatedImage] = useState<{ data: string; mimeType: string } | null>(null);
-    const [checkingFeedback, setCheckingFeedback] = useState<string | null>(null);
+    const [annotatedImage, setAnnotatedImage] = useState<{ data: string; mimeType: string } | null>(initialDraft?.annotatedImage ?? null);
+    const [checkingFeedback, setCheckingFeedback] = useState<string | null>(initialDraft?.checkingFeedback ?? null);
 
     // Formula extraction state
-    const [extractedFormulas, setExtractedFormulas] = useState<FormulaItem[] | null>(null);
+    const [extractedFormulas, setExtractedFormulas] = useState<FormulaItem[] | null>(initialDraft?.extractedFormulas ?? null);
     const [isExtractingFormulas, setIsExtractingFormulas] = useState(false);
-    const [sourceMarkdown, setSourceMarkdown] = useState<string | null>(null);
+    const [sourceMarkdown, setSourceMarkdown] = useState<string | null>(initialDraft?.sourceMarkdown ?? null);
     const [isExtractingSource, setIsExtractingSource] = useState(false);
     const autoGenerateRef = useRef<string | null>(null);
+    const suppressDerivedResetRef = useRef(0);
 
     // Study timeline state
     const [timelineItems, setTimelineItems] = useState<StudyTimelineItem[] | null>(null);
@@ -95,57 +119,159 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
         reminderDays: [7, 3, 1],
         targetDate: '',
     });
-
     // Sync state from props when initial values change (from dashboard upload)
     useEffect(() => {
+        if (initialDraft) return;
         if (initialFileData) {
             setFileData(initialFileData);
         }
-    }, [initialFileData]);
+    }, [initialFileData, initialDraft]);
 
     useEffect(() => {
+        if (initialDraft) return;
         if (initialFileContent) {
             setFileContent(initialFileContent);
         }
-    }, [initialFileContent]);
+    }, [initialFileContent, initialDraft]);
 
     useEffect(() => {
+        if (initialDraft) return;
         if (initialFileName) {
             setFileName(initialFileName);
         }
-    }, [initialFileName]);
+    }, [initialFileName, initialDraft]);
 
     useEffect(() => {
+        if (initialDraft) return;
         if (initialTopic) {
             setTopic(initialTopic);
         }
-    }, [initialTopic]);
+    }, [initialTopic, initialDraft]);
 
     useEffect(() => {
+        if (initialDraft) return;
         setUseToT(initialUseToT);
-    }, [initialUseToT]);
+    }, [initialUseToT, initialDraft]);
+
+    useEffect(() => {
+        if (!initialDraft) return;
+        const shouldApplyDraft =
+            fileData !== (initialDraft.fileData ?? null) ||
+            fileContent !== (initialDraft.fileContent ?? null) ||
+            fileName !== (initialDraft.fileName ?? null) ||
+            topic !== (initialDraft.topic ?? '') ||
+            generatedHtml !== (initialDraft.generatedHtml ?? null) ||
+            previewHtml !== (initialDraft.previewHtml ?? '') ||
+            extractedFormulas !== (initialDraft.extractedFormulas ?? null) ||
+            sourceMarkdown !== (initialDraft.sourceMarkdown ?? null) ||
+            annotatedImage !== (initialDraft.annotatedImage ?? null) ||
+            checkingFeedback !== (initialDraft.checkingFeedback ?? null) ||
+            referenceFileData !== (initialDraft.referenceFileData ?? null) ||
+            referenceFileName !== (initialDraft.referenceFileName ?? null) ||
+            referenceText !== (initialDraft.referenceText ?? null);
+        if (!shouldApplyDraft) return;
+        suppressDerivedResetRef.current = 3;
+        setFileData(initialDraft.fileData ?? null);
+        setFileContent(initialDraft.fileContent ?? null);
+        setFileName(initialDraft.fileName ?? null);
+        setTopic(initialDraft.topic ?? '');
+        setGeneratedHtml(initialDraft.generatedHtml ?? null);
+        setPreviewHtml(initialDraft.previewHtml ?? '');
+        setExtractedFormulas(initialDraft.extractedFormulas ?? null);
+        setSourceMarkdown(initialDraft.sourceMarkdown ?? null);
+        setAnnotatedImage(initialDraft.annotatedImage ?? null);
+        setCheckingFeedback(initialDraft.checkingFeedback ?? null);
+        setReferenceFileData(initialDraft.referenceFileData ?? null);
+        setReferenceFileName(initialDraft.referenceFileName ?? null);
+        setReferenceText(initialDraft.referenceText ?? null);
+    }, [initialDraft]);
 
     useEffect(() => {
         setExtractFormulaSheet(selectedFeature === 'extract-formulas');
         setQuestionAndAnswer(selectedFeature === 'qa-generator');
-        if (selectedFeature === 'timeline-generator') {
+        if (selectedFeature === 'timeline-generator' || selectedFeature === '3d-simulation') {
             setUseToT(false);
         }
     }, [selectedFeature]);
 
     useEffect(() => {
+        if (suppressDerivedResetRef.current > 0) {
+            suppressDerivedResetRef.current -= 1;
+            return;
+        }
         setExtractedFormulas(null);
     }, [selectedFeature, fileName, fileContent, fileData]);
 
     useEffect(() => {
+        if (suppressDerivedResetRef.current > 0) {
+            suppressDerivedResetRef.current -= 1;
+            return;
+        }
         setSourceMarkdown(null);
     }, [selectedFeature, fileName, fileContent, fileData]);
 
     useEffect(() => {
+        if (suppressDerivedResetRef.current > 0) {
+            suppressDerivedResetRef.current -= 1;
+            return;
+        }
         setTimelineItems(null);
         setTimelineSummary(null);
         setTimelineNotice(null);
     }, [selectedFeature, fileName, fileContent, fileData]);
+
+    useEffect(() => {
+        if (!onDraftChange) return;
+        if (!selectedFeature || !['3d-simulation', 'extract-formulas', 'check-my-work'].includes(selectedFeature)) return;
+        const hasContent = Boolean(
+            fileData ||
+            fileContent ||
+            fileName ||
+            topic ||
+            generatedHtml ||
+            previewHtml ||
+            (extractedFormulas && extractedFormulas.length > 0) ||
+            sourceMarkdown ||
+            annotatedImage ||
+            checkingFeedback ||
+            referenceFileData ||
+            referenceFileName ||
+            referenceText
+        );
+        if (!hasContent) return;
+        onDraftChange({
+            featureId: selectedFeature as StudyToolsFeatureId,
+            fileData,
+            fileContent,
+            fileName,
+            topic,
+            generatedHtml,
+            previewHtml,
+            extractedFormulas,
+            sourceMarkdown,
+            annotatedImage,
+            checkingFeedback,
+            referenceFileData,
+            referenceFileName,
+            referenceText,
+        });
+    }, [
+        selectedFeature,
+        fileData,
+        fileContent,
+        fileName,
+        topic,
+        generatedHtml,
+        previewHtml,
+        extractedFormulas,
+        sourceMarkdown,
+        annotatedImage,
+        checkingFeedback,
+        referenceFileData,
+        referenceFileName,
+        referenceText,
+        onDraftChange
+    ]);
 
     // Remove any external polyfill.io scripts the model might inject so previews don't fail on blocked domains
     const stripPolyfillScripts = (html: string) =>
@@ -156,6 +282,151 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
 
     const stripMarkdownFence = (markdown: string) =>
         markdown.replace(/^\s*```(?:markdown)?/i, '').replace(/```\s*$/i, '').trim();
+
+    const extractHtmlFromResponse = (response: string) => {
+        const trimmed = response.trim();
+        const doctypeIndex = trimmed.search(/<!doctype html>/i);
+        const htmlIndex = trimmed.search(/<html[\s>]/i);
+        const startIndex = doctypeIndex >= 0 ? doctypeIndex : htmlIndex;
+        if (startIndex < 0) {
+            return { html: trimmed, preface: '' };
+        }
+        return {
+            html: trimmed.slice(startIndex).trim(),
+            preface: trimmed.slice(0, startIndex).trim(),
+        };
+    };
+
+    const sanitizeHtmlResponse = (html: string) =>
+        stripPolyfillScripts(html.replace(/^\s*```html\s*/i, '').replace(/```$/, '')).trim();
+
+    const build3dSimulationPrompt = () => {
+        const contextLines: string[] = [];
+        if (topic?.trim()) {
+            contextLines.push(`Topic: ${topic.trim()}`);
+        }
+        if (fileName) {
+            contextLines.push(`File name: ${fileName}`);
+        }
+        if (fileContent?.trim()) {
+            const trimmed = fileContent.trim();
+            const excerpt = trimmed.length > 20000 ? `${trimmed.slice(0, 20000)}...` : trimmed;
+            contextLines.push(`Extracted text (excerpt):\n${excerpt}`);
+        }
+        const contextBlock = contextLines.length ? `Context:\n${contextLines.join('\n')}\n\n` : '';
+
+        return `${contextBlock}You are an expert instructional designer + simulation engineer. I am uploading a PDF about an academic topic. Your job is to read the PDF and build a self-contained interactive simulation that teaches the concepts through visualization + interaction.
+
+A) Understand the PDF (do this first)
+
+1. Identify the system/process
+   - What is the "thing" being explained? (mechanism, organ, reaction, cycle, algorithm, network, geology process, etc.)
+2. Extract the model
+   - List the entities/components (parts, variables, actors).
+   - List relationships (cause->effect, inputs->outputs, flows, constraints).
+   - List states & transitions (steps, phases, modes).
+   - If the PDF includes formulas or parameters, capture them and define units.
+3. Pick the best simulation form
+   - Choose one: 3D spatial model, 2D schematic, or hybrid.
+   - Use 3D only where it meaningfully helps understanding.
+
+B) Define learning interactions (must include)
+
+Build the simulation so a student can learn by doing:
+
+- Click-to-explain: clicking a component highlights it and updates an Info Panel.
+- Step-by-step mode: guided walkthrough of the process (Next/Back, progress indicator).
+- Free exploration mode: user can play, rotate/zoom, and change parameters.
+- Controls (sliders/toggles): at least 3 meaningful parameters from the PDF (or reasonable defaults if not specified).
+- Run/Pause/Reset controls.
+- Observables: show live readouts (e.g., rates, levels, temperature, pressure, concentration, voltage, heart rate, etc. depending on topic).
+- Checkpoints/mini-questions (optional but preferred): quick concept checks inside the UI.
+
+C) Technical requirements (strict)
+
+Output exactly ONE runnable HTML file (no extra files).
+
+- 3D: Three.js via CDN + OrbitControls.
+- UI: Vanilla JS by default. Use React/Vue via CDN only if UI complexity truly requires it.
+- Styling: Tailwind CSS via CDN.
+- No external assets (no models, no textures, no images). Everything must be procedural (geometry primitives, gradients, canvas text labels if needed).
+- Performance: run smoothly on a typical student laptop (avoid huge particle counts).
+
+D) Visual/UX style
+
+- Light mode, clean white / light-gray background.
+- Minimal, "Apple-esque": rounded corners, soft shadows, clear typography, generous spacing.
+- Academic color palette with consistent meaning:
+  - Structure/components = one set of colors
+  - Flows/energy/matter/info = another set
+  - Warnings/errors = subtle red/orange
+
+E) Simulation behavior rules
+
+- Animate the actual sequence described in the PDF (cycle/phases/steps).
+- If the PDF is descriptive but not quantitative:
+  - Use a conceptual model with sensible defaults and clearly label it "conceptual".
+- If contradictory/ambiguous:
+  - Choose the most standard interpretation and note assumptions in an Assumptions section in the UI.
+- Include a Legend and Glossary (short, student-friendly).
+
+F) Output format (must follow)
+
+1. Brief Extraction Summary (5-12 bullets)
+   - system, components, steps, parameters, assumptions
+2. Single HTML file
+   - includes all JS/CSS in the file
+   - contains:
+     - 3D canvas area
+     - Info Panel
+     - Step-by-step guide
+     - Controls + readouts
+     - Legend + Glossary + Assumptions
+
+Now read the attached PDF and produce the simulation.
+`;
+    };
+
+    const build3dSimulationCorrectionPrompt = (draftHtml: string) => {
+        const contextLines: string[] = [];
+        if (topic?.trim()) {
+            contextLines.push(`Topic: ${topic.trim()}`);
+        }
+        if (fileName) {
+            contextLines.push(`File name: ${fileName}`);
+        }
+        if (fileContent?.trim()) {
+            const trimmed = fileContent.trim();
+            const excerpt = trimmed.length > 16000 ? `${trimmed.slice(0, 16000)}...` : trimmed;
+            contextLines.push(`Extracted text (excerpt):\n${excerpt}`);
+        }
+        const contextBlock = contextLines.length ? `Context:\n${contextLines.join('\n')}\n\n` : '';
+
+        return `${contextBlock}You are a strict QA + repair agent for a single-file HTML 3D educational simulation.
+Your task is to FIX the draft HTML so it strictly matches the requirements below and removes off-topic or nonsense content.
+
+Requirements (must all be satisfied):
+- Output exactly ONE runnable HTML file (no extra files).
+- 3D: Three.js via CDN + OrbitControls.
+- UI: Vanilla JS preferred. React/Vue only if absolutely required.
+- Styling: Tailwind CSS via CDN.
+- No external assets (no models, no textures, no images). Procedural geometry only.
+- Light mode, clean white / light-gray background, rounded corners, soft shadows.
+- Include: 3D canvas area, Info Panel, Step-by-step guide, Controls + readouts, Legend, Glossary, Assumptions.
+- Include Click-to-explain, Step-by-step mode, Free exploration, Run/Pause/Reset, and >=3 controls.
+- If the content is conceptual, label it "conceptual" and list assumptions.
+
+Behavior rules:
+- Align all text, labels, steps, and UI copy to the topic/context.
+- Remove unrelated phrases, random languages, or contradictory content.
+- If uncertain, replace with neutral, accurate wording and note the assumption.
+
+Draft HTML to correct (single-file expected in output):
+${draftHtml}
+
+Return ONLY the corrected HTML starting with <!DOCTYPE html> and ending with </html>.
+`;
+    };
 
     const WEEKDAY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -219,12 +490,12 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
     const normalizeFormulaItem = (item: any, index: number): FormulaItem | null => {
         const variables = Array.isArray(item?.variables)
             ? item.variables
-                  .map((variable: any) => ({
-                      symbol: String(variable?.symbol || variable?.name || '').trim(),
-                      definition: String(variable?.definition || variable?.meaning || '').trim(),
-                      unit: variable?.unit ? String(variable.unit).trim() : undefined
-                  }))
-                  .filter((variable: any) => variable.symbol && variable.definition)
+                .map((variable: any) => ({
+                    symbol: String(variable?.symbol || variable?.name || '').trim(),
+                    definition: String(variable?.definition || variable?.meaning || '').trim(),
+                    unit: variable?.unit ? String(variable.unit).trim() : undefined
+                }))
+                .filter((variable: any) => variable.symbol && variable.definition)
             : [];
         const latex = String(item?.latex || item?.equation || item?.formula || '').trim();
         if (!latex) return null;
@@ -525,39 +796,57 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
     };
 
     const buildFormulaExtractionPrompt = (chunk: string, isAssignment: boolean, index: number, total: number) => `
-You are a formula extraction engine. Return ONLY JSON.
+You are an expert formula extraction and analysis engine specialized in educational content.
+Use deep reasoning to thoroughly analyze this document.
 
-Output format:
+## PRIMARY TASK:
+Extract ALL mathematical formulas, equations, and expressions from the document.
+
+## SECONDARY TASK (CRITICAL):
+If the document contains few or no explicit formulas BUT discusses concepts that require formulas to solve/understand:
+1. Intelligently INFER and SUGGEST all formulas that would be needed
+2. Mark these as status: "unknown" (inferred/required)
+3. Provide complete variable definitions for each
+
+## REASONING PROCESS:
+1. First, identify the subject area (physics, chemistry, math, engineering, etc.)
+2. Identify key topics/concepts mentioned
+3. For each topic, determine what formulas are typically used
+4. Extract explicit formulas AND suggest required formulas
+
+## OUTPUT FORMAT (JSON ONLY):
 {
   "formulas": [
     {
-      "label": "SHORT LABEL",
+      "label": "SHORT DESCRIPTIVE LABEL",
       "page": 4,
       "latex": "\\\\Delta U = Q - W",
       "variables": [
-        { "symbol": "\\\\Delta U", "definition": "Change in internal energy" },
-        { "symbol": "Q", "definition": "Heat added to system" }
+        { "symbol": "\\\\Delta U", "definition": "Change in internal energy", "unit": "J" },
+        { "symbol": "Q", "definition": "Heat added to system", "unit": "J" }
       ],
       "status": "verified"
     }
   ]
 }
 
-Rules:
-- Extract every explicit formula in the text.
-- If this is an assignment/problem set, ALSO include formulas required to solve the questions, even if not explicitly written.
-- Use LaTeX for the formula string without surrounding $$.
-- Use "unknown" status for inferred/required formulas.
-- If page number is unknown, omit it.
-- Provide variable definitions from the text when possible. If missing, use "${FALLBACK_DEFINITION}".
-- Keep latex and symbols precise (no prose).
+## RULES:
+- Extract EVERY explicit formula, equation, inequality, or mathematical expression
+- If this appears to be an assignment/problem set, ALSO include all formulas required to solve the problems
+- Use LaTeX notation WITHOUT surrounding $$ delimiters
+- Escape backslashes properly (\\\\frac, \\\\Delta, etc.)
+- For inferred formulas, use status: "unknown"
+- Include units for variables when known
+- Keep labels concise but descriptive
+- If page number is unknown, omit it
+- Provide variable definitions from the text when possible. If missing, use "${FALLBACK_DEFINITION}"
 
-Context:
+## CONTEXT:
 - File: ${fileName || 'Document'}
 - Chunk: ${index + 1} of ${total}
-- Assignment mode: ${isAssignment ? 'yes' : 'no'}
+- Assignment/Problem mode: ${isAssignment ? 'YES - prioritize formulas needed for solutions' : 'NO'}
 
-Content:
+## DOCUMENT CONTENT:
 ${chunk}
 `;
 
@@ -575,9 +864,10 @@ ${chunk}
                 const raw = await withTimeout(
                     generateTextContent(prompt, {
                         model: 'gemini-3-pro-preview',
-                        maxOutputTokens: 4096
+                        maxOutputTokens: 4096,
+                        thinking: 'high'
                     }),
-                    45000,
+                    90000,
                     'Formula extraction'
                 );
                 const parsed = parseFormulaResponse(raw);
@@ -600,6 +890,64 @@ ${chunk}
             const nextPreview = ensureVariableDefinitions(combined);
             setExtractedFormulas(nextPreview);
             await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+
+        // If no formulas found, try intelligent inference based on document content
+        if (combined.length === 0 && sourceText.length > 100) {
+            setThoughtLog(prev => [...prev, 'No explicit formulas found. Inferring relevant formulas...']);
+            setLoadingStep('Inferring relevant formulas...');
+            const inferencePrompt = `
+You are an expert educational formula assistant. The following document was analyzed and NO explicit formulas were found.
+Your task is to INTELLIGENTLY SUGGEST all formulas that would be needed to work with this document.
+
+## REASONING PROCESS:
+1. Identify the subject area and key topics discussed
+2. Determine what mathematical formulas, equations, or relationships are relevant
+3. Suggest comprehensive formulas that would help understand or solve problems in this area
+
+## OUTPUT FORMAT (JSON ONLY):
+{
+  "formulas": [
+    {
+      "label": "SHORT DESCRIPTIVE LABEL",
+      "latex": "formula in LaTeX",
+      "variables": [
+        { "symbol": "X", "definition": "description", "unit": "optional" }
+      ],
+      "status": "unknown"
+    }
+  ]
+}
+
+## RULES:
+- Suggest 5-15 relevant formulas based on the document's topic
+- All formulas should have status: "unknown" (inferred)
+- Provide complete variable definitions
+- Use proper LaTeX notation with escaped backslashes
+
+## DOCUMENT CONTENT (abbreviated):
+${sourceText.slice(0, 8000)}
+`;
+            try {
+                const inferenceResult = await withTimeout(
+                    generateTextContent(inferencePrompt, {
+                        model: 'gemini-3-pro-preview',
+                        maxOutputTokens: 4096,
+                        thinking: 'high'
+                    }),
+                    90000,
+                    'Formula inference'
+                );
+                const inferred = parseFormulaResponse(inferenceResult);
+                if (inferred.length > 0) {
+                    combined = mergeFormulaItems(combined, inferred);
+                    setExtractedFormulas(ensureVariableDefinitions(combined));
+                    setThoughtLog(prev => [...prev, `Inferred ${inferred.length} relevant formulas.`]);
+                }
+            } catch (inferError) {
+                console.warn('Formula inference failed:', inferError);
+                setThoughtLog(prev => [...prev, 'Formula inference timed out or failed.']);
+            }
         }
 
         return ensureVariableDefinitions(combined);
@@ -732,7 +1080,10 @@ Rules:
     const fileInputRef = useRef<HTMLInputElement>(null);
     const referenceInputRef = useRef<HTMLInputElement>(null);
     const isTimelineFeature = selectedFeature === 'timeline-generator';
-    const canGenerate = Boolean(fileContent || fileData || topic);
+    const is3dSimulationFeature = selectedFeature === '3d-simulation';
+    const canGenerate = is3dSimulationFeature
+        ? Boolean(fileData && fileData.mimeType === 'application/pdf')
+        : Boolean(fileContent || fileData || topic);
     const timelinePreferenceKey = `${timelinePreferences.effortHoursPerDay}:${timelinePreferences.preferredStudyTime}:${timelinePreferences.targetDate || 'none'}:${timelinePreferences.blockedDays.join(',')}:${timelinePreferences.reminderDays.join(',')}`;
     const autoGenerateKey = `${selectedFeature || 'none'}:${fileName || ''}:${topic || ''}:${fileContent?.length || 0}:${fileData ? fileData.data.length : 0}:${useToT ? 'tot' : 'no'}:${isTimelineFeature ? timelinePreferenceKey : 'no-timeline'}`;
     const handleToTContinue = () => {
@@ -908,6 +1259,8 @@ Rules:
                                     ? 'tree_of_thoughts'
                                     : selectedFeature === 'check-my-work'
                                         ? 'check_my_work'
+                                        : selectedFeature === '3d-simulation'
+                                            ? '3d_simulation'
                                         : extractFormulaSheet
                                             ? 'formula_extraction'
                                             : questionAndAnswer
@@ -919,7 +1272,8 @@ Rules:
         const isSummaryMode = resolvedMode === 'smart_summary';
         const isFlashcardsMode = resolvedMode === 'flashcards';
         const isTimelineMode = resolvedMode === 'timeline';
-        const useToTPlanning = (useToT || resolvedMode === 'tree_of_thoughts') && !isTimelineMode;
+        const is3dSimulationMode = resolvedMode === '3d_simulation';
+        const useToTPlanning = !is3dSimulationMode && (useToT || resolvedMode === 'tree_of_thoughts') && !isTimelineMode;
         const isTreeMode = resolvedMode === 'tree_of_thoughts';
         const isCheckMyWorkMode = resolvedMode === 'check_my_work';
         const isComprehensiveMode = resolvedMode === 'comprehensive';
@@ -1475,6 +1829,78 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
         // Legacy HTML mode
         setLoadingStep('Initializing Gemini 3 Pro...');
 
+        if (is3dSimulationMode) {
+            setLoadingStep('Generating 3D simulation...');
+            try {
+                const prompt = build3dSimulationPrompt();
+                let accumulatedHtml = '';
+
+                await streamTextContent(
+                    prompt,
+                    (chunk) => {
+                        accumulatedHtml += chunk;
+                    },
+                    {
+                        model: 'gemini-3-pro-preview',
+                        thinking: 'high',
+                        inlineData: fileData || undefined,
+                        onThought: (thought) => {
+                            setThoughtLog(prev => [...prev, thought]);
+                            setLoadingStep('Generating 3D simulation...');
+                            setIsStreamingThoughts(true);
+                        }
+                    }
+                );
+
+                const cleanHtml = sanitizeHtmlResponse(accumulatedHtml);
+                const { html, preface } = extractHtmlFromResponse(cleanHtml);
+                if (preface) {
+                    setThoughtLog(prev => [...prev, 'Extraction Summary:', preface]);
+                }
+
+                setThoughtLog(prev => [...prev, 'Running quality check & correction...']);
+                setLoadingStep('Validating simulation...');
+
+                const correctionPrompt = build3dSimulationCorrectionPrompt(html);
+                let correctedHtml = '';
+                await streamTextContent(
+                    correctionPrompt,
+                    (chunk) => {
+                        correctedHtml += chunk;
+                    },
+                    {
+                        model: 'gemini-3-pro-preview',
+                        thinking: 'high',
+                        inlineData: fileData || undefined,
+                        onThought: (thought) => {
+                            setThoughtLog(prev => [...prev, thought]);
+                            setLoadingStep('Correcting simulation...');
+                            setIsStreamingThoughts(true);
+                        }
+                    }
+                );
+
+                const correctedClean = sanitizeHtmlResponse(correctedHtml);
+                const { html: fixedHtml, preface: fixedPreface } = extractHtmlFromResponse(correctedClean);
+                if (fixedPreface) {
+                    setThoughtLog(prev => [...prev, 'Correction Summary:', fixedPreface]);
+                }
+                const finalHtml = fixedHtml || html;
+
+                setGeneratedHtml(finalHtml);
+                setPreviewHtml(finalHtml);
+                setLoadingStep('Complete!');
+            } catch (error) {
+                console.error('3D simulation generation failed:', error);
+                setLoadingStep('Error encountered. Please try again.');
+                setThoughtLog(prev => [...prev, `Error: ${error}`]);
+            } finally {
+                setIsGenerating(false);
+                setIsStreamingThoughts(false);
+            }
+            return;
+        }
+
         try {
             const modeDescription = isFormulaMode
                 ? 'FORMULA SHEET EXTRACTION'
@@ -1738,6 +2164,7 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
 
     useEffect(() => {
         if (!autoGenerate || !selectedFeature || !canGenerate) return;
+        if (is3dSimulationFeature) return;
         if (isGenerating || isExtractingFormulas || isExtractingSource || isToTGenerating) return;
         if (autoGenerateRef.current === autoGenerateKey) return;
         autoGenerateRef.current = autoGenerateKey;
@@ -2035,8 +2462,8 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                             disabled={isChecking || !fileData}
                                             className={`inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold uppercase tracking-wide rounded-lg
                                                     ${isChecking || !fileData
-                                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                                : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
+                                                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                                    : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
                                         >
                                             {!fileData && <Lock className="w-3.5 h-3.5" />}
                                             Check My Work
@@ -2074,7 +2501,9 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                     {/* Main Content Area */}
                     <div className="flex-1 overflow-y-auto flex flex-col p-6 gap-6">
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. Upload Source Material</label>
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                                1. {is3dSimulationFeature ? 'Upload PDF' : 'Upload Source Material'}
+                            </label>
                             <div
                                 onClick={() => fileInputRef.current?.click()}
                                 className="border border-white/10 bg-white/5 hover:bg-white/10 p-5 flex flex-col items-center justify-center cursor-pointer transition-all group"
@@ -2083,7 +2512,7 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                     type="file"
                                     ref={fileInputRef}
                                     className="hidden"
-                                    accept=".txt,.md,.pdf,.html"
+                                    accept={is3dSimulationFeature ? '.pdf' : '.txt,.md,.pdf,.html'}
                                     onChange={handleFileUpload}
                                 />
                                 {fileName ? (
@@ -2095,8 +2524,12 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                 ) : (
                                     <div className="flex flex-col items-center text-slate-400 group-hover:text-white transition-colors">
                                         <FileUp className="w-6 h-6 mb-2" />
-                                        <span className="text-xs font-medium">Upload / Paste Notes</span>
-                                        <span className="text-[11px] mt-1">PDF, Text, or Markdown</span>
+                                        <span className="text-xs font-medium">
+                                            {is3dSimulationFeature ? 'Upload PDF' : 'Upload / Paste Notes'}
+                                        </span>
+                                        <span className="text-[11px] mt-1">
+                                            {is3dSimulationFeature ? 'PDF only' : 'PDF, Text, or Markdown'}
+                                        </span>
                                     </div>
                                 )}
                             </div>
@@ -2115,50 +2548,52 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                         </div>
 
                         {/* Options */}
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Options</label>
-                            <div className="flex flex-col gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setExtractFormulaSheet(!extractFormulaSheet)}
-                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all ${extractFormulaSheet
-                                        ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md'
-                                        : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
-                                        }`}
-                                >
-                                    Extract Formula Sheet
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setQuestionAndAnswer(!questionAndAnswer)}
-                                    className={`w-full px-4 py-2.5 text-sm font-medium transition-all ${questionAndAnswer
-                                        ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md'
-                                        : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
-                                        }`}
-                                >
-                                    Question and Answer
-                                </button>
-                            </div>
-                            {!isTimelineFeature && (
-                                <div className="mt-3 pt-3 border-t border-slate-700">
+                        {!is3dSimulationFeature && (
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Options</label>
+                                <div className="flex flex-col gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => setUseToT(!useToT)}
-                                        className={`w-full px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${useToT
-                                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-md'
+                                        onClick={() => setExtractFormulaSheet(!extractFormulaSheet)}
+                                        className={`w-full px-4 py-2.5 text-sm font-medium transition-all ${extractFormulaSheet
+                                            ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md'
                                             : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
                                             }`}
                                     >
-                                        <GitBranch className="w-4 h-4" />
-                                        Tree of Thoughts
-                                        {useToT && <Check className="w-3 h-3" />}
+                                        Extract Formula Sheet
                                     </button>
-                                    <p className="text-[10px] text-slate-500 mt-1.5 text-center">
-                                        {useToT ? 'Generates structured study plan tree' : 'Generates interactive HTML lesson'}
-                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setQuestionAndAnswer(!questionAndAnswer)}
+                                        className={`w-full px-4 py-2.5 text-sm font-medium transition-all ${questionAndAnswer
+                                            ? 'bg-[#3b5b8a] text-white border border-[#4a6ba8] shadow-md'
+                                            : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
+                                            }`}
+                                    >
+                                        Question and Answer
+                                    </button>
                                 </div>
-                            )}
-                        </div>
+                                {!isTimelineFeature && (
+                                    <div className="mt-3 pt-3 border-t border-slate-700">
+                                        <button
+                                            type="button"
+                                            onClick={() => setUseToT(!useToT)}
+                                            className={`w-full px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${useToT
+                                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-md'
+                                                : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white'
+                                                }`}
+                                        >
+                                            <GitBranch className="w-4 h-4" />
+                                            Tree of Thoughts
+                                            {useToT && <Check className="w-3 h-3" />}
+                                        </button>
+                                        <p className="text-[10px] text-slate-500 mt-1.5 text-center">
+                                            {useToT ? 'Generates structured study plan tree' : 'Generates interactive HTML lesson'}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {isTimelineFeature && (
                             <div className="space-y-4 border-t border-slate-700 pt-4">
@@ -2272,33 +2707,58 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                             )}
                         </button>
 
-                        {/* Check My Work Button - Uses Gemini 3 Pro Image to annotate */}
-                        <button
-                            onClick={handleCheckMyWork}
-                            disabled={isChecking || !fileData}
-                            className={`
-                                w-full py-2.5 flex items-center justify-center gap-2 font-medium text-sm transition-all border
-                                ${isChecking || !fileData
-                                    ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                                    : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30 active:scale-95'}
-                            `}
-                            title="Upload an image of your work to get it checked with annotations"
-                        >
-                            {isChecking ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Checking...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <CheckCircle className="w-4 h-4" />
-                                    <span>Check My Work</span>
-                                </>
-                            )}
-                        </button>
-                        <p className="text-[10px] text-slate-500 text-center mb-2">
-                            Upload image/PDF → Get annotated feedback
-                        </p>
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Thinking stream</label>
+                            <div
+                                ref={terminalRef}
+                                className="h-40 overflow-y-auto rounded border border-white/10 bg-black/40 px-3 py-2 text-[11px] text-slate-200"
+                            >
+                                {thoughtLog.length === 0 ? (
+                                    <p className="text-slate-500">No thinking yet. Generate to see live updates.</p>
+                                ) : (
+                                    thoughtLog.map((entry, index) => (
+                                        <p key={`${entry}-${index}`} className="whitespace-pre-wrap leading-relaxed">
+                                            {entry}
+                                        </p>
+                                    ))
+                                )}
+                                {isStreamingThoughts && (
+                                    <span className="inline-block text-slate-300">{showCursor ? '|' : ''}</span>
+                                )}
+                            </div>
+                        </div>
+
+                        {!is3dSimulationFeature && (
+                            <>
+                                {/* Check My Work Button - Uses Gemini 3 Pro Image to annotate */}
+                                <button
+                                    onClick={handleCheckMyWork}
+                                    disabled={isChecking || !fileData}
+                                    className={`
+                                        w-full py-2.5 flex items-center justify-center gap-2 font-medium text-sm transition-all border
+                                        ${isChecking || !fileData
+                                            ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
+                                            : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30 active:scale-95'}
+                                    `}
+                                    title="Upload an image of your work to get it checked with annotations"
+                                >
+                                    {isChecking ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <span>Checking...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CheckCircle className="w-4 h-4" />
+                                            <span>Check My Work</span>
+                                        </>
+                                    )}
+                                </button>
+                                <p className="text-[10px] text-slate-500 text-center mb-2">
+                                    Upload image/PDF → Get annotated feedback
+                                </p>
+                            </>
+                        )}
 
                         <div className="h-px bg-slate-700"></div>
                     </div>

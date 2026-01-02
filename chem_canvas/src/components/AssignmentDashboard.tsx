@@ -136,6 +136,17 @@ const features = [
         decorationColor: 'text-orange-200',
     },
     {
+        id: '3d-simulation',
+        title: '3d simulation',
+        description: 'Upload a PDF and generate a single-file 3D interactive simulation.',
+        icon: '3d-simulation',
+        color: 'yellow',
+        bgColor: 'bg-yellow-50',
+        iconBg: 'bg-yellow-100',
+        iconColor: 'text-yellow-700',
+        decorationColor: 'text-yellow-200',
+    },
+    {
         id: '3d-explorer',
         title: '3D Explorer',
         description: 'Load and manipulate 3D models with gesture controls.',
@@ -275,6 +286,8 @@ const FeatureIcon: React.FC<{ icon: string; className?: string }> = ({ icon, cla
             return <Calendar className={className} />;
         case 'simulation':
             return <Atom className={className} />;
+        case '3d-simulation':
+            return <Box className={className} />;
         case '3d-explorer':
             return <Box className={className} />;
         case 'audio':
@@ -342,6 +355,8 @@ const DecorationIcon: React.FC<{ icon: string; className?: string }> = ({ icon, 
             );
         case 'simulation':
             return <Atom className={className} />;
+        case '3d-simulation':
+            return <Box className={className} />;
         case '3d-explorer':
             return <Box className={className} />;
         case 'audio':

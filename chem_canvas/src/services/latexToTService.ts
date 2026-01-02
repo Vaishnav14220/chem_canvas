@@ -46,7 +46,7 @@ export interface LaTeXToTResponse {
 export interface LaTeXSection {
     id: string;
     title: string;
-    type: 'theory' | 'examples' | 'practice' | 'formulas' | 'diagrams' | 'glossary';
+    type: 'theory' | 'examples' | 'practice' | 'worksheet' | 'formulas' | 'diagrams' | 'glossary' | 'further-questions';
     priority: 'high' | 'medium' | 'low';
     estimatedLength: 'short' | 'medium' | 'long';
     dependencies: string[]; // IDs of sections that should come before
@@ -80,6 +80,13 @@ const TOT_PLANNING_PROMPT = `You are an expert educational content architect spe
 
 Your task is to analyze a topic and generate a Tree of Thoughts exploring different document structures.
 
+Required document sections (must appear in recommendedStructure):
+- Part 1: Theoretical Foundations & Test Prep
+- Part 2: Worksheet Solutions & Practical Guide
+- Further Questions & Solutions (10-20 questions with answers)
+- Formula Sheet & Glossary
+- Figures & Diagrams (include extracted visuals or TikZ when needed)
+
 EVALUATION CRITERIA (weight these in scoring):
 1. STUDENT LEARNING (+3): Structures that build understanding progressively
 2. PRACTICAL APPLICATION (+2): Approaches that include worked examples
@@ -112,7 +119,7 @@ OUTPUT FORMAT - Return valid JSON only, no markdown:
         {
             "id": "string",
             "title": "string",
-            "type": "theory | examples | practice | formulas | diagrams | glossary",
+            "type": "theory | examples | practice | worksheet | formulas | diagrams | glossary | further-questions",
             "priority": "high | medium | low",
             "estimatedLength": "short | medium | long",
             "dependencies": ["string - section IDs"]
@@ -147,7 +154,11 @@ REQUIREMENTS:
 - Include clear explanations alongside formulas
 - Use color for emphasis where appropriate (\\textcolor)
 - Add helpful comments in LaTeX (% comment)
-- Ensure all brackets and environments are properly closed`;
+- Ensure all brackets and environments are properly closed
+- For calculation tasks: show step-by-step derivations and substitute given values
+- For conceptual questions: provide concise, academic explanations tied to theory
+- For coding tasks: include complete, commented solutions in lstlisting environments with a brief explanation
+- If figures are required but not provided, create TikZ diagrams instead`;
 
 const QUALITY_REVIEW_PROMPT = `You are a LaTeX quality assurance expert.
 
@@ -203,7 +214,7 @@ Generate a Tree of Thoughts exploring different ways to structure a comprehensiv
     try {
         const response = await generateTextContent(fullPrompt, {
             maxOutputTokens: 4096,
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3-pro-preview',
             thinking: 'high'
         });
 
@@ -265,7 +276,7 @@ Return ONLY the final LaTeX code for this section.`;
                 onChunk?.(chunk);
             },
             {
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-3-pro-preview',
                 thinking: 'high',
                 timeout: 120000,
                 onThought: (thought: string) => {

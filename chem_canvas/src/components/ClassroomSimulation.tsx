@@ -22,6 +22,7 @@ import {
     Eye
 } from 'lucide-react';
 import { ExcalidrawCanvas, ExcalidrawCanvasRef } from './ExcalidrawCanvas/ExcalidrawCanvas';
+import { loadFeatureSession, saveFeatureSession } from '../utils/featureSessionStorage';
 
 // AI Student avatars - different personas with learning styles
 const AI_STUDENTS = [
@@ -45,6 +46,30 @@ interface ClassroomSimulationProps {
     apiKey: string;
 }
 
+type PersistedQuestion = Omit<StudentQuestion, 'timestamp'> & { timestamp: string };
+
+type ClassroomSessionSnapshot = {
+    version: 1;
+    topic: string;
+    questions: PersistedQuestion[];
+    selectedQuestionId: string | null;
+    isPresentationStarted: boolean;
+    activeTool: 'pen' | 'eraser' | 'text';
+    userResponse: string;
+};
+
+const serializeQuestions = (items: StudentQuestion[]): PersistedQuestion[] =>
+    items.map((question) => ({
+        ...question,
+        timestamp: question.timestamp.toISOString(),
+    }));
+
+const deserializeQuestions = (items: PersistedQuestion[]): StudentQuestion[] =>
+    items.map((question) => ({
+        ...question,
+        timestamp: new Date(question.timestamp),
+    }));
+
 export const ClassroomSimulation: React.FC<ClassroomSimulationProps> = ({
     topic,
     onBack,
@@ -66,6 +91,36 @@ export const ClassroomSimulation: React.FC<ClassroomSimulationProps> = ({
     const [isStudentThinking, setIsStudentThinking] = useState(false);
     const [thinkingStudentId, setThinkingStudentId] = useState<string | null>(null);
     const [userResponse, setUserResponse] = useState('');
+
+    useEffect(() => {
+        const stored = loadFeatureSession<ClassroomSessionSnapshot>('classroom-simulation');
+        if (!stored) return;
+        const restoredQuestions = stored.questions ? deserializeQuestions(stored.questions) : [];
+        setIsPresentationStarted(Boolean(stored.isPresentationStarted));
+        setQuestions(restoredQuestions);
+        setSelectedQuestion(
+            restoredQuestions.find((question) => question.id === stored.selectedQuestionId) || null
+        );
+        setActiveTool(stored.activeTool || 'pen');
+        setUserResponse(stored.userResponse || '');
+    }, []);
+
+    useEffect(() => {
+        const saveTimeout = setTimeout(() => {
+            const snapshot: ClassroomSessionSnapshot = {
+                version: 1,
+                topic,
+                questions: serializeQuestions(questions),
+                selectedQuestionId: selectedQuestion?.id || null,
+                isPresentationStarted,
+                activeTool,
+                userResponse,
+            };
+            saveFeatureSession('classroom-simulation', snapshot);
+        }, 800);
+
+        return () => clearTimeout(saveTimeout);
+    }, [topic, questions, selectedQuestion, isPresentationStarted, activeTool, userResponse]);
 
     // Capture canvas as base64 image
     const captureCanvas = useCallback(async (): Promise<string | null> => {
@@ -349,6 +404,7 @@ Reply with ONLY the question, nothing else.`;
                             onClose={() => { }}
                             embedded={true}
                             className="w-full h-full"
+                            persistenceKey="classroom-simulation-canvas"
                         />
 
                         {/* Presenter Avatar */}

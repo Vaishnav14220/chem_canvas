@@ -647,12 +647,12 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
     const normalizeFormulaItem = (item: any, index: number): FormulaItem | null => {
         const variables = Array.isArray(item?.variables)
             ? item.variables
-                  .map((variable: any) => ({
-                      symbol: String(variable?.symbol || variable?.name || '').trim(),
-                      definition: String(variable?.definition || variable?.meaning || '').trim(),
-                      unit: variable?.unit ? String(variable.unit).trim() : undefined
-                  }))
-                  .filter((variable: any) => variable.symbol && variable.definition)
+                .map((variable: any) => ({
+                    symbol: String(variable?.symbol || variable?.name || '').trim(),
+                    definition: String(variable?.definition || variable?.meaning || '').trim(),
+                    unit: variable?.unit ? String(variable.unit).trim() : undefined
+                }))
+                .filter((variable: any) => variable.symbol && variable.definition)
             : [];
         const latex = String(item?.latex || item?.equation || item?.formula || '').trim();
         if (!latex) return null;
@@ -790,39 +790,57 @@ export const FormulaExtractionWorkspace: React.FC<FormulaExtractionWorkspaceProp
     };
 
     const buildFormulaExtractionPrompt = (chunk: string, isAssignment: boolean, index: number, total: number) => `
-You are a formula extraction engine. Return ONLY JSON.
+You are an expert formula extraction and analysis engine specialized in educational content.
+Use deep reasoning to thoroughly analyze this document.
 
-Output format:
+## PRIMARY TASK:
+Extract ALL mathematical formulas, equations, and expressions from the document.
+
+## SECONDARY TASK (CRITICAL):
+If the document contains few or no explicit formulas BUT discusses concepts that require formulas to solve/understand:
+1. Intelligently INFER and SUGGEST all formulas that would be needed
+2. Mark these as status: "unknown" (inferred/required)
+3. Provide complete variable definitions for each
+
+## REASONING PROCESS:
+1. First, identify the subject area (physics, chemistry, math, engineering, etc.)
+2. Identify key topics/concepts mentioned
+3. For each topic, determine what formulas are typically used
+4. Extract explicit formulas AND suggest required formulas
+
+## OUTPUT FORMAT (JSON ONLY):
 {
   "formulas": [
     {
-      "label": "SHORT LABEL",
+      "label": "SHORT DESCRIPTIVE LABEL",
       "page": 4,
       "latex": "\\\\Delta U = Q - W",
       "variables": [
-        { "symbol": "\\\\Delta U", "definition": "Change in internal energy" },
-        { "symbol": "Q", "definition": "Heat added to system" }
+        { "symbol": "\\\\Delta U", "definition": "Change in internal energy", "unit": "J" },
+        { "symbol": "Q", "definition": "Heat added to system", "unit": "J" }
       ],
       "status": "verified"
     }
   ]
 }
 
-Rules:
-- Extract every explicit formula in the text.
-- If this is an assignment/problem set, ALSO include formulas required to solve the questions, even if not explicitly written.
-- Use LaTeX for the formula string without surrounding $$.
-- Use "unknown" status for inferred/required formulas.
-- If page number is unknown, omit it.
-- Provide variable definitions from the text when possible. If missing, use "${FALLBACK_DEFINITION}".
-- Keep latex and symbols precise (no prose).
+## RULES:
+- Extract EVERY explicit formula, equation, inequality, or mathematical expression
+- If this appears to be an assignment/problem set, ALSO include all formulas required to solve the problems
+- Use LaTeX notation WITHOUT surrounding $$ delimiters
+- Escape backslashes properly (\\\\frac, \\\\Delta, etc.)
+- For inferred formulas, use status: "unknown"
+- Include units for variables when known
+- Keep labels concise but descriptive
+- If page number is unknown, omit it
+- Provide variable definitions from the text when possible. If missing, use "${FALLBACK_DEFINITION}"
 
-Context:
+## CONTEXT:
 - File: ${effectiveFileName || 'Document'}
 - Chunk: ${index + 1} of ${total}
-- Assignment mode: ${isAssignment ? 'yes' : 'no'}
+- Assignment/Problem mode: ${isAssignment ? 'YES - prioritize formulas needed for solutions' : 'NO'}
 
-Content:
+## DOCUMENT CONTENT:
 ${chunk}
 `;
 
@@ -837,7 +855,8 @@ ${chunk}
             try {
                 const raw = await generateTextContent(prompt, {
                     model: 'gemini-3-pro-preview',
-                    maxOutputTokens: 4096
+                    maxOutputTokens: 4096,
+                    thinking: 'high'
                 });
                 const parsed = parseFormulaResponse(raw);
                 if (parsed.length > 0) {
@@ -848,6 +867,56 @@ ${chunk}
             }
             setFormulas(ensureVariableDefinitions(combined));
             await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+
+        // If no formulas found, try intelligent inference based on document content
+        if (combined.length === 0 && sourceText.length > 100) {
+            const inferencePrompt = `
+You are an expert educational formula assistant. The following document was analyzed and NO explicit formulas were found.
+Your task is to INTELLIGENTLY SUGGEST all formulas that would be needed to work with this document.
+
+## REASONING PROCESS:
+1. Identify the subject area and key topics discussed
+2. Determine what mathematical formulas, equations, or relationships are relevant
+3. Suggest comprehensive formulas that would help understand or solve problems in this area
+
+## OUTPUT FORMAT (JSON ONLY):
+{
+  "formulas": [
+    {
+      "label": "SHORT DESCRIPTIVE LABEL",
+      "latex": "formula in LaTeX",
+      "variables": [
+        { "symbol": "X", "definition": "description", "unit": "optional" }
+      ],
+      "status": "unknown"
+    }
+  ]
+}
+
+## RULES:
+- Suggest 5-15 relevant formulas based on the document's topic
+- All formulas should have status: "unknown" (inferred)
+- Provide complete variable definitions
+- Use proper LaTeX notation with escaped backslashes
+
+## DOCUMENT CONTENT (abbreviated):
+${sourceText.slice(0, 8000)}
+`;
+            try {
+                const inferenceResult = await generateTextContent(inferencePrompt, {
+                    model: 'gemini-3-pro-preview',
+                    maxOutputTokens: 4096,
+                    thinking: 'high'
+                });
+                const inferred = parseFormulaResponse(inferenceResult);
+                if (inferred.length > 0) {
+                    combined = mergeFormulaItems(combined, inferred);
+                    setFormulas(ensureVariableDefinitions(combined));
+                }
+            } catch (inferError) {
+                console.warn('Formula inference failed:', inferError);
+            }
         }
 
         return ensureVariableDefinitions(combined);
@@ -1424,11 +1493,10 @@ Rules:
                                             type="button"
                                             onClick={() => setIsAutoSimulating((prev) => !prev)}
                                             disabled={!activeSimulationId}
-                                            className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
-                                                isAutoSimulating
-                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                                    : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-                                            } ${!activeSimulationId ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide transition-colors ${isAutoSimulating
+                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                                                } ${!activeSimulationId ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
                                             {isAutoSimulating ? 'Auto Mode On' : 'Auto Mode'}
                                         </button>
@@ -1439,9 +1507,8 @@ Rules:
                                                 setIsAutoSimulating(false);
                                             }}
                                             disabled={!activeSimulationId}
-                                            className={`rounded-full border border-slate-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-slate-50 ${
-                                                !activeSimulationId ? 'opacity-60 cursor-not-allowed' : ''
-                                            }`}
+                                            className={`rounded-full border border-slate-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-slate-50 ${!activeSimulationId ? 'opacity-60 cursor-not-allowed' : ''
+                                                }`}
                                         >
                                             Close
                                         </button>

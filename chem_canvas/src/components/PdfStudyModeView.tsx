@@ -38,6 +38,7 @@ import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { useSourceStore } from '../store/sourceStore';
 import { generateTextContent } from '../services/geminiService';
 import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
+import { loadFeatureSession, saveFeatureSession } from '../utils/featureSessionStorage';
 
 interface PdfStudyModeViewProps {
     topic: string;
@@ -51,6 +52,31 @@ interface GeneratedNote {
     timestamp: Date;
     type: 'insight' | 'summary' | 'question' | 'definition' | 'feedback';
 }
+
+type PersistedGeneratedNote = Omit<GeneratedNote, 'timestamp'> & { timestamp: string };
+
+type PdfStudySessionSnapshot = {
+    version: 1;
+    topic: string;
+    inputValue: string;
+    generatedNotes: PersistedGeneratedNote[];
+    isLeftPanelCollapsed: boolean;
+    isTutorMode: boolean;
+    activeSourceId: string | null;
+    documentData: { mimeType: string; data: string } | null;
+};
+
+const serializeNotes = (notes: GeneratedNote[]): PersistedGeneratedNote[] =>
+    notes.map((note) => ({
+        ...note,
+        timestamp: note.timestamp.toISOString(),
+    }));
+
+const deserializeNotes = (notes: PersistedGeneratedNote[]): GeneratedNote[] =>
+    notes.map((note) => ({
+        ...note,
+        timestamp: new Date(note.timestamp),
+    }));
 
 const NOTE_COLORS = {
     insight: '#fef3c7',    // amber-100
@@ -74,6 +100,7 @@ export const PdfStudyModeView: React.FC<PdfStudyModeViewProps> = ({
     const [isTutorMode, setIsTutorMode] = useState(false);
     const [isTutorFeedbackProcessing, setIsTutorFeedbackProcessing] = useState(false);
     const [pendingScreenShare, setPendingScreenShare] = useState(false);
+    const [restoredDocumentData, setRestoredDocumentData] = useState<{ mimeType: string; data: string } | null>(null);
 
     // Refs
     const excalidrawRef = useRef<ExcalidrawCanvasRef>(null);
@@ -85,7 +112,7 @@ export const PdfStudyModeView: React.FC<PdfStudyModeViewProps> = ({
     const tutorRequestIdRef = useRef(0);
 
     // Get sources from store
-    const { sources, activeSourceId, getSource } = useSourceStore();
+    const { sources, activeSourceId, getSource, setActiveSource } = useSourceStore();
     const activeSource = activeSourceId ? getSource(activeSourceId) : null;
 
     // Initialize Gemini Live for voice conversation
@@ -108,6 +135,19 @@ Keep responses conversational and helpful. When you identify key points, structu
         });
     }, []);
 
+    useEffect(() => {
+        const stored = loadFeatureSession<PdfStudySessionSnapshot>('pdf-study');
+        if (!stored) return;
+        setInputValue(stored.inputValue || '');
+        setGeneratedNotes(stored.generatedNotes ? deserializeNotes(stored.generatedNotes) : []);
+        setIsLeftPanelCollapsed(Boolean(stored.isLeftPanelCollapsed));
+        setIsTutorMode(Boolean(stored.isTutorMode));
+        setRestoredDocumentData(stored.documentData || null);
+        if (stored.activeSourceId) {
+            setActiveSource(stored.activeSourceId);
+        }
+    }, []);
+
     // Auto-scroll notes
     useEffect(() => {
         notesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -124,6 +164,33 @@ Keep responses conversational and helpful. When you identify key points, structu
             setIsTutorFeedbackProcessing(false);
         }
     }, [isTutorMode]);
+
+    useEffect(() => {
+        const saveTimeout = setTimeout(() => {
+            const snapshot: PdfStudySessionSnapshot = {
+                version: 1,
+                topic,
+                inputValue,
+                generatedNotes: serializeNotes(generatedNotes),
+                isLeftPanelCollapsed,
+                isTutorMode,
+                activeSourceId,
+                documentData: documentData ?? restoredDocumentData
+            };
+            saveFeatureSession('pdf-study', snapshot);
+        }, 800);
+
+        return () => clearTimeout(saveTimeout);
+    }, [
+        topic,
+        inputValue,
+        generatedNotes,
+        isLeftPanelCollapsed,
+        isTutorMode,
+        activeSourceId,
+        documentData,
+        restoredDocumentData
+    ]);
 
     const processedTranscriptRef = useRef<Record<string, number>>({});
     const processedNoteRef = useRef<Set<string>>(new Set());
@@ -362,9 +429,11 @@ Keep it short and factual. Avoid praise.`;
 
     // Create PDF blob URL
     const pdfBlobUrl = React.useMemo(() => {
-        if (documentData?.data && documentData?.mimeType === 'application/pdf') {
+        const effectiveDocumentData = documentData ?? restoredDocumentData;
+
+        if (effectiveDocumentData?.data && effectiveDocumentData?.mimeType === 'application/pdf') {
             try {
-                const byteCharacters = atob(documentData.data);
+                const byteCharacters = atob(effectiveDocumentData.data);
                 const byteNumbers = new Array(byteCharacters.length);
                 for (let i = 0; i < byteCharacters.length; i++) {
                     byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -394,7 +463,7 @@ Keep it short and factual. Avoid praise.`;
             }
         }
         return null;
-    }, [documentData, activeSource]);
+    }, [documentData, restoredDocumentData, activeSource]);
 
     // Cleanup blob URL
     useEffect(() => {
@@ -588,6 +657,7 @@ Keep it short and factual. Avoid praise.`;
                             isOpen={true}
                             onClose={() => { }}
                             onElementsChange={handleCanvasElementsChange}
+                            persistenceKey="pdf-study-canvas"
                         />
                     </div>
                 </div>

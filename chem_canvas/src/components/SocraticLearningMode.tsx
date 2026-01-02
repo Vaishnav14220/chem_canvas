@@ -68,6 +68,7 @@ import { ExcalidrawCanvas, ExcalidrawCanvasRef } from './ExcalidrawCanvas/Excali
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
+import { loadFeatureSession, saveFeatureSession } from '../utils/featureSessionStorage';
 import { ConceptNetworkGraph, ConceptNodeData, generateConceptNetwork } from './ConceptNetworkGraph';
 import { FlashcardDeck } from './ChemistryFlashcardDeck';
 import { QuizPanel } from './QuizPanel';
@@ -109,6 +110,48 @@ const CANVAS_ACTIVITY_COPY = {
     misconceptions: 'Fix each misconception by rewriting the correct idea in your own words.',
     strengths: 'Extend each strong point with a concrete example or application.'
 };
+
+type PersistedTutorMessage = Omit<TutorChatMessage, 'timestamp'> & { timestamp: string };
+
+type SocraticSessionSnapshot = {
+    version: 1;
+    topic: string;
+    editTopicValue: string;
+    messages: PersistedTutorMessage[];
+    inputValue: string;
+    sessionState: TutorSessionState;
+    streamingContent: string;
+    lastEvaluation: TutorResponse['evaluation'] | null;
+    showEvaluation: boolean;
+    modeSwitchSuggestion: string | null;
+    isCanvasOpen: boolean;
+    confidence: number;
+    conceptNodes: Node<ConceptNodeData>[];
+    conceptEdges: Edge[];
+    activeTab: 'graph' | 'flashcards' | 'quiz';
+    flashcards: Flashcard[];
+    quiz: QuizQuestion | null;
+    diagramAnalysis: DiagramExtractionResult | null;
+    isGuidedFlowActive: boolean;
+    guidedTasks: GuidedTask[];
+    guidedTaskIndex: number;
+    guidedResults: GuidedTaskResult[];
+    guidedReport: GuidedReport | null;
+    showGuidedReport: boolean;
+    isGuidedFlowGenerating: boolean;
+};
+
+const serializeMessages = (items: TutorChatMessage[]): PersistedTutorMessage[] =>
+    items.map((message) => ({
+        ...message,
+        timestamp: message.timestamp.toISOString(),
+    }));
+
+const deserializeMessages = (items: PersistedTutorMessage[]): TutorChatMessage[] =>
+    items.map((message) => ({
+        ...message,
+        timestamp: new Date(message.timestamp),
+    }));
 
 export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
     topic,
@@ -172,6 +215,8 @@ export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
     const lastGuidedImageIndexRef = useRef<number>(-999);
     const lastAnalyzedDocumentKeyRef = useRef<string | null>(null);
     const flashcardAutoAdvanceRef = useRef<Set<string>>(new Set());
+    const hasRestoredSessionRef = useRef(false);
+    const skipInitialSessionRef = useRef(false);
 
     useEffect(() => {
         messagesRef.current = messages;
@@ -780,6 +825,43 @@ Encourage the student to think through problems step by step.`
         });
     }, []);
 
+    useEffect(() => {
+        const stored = loadFeatureSession<SocraticSessionSnapshot>('socratic');
+        if (!stored) return;
+
+        const restoredTopic = stored.topic || topic;
+        hasRestoredSessionRef.current = true;
+        skipInitialSessionRef.current = true;
+
+        setCurrentTopic(restoredTopic);
+        setEditTopicValue(stored.editTopicValue || restoredTopic);
+        setMessages(stored.messages ? deserializeMessages(stored.messages) : []);
+        messagesRef.current = stored.messages ? deserializeMessages(stored.messages) : [];
+        setInputValue(stored.inputValue || '');
+        setSessionState(stored.sessionState || createSessionState(restoredTopic, 'socratic'));
+        setStreamingContent(stored.streamingContent || '');
+        setLastEvaluation(stored.lastEvaluation || null);
+        setShowEvaluation(Boolean(stored.showEvaluation));
+        setModeSwitchSuggestion(stored.modeSwitchSuggestion || null);
+        setIsCanvasOpen(Boolean(stored.isCanvasOpen));
+        setConfidence(typeof stored.confidence === 'number' ? stored.confidence : 50);
+        setConceptNodes(stored.conceptNodes || []);
+        setConceptEdges(stored.conceptEdges || []);
+        setActiveTab(stored.activeTab || 'graph');
+        setFlashcards(stored.flashcards || []);
+        setQuiz(stored.quiz || null);
+        setDiagramAnalysis(stored.diagramAnalysis || null);
+        setIsGuidedFlowActive(Boolean(stored.isGuidedFlowActive));
+        setGuidedTasks(stored.guidedTasks || []);
+        guidedTasksRef.current = stored.guidedTasks || [];
+        setGuidedTaskIndex(typeof stored.guidedTaskIndex === 'number' ? stored.guidedTaskIndex : -1);
+        setGuidedResults(stored.guidedResults || []);
+        guidedResultsRef.current = stored.guidedResults || [];
+        setGuidedReport(stored.guidedReport || null);
+        setShowGuidedReport(Boolean(stored.showGuidedReport));
+        setIsGuidedFlowGenerating(Boolean(stored.isGuidedFlowGenerating));
+    }, [topic]);
+
     // Toggle voice chat connection
     const handleVoiceChatToggle = useCallback(() => {
         if (geminiLive.connectionState === 'CONNECTED') {
@@ -844,6 +926,7 @@ Encourage the student to think through problems step by step.`
     }, [messages, streamingContent, scrollToBottom]);
 
     useEffect(() => {
+        if (hasRestoredSessionRef.current) return;
         setCurrentTopic(topic);
         setEditTopicValue(topic);
         setIsEditingTopic(false);
@@ -851,6 +934,10 @@ Encourage the student to think through problems step by step.`
 
     // Start session when topic changes
     useEffect(() => {
+        if (skipInitialSessionRef.current) {
+            skipInitialSessionRef.current = false;
+            return;
+        }
         const initSession = async () => {
             setIsLoading(true);
             try {
@@ -876,6 +963,66 @@ Encourage the student to think through problems step by step.`
         resetSessionState(currentTopic);
         initSession();
     }, [currentTopic, resetSessionState]);
+
+    useEffect(() => {
+        const saveTimeout = setTimeout(() => {
+            const snapshot: SocraticSessionSnapshot = {
+                version: 1,
+                topic: currentTopic,
+                editTopicValue,
+                messages: serializeMessages(messages),
+                inputValue,
+                sessionState,
+                streamingContent,
+                lastEvaluation,
+                showEvaluation,
+                modeSwitchSuggestion,
+                isCanvasOpen,
+                confidence,
+                conceptNodes,
+                conceptEdges,
+                activeTab,
+                flashcards,
+                quiz,
+                diagramAnalysis,
+                isGuidedFlowActive,
+                guidedTasks,
+                guidedTaskIndex,
+                guidedResults,
+                guidedReport,
+                showGuidedReport,
+                isGuidedFlowGenerating
+            };
+            saveFeatureSession('socratic', snapshot);
+        }, 800);
+
+        return () => clearTimeout(saveTimeout);
+    }, [
+        currentTopic,
+        editTopicValue,
+        messages,
+        inputValue,
+        sessionState,
+        streamingContent,
+        lastEvaluation,
+        showEvaluation,
+        modeSwitchSuggestion,
+        isCanvasOpen,
+        confidence,
+        conceptNodes,
+        conceptEdges,
+        activeTab,
+        flashcards,
+        quiz,
+        diagramAnalysis,
+        isGuidedFlowActive,
+        guidedTasks,
+        guidedTaskIndex,
+        guidedResults,
+        guidedReport,
+        showGuidedReport,
+        isGuidedFlowGenerating
+    ]);
 
     // Handle sending a message
     const handleSendMessage = async () => {
@@ -1786,6 +1933,7 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
                 isOpen={isCanvasOpen}
                 onClose={() => setIsCanvasOpen(false)}
                 title="Draw Your Answer"
+                persistenceKey="socratic-canvas"
             />
 
             {/* Canvas submit button when canvas is open */}

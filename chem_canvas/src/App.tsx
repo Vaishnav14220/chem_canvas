@@ -27,6 +27,7 @@ import { getSharedGeminiApiKey } from './firebase/apiKeys';
 import { initializeApiKeyRotation, initializeApiKeyRotation as initializeApiKeyRotationService, clearUserProvidedApiKey } from './services/apiKeyRotation';
 import { initializeFirebaseOnStartup } from './utils/initializeFirebase';
 import { loadSession, saveSession, getSessionStatus, extendSession } from './utils/sessionStorage';
+import { clearAllFeatureSessions } from './utils/featureSessionStorage';
 import { extractTextFromDocument, isPdfFile, isSupportedTextDocument } from './utils/documentTextExtractor';
 import { UNIVERSAL_FILE_ACCEPT } from './constants/fileUpload';
 import { analyzePdfTextWithGemini } from './services/pdfInsightsService';
@@ -1275,6 +1276,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     setIsAuthenticated(false);
+    clearAllFeatureSessions();
     console.log('User logged out and session cleared');
   };
 

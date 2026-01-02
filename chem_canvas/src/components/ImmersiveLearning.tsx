@@ -18,11 +18,10 @@ import 'reactflow/dist/style.css';
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete';
 import { python } from '@codemirror/lang-python';
 import SrlCoachWorkspace from './SrlCoachWorkspace';
-import { InteractiveAssignmentWorkspace } from './InteractiveAssignmentWorkspace';
+import { InteractiveAssignmentWorkspace, type StudyToolsDraftState } from './InteractiveAssignmentWorkspace';
 import { LaTeXAssignmentPrep } from './LaTeXAssignmentPrep';
 import { AssignmentDashboard } from './AssignmentDashboard';
-import { FormulaExtractionWorkspace } from './FormulaExtractionWorkspace';
-import { LabManualExplorer } from './LabManualExplorer';
+import { LabManualExplorer, type LabManualDraftState } from './LabManualExplorer';
 import ChatTutorWorkspace from './ChatTutorWorkspace';
 import ChartJsDataPlotter from './ChartJsDataPlotter';
 import FlashcardsQuizletWorkspace from './FlashcardsQuizletWorkspace';
@@ -55,6 +54,11 @@ import {
     getImmersiveLearningFile,
     deleteImmersiveLearningFile,
 } from '../utils/immersiveLearningFileStore';
+import {
+    putImmersiveLearningWorkspace,
+    listImmersiveLearningWorkspaces,
+    deleteImmersiveLearningWorkspace
+} from '../utils/immersiveLearningWorkspaceStore';
 import {
     analyzeDocumentForImmersive,
     streamAnalyzeDocumentForImmersive,
@@ -130,6 +134,7 @@ import {
 import { SocraticLearningMode } from './SocraticLearningMode';
 import { FeynmanLearningMode } from './FeynmanLearningMode';
 import ReplicubeLab from './ReplicubeLab';
+import ImmersiveInteractiveCanvas from './ImmersiveInteractiveCanvas';
 
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -1419,8 +1424,11 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey, 
             WORKSPACES: `immersive_learning_workspaces:${u}`,
             SPACES: `immersive_learning_user_spaces:${u}`,
             ACTIVE: `immersive_learning_active_workspace:${u}`,
+            SESSION: `immersive_learning_session:${u}`,
         };
     }, [getLocalUserKey]);
+
+    type StudyToolsFeatureId = StudyToolsDraftState['featureId'];
 
     interface LocalImmersiveWorkspace {
         id: string;
@@ -1478,6 +1486,11 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey, 
         scienceTeacherData: {
             messages: ScienceTeacherMessage[];
         } | null;
+        studyToolsData?: {
+            featureId: StudyToolsFeatureId;
+            payload: StudyToolsDraftState;
+        } | null;
+        labManualData?: LabManualDraftState | null;
     }
 
     interface LocalUserSpace {
@@ -1500,12 +1513,28 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey, 
     const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState('');
     const [dashboardTab, setDashboardTab] = useState<'notebooks' | 'spaces'>('notebooks');
     const [spaceSearchQuery, setSpaceSearchQuery] = useState('');
+    const hasAutoRestoredWorkspaceRef = useRef<string | null>(null);
 
     const [userSpaces, setUserSpaces] = useState<LocalUserSpace[]>([]);
 
     const [activeMode, setActiveMode] = useState<LearningMode>(initialMode ?? 'source'); // Start with workspace manager
     const [assignmentTab, setAssignmentTab] = useState<'exam-prep' | 'latex-prep'>('exam-prep');
     const [isLoading, setIsLoading] = useState(false);
+
+    const persistWorkspace = useCallback((workspace: LocalImmersiveWorkspace) => {
+        const uid = getLocalUserKey();
+        void putImmersiveLearningWorkspace({ userId: uid, workspace }).catch((error) => {
+            console.error('[ImmersiveLearning] Failed to persist workspace:', error);
+        });
+    }, [getLocalUserKey]);
+
+    const persistWorkspaces = useCallback((workspaces: LocalImmersiveWorkspace[]) => {
+        const uid = getLocalUserKey();
+        void Promise.all(workspaces.map((workspace) => putImmersiveLearningWorkspace({ userId: uid, workspace })))
+            .catch((error) => {
+                console.error('[ImmersiveLearning] Failed to persist workspaces:', error);
+            });
+    }, [getLocalUserKey]);
     const [loadingMessage, setLoadingMessage] = useState('');
     const [processingStage, setProcessingStage] = useState<'idle' | 'uploading' | 'extracting' | 'analyzing' | 'generating'>('idle');
     const [uploadedFileName, setUploadedFileName] = useState<string>('');
@@ -2070,7 +2099,7 @@ Respond in JSON format only:
 
             const keys = getLocalStorageKeys();
             const updated = [workspace, ...savedWorkspaces];
-            localStorage.setItem(keys.WORKSPACES, JSON.stringify(updated));
+            persistWorkspace(workspace);
             localStorage.setItem(keys.ACTIVE, workspace.id);
 
             setSavedWorkspaces(updated);
@@ -2132,7 +2161,7 @@ Respond in JSON format only:
 
             const keys = getLocalStorageKeys();
             const updated = [workspace, ...savedWorkspaces];
-            localStorage.setItem(keys.WORKSPACES, JSON.stringify(updated));
+            persistWorkspace(workspace);
             localStorage.setItem(keys.ACTIVE, workspace.id);
 
             setSavedWorkspaces(updated);
@@ -2150,7 +2179,6 @@ Respond in JSON format only:
     // Update existing workspace with current state (local)
     const updateWorkspace = async (workspaceId: string) => {
         try {
-            const keys = getLocalStorageKeys();
             const updatedWorkspaces = savedWorkspaces.map(ws => {
                 if (ws.id !== workspaceId) return ws;
                 return {
@@ -2202,9 +2230,14 @@ Respond in JSON format only:
                     scienceTeacherData: scienceTeacherMessages.length > 1 ? {
                         messages: scienceTeacherMessages,
                     } : null,
+                    studyToolsData: ws.studyToolsData ?? null,
+                    labManualData: ws.labManualData ?? null,
                 };
             });
-            localStorage.setItem(keys.WORKSPACES, JSON.stringify(updatedWorkspaces));
+            const updatedWorkspace = updatedWorkspaces.find(ws => ws.id === workspaceId);
+            if (updatedWorkspace) {
+                persistWorkspace(updatedWorkspace);
+            }
             setSavedWorkspaces(updatedWorkspaces);
             console.log('💾 Updated workspace locally:', workspaceId);
         } catch (error) {
@@ -2215,6 +2248,50 @@ Respond in JSON format only:
     // Open an existing workspace
     const openWorkspace = async (workspace: LocalImmersiveWorkspace) => {
         console.log('📂 Opening workspace:', workspace.name);
+
+        if (workspace.studyToolsData?.payload) {
+            const draft = workspace.studyToolsData.payload;
+            setStudyToolsDrafts(prev => ({ ...prev, [draft.featureId]: draft }));
+            setStudyToolsDraftWorkspaceIds(prev => ({ ...prev, [draft.featureId]: workspace.id }));
+            setSelectedAssignmentFeature(draft.featureId);
+            setAssignmentTab('exam-prep');
+            setShowAssignmentDashboard(false);
+            setAssignmentFileData(draft.fileData ?? null);
+            setAssignmentFileContent(draft.fileContent ?? null);
+            setAssignmentFileName(draft.fileName ?? null);
+            setAssignmentTopic(draft.topic ?? '');
+            setAssignmentUseToT(false);
+            setActiveWorkspaceId(workspace.id);
+            try {
+                const keys = getLocalStorageKeys();
+                localStorage.setItem(keys.ACTIVE, workspace.id);
+            } catch { }
+            setShowWorkspaceManager(false);
+            setActiveMode('assignment');
+            return;
+        }
+
+        if (workspace.labManualData) {
+            setLabManualDraft(workspace.labManualData);
+            setLabManualWorkspaceId(workspace.id);
+            setSelectedAssignmentFeature('lab-manual-explorer');
+            setAssignmentTab('exam-prep');
+            setShowAssignmentDashboard(false);
+            setAssignmentFileData(null);
+            setAssignmentFileContent(null);
+            setAssignmentFileName(workspace.documentFileName || null);
+            const title = workspace.labManualData.analysis?.outline?.title || '';
+            setAssignmentTopic(title);
+            setAssignmentUseToT(false);
+            setActiveWorkspaceId(workspace.id);
+            try {
+                const keys = getLocalStorageKeys();
+                localStorage.setItem(keys.ACTIVE, workspace.id);
+            } catch { }
+            setShowWorkspaceManager(false);
+            setActiveMode('assignment');
+            return;
+        }
 
         // Restore all state from workspace
         documentTextRef.current = workspace.documentText;
@@ -2291,6 +2368,16 @@ Respond in JSON format only:
         setUploadedFileName(workspace.documentFileName);
         const activeId = workspace.activeSectionId || workspace.immersiveContent?.sections?.[0]?.id || '';
         setActiveSectionId(activeId);
+        const shouldRegenerate =
+            !workspace.sectionImages ||
+            Object.keys(workspace.sectionImages).length === 0 ||
+            !workspace.quiz?.length ||
+            !workspace.audioScript ||
+            !workspace.reactFlowData ||
+            !workspace.relevantVideos?.length;
+        if (shouldRegenerate) {
+            setNeedsContinueGeneration(true);
+        }
 
         setActiveWorkspaceId(workspace.id);
         try {
@@ -2313,7 +2400,8 @@ Respond in JSON format only:
             }
 
             const updatedWorkspaces = savedWorkspaces.filter(w => w.id !== workspaceId);
-            localStorage.setItem(keys.WORKSPACES, JSON.stringify(updatedWorkspaces));
+            const uid = getLocalUserKey();
+            await deleteImmersiveLearningWorkspace({ userId: uid, workspaceId });
             setSavedWorkspaces(updatedWorkspaces);
 
             const updatedSpaces = userSpaces.filter(s => s.workspaceId !== workspaceId);
@@ -2501,30 +2589,66 @@ Respond in JSON format only:
         }, 100);
     };
 
-    // Load workspaces from localStorage on mount
+    // Load workspaces from IndexedDB on mount (fallback to legacy localStorage once)
     useEffect(() => {
+        let isActive = true;
         setIsLoadingWorkspaces(true);
-        try {
-            const keys = getLocalStorageKeys();
-            const saved = localStorage.getItem(keys.WORKSPACES);
-            if (saved) {
-                const workspaces = JSON.parse(saved) as LocalImmersiveWorkspace[];
-                workspaces.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-                setSavedWorkspaces(workspaces);
+
+        const loadWorkspaces = async () => {
+            try {
+                const keys = getLocalStorageKeys();
+                const uid = getLocalUserKey();
+                let workspaces = await listImmersiveLearningWorkspaces<LocalImmersiveWorkspace>({ userId: uid });
+
+                if (!workspaces.length) {
+                    const saved = localStorage.getItem(keys.WORKSPACES);
+                    if (saved) {
+                        const parsed = JSON.parse(saved) as LocalImmersiveWorkspace[];
+                        if (parsed.length > 0) {
+                            workspaces = parsed;
+                            persistWorkspaces(parsed);
+                            localStorage.removeItem(keys.WORKSPACES);
+                        }
+                    }
+                }
+
+                if (!isActive) return;
+                if (workspaces.length > 0) {
+                    workspaces.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+                    setSavedWorkspaces(workspaces);
+                }
+                const active = localStorage.getItem(keys.ACTIVE);
+                if (active) setActiveWorkspaceId(active);
+            } catch (e) {
+                console.error('Failed to load workspaces:', e);
+            } finally {
+                if (isActive) {
+                    setIsLoadingWorkspaces(false);
+                }
             }
-            const active = localStorage.getItem(keys.ACTIVE);
-            if (active) setActiveWorkspaceId(active);
-        } catch (e) {
-            console.error('Failed to load workspaces:', e);
-        } finally {
-            setIsLoadingWorkspaces(false);
-        }
-    }, [getLocalStorageKeys]);
+        };
+
+        void loadWorkspaces();
+        return () => {
+            isActive = false;
+        };
+    }, [getLocalStorageKeys, getLocalUserKey, persistWorkspaces]);
+
+    useEffect(() => {
+        if (!activeWorkspaceId) return;
+        if (hasAutoRestoredWorkspaceRef.current === activeWorkspaceId) return;
+        const workspace = savedWorkspaces.find(ws => ws.id === activeWorkspaceId);
+        if (!workspace) return;
+        hasAutoRestoredWorkspaceRef.current = activeWorkspaceId;
+        void openWorkspace(workspace);
+    }, [activeWorkspaceId, savedWorkspaces, openWorkspace]);
 
     // Auto-save to active workspace when content changes (local, debounced)
     // Saves all mode-specific content so users can resume where they left off
     useEffect(() => {
         if (!activeWorkspaceId) return;
+        const activeWorkspace = savedWorkspaces.find(ws => ws.id === activeWorkspaceId);
+        if (activeWorkspace?.studyToolsData || activeWorkspace?.labManualData) return;
         // Don't require immersiveContent - some modes (code-lab, assignment, etc.) don't need it
 
         const t = setTimeout(() => {
@@ -2567,6 +2691,7 @@ Respond in JSON format only:
         viewer3dScale,
         viewer3dInteractionMode,
         brainstormActivities,
+        savedWorkspaces,
     ]);
 
     // Load saved content from localStorage on mount - DISABLED per user request (always fresh start)
@@ -2736,14 +2861,16 @@ Respond in JSON format only:
             // Only auto-load if no activity is currently shown
             const activity = brainstormActivities[activeSectionId];
             setBrainstormActivity(activity);
-            setShowBrainstormHints(new Array(activity.hints.length).fill(false));
+            const hints = Array.isArray(activity.hints) ? activity.hints : [];
+            setShowBrainstormHints(new Array(hints.length).fill(false));
             setShowBrainstormApproaches(false);
             setShowBrainstormInsight(false);
         } else if (activeSectionId && brainstormActivities[activeSectionId] && brainstormActivity) {
             // Switch to the new section's activity
             const activity = brainstormActivities[activeSectionId];
             setBrainstormActivity(activity);
-            setShowBrainstormHints(new Array(activity.hints.length).fill(false));
+            const hints = Array.isArray(activity.hints) ? activity.hints : [];
+            setShowBrainstormHints(new Array(hints.length).fill(false));
             setShowBrainstormApproaches(false);
             setShowBrainstormInsight(false);
         }
@@ -4313,7 +4440,7 @@ ${edgesXML}
             workspaceId = workspace.id;
             const keys = getLocalStorageKeys();
             const updated = [workspace, ...savedWorkspaces];
-            localStorage.setItem(keys.WORKSPACES, JSON.stringify(updated));
+            persistWorkspace(workspace);
             localStorage.setItem(keys.ACTIVE, workspaceId);
 
             setActiveWorkspaceId(workspaceId);
@@ -4356,7 +4483,10 @@ ${edgesXML}
                         };
                     });
                     try {
-                        localStorage.setItem(keys.WORKSPACES, JSON.stringify(updatedWorkspaces));
+                        const updatedWorkspace = updatedWorkspaces.find(ws => ws.id === workspaceId);
+                        if (updatedWorkspace) {
+                            persistWorkspace(updatedWorkspace);
+                        }
                     } catch { }
                     return updatedWorkspaces;
                 });
@@ -4653,7 +4783,10 @@ ${edgesXML}
                                 };
                             });
                             try {
-                                localStorage.setItem(keys.WORKSPACES, JSON.stringify(updated));
+                                const updatedWorkspace = updated.find(ws => ws.id === workspaceId);
+                                if (updatedWorkspace) {
+                                    persistWorkspace(updatedWorkspace);
+                                }
                             } catch { }
                             return updated;
                         });
@@ -4674,7 +4807,10 @@ ${edgesXML}
                                 updatedAt: Date.now(),
                             } : ws);
                             try {
-                                localStorage.setItem(keys.WORKSPACES, JSON.stringify(updated));
+                                const updatedWorkspace = updated.find(ws => ws.id === workspaceId);
+                                if (updatedWorkspace) {
+                                    persistWorkspace(updatedWorkspace);
+                                }
                             } catch { }
                             return updated;
                         });
@@ -6593,6 +6729,122 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
     const [assignmentFileName, setAssignmentFileName] = useState<string | null>(null);
     const [assignmentTopic, setAssignmentTopic] = useState<string>('');
     const [assignmentUseToT, setAssignmentUseToT] = useState(false);
+    const [studyToolsDrafts, setStudyToolsDrafts] = useState<Record<string, StudyToolsDraftState>>({});
+    const [studyToolsDraftWorkspaceIds, setStudyToolsDraftWorkspaceIds] = useState<Record<string, string>>({});
+    const studyToolsDraftWorkspaceIdsRef = useRef<Record<string, string>>({});
+    const [labManualDraft, setLabManualDraft] = useState<LabManualDraftState | null>(null);
+    const [labManualWorkspaceId, setLabManualWorkspaceId] = useState<string | null>(null);
+    const labManualWorkspaceIdRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        studyToolsDraftWorkspaceIdsRef.current = studyToolsDraftWorkspaceIds;
+    }, [studyToolsDraftWorkspaceIds]);
+
+    useEffect(() => {
+        labManualWorkspaceIdRef.current = labManualWorkspaceId;
+    }, [labManualWorkspaceId]);
+
+    useEffect(() => {
+        try {
+            const keys = getLocalStorageKeys();
+            const stored = localStorage.getItem(keys.SESSION);
+            if (!stored) return;
+            const parsed = JSON.parse(stored) as {
+                activeMode?: LearningMode;
+                assignmentTab?: 'exam-prep' | 'latex-prep';
+                selectedAssignmentFeature?: string | null;
+                showWorkspaceManager?: boolean;
+                showAssignmentDashboard?: boolean;
+                assignmentFileData?: { mimeType: string; data: string } | null;
+                assignmentFileContent?: string | null;
+                assignmentFileName?: string | null;
+                assignmentTopic?: string;
+                assignmentUseToT?: boolean;
+                studyToolsDraftWorkspaceIds?: Record<string, string>;
+                labManualWorkspaceId?: string | null;
+            };
+
+            if (parsed.activeMode) setActiveMode(parsed.activeMode);
+            if (parsed.assignmentTab) setAssignmentTab(parsed.assignmentTab);
+            if (parsed.selectedAssignmentFeature !== undefined) {
+                setSelectedAssignmentFeature(parsed.selectedAssignmentFeature);
+            }
+            if (typeof parsed.showWorkspaceManager === 'boolean') {
+                setShowWorkspaceManager(parsed.showWorkspaceManager);
+            }
+            if (typeof parsed.showAssignmentDashboard === 'boolean') {
+                setShowAssignmentDashboard(parsed.showAssignmentDashboard);
+            }
+            if (parsed.assignmentFileData) setAssignmentFileData(parsed.assignmentFileData);
+            if (parsed.assignmentFileContent !== undefined) setAssignmentFileContent(parsed.assignmentFileContent);
+            if (parsed.assignmentFileName !== undefined) setAssignmentFileName(parsed.assignmentFileName);
+            if (parsed.assignmentTopic) setAssignmentTopic(parsed.assignmentTopic);
+            if (typeof parsed.assignmentUseToT === 'boolean') setAssignmentUseToT(parsed.assignmentUseToT);
+            if (parsed.studyToolsDraftWorkspaceIds) setStudyToolsDraftWorkspaceIds(parsed.studyToolsDraftWorkspaceIds);
+            if (parsed.labManualWorkspaceId !== undefined) setLabManualWorkspaceId(parsed.labManualWorkspaceId);
+        } catch (error) {
+            console.error('[ImmersiveLearning] Failed to restore session state:', error);
+        }
+    }, [getLocalStorageKeys]);
+
+    useEffect(() => {
+        try {
+            const keys = getLocalStorageKeys();
+            const payload = {
+                activeMode,
+                assignmentTab,
+                selectedAssignmentFeature,
+                showWorkspaceManager,
+                showAssignmentDashboard,
+                assignmentFileData,
+                assignmentFileContent,
+                assignmentFileName,
+                assignmentTopic,
+                assignmentUseToT,
+                studyToolsDraftWorkspaceIds,
+                labManualWorkspaceId,
+            };
+            localStorage.setItem(keys.SESSION, JSON.stringify(payload));
+        } catch (error) {
+            console.error('[ImmersiveLearning] Failed to persist session state:', error);
+        }
+    }, [
+        activeMode,
+        assignmentTab,
+        selectedAssignmentFeature,
+        showWorkspaceManager,
+        showAssignmentDashboard,
+        assignmentFileData,
+        assignmentFileContent,
+        assignmentFileName,
+        assignmentTopic,
+        assignmentUseToT,
+        studyToolsDraftWorkspaceIds,
+        labManualWorkspaceId,
+        getLocalStorageKeys
+    ]);
+
+    useEffect(() => {
+        if (!savedWorkspaces.length) return;
+        if (Object.keys(studyToolsDraftWorkspaceIds).length > 0) {
+            setStudyToolsDrafts(prev => {
+                const next = { ...prev };
+                Object.entries(studyToolsDraftWorkspaceIds).forEach(([featureId, workspaceId]) => {
+                    const workspace = savedWorkspaces.find(ws => ws.id === workspaceId);
+                    if (workspace?.studyToolsData?.payload) {
+                        next[featureId] = workspace.studyToolsData.payload;
+                    }
+                });
+                return next;
+            });
+        }
+        if (labManualWorkspaceId && !labManualDraft) {
+            const workspace = savedWorkspaces.find(ws => ws.id === labManualWorkspaceId);
+            if (workspace?.labManualData) {
+                setLabManualDraft(workspace.labManualData);
+            }
+        }
+    }, [savedWorkspaces, studyToolsDraftWorkspaceIds, labManualWorkspaceId, labManualDraft]);
 
     const base64ToFile = (base64: string, mimeType: string, name: string): File => {
         const byteChars = atob(base64);
@@ -6603,6 +6855,209 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         const byteArray = new Uint8Array(byteNumbers);
         return new File([byteArray], name, { type: mimeType });
     };
+
+    const getStudyToolsMeta = useCallback((featureId: StudyToolsFeatureId) => {
+        switch (featureId) {
+            case '3d-simulation':
+                return { label: '3D Simulation', emoji: '🧊' };
+            case 'extract-formulas':
+                return { label: 'Formula Sheet', emoji: '🧮' };
+            case 'check-my-work':
+                return { label: 'Check My Work', emoji: '✅' };
+            default:
+                return { label: 'Study Tool', emoji: '📘' };
+        }
+    }, []);
+
+    const buildStudyToolsWorkspace = useCallback((draft: StudyToolsDraftState, workspaceId: string) => {
+        const meta = getStudyToolsMeta(draft.featureId);
+        const baseName = (draft.topic?.trim() || draft.fileName?.replace(/\.[^/.]+$/, '') || meta.label).trim();
+        const description = draft.topic?.trim()
+            ? `Topic: ${draft.topic.trim()}`
+            : draft.fileName
+                ? `Source: ${draft.fileName}`
+                : `${meta.label} draft`;
+        return {
+            id: workspaceId,
+            name: baseName ? `${meta.label} · ${baseName}` : meta.label,
+            description,
+            thumbnailEmoji: meta.emoji,
+            documentFileName: draft.fileName || baseName || `${meta.label} Draft`,
+            documentMimeType: draft.fileData?.mimeType || null,
+            documentFileId: null,
+            documentText: draft.fileContent || '',
+            immersiveContent: null,
+            sectionImages: {},
+            widgetImages: {},
+            quiz: [],
+            audioScript: null,
+            reactFlowData: null,
+            relevantVideos: [],
+            pdfUrl: null,
+            activeSectionId: null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            mindMapData: null,
+            simulationData: null,
+            codeLabData: null,
+            imageActivityData: null,
+            roboticsData: null,
+            viewer3dData: null,
+            brainstormActivities: {},
+            scienceTeacherData: null,
+            studyToolsData: {
+                featureId: draft.featureId,
+                payload: draft,
+            },
+            labManualData: null,
+        } as LocalImmersiveWorkspace;
+    }, [getStudyToolsMeta]);
+
+    const upsertStudyToolsDraft = useCallback((draft: StudyToolsDraftState) => {
+        if (!draft?.featureId) return;
+        const featureId = draft.featureId;
+        setStudyToolsDrafts(prev => ({ ...prev, [featureId]: draft }));
+
+        const existingId = studyToolsDraftWorkspaceIdsRef.current[featureId];
+        const now = Date.now();
+        if (!existingId) {
+            const workspaceId = `study_tools_${featureId}_${now}`;
+            const workspace = buildStudyToolsWorkspace(draft, workspaceId);
+            setSavedWorkspaces(prev => [workspace, ...prev]);
+            persistWorkspace(workspace);
+            setStudyToolsDraftWorkspaceIds(prev => {
+                const next = { ...prev, [featureId]: workspaceId };
+                studyToolsDraftWorkspaceIdsRef.current = next;
+                return next;
+            });
+            setActiveWorkspaceId(workspaceId);
+            try {
+                const keys = getLocalStorageKeys();
+                localStorage.setItem(keys.ACTIVE, workspaceId);
+            } catch { }
+            return;
+        }
+
+        setSavedWorkspaces(prev => {
+            const updated = prev.map(ws => {
+                if (ws.id !== existingId) return ws;
+                const meta = buildStudyToolsWorkspace(draft, existingId);
+                return {
+                    ...ws,
+                    ...meta,
+                    createdAt: ws.createdAt,
+                    updatedAt: now,
+                    studyToolsData: {
+                        featureId,
+                        payload: draft,
+                    },
+                };
+            });
+            const updatedWorkspace = updated.find(ws => ws.id === existingId);
+            if (updatedWorkspace) {
+                persistWorkspace(updatedWorkspace);
+            }
+            const idx = updated.findIndex(ws => ws.id === existingId);
+            if (idx > 0) {
+                const [ws] = updated.splice(idx, 1);
+                updated.unshift(ws);
+            }
+            return updated;
+        });
+        setActiveWorkspaceId(existingId);
+        try {
+            const keys = getLocalStorageKeys();
+            localStorage.setItem(keys.ACTIVE, existingId);
+        } catch { }
+    }, [buildStudyToolsWorkspace, getLocalStorageKeys, persistWorkspace]);
+
+    const buildLabManualWorkspace = useCallback((draft: LabManualDraftState, workspaceId: string) => {
+        const title = draft.analysis?.outline?.title?.trim() || draft.fileLabel?.trim() || 'Lab Manual Explorer';
+        const description = draft.analysis?.outline?.title?.trim()
+            ? `Lab manual: ${draft.analysis.outline.title.trim()}`
+            : draft.fileLabel
+                ? `Source: ${draft.fileLabel}`
+                : 'Lab manual exploration draft';
+        return {
+            id: workspaceId,
+            name: `Lab Manual · ${title}`,
+            description,
+            thumbnailEmoji: '🧪',
+            documentFileName: draft.fileLabel || title,
+            documentMimeType: null,
+            documentFileId: null,
+            documentText: draft.documentText || '',
+            immersiveContent: null,
+            sectionImages: {},
+            widgetImages: {},
+            quiz: [],
+            audioScript: null,
+            reactFlowData: null,
+            relevantVideos: [],
+            pdfUrl: null,
+            activeSectionId: null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            mindMapData: null,
+            simulationData: null,
+            codeLabData: null,
+            imageActivityData: null,
+            roboticsData: null,
+            viewer3dData: null,
+            brainstormActivities: {},
+            scienceTeacherData: null,
+            studyToolsData: null,
+            labManualData: draft,
+        } as LocalImmersiveWorkspace;
+    }, []);
+
+    const upsertLabManualDraft = useCallback((draft: LabManualDraftState) => {
+        setLabManualDraft(draft);
+        const now = Date.now();
+        const existingId = labManualWorkspaceIdRef.current;
+        if (!existingId) {
+            const workspaceId = `lab_manual_${now}`;
+            const workspace = buildLabManualWorkspace(draft, workspaceId);
+            setSavedWorkspaces(prev => [workspace, ...prev]);
+            persistWorkspace(workspace);
+            setLabManualWorkspaceId(workspaceId);
+            setActiveWorkspaceId(workspaceId);
+            try {
+                const keys = getLocalStorageKeys();
+                localStorage.setItem(keys.ACTIVE, workspaceId);
+            } catch { }
+            return;
+        }
+
+        setSavedWorkspaces(prev => {
+            const updated = prev.map(ws => {
+                if (ws.id !== existingId) return ws;
+                const meta = buildLabManualWorkspace(draft, existingId);
+                return {
+                    ...ws,
+                    ...meta,
+                    createdAt: ws.createdAt,
+                    updatedAt: now,
+                    labManualData: draft,
+                };
+            });
+            const updatedWorkspace = updated.find(ws => ws.id === existingId);
+            if (updatedWorkspace) {
+                persistWorkspace(updatedWorkspace);
+            }
+            const idx = updated.findIndex(ws => ws.id === existingId);
+            if (idx > 0) {
+                const [ws] = updated.splice(idx, 1);
+                updated.unshift(ws);
+            }
+            return updated;
+        });
+        setActiveWorkspaceId(existingId);
+        try {
+            const keys = getLocalStorageKeys();
+            localStorage.setItem(keys.ACTIVE, existingId);
+        } catch { }
+    }, [buildLabManualWorkspace, getLocalStorageKeys, persistWorkspace]);
 
     // Handle file upload from assignment dashboard
     const handleAssignmentFileUpload = async (file: File) => {
@@ -6848,38 +7303,29 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
             }
             return;
         }
+        if (featureId === 'latex-prep') {
+            setSelectedAssignmentFeature(null);
+            setAssignmentTab('latex-prep');
+            setAssignmentMindmapActive(false);
+            setAssignmentVisualActivityActive(false);
+            setAssignmentSimulationActive(false);
+            setShowAssignmentDashboard(false);
+            return;
+        }
 
         setSelectedAssignmentFeature(featureId);
         setShowAssignmentDashboard(false);
         setAssignmentMindmapActive(false);
         setAssignmentVisualActivityActive(false);
         setAssignmentSimulationActive(false);
-        if (featureId === 'extract-formulas' || featureId === 'qa-generator' || featureId === 'tree-of-thoughts' || featureId === 'smart-summary' || featureId === 'flashcards' || featureId === 'timeline-generator' || featureId === 'check-my-work') {
+        if (featureId === 'extract-formulas' || featureId === 'qa-generator' || featureId === 'tree-of-thoughts' || featureId === 'smart-summary' || featureId === 'flashcards' || featureId === 'timeline-generator' || featureId === 'check-my-work' || featureId === '3d-simulation') {
             setAssignmentTab('exam-prep');
         }
     };
 
     const renderAssignmentWorkspace = () => {
-        const hasAssignmentFile = Boolean(assignmentFileName || assignmentFileContent || assignmentFileData);
         if (assignmentTab === 'latex-prep') {
             return <LaTeXAssignmentPrep />;
-        }
-
-        // Check for specific feature selection FIRST
-        if (selectedAssignmentFeature === 'extract-formulas') {
-            if (!assignmentUseToT && !hasAssignmentFile) {
-                return (
-                    <FormulaExtractionWorkspace
-                        onBack={() => {
-                            setSelectedAssignmentFeature(null);
-                            setShowAssignmentDashboard(true);
-                        }}
-                        fileName={assignmentFileName || undefined}
-                        fileData={assignmentFileData}
-                        fileContent={assignmentFileContent}
-                    />
-                );
-            }
         }
 
         // Lab Manual Explorer feature
@@ -6901,6 +7347,8 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                     }}
                     uploadedFile={uploadedFile}
                     topic={assignmentTopic}
+                    initialDraft={labManualDraft}
+                    onDraftChange={upsertLabManualDraft}
                 />
             );
         }
@@ -6985,6 +7433,8 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 initialTopic={assignmentTopic}
                 initialUseToT={assignmentUseToT}
                 selectedFeature={selectedAssignmentFeature}
+                initialDraft={selectedAssignmentFeature ? studyToolsDrafts[selectedAssignmentFeature] : null}
+                onDraftChange={upsertStudyToolsDraft}
                 autoGenerate={Boolean(selectedAssignmentFeature && selectedAssignmentFeature !== 'check-my-work')}
                 onBack={() => {
                     setSelectedAssignmentFeature(null);
@@ -7723,6 +8173,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
                 // Split content by marker
                 const contentParts = activeSection?.content.split('{{INTERACTIVE_WIDGET}}') || [];
+                const showInteractiveCanvas = Boolean(activeSection);
 
                 return (
                     <>
@@ -8024,6 +8475,15 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                             </button>
                                         </div>
                                     ))}
+
+                                    {showInteractiveCanvas && (
+                                        <div className="my-8">
+                                            <ImmersiveInteractiveCanvas
+                                                title="Interactive signal canvas"
+                                                subtitle="Adjust amplitude, frequency, and speed to explore how the signal changes."
+                                            />
+                                        </div>
+                                    )}
 
                                     {/* Image from original document if exists */}
                                     {activeSection?.imagePrompt && activeImage && (

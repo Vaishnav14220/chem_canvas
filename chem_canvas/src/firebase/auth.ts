@@ -13,6 +13,7 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './config';
 import { assignRandomApiKey, initializeApiKeys, checkApiKeysInitialized } from './apiKeys';
 import { saveSession, clearSession } from '../utils/sessionStorage';
+import { clearAllFeatureSessions } from '../utils/featureSessionStorage';
 
 // User interface for additional profile data
 export interface UserProfile {
@@ -219,6 +220,7 @@ export const signOutUser = async (): Promise<void> => {
   try {
     await signOut(auth);
     clearSession(); // Clear our custom session storage
+    clearAllFeatureSessions();
     console.log('User signed out successfully');
   } catch (error: any) {
     console.error('Sign out error:', error);

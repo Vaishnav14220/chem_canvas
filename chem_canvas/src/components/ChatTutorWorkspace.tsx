@@ -9,6 +9,7 @@ import { generateTextContent, streamTextContent } from '../services/geminiServic
 import { ExcalidrawCanvas, type ExcalidrawCanvasRef } from './ExcalidrawCanvas';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
+import { loadFeatureSession, saveFeatureSession } from '../utils/featureSessionStorage';
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { ConnectionState } from './GeminiLive/types';
 import GeminiLiveVoiceStatus from './GeminiLive/GeminiLiveVoiceStatus';
@@ -49,6 +50,16 @@ type Block = {
   pageId: string;
   title?: string;
   content: string;
+};
+
+type ChatTutorSessionSnapshot = {
+  version: 1;
+  messages: Message[];
+  input: string;
+  pages: Page[];
+  currentPageId: string | null;
+  attachments: Attachment[];
+  showVoicePanel: boolean;
 };
 
 type ChatTutorWorkspaceProps = {
@@ -724,7 +735,7 @@ const MermaidPage: React.FC<{ code: string }> = ({ code }) => {
   );
 };
 
-const CanvasPage: React.FC<{ prompt: string; title: string }> = ({ prompt, title }) => {
+const CanvasPage: React.FC<{ prompt: string; title: string; pageId: string }> = ({ prompt, title, pageId }) => {
   const excalidrawRef = useRef<ExcalidrawCanvasRef>(null);
   const lastPromptRef = useRef('');
   const lastAttemptRef = useRef('');
@@ -781,6 +792,7 @@ const CanvasPage: React.FC<{ prompt: string; title: string }> = ({ prompt, title
         onClose={() => undefined}
         className="h-full w-full"
         title={title}
+        persistenceKey={`chat-tutor-canvas:${pageId}`}
       />
       {isGenerating && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 text-xs font-semibold text-slate-500">
@@ -833,6 +845,7 @@ const ChatTutorWorkspace: React.FC<ChatTutorWorkspaceProps> = ({
   const autoNotesQueueRef = useRef<Set<string>>(new Set());
   const pagesRef = useRef<Page[]>([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const hasRestoredSessionRef = useRef(false);
 
   const currentPage = useMemo(() => pages.find((page) => page.id === currentPageId) || pages[0], [pages, currentPageId]);
   const preferredGeminiLanguage = getPreferredGeminiLanguage();
@@ -853,12 +866,42 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
   }, []);
 
   useEffect(() => {
+    const stored = loadFeatureSession<ChatTutorSessionSnapshot>('chat-tutor');
+    if (!stored) return;
+    hasRestoredSessionRef.current = true;
+    setMessages(stored.messages || []);
+    setInput(stored.input || '');
+    setPages(stored.pages || []);
+    pagesRef.current = stored.pages || [];
+    setCurrentPageId(stored.currentPageId || stored.pages?.[0]?.id || null);
+    setAttachments(stored.attachments || []);
+    setShowVoicePanel(Boolean(stored.showVoicePanel));
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (geminiLive.connectionState === ConnectionState.CONNECTED || geminiLive.connectionState === ConnectionState.CONNECTING) {
         geminiLive.disconnect();
       }
     };
   }, [geminiLive]);
+
+  useEffect(() => {
+    const saveTimeout = setTimeout(() => {
+      const snapshot: ChatTutorSessionSnapshot = {
+        version: 1,
+        messages,
+        input,
+        pages,
+        currentPageId,
+        attachments,
+        showVoicePanel,
+      };
+      saveFeatureSession('chat-tutor', snapshot);
+    }, 800);
+
+    return () => clearTimeout(saveTimeout);
+  }, [messages, input, pages, currentPageId, attachments, showVoicePanel]);
 
   const updatePages = useCallback((updater: (prev: Page[]) => Page[]) => {
     setPages((prev) => {
@@ -1092,6 +1135,7 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
   }, [appendPageNotes, currentPageId, ensurePage, pushAction, queueAutoNotes, updatePageContent]);
 
   useEffect(() => {
+    if (hasRestoredSessionRef.current) return;
     if (!initialNotes?.trim()) return;
     if (pagesRef.current.length > 0) return;
 
@@ -1334,7 +1378,7 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
     }
 
     if (currentPage.type === 'canvas') {
-      return <CanvasPage prompt={currentPage.content} title={currentPage.title} />;
+      return <CanvasPage prompt={currentPage.content} title={currentPage.title} pageId={currentPage.id} />;
     }
 
     return <NotePage content={currentPage.content} />;

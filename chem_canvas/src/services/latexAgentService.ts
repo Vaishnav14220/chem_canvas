@@ -31,6 +31,7 @@ export interface LaTeXFile {
   name: string;
   path: string;
   content: string;
+  binaryContent?: Uint8Array;
   type: 'tex' | 'bib' | 'cls' | 'sty' | 'image' | 'other';
   lastModified: Date;
 }
@@ -866,7 +867,8 @@ class SwiftLaTeXEngine {
         currentDir = currentDir ? `${currentDir}/${segment}` : segment;
         this.makeMemFSFolder(currentDir);
       }
-      this.writeMemFSFile(filePath, file.content);
+      const payload = file.binaryContent ?? file.content;
+      this.writeMemFSFile(filePath, payload);
     }
 
     // Set main file
@@ -1704,6 +1706,10 @@ Always structure your response:
     return this.engine.compile(files, mainFile);
   }
 
+  async compileFiles(files: LaTeXFile[], mainFile: string = 'main.tex'): Promise<CompileResult> {
+    return this.engine.compile(files, mainFile);
+  }
+
   // Compile raw content directly (stateless)
   async compileContent(content: string, filename: string = 'main.tex'): Promise<CompileResult> {
     const file: LaTeXFile = {
@@ -1863,4 +1869,40 @@ export const loadLatexEngine = async (): Promise<void> => {
 export const compileLatexWithGemini = async (content: string, filename: string = 'main.tex'): Promise<CompileResult> => {
   const agent = getLatexAgent();
   return agent.compileContent(content, filename);
+};
+
+const base64ToUint8Array = (base64: string): Uint8Array => {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+export const compileLatexWithAssets = async (
+  content: string,
+  assets: Array<{ filename: string; base64: string }>,
+  filename: string = 'main.tex'
+): Promise<CompileResult> => {
+  const agent = getLatexAgent();
+  const files: LaTeXFile[] = [
+    {
+      name: filename,
+      path: '/' + filename,
+      content,
+      type: 'tex',
+      lastModified: new Date()
+    },
+    ...assets.map((asset) => ({
+      name: asset.filename,
+      path: '/' + asset.filename,
+      content: '',
+      binaryContent: base64ToUint8Array(asset.base64),
+      type: 'image',
+      lastModified: new Date()
+    }))
+  ];
+
+  return agent.compileFiles(files, filename);
 };

@@ -1,6 +1,7 @@
-import React, { lazy, Suspense, useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { lazy, Suspense, useRef, useEffect, useCallback, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Maximize2, Minimize2, Eraser, PenTool, Type } from 'lucide-react';
+import { loadFeatureSession, saveFeatureSession } from '../../utils/featureSessionStorage';
 
 // Track AMD disable state globally to prevent race conditions
 let amdDisableCount = 0;
@@ -119,6 +120,7 @@ export interface ExcalidrawCanvasRef {
   startNewSection: () => void;
   clearCanvas: () => void;
   getElements: () => any[];
+  getAppState: () => any;
   exportToImage: () => Promise<string | null>; // Returns base64 PNG
   drawDiagram: (elements: DiagramElement[]) => Promise<void>; // Draw shapes programmatically
   setActiveTool: (tool: 'freedraw' | 'eraser' | 'text' | 'selection') => void; // Set drawing tool
@@ -128,6 +130,7 @@ export interface ExcalidrawCanvasRef {
   insertLibraryItem: (itemNameOrKeyword: string) => Promise<boolean>; // Insert library item onto canvas
   generateAndInsertImage: (prompt: string, options?: { model?: 'nano-banana' | 'nano-banana-pro' }) => Promise<boolean>; // Generate AI image and insert onto canvas
   addImageFromBase64: (base64: string, mimeType: string, options?: { width?: number; height?: number; x?: number; y?: number }) => Promise<boolean>; // Add base64 image to canvas
+  loadScene: (elements: any[], appState?: any, files?: Record<string, any>) => void; // Restore a saved scene
 }
 
 interface ExcalidrawCanvasProps {
@@ -137,6 +140,7 @@ interface ExcalidrawCanvasProps {
   title?: string;
   embedded?: boolean; // When true, renders inline without modal wrapper
   onElementsChange?: (elements: any[], appState: any) => void;
+  persistenceKey?: string;
 }
 
 // Track position for adding new text elements
@@ -275,10 +279,29 @@ const wrapText = (text: string, maxChars: number): string => {
 };
 
 export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvasProps>(
-  ({ isOpen, onClose, className = '', title = 'Gemini Live Canvas', embedded = false, onElementsChange }, ref) => {
+  ({ isOpen, onClose, className = '', title = 'Gemini Live Canvas', embedded = false, onElementsChange, persistenceKey }, ref) => {
     const excalidrawAPIRef = useRef<ExcalidrawAPI | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [elementsCount, setElementsCount] = useState(0);
+    const pendingSceneRef = useRef<{ elements: any[]; appState?: any; files?: Record<string, any> } | null>(null);
+    const persistenceId = useMemo(() => {
+      if (!persistenceKey) return null;
+      return `excalidraw:${persistenceKey}`;
+    }, [persistenceKey]);
+
+    const applyScene = useCallback((scene: { elements: any[]; appState?: any; files?: Record<string, any> }) => {
+      if (!excalidrawAPIRef.current) {
+        pendingSceneRef.current = scene;
+        return;
+      }
+      excalidrawAPIRef.current.updateScene({
+        elements: scene.elements || [],
+        appState: scene.appState || {},
+      });
+      if (scene.files && Object.keys(scene.files).length > 0) {
+        excalidrawAPIRef.current.addFiles(Object.values(scene.files));
+      }
+    }, []);
 
     // Refs for streaming text handling
     const lastTextElementIdRef = useRef<string | null>(null);
@@ -670,6 +693,10 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
 
       getElements: () => {
         return excalidrawAPIRef.current?.getSceneElements() || [];
+      },
+
+      getAppState: () => {
+        return excalidrawAPIRef.current?.getAppState?.() || null;
       },
 
       exportToImage: async () => {
@@ -1158,16 +1185,47 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
           return false;
         }
       },
+
+      loadScene: (elements: any[], appState?: any, files?: Record<string, any>) => {
+        if (!elements || !Array.isArray(elements)) return;
+        applyScene({ elements, appState, files });
+      },
     }));
 
     const handleExcalidrawAPIReady = useCallback((api: ExcalidrawAPI) => {
       excalidrawAPIRef.current = api;
       console.log('[ExcalidrawCanvas] Excalidraw API ready');
-    }, []);
+
+      if (pendingSceneRef.current) {
+        applyScene(pendingSceneRef.current);
+        pendingSceneRef.current = null;
+      }
+    }, [applyScene]);
 
     const handleCanvasChange = useCallback((elements: readonly any[], appState: any) => {
-      onElementsChange?.([...elements], appState);
-    }, [onElementsChange]);
+      const nextElements = [...elements];
+      onElementsChange?.(nextElements, appState);
+      if (persistenceId) {
+        const files = excalidrawAPIRef.current?.getFiles?.() ?? undefined;
+        saveFeatureSession(persistenceId, {
+          elements: nextElements,
+          appState,
+          files,
+          updatedAt: Date.now(),
+        });
+      }
+    }, [onElementsChange, persistenceId]);
+
+    useEffect(() => {
+      if (!persistenceId) return;
+      const persisted = loadFeatureSession<{ elements: any[]; appState?: any; files?: Record<string, any> }>(persistenceId);
+      if (!persisted || !Array.isArray(persisted.elements)) return;
+      applyScene({
+        elements: persisted.elements,
+        appState: persisted.appState,
+        files: persisted.files,
+      });
+    }, [applyScene, persistenceId]);
 
     // Shared Excalidraw component
     const ExcalidrawComponent = (
