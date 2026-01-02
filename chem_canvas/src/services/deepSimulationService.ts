@@ -28,7 +28,7 @@
  */
 
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 // ==========================================
 // Types & Interfaces
@@ -925,7 +925,7 @@ const executeSubAgent = async (
         // Enable high thinking for comprehensive reasoning
         thinkingConfig: {
           includeThoughts: true,
-          thinkingLevel: 'high'
+          thinkingLevel: ThinkingLevel.HIGH
         }
       },
     });
@@ -959,8 +959,7 @@ const executeSubAgent = async (
       status: 'completed',
       data: {
         output: result.substring(0, 500) + '...',
-        thinking: thinkingContent?.substring(0, 300),
-        hasThinking: !!thinkingContent
+        thinking: thinkingContent?.substring(0, 300)
       }
     });
 
@@ -1734,8 +1733,7 @@ If no issues found, set issuesFound to empty array and return the original HTML 
       message: `Step ${currentStep}/${totalSteps}: Validation complete - ${issuesFound.length} issues fixed, score: ${validationScore}/100`,
       status: 'completed',
       data: {
-        issuesFixed: issuesFound.length,
-        validationScore
+        output: { issuesFixed: issuesFound.length, validationScore }
       }
     });
 

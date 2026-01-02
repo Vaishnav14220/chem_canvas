@@ -1261,11 +1261,11 @@ Rules:
                                         ? 'check_my_work'
                                         : selectedFeature === '3d-simulation'
                                             ? '3d_simulation'
-                                        : extractFormulaSheet
-                                            ? 'formula_extraction'
-                                            : questionAndAnswer
-                                                ? 'question_answer'
-                                                : 'comprehensive';
+                                            : extractFormulaSheet
+                                                ? 'formula_extraction'
+                                                : questionAndAnswer
+                                                    ? 'question_answer'
+                                                    : 'comprehensive';
 
         const isFormulaMode = resolvedMode === 'formula_extraction';
         const isQaMode = resolvedMode === 'question_answer';
@@ -1374,14 +1374,6 @@ Rules:
                         'Consistent formatting',
                         'Covers all major subtopics'
                     ];
-                } else if (mode === 'timeline') {
-                    criteria = [
-                        'Week-by-week structure with milestones',
-                        'Balanced workload and review spacing',
-                        'Includes practice and checkpoint tasks',
-                        'Time estimates per session',
-                        'Aligned with topic difficulty'
-                    ];
                 } else if (mode === 'tree_of_thoughts') {
                     criteria = [
                         'Hierarchical breakdown of subtopics',
@@ -1417,11 +1409,9 @@ Rules:
                             ? 'Summarize key points for: '
                             : mode === 'flashcards'
                                 ? 'Create flashcards for: '
-                                : mode === 'timeline'
-                                    ? 'Create study timeline for: '
-                                    : mode === 'tree_of_thoughts'
-                                        ? 'Plan study tree for: '
-                                        : 'Exploring teaching approaches for: ';
+                                : mode === 'tree_of_thoughts'
+                                    ? 'Plan study tree for: '
+                                    : 'Exploring teaching approaches for: ';
                 setThoughtLog(prev => [...prev, modePrefix + (topic || fileName)]);
 
                 const problemDescription = mode === 'formula_extraction'
@@ -1432,11 +1422,9 @@ Rules:
                             ? `Summarize key concepts for: ${topic || fileName || 'Exam preparation'}`
                             : mode === 'flashcards'
                                 ? `Create flashcards for: ${topic || fileName || 'Exam preparation'}`
-                                : mode === 'timeline'
-                                    ? `Build a study timeline for: ${topic || fileName || 'Exam preparation'}`
-                                    : mode === 'tree_of_thoughts'
-                                        ? `Generate a study plan tree for: ${topic || fileName || 'Exam preparation'}`
-                                        : topic || fileName || 'Exam preparation';
+                                : mode === 'tree_of_thoughts'
+                                    ? `Generate a study plan tree for: ${topic || fileName || 'Exam preparation'}`
+                                    : topic || fileName || 'Exam preparation';
 
                 const totResult = await withTimeout(
                     generateStudyPlanTree(

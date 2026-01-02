@@ -1131,12 +1131,14 @@ Rules:
                             li: ({ node, ...props }) => <li className="text-sm text-slate-600 mb-1" {...props} />,
                             ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-3" {...props} />,
                             ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-3" {...props} />,
-                            code: ({ node, inline, ...props }) =>
-                                inline ? (
-                                    <code className="bg-slate-100 px-1 py-0.5 rounded text-xs text-slate-700" {...props} />
+                            code: ({ node, className, children, ...props }) => {
+                                const isInline = !className?.includes('language-');
+                                return isInline ? (
+                                    <code className="bg-slate-100 px-1 py-0.5 rounded text-xs text-slate-700" {...props}>{children}</code>
                                 ) : (
-                                    <code className="block bg-slate-100 rounded p-3 text-xs text-slate-700 overflow-auto" {...props} />
-                                )
+                                    <code className="block bg-slate-100 rounded p-3 text-xs text-slate-700 overflow-auto" {...props}>{children}</code>
+                                );
+                            }
                         }}
                     >
                         {sourceMarkdown}

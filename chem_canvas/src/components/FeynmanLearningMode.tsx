@@ -336,46 +336,41 @@ Keep responses conversational, brief, and focused on checking understanding.`
         initSession();
     }, [currentTopic]);
 
-    useEffect(() => {
-        const saveTimeout = setTimeout(() => {
-            const canvasElements = excalidrawRef.current?.getElements?.() || [];
-            const canvasAppState = excalidrawRef.current?.getAppState?.();
-            const snapshot: FeynmanSessionSnapshot = {
-                version: 1,
-                subMode: feynmanSubMode,
-                topic: currentTopic,
-                editTopicValue,
-                messages: serializeMessages(messages),
-                inputValue,
-                sessionState,
-                streamingContent,
-                gapMaps,
-                isTeachBackMode,
-                teachBackAttempts,
-                currentTasks,
-                currentStage,
-                completedStages,
-                gapsIdentified,
-                gapsResolved,
-                masteryScore,
-                conceptsCleared,
-                insightsGained,
-                misconceptionsList,
-                conceptsList,
-                insightsList,
-                activeTool,
-                activeColor,
-                isRecording,
-                uploadedDocument,
-                canvas: {
-                    elements: canvasElements,
-                    appState: canvasAppState ?? undefined
-                }
-            };
-            saveFeatureSession('feynman', snapshot);
-        }, 800);
-
-        return () => clearTimeout(saveTimeout);
+    const buildSessionSnapshot = useCallback((): FeynmanSessionSnapshot => {
+        const canvasElements = excalidrawRef.current?.getElements?.() || [];
+        const canvasAppState = excalidrawRef.current?.getAppState?.();
+        return {
+            version: 1,
+            subMode: feynmanSubMode,
+            topic: currentTopic,
+            editTopicValue,
+            messages: serializeMessages(messages),
+            inputValue,
+            sessionState,
+            streamingContent,
+            gapMaps,
+            isTeachBackMode,
+            teachBackAttempts,
+            currentTasks,
+            currentStage,
+            completedStages,
+            gapsIdentified,
+            gapsResolved,
+            masteryScore,
+            conceptsCleared,
+            insightsGained,
+            misconceptionsList,
+            conceptsList,
+            insightsList,
+            activeTool,
+            activeColor,
+            isRecording,
+            uploadedDocument,
+            canvas: {
+                elements: canvasElements,
+                appState: canvasAppState ?? undefined
+            }
+        };
     }, [
         feynmanSubMode,
         currentTopic,
@@ -403,6 +398,17 @@ Keep responses conversational, brief, and focused on checking understanding.`
         isRecording,
         uploadedDocument
     ]);
+
+    useEffect(() => {
+        const saveTimeout = setTimeout(() => {
+            saveFeatureSession('feynman', buildSessionSnapshot());
+        }, 800);
+
+        return () => {
+            clearTimeout(saveTimeout);
+            saveFeatureSession('feynman', buildSessionSnapshot());
+        };
+    }, [buildSessionSnapshot]);
 
     // Handle sending a message
     const handleSendMessage = async (overrideMessage?: string) => {

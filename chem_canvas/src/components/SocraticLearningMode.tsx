@@ -212,7 +212,6 @@ export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
     const messagesRef = useRef<TutorChatMessage[]>([]);
     const guidedTasksRef = useRef<GuidedTask[]>([]);
     const guidedResultsRef = useRef<GuidedTaskResult[]>([]);
-    const lastGuidedImageIndexRef = useRef<number>(-999);
     const lastAnalyzedDocumentKeyRef = useRef<string | null>(null);
     const flashcardAutoAdvanceRef = useRef<Set<string>>(new Set());
     const hasRestoredSessionRef = useRef(false);
@@ -338,22 +337,6 @@ export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
         window.setTimeout(() => scheduleDraw(0), 200);
     }, [buildRemediationElements]);
 
-    const shouldIncludeGuidedImage = useCallback((index: number) => {
-        const minGap = 2;
-        const lastIndex = lastGuidedImageIndexRef.current;
-        const stepsSince = index - lastIndex;
-        const hasNoImagesYet = lastIndex < 0;
-
-        if (stepsSince < minGap) {
-            return false;
-        }
-
-        const baseChance = hasNoImagesYet ? 0.6 : 0.4;
-        const bonusChance = Math.min(0.2, Math.max(0, stepsSince - minGap) * 0.1);
-        const chance = baseChance + bonusChance;
-        return Math.random() < chance;
-    }, []);
-
     const buildGuidedTasks = useCallback((
         diagrams: DiagramExtractionResult['diagrams'],
         planSteps?: ActivityPlanStep[] | null
@@ -366,7 +349,23 @@ export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
             { type: 'flashcards', focus: currentTopic, useDiagram: false },
             { type: 'challenge', focus: currentTopic, useDiagram: true }
         ];
-        const sequence = planSteps && planSteps.length === 5 ? planSteps : fallbackSequence;
+        const baseSteps = planSteps && planSteps.length === 5 ? planSteps : fallbackSequence;
+        const uniqueTypes = new Set(baseSteps.map(step => step.type));
+        let sequence = uniqueTypes.size >= 3 ? baseSteps : fallbackSequence;
+        sequence = sequence.map(step => ({ ...step }));
+        for (let i = 1; i < sequence.length; i += 1) {
+            if (sequence[i].type === sequence[i - 1].type) {
+                const swapIndex = sequence.findIndex((step, idx) => idx > i && step.type !== sequence[i].type);
+                if (swapIndex > i) {
+                    const temp = sequence[i];
+                    sequence[i] = sequence[swapIndex];
+                    sequence[swapIndex] = temp;
+                }
+            }
+            if (sequence[i].useDiagram && sequence[i - 1].useDiagram) {
+                sequence[i] = { ...sequence[i], useDiagram: false };
+            }
+        }
         let diagramCursor = 0;
 
         return sequence.map((step, index) => {
@@ -464,13 +463,9 @@ export const SocraticLearningMode: React.FC<SocraticLearningModeProps> = ({
         setIsGuidedFlowGenerating(true);
         setGuidedTaskIndex(index);
 
-        const lastMessageHasImage = messagesRef.current.slice(-1).some(message => message.image);
-        const shouldRenderImage = task.diagram
-            ? index === 0 || (!lastMessageHasImage && shouldIncludeGuidedImage(index))
-            : false;
+        const shouldRenderImage = Boolean(task.diagram);
 
         if (task.diagram && shouldRenderImage) {
-            lastGuidedImageIndexRef.current = index;
             const prompt = `Create a clean, academic diagram on a light background based on this description: ${task.diagram.description}.
 Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
 
@@ -489,13 +484,6 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
                     }
                 };
                 setMessages(prev => [...prev, imageMessage]);
-
-                const explainerMessage: TutorChatMessage = {
-                    role: 'assistant',
-                    content: buildDiagramExplainer(task),
-                    timestamp: new Date()
-                };
-                setMessages(prev => [...prev, explainerMessage]);
             } catch (error) {
                 console.error('[Socratic] Failed to generate diagram image:', error);
                 const fallbackMessage: TutorChatMessage = {
@@ -531,7 +519,10 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
 
             const activityMessage: TutorChatMessage = {
                 role: 'assistant',
-                content: getGuidedIntro(task, index, shouldRenderImage),
+                content: [
+                    getGuidedIntro(task, index, shouldRenderImage),
+                    shouldRenderImage ? buildDiagramExplainer(task) : ''
+                ].filter(Boolean).join(' '),
                 timestamp: new Date(),
                 interactive_content: hasActivity ? interactiveContent : buildFallbackActivity(task),
                 guided_task_id: task.id
@@ -550,9 +541,9 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
         } finally {
             setIsGuidedFlowGenerating(false);
         }
-    }, [buildDiagramExplainer, buildFallbackActivity, currentTopic, getGuidedIntro, shouldIncludeGuidedImage]);
+    }, [buildDiagramExplainer, buildFallbackActivity, currentTopic, getGuidedIntro]);
 
-    const finalizeGuidedFlow = useCallback((results: GuidedTaskResult[]) => {
+    const buildGuidedReport = useCallback((results: GuidedTaskResult[]) => {
         const totalTasks = results.length;
         const correctPoints = results.filter(r => r.success).map(r => r.label);
         const misconceptions = results.filter(r => !r.success).map(r => r.label);
@@ -560,12 +551,16 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
             ? Math.round((correctPoints.length / totalTasks) * 100)
             : 0;
 
-        const report: GuidedReport = {
+        return {
             misconceptions: [...new Set(misconceptions)],
             correctPoints: [...new Set(correctPoints)],
             successRate,
             totalTasks
-        };
+        } satisfies GuidedReport;
+    }, []);
+
+    const finalizeGuidedFlow = useCallback((results: GuidedTaskResult[]) => {
+        const report = buildGuidedReport(results);
 
         setGuidedReport(report);
         setShowGuidedReport(true);
@@ -599,7 +594,7 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
             timestamp: new Date()
         };
         setMessages(prev => [...prev, summaryMessage]);
-    }, [launchRemediationCanvas, remainingTopics]);
+    }, [buildGuidedReport, launchRemediationCanvas, remainingTopics]);
 
     const startGuidedFlow = useCallback(async (
         diagrams: DiagramExtractionResult['diagrams'],
@@ -613,11 +608,60 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
         setGuidedReport(null);
         setShowGuidedReport(false);
         setIsGuidedFlowActive(true);
-        lastGuidedImageIndexRef.current = -999;
         flashcardAutoAdvanceRef.current.clear();
 
         await presentGuidedTask(tasks[0], 0);
     }, [buildGuidedTasks, presentGuidedTask]);
+
+    const applyGuidedResultToGraph = useCallback((label: string, success: boolean) => {
+        const normalizedLabel = label?.trim();
+        if (!normalizedLabel) return;
+
+        const existingConcepts = conceptNodes
+            .filter(n => n.data.type === 'concept')
+            .map(n => n.data.label);
+        const existingMisconceptions = conceptNodes
+            .filter(n => n.data.type === 'misconception')
+            .map(n => n.data.label);
+
+        let allConcepts = [...existingConcepts];
+        let allMisconceptions = [...existingMisconceptions];
+
+        if (success) {
+            if (!allConcepts.includes(normalizedLabel)) {
+                allConcepts.push(normalizedLabel);
+            }
+        } else if (!allMisconceptions.includes(normalizedLabel)) {
+            allMisconceptions.push(normalizedLabel);
+        }
+
+        const { nodes, edges } = generateConceptNetwork(
+            currentTopic,
+            allConcepts,
+            allMisconceptions,
+            currentTopic
+        );
+        setConceptNodes(nodes);
+        setConceptEdges(edges);
+
+        setLastEvaluation(prev => {
+            const base = prev ?? {
+                scores: { understanding: 0, accuracy: 0, completeness: 0 },
+                detected_misconceptions: [],
+                missing_key_ideas: [],
+                correct_points: []
+            };
+            return {
+                ...base,
+                detected_misconceptions: success
+                    ? base.detected_misconceptions
+                    : Array.from(new Set([...base.detected_misconceptions, normalizedLabel])),
+                correct_points: success
+                    ? Array.from(new Set([...base.correct_points, normalizedLabel]))
+                    : base.correct_points
+            };
+        });
+    }, [conceptNodes, currentTopic]);
 
     const handleGuidedTaskComplete = useCallback(async (taskId: string, success: boolean) => {
         const tasks = guidedTasksRef.current;
@@ -632,6 +676,11 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
 
         guidedResultsRef.current = updatedResults;
         setGuidedResults(updatedResults);
+        setGuidedReport(buildGuidedReport(updatedResults));
+
+        if (task.type === 'flashcards') {
+            applyGuidedResultToGraph(task.label, success);
+        }
 
         const feedbackMessage: TutorChatMessage = {
             role: 'assistant',
@@ -649,7 +698,7 @@ Include simple labels, minimal text, and crisp lines. Avoid stylized art.`;
         }
 
         finalizeGuidedFlow(updatedResults);
-    }, [finalizeGuidedFlow, guidedTaskIndex, presentGuidedTask]);
+    }, [applyGuidedResultToGraph, buildGuidedReport, finalizeGuidedFlow, guidedTaskIndex, presentGuidedTask]);
 
     const handleProceedToNextTopic = useCallback(() => {
         if (!onTopicChange || remainingTopics.length === 0) {
@@ -898,7 +947,6 @@ Encourage the student to think through problems step by step.`
         setDiagramAnalysis(null);
         setIsExtractingDiagrams(false);
         setIsGeneratingDiagram(false);
-        lastGuidedImageIndexRef.current = -999;
         lastAnalyzedDocumentKeyRef.current = null;
         flashcardAutoAdvanceRef.current.clear();
 
@@ -964,40 +1012,33 @@ Encourage the student to think through problems step by step.`
         initSession();
     }, [currentTopic, resetSessionState]);
 
-    useEffect(() => {
-        const saveTimeout = setTimeout(() => {
-            const snapshot: SocraticSessionSnapshot = {
-                version: 1,
-                topic: currentTopic,
-                editTopicValue,
-                messages: serializeMessages(messages),
-                inputValue,
-                sessionState,
-                streamingContent,
-                lastEvaluation,
-                showEvaluation,
-                modeSwitchSuggestion,
-                isCanvasOpen,
-                confidence,
-                conceptNodes,
-                conceptEdges,
-                activeTab,
-                flashcards,
-                quiz,
-                diagramAnalysis,
-                isGuidedFlowActive,
-                guidedTasks,
-                guidedTaskIndex,
-                guidedResults,
-                guidedReport,
-                showGuidedReport,
-                isGuidedFlowGenerating
-            };
-            saveFeatureSession('socratic', snapshot);
-        }, 800);
-
-        return () => clearTimeout(saveTimeout);
-    }, [
+    const buildSessionSnapshot = useCallback((): SocraticSessionSnapshot => ({
+        version: 1,
+        topic: currentTopic,
+        editTopicValue,
+        messages: serializeMessages(messages),
+        inputValue,
+        sessionState,
+        streamingContent,
+        lastEvaluation,
+        showEvaluation,
+        modeSwitchSuggestion,
+        isCanvasOpen,
+        confidence,
+        conceptNodes,
+        conceptEdges,
+        activeTab,
+        flashcards,
+        quiz,
+        diagramAnalysis,
+        isGuidedFlowActive,
+        guidedTasks,
+        guidedTaskIndex,
+        guidedResults,
+        guidedReport,
+        showGuidedReport,
+        isGuidedFlowGenerating
+    }), [
         currentTopic,
         editTopicValue,
         messages,
@@ -1023,6 +1064,17 @@ Encourage the student to think through problems step by step.`
         showGuidedReport,
         isGuidedFlowGenerating
     ]);
+
+    useEffect(() => {
+        const saveTimeout = setTimeout(() => {
+            saveFeatureSession('socratic', buildSessionSnapshot());
+        }, 800);
+
+        return () => {
+            clearTimeout(saveTimeout);
+            saveFeatureSession('socratic', buildSessionSnapshot());
+        };
+    }, [buildSessionSnapshot]);
 
     // Handle sending a message
     const handleSendMessage = async () => {
@@ -1274,40 +1326,12 @@ Context: ${context}. Use simple labels, minimal text, crisp lines, and avoid sty
     };
 
     const handleQuizComplete = async (success: boolean, quizQuestion?: string, guidedTaskId?: string) => {
-        const questionTopic = quizQuestion || quiz?.question || 'Unknown Topic';
+        const guidedLabel = guidedTaskId
+            ? guidedTasksRef.current.find(task => task.id === guidedTaskId)?.label
+            : null;
+        const questionTopic = guidedLabel || quizQuestion || quiz?.question || 'Unknown Topic';
 
-        // Update the concept graph based on quiz result
-        const existingConcepts = conceptNodes
-            .filter(n => n.data.type === 'concept')
-            .map(n => n.data.label);
-        const existingMisconceptions = conceptNodes
-            .filter(n => n.data.type === 'misconception')
-            .map(n => n.data.label);
-
-        let allConcepts = [...existingConcepts];
-        let allMisconceptions = [...existingMisconceptions];
-
-        if (success) {
-            // Add to correct concepts (green node)
-            if (!allConcepts.includes(questionTopic)) {
-                allConcepts.push(questionTopic);
-            }
-        } else {
-            // Add to misconceptions (red node)
-            if (!allMisconceptions.includes(questionTopic)) {
-                allMisconceptions.push(questionTopic);
-            }
-        }
-
-        // Regenerate the graph with updated data
-        const { nodes, edges } = generateConceptNetwork(
-            currentTopic,
-            allConcepts,
-            allMisconceptions,
-            currentTopic
-        );
-        setConceptNodes(nodes);
-        setConceptEdges(edges);
+        applyGuidedResultToGraph(questionTopic, success);
 
         if (guidedTaskId && isGuidedFlowActive) {
             await handleGuidedTaskComplete(guidedTaskId, success);

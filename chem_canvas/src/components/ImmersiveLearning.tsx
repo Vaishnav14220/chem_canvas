@@ -2657,6 +2657,7 @@ Respond in JSON format only:
 
         return () => clearTimeout(t);
     }, [
+        // savedWorkspaces is omitted to prevent auto-save from looping on its own writes.
         activeWorkspaceId,
         immersiveContent,
         sectionImages,
@@ -2691,7 +2692,6 @@ Respond in JSON format only:
         viewer3dScale,
         viewer3dInteractionMode,
         brainstormActivities,
-        savedWorkspaces,
     ]);
 
     // Load saved content from localStorage on mount - DISABLED per user request (always fresh start)
@@ -6790,14 +6790,16 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
     useEffect(() => {
         try {
             const keys = getLocalStorageKeys();
+            // Note: We DO NOT persist assignmentFileData or assignmentFileContent here
+            // as they can be very large (e.g., PDFs) and exceed localStorage quota.
+            // These are stored per-workspace in IndexedDB via persistWorkspace instead.
             const payload = {
                 activeMode,
                 assignmentTab,
                 selectedAssignmentFeature,
                 showWorkspaceManager,
                 showAssignmentDashboard,
-                assignmentFileData,
-                assignmentFileContent,
+                // Persist only the file name, not the file content
                 assignmentFileName,
                 assignmentTopic,
                 assignmentUseToT,
@@ -6814,8 +6816,6 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         selectedAssignmentFeature,
         showWorkspaceManager,
         showAssignmentDashboard,
-        assignmentFileData,
-        assignmentFileContent,
         assignmentFileName,
         assignmentTopic,
         assignmentUseToT,
@@ -6826,6 +6826,40 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
     useEffect(() => {
         if (!savedWorkspaces.length) return;
+        const studyToolCandidates = savedWorkspaces
+            .filter(ws => ws.studyToolsData?.payload)
+            .reduce<Record<string, LocalImmersiveWorkspace>>((acc, ws) => {
+                const featureId = ws.studyToolsData?.payload.featureId;
+                if (!featureId) return acc;
+                const existing = acc[featureId];
+                if (!existing || (ws.updatedAt || 0) > (existing.updatedAt || 0)) {
+                    acc[featureId] = ws;
+                }
+                return acc;
+            }, {});
+
+        if (Object.keys(studyToolCandidates).length) {
+            setStudyToolsDraftWorkspaceIds(prev => {
+                const next = { ...prev };
+                Object.entries(studyToolCandidates).forEach(([featureId, workspace]) => {
+                    if (!next[featureId]) {
+                        next[featureId] = workspace.id;
+                    }
+                });
+                return next;
+            });
+
+            setStudyToolsDrafts(prev => {
+                const next = { ...prev };
+                Object.entries(studyToolCandidates).forEach(([featureId, workspace]) => {
+                    if (!next[featureId] && workspace.studyToolsData?.payload) {
+                        next[featureId] = workspace.studyToolsData.payload;
+                    }
+                });
+                return next;
+            });
+        }
+
         if (Object.keys(studyToolsDraftWorkspaceIds).length > 0) {
             setStudyToolsDrafts(prev => {
                 const next = { ...prev };
@@ -6838,7 +6872,16 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 return next;
             });
         }
-        if (labManualWorkspaceId && !labManualDraft) {
+
+        if (!labManualWorkspaceId) {
+            const latestLabManual = savedWorkspaces
+                .filter(ws => ws.labManualData)
+                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+            if (latestLabManual?.labManualData) {
+                setLabManualWorkspaceId(latestLabManual.id);
+                setLabManualDraft(latestLabManual.labManualData);
+            }
+        } else if (!labManualDraft) {
             const workspace = savedWorkspaces.find(ws => ws.id === labManualWorkspaceId);
             if (workspace?.labManualData) {
                 setLabManualDraft(workspace.labManualData);

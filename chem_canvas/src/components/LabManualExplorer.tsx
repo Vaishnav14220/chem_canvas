@@ -722,6 +722,43 @@ export const LabManualExplorer: React.FC<LabManualExplorerProps> = ({
         onDraftChange
     ]);
 
+    useEffect(() => {
+        if (!onDraftChange) return;
+        return () => {
+            const hasContent = Boolean(
+                fileLabel ||
+                documentText ||
+                analysis ||
+                chatMessages.length > 0 ||
+                schematic ||
+                visualExplainers.length > 0
+            );
+            if (!hasContent) return;
+            onDraftChange({
+                fileLabel,
+                documentText,
+                analysis,
+                chatMessages,
+                schematic,
+                visualExplainers,
+                expandedExplainer,
+                activeTab,
+                selectedTopicId,
+            });
+        };
+    }, [
+        fileLabel,
+        documentText,
+        analysis,
+        chatMessages,
+        schematic,
+        visualExplainers,
+        expandedExplainer,
+        activeTab,
+        selectedTopicId,
+        onDraftChange
+    ]);
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
         if (selectedFile) {

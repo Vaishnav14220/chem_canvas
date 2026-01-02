@@ -14,8 +14,23 @@ export const getFeatureSessionKey = (featureId: string, userId?: string) => {
 export const loadFeatureSession = <T>(featureId: string, userId?: string): T | null => {
   if (typeof window === 'undefined') return null;
   try {
-    const key = buildSessionKey(featureId, userId);
-    const raw = window.localStorage.getItem(key);
+    const resolvedUserId = userId ?? getCurrentUserId();
+    const resolvedKey = resolvedUserId ? buildSessionKey(featureId, resolvedUserId) : null;
+    const anonymousKey = buildSessionKey(featureId, 'anonymous');
+
+    if (resolvedKey) {
+      const raw = window.localStorage.getItem(resolvedKey);
+      if (raw) return JSON.parse(raw) as T;
+
+      const anonymousRaw = window.localStorage.getItem(anonymousKey);
+      if (!anonymousRaw) return null;
+      const parsed = JSON.parse(anonymousRaw) as T;
+      window.localStorage.setItem(resolvedKey, JSON.stringify(parsed));
+      window.localStorage.removeItem(anonymousKey);
+      return parsed;
+    }
+
+    const raw = window.localStorage.getItem(anonymousKey);
     if (!raw) return null;
     return JSON.parse(raw) as T;
   } catch (error) {

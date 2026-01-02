@@ -165,23 +165,16 @@ Keep responses conversational and helpful. When you identify key points, structu
         }
     }, [isTutorMode]);
 
-    useEffect(() => {
-        const saveTimeout = setTimeout(() => {
-            const snapshot: PdfStudySessionSnapshot = {
-                version: 1,
-                topic,
-                inputValue,
-                generatedNotes: serializeNotes(generatedNotes),
-                isLeftPanelCollapsed,
-                isTutorMode,
-                activeSourceId,
-                documentData: documentData ?? restoredDocumentData
-            };
-            saveFeatureSession('pdf-study', snapshot);
-        }, 800);
-
-        return () => clearTimeout(saveTimeout);
-    }, [
+    const buildSessionSnapshot = useCallback((): PdfStudySessionSnapshot => ({
+        version: 1,
+        topic,
+        inputValue,
+        generatedNotes: serializeNotes(generatedNotes),
+        isLeftPanelCollapsed,
+        isTutorMode,
+        activeSourceId,
+        documentData: documentData ?? restoredDocumentData
+    }), [
         topic,
         inputValue,
         generatedNotes,
@@ -191,6 +184,17 @@ Keep responses conversational and helpful. When you identify key points, structu
         documentData,
         restoredDocumentData
     ]);
+
+    useEffect(() => {
+        const saveTimeout = setTimeout(() => {
+            saveFeatureSession('pdf-study', buildSessionSnapshot());
+        }, 800);
+
+        return () => {
+            clearTimeout(saveTimeout);
+            saveFeatureSession('pdf-study', buildSessionSnapshot());
+        };
+    }, [buildSessionSnapshot]);
 
     const processedTranscriptRef = useRef<Record<string, number>>({});
     const processedNoteRef = useRef<Set<string>>(new Set());
