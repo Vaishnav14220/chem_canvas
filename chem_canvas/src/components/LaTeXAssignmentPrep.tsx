@@ -8,6 +8,7 @@ import {
     Check,
     RefreshCw,
     BookOpen,
+    ChevronLeft,
     ChevronRight,
     Copy,
     CheckCircle2,
@@ -48,6 +49,7 @@ import { Reasoning } from './ai-elements/reasoning';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 interface LaTeXAssignmentPrepProps {
+    onBack?: () => void;
 }
 
 type LaTeXImageAsset = {
@@ -149,7 +151,7 @@ const TreeNode: React.FC<{
     );
 };
 
-export const LaTeXAssignmentPrep: React.FC<LaTeXAssignmentPrepProps> = () => {
+export const LaTeXAssignmentPrep: React.FC<LaTeXAssignmentPrepProps> = ({ onBack }) => {
     const [taskSheet, setTaskSheet] = useState('');
     const [fileContent, setFileContent] = useState('');
     const [fileLabel, setFileLabel] = useState('');
@@ -914,6 +916,15 @@ ${buildAssetManifest(assetList)}`;
                 {/* Header Bar */}
                 <div className="relative bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
                     <div className="flex items-center gap-3">
+                        {onBack && (
+                            <button
+                                onClick={onBack}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition"
+                            >
+                                <ChevronLeft className="w-3.5 h-3.5" />
+                                Back
+                            </button>
+                        )}
                         <div>
                             <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Canvas</p>
                             <h3 className="text-lg font-semibold text-slate-900">LaTeX Output</h3>

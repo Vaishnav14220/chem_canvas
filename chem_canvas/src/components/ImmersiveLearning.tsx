@@ -1815,6 +1815,7 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey, 
     const [standaloneNotes, setStandaloneNotes] = useState('');
     const [standaloneNotesName, setStandaloneNotesName] = useState('');
     const [standaloneTopic, setStandaloneTopic] = useState('');
+    const [pendingFile, setPendingFile] = useState<File | null>(null);
     const [isGeneratingStandaloneMindMap, setIsGeneratingStandaloneMindMap] = useState(false);
     const notesFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -3048,6 +3049,20 @@ Respond in JSON format only:
     const handleStandaloneNotesUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
+
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+        if (isPdf) {
+            setPendingFile(file);
+            setStandaloneNotes('');
+            setStandaloneNotesName(file.name);
+            if (!standaloneTopic) {
+                setStandaloneTopic(file.name.replace(/\.[^/.]+$/, ''));
+            }
+            return;
+        }
+
+        setPendingFile(null);
 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -4361,6 +4376,160 @@ ${edgesXML}
             setIsStreaming(false);
             alert('ToT Generation failed: ' + (e instanceof Error ? e.message : String(e)));
         }
+    }, []);
+
+    const startImmersiveFromText = useCallback(async (text: string) => {
+        if (!text || !text.trim()) {
+            return;
+        }
+
+        setImmersiveContent(null);
+        setSectionImages({});
+        setWidgetImages({});
+        setActiveSectionId('');
+        setPdfUrl(null);
+        setDocumentFileId(null);
+        setDocumentMimeType(null);
+        setDocumentIsFallback(false);
+        documentTextRef.current = text;
+
+        setProcessingStage('generating');
+        setLoadingMessage('Generating immersive content...');
+        setTerminalSubSteps(['Connecting to Gemini AI...', 'Starting content stream...']);
+        setIsStreaming(true);
+        setShowCursor(true);
+        setStreamedText('');
+        setActiveMode('immersive-text');
+        setIsLoading(false);
+        setProcessingStage('idle');
+        setTerminalSubSteps([]);
+
+        let analysis;
+        try {
+            analysis = await streamAnalyzeDocumentForImmersive(
+                text,
+                (currentStreamedText, isComplete) => {
+                    try {
+                        flushSync(() => {
+                            setStreamedText(currentStreamedText);
+                        });
+                        if (isComplete) {
+                            flushSync(() => {
+                                setShowCursor(false);
+                            });
+                        }
+                    } catch (flushError) {
+                        console.error('Error in flushSync during streaming:', flushError);
+                        setStreamedText(currentStreamedText);
+                        if (isComplete) {
+                            setShowCursor(false);
+                        }
+                    }
+                }
+            );
+        } catch (streamError) {
+            console.error('Error during streaming:', streamError);
+            setIsStreaming(false);
+            setShowCursor(false);
+            setProcessingStage('idle');
+            setLoadingMessage('');
+            alert('Failed to analyze the content. Please try again.');
+            return;
+        }
+
+        if (!analysis || !analysis.sections || analysis.sections.length === 0) {
+            setIsStreaming(false);
+            setShowCursor(false);
+            setProcessingStage('idle');
+            setLoadingMessage('');
+            alert('No content sections generated from the input.');
+            return;
+        }
+
+        setIsStreaming(false);
+        setShowCursor(false);
+        setImmersiveContent(analysis);
+
+        if (analysis.sections.length > 0) {
+            setActiveSectionId(analysis.sections[0].id);
+        }
+
+        setLoadingMessage('');
+
+        const generateImagesAsync = async () => {
+            const sectionsWithImages = analysis.sections.filter(s => s.imagePrompt);
+            if (sectionsWithImages.length === 0) return;
+
+            const loadingState: { [key: string]: boolean } = {};
+            sectionsWithImages.forEach(section => {
+                loadingState[section.id] = true;
+            });
+            setLoadingImages(loadingState);
+
+            const imagePromises = sectionsWithImages.map(async (section) => {
+                try {
+                    const imageUrl = await generateImmersiveImage(section.imagePrompt!);
+                    setSectionImages(prev => ({ ...prev, [section.id]: imageUrl }));
+                    setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                    return { sectionId: section.id, success: true };
+                } catch (e) {
+                    console.error(`Failed to generate image for "${section.title}":`, e);
+                    setLoadingImages(prev => ({ ...prev, [section.id]: false }));
+                    return { sectionId: section.id, success: false };
+                }
+            });
+
+            await Promise.allSettled(imagePromises);
+        };
+
+        const generateQuizAsync = async () => {
+            try {
+                const generatedQuiz = await generateImmersiveQuiz(text);
+                setQuiz(generatedQuiz);
+            } catch (e) {
+                console.error('Failed to generate quiz:', e);
+            }
+        };
+
+        const generateAudioAsync = async () => {
+            try {
+                const script = await generateAudioScript(text);
+                setAudioScript(script);
+            } catch (e) {
+                console.error('Audio script failed', e);
+            }
+        };
+
+        const generateMindMapAsync = async () => {
+            try {
+                const data = await generateReactFlowData(text);
+                setReactFlowData(data);
+            } catch (e) {
+                console.error('Mindmap failed', e);
+            }
+        };
+
+        const fetchVideosAsync = async () => {
+            try {
+                setIsLoadingVideos(true);
+                const videos = await fetchAndRankYouTubeVideos(text);
+                setRelevantVideos(videos);
+            } catch (e) {
+                console.warn(e);
+            } finally {
+                setIsLoadingVideos(false);
+            }
+        };
+
+        Promise.allSettled([
+            generateImagesAsync(),
+            generateQuizAsync(),
+            generateAudioAsync(),
+            generateMindMapAsync(),
+            fetchVideosAsync()
+        ]).then(() => {
+            console.log('Background tasks complete');
+        });
     }, []);
 
     const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -6788,6 +6957,15 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
     }, [getLocalStorageKeys]);
 
     useEffect(() => {
+        if (initialMode !== 'assignment') {
+            return;
+        }
+        setSelectedAssignmentFeature(null);
+        setAssignmentTab('exam-prep');
+        setShowAssignmentDashboard(true);
+    }, [initialMode]);
+
+    useEffect(() => {
         try {
             const keys = getLocalStorageKeys();
             const payload = {
@@ -7325,7 +7503,15 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
     const renderAssignmentWorkspace = () => {
         if (assignmentTab === 'latex-prep') {
-            return <LaTeXAssignmentPrep />;
+            return (
+                <LaTeXAssignmentPrep
+                    onBack={() => {
+                        setAssignmentTab('exam-prep');
+                        setShowAssignmentDashboard(true);
+                        setSelectedAssignmentFeature(null);
+                    }}
+                />
+            );
         }
 
         // Lab Manual Explorer feature
@@ -7388,7 +7574,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 (assignmentFileName ? assignmentFileName.replace(/\.[^/.]+$/, '') : undefined);
 
             return (
-                <div className="flex h-full w-full min-h-0 flex-col">
+                <div className="flex h-full w-full min-h-0 flex-1 flex-col bg-[#eef2f7]">
                     <ChatTutorWorkspace
                         onBack={() => {
                             setSelectedAssignmentFeature(null);
@@ -7401,7 +7587,6 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
             );
         }
 
-        // Show dashboard when no feature is selected
         if (showAssignmentDashboard) {
             return (
                 <div className="flex h-full w-full flex-col bg-[#f6f8fc] pt-[50px]">
@@ -7452,6 +7637,50 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 <div className="flex flex-col items-center justify-center h-full space-y-4">
                     <Loader2 className="w-10 h-10 text-[#ff8b66] animate-spin" />
                     <p className="text-slate-300 text-sm font-medium">{loadingMessage}</p>
+                </div>
+            );
+        }
+
+        if (showToTTree && immersiveToTPlan) {
+            return (
+                <div className="flex flex-col h-full bg-[#131314] overflow-hidden p-6 text-white">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 className="text-xl font-bold text-white mb-1">Choose Learning Path</h2>
+                            <p className="text-sm text-slate-400">AI analyzed your document and proposed {immersiveToTPlan.tree?.length || 0} structure options.</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm" onClick={() => setShowToTTree(false)}>Cancel</button>
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                        <ToTGraphVisualization
+                            tree={immersiveToTPlan.tree}
+                            rootId={immersiveToTPlan.rootId}
+                            selectedId={currentPlanNode?.id || null}
+                            onSelect={setCurrentPlanNode}
+                        />
+                    </div>
+                    <div className="mt-6 pt-6 border-t border-slate-700 flex flex-col sm:flex-row justify-end gap-4 items-center">
+                        <div className="flex-1 w-full">
+                            {currentPlanNode && (
+                                <div className="p-4 bg-[#1e232e] rounded-lg border border-[#3b5b8a]/30">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Badge className="bg-[#8ab4f8]/20 text-[#8ab4f8] hover:bg-[#8ab4f8]/30 border-0">SELECTED APPROACH</Badge>
+                                        <span className="text-sm font-bold text-white">{currentPlanNode.approach}</span>
+                                    </div>
+                                    <div className="text-sm text-slate-300">{currentPlanNode.description}</div>
+                                </div>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => currentPlanNode && handleStartToTGeneration(currentPlanNode)}
+                            disabled={!currentPlanNode}
+                            className={`px-8 py-3 rounded-lg font-bold transition-all shadow-lg ${currentPlanNode ? 'bg-[#8ab4f8] hover:bg-[#aecbfa] text-[#202124] hover:shadow-[#8ab4f8]/20 hover:scale-105' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}
+                        >
+                            Generate Content
+                        </button>
+                    </div>
                 </div>
             );
         }
@@ -7529,14 +7758,23 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                 {/* Generate Button */}
                                 <button
                                     onClick={async () => {
-                                        // Casting to string to avoid TS "no overlap" error if types are strictly defined enums that shouldn't overlap but do in logic
-                                        if ((activeMode as string) !== 'notebook') {
-                                            setActiveMode('source');
+                                        if (pendingFile) {
+                                            await handleFileUpload({
+                                                target: { files: [pendingFile] }
+                                            } as React.ChangeEvent<HTMLInputElement>);
+                                            setPendingFile(null);
+                                            return;
                                         }
 
                                         const textToProcess = documentTextRef.current || (standaloneTopic ? `Topic: ${standaloneTopic}\n\nMain Concept: ${standaloneTopic}` : null);
 
-                                        if (textToProcess && useToTGeneration) {
+                                        if (!textToProcess) {
+                                            return;
+                                        }
+
+                                        documentTextRef.current = textToProcess;
+
+                                        if (useToTGeneration) {
                                             setIsLoading(true);
                                             setProcessingStage('analyzing');
                                             setLoadingMessage('Generating Tree of Thoughts Plan (Deep Reasoning)...');
@@ -7555,9 +7793,12 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                                 setIsPlanningImmersive(false);
                                                 setProcessingStage('idle');
                                             }
+                                            return;
                                         }
+
+                                        await startImmersiveFromText(textToProcess);
                                     }}
-                                    disabled={!standaloneNotes.trim() && !standaloneTopic.trim() && !uploadedFileName}
+                                    disabled={!standaloneNotes.trim() && !standaloneTopic.trim() && !pendingFile}
                                     className={
                                         (!standaloneNotes.trim() && !standaloneTopic.trim() && !uploadedFileName)
                                             ? 'w-full py-3 flex items-center justify-center gap-2 font-semibold text-sm uppercase tracking-wide transition-all bg-slate-700 text-slate-400 cursor-not-allowed rounded-none'
@@ -7640,51 +7881,6 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
 
         switch (activeMode) {
             case 'source':
-                // Show ToT Tree Selection UI
-                if (showToTTree && immersiveToTPlan) {
-                    return (
-                        <div className="flex flex-col h-full bg-[#131314] overflow-hidden p-6 text-white">
-                            <div className="flex items-center justify-between mb-6">
-                                <div>
-                                    <h2 className="text-xl font-bold text-white mb-1">Choose Learning Path</h2>
-                                    <p className="text-sm text-slate-400">AI analyzed your document and proposed {immersiveToTPlan.tree?.length || 0} structure options.</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm" onClick={() => setShowToTTree(false)}>Cancel</button>
-                                </div>
-                            </div>
-                            <div className="flex-1 overflow-hidden">
-                                <ToTGraphVisualization
-                                    tree={immersiveToTPlan.tree}
-                                    rootId={immersiveToTPlan.rootId}
-                                    selectedId={currentPlanNode?.id || null}
-                                    onSelect={setCurrentPlanNode}
-                                />
-                            </div>
-                            <div className="mt-6 pt-6 border-t border-slate-700 flex flex-col sm:flex-row justify-end gap-4 items-center">
-                                <div className="flex-1 w-full">
-                                    {currentPlanNode && (
-                                        <div className="p-4 bg-[#1e232e] rounded-lg border border-[#3b5b8a]/30">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <Badge className="bg-[#8ab4f8]/20 text-[#8ab4f8] hover:bg-[#8ab4f8]/30 border-0">SELECTED APPROACH</Badge>
-                                                <span className="text-sm font-bold text-white">{currentPlanNode.approach}</span>
-                                            </div>
-                                            <div className="text-sm text-slate-300">{currentPlanNode.description}</div>
-                                        </div>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={() => currentPlanNode && handleStartToTGeneration(currentPlanNode)}
-                                    disabled={!currentPlanNode}
-                                    className={`px-8 py-3 rounded-lg font-bold transition-all shadow-lg ${currentPlanNode ? 'bg-[#8ab4f8] hover:bg-[#aecbfa] text-[#202124] hover:shadow-[#8ab4f8]/20 hover:scale-105' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}
-                                >
-                                    Generate Content
-                                </button>
-                            </div>
-                        </div>
-                    );
-                }
-
                 if (isLoading || isPlanningImmersive) {
                     const terminalStages = [
                         {
@@ -13438,7 +13634,14 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                         return (
                             <button
                                 key={mode.id}
-                                onClick={() => setActiveMode(mode.id)}
+                                onClick={() => {
+                                    if (mode.id === 'assignment') {
+                                        setSelectedAssignmentFeature(null);
+                                        setAssignmentTab('exam-prep');
+                                        setShowAssignmentDashboard(true);
+                                    }
+                                    setActiveMode(mode.id);
+                                }}
                                 className={`
                                     group relative flex flex-col items-center gap-1.5 px-5 py-2.5 transition-all duration-300 overflow-hidden rounded-[24px]
                                     ${isActive

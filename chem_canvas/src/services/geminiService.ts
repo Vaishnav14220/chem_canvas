@@ -450,7 +450,7 @@ export const generateVisionContent = async (
     throw new Error('Gemini API not initialized. Please provide an API key.');
   }
 
-  const modelName = options?.model ?? 'gemini-1.5-flash'; // Flash is good for vision
+  const modelName = options?.model ?? 'gemini-2.0-flash'; // Flash is good for vision
   const timeoutMs = options?.timeout ?? 60000;
 
   try {
@@ -476,7 +476,7 @@ export const generateVisionContent = async (
         ]
       });
 
-      return response.text() ?? '';
+      return response.text ?? '';
     });
   } catch (error: any) {
     try {
@@ -559,9 +559,9 @@ After annotating, also provide a text summary of your feedback.`;
               { inlineData: { mimeType, data: imageBase64 } },
               ...(reference
                 ? [
-                    { inlineData: { mimeType: reference.mimeType, data: reference.data } },
-                    { text: `Reference attached: ${referenceLabel}.` }
-                  ]
+                  { inlineData: { mimeType: reference.mimeType, data: reference.data } },
+                  { text: `Reference attached: ${referenceLabel}.` }
+                ]
                 : []),
               { text: annotationPrompt }
             ]

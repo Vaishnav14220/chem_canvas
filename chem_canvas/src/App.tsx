@@ -1554,96 +1554,6 @@ const App: React.FC = () => {
       label: 'Workspace',
       items: [
         {
-          id: 'workspace-view',
-          label: 'Workspace View',
-          description: 'Your main canvas for notes, diagrams, and study artifacts.',
-          steps: [
-            'Switch back to the primary workspace.',
-            'Use the left tool rail to draw, type, or insert.',
-            'Save progress from the workspace controls.'
-          ],
-          icon: Layers3,
-          action: () => {
-            setActiveCanvasTab('workspace');
-            setIsMolecularMode(false);
-          },
-          children: [
-            {
-              id: 'workspace-tabs',
-              label: 'Workspace tabs',
-              description: 'Switch between multiple workspace tabs.',
-              steps: [
-                'Click a workspace tab to switch.',
-                'Use the + button to add a new workspace.',
-                'Use the x button to close a workspace.'
-              ],
-              icon: Layers3
-            },
-            {
-              id: 'workspace-save-load',
-              label: 'Open and save',
-              description: 'Open saved workspaces and store updates.',
-              steps: [
-                'Click Open to load saved workspaces.',
-                'Click Save to store changes.',
-                'Watch the save status indicator for sync.'
-              ],
-              icon: Save
-            },
-            {
-              id: 'workspace-learning-mode',
-              label: 'Learning mode switcher',
-              description: 'Pick the tutoring style for the session.',
-              steps: [
-                'Auto adapts to the conversation.',
-                'Socratic prompts with questions.',
-                'Feynman focuses on teach-back.'
-              ],
-              icon: MessageSquare
-            }
-          ]
-        },
-        {
-          id: 'planner-view',
-          label: 'Planner View',
-          description: 'Deskbaum-style planner board for quick widgets and planning.',
-          steps: [
-            'Open the Planner tab next to your workspace.',
-            'Choose a widget size and type.',
-            'Click the grid to place widgets.'
-          ],
-          icon: Target,
-          action: () => {
-            resetToWorkspace();
-            setActiveCanvasTab('planner');
-            setIsMolecularMode(false);
-          },
-          children: [
-            {
-              id: 'planner-widget-size',
-              label: 'Widget sizes',
-              description: 'Pick a widget footprint before placing it.',
-              steps: [
-                'Single is one cell.',
-                'Full Width spans two columns.',
-                'Full Height spans two rows.'
-              ],
-              icon: Target
-            },
-            {
-              id: 'planner-widget-types',
-              label: 'Widget types',
-              description: 'Available widget templates on the board.',
-              steps: [
-                'Greeting, Today\'s Focus, Date and Time.',
-                'Custom Text for notes.',
-                'Calendar, Tasks, GitHub, Gmail placeholders.'
-              ],
-              icon: FileText
-            }
-          ]
-        },
-        {
           id: 'canvas-studio',
           label: 'Canvas Studio',
           description: 'Default drawing canvas tools for notes and sketches.',
@@ -1733,18 +1643,6 @@ const App: React.FC = () => {
           ]
         },
         {
-          id: 'upload',
-          label: 'Upload to Canvas',
-          description: 'Drop files directly onto the workspace for analysis.',
-          steps: [
-            'Open the upload picker.',
-            'Select a PDF, image, or document.',
-            'The file appears in Sources and on the canvas.'
-          ],
-          icon: Upload,
-          action: () => handleHeaderUploadClick()
-        },
-        {
           id: '3d-explorer',
           label: '3D Explorer',
           description: 'Explore molecules and proteins in 3D.',
@@ -1824,17 +1722,6 @@ const App: React.FC = () => {
                 'Close the assistant to focus on spectra.'
               ],
               icon: Headphones
-            },
-            {
-              id: 'nmr-open-tab',
-              label: 'Open in new tab',
-              description: 'Launch the NMR viewer in a separate tab.',
-              steps: [
-                'Use the Open in new tab button.',
-                'Keep the main workspace open.',
-                'Return when you need to sync.'
-              ],
-              icon: ExternalLink
             }
           ]
         }
@@ -1937,92 +1824,189 @@ const App: React.FC = () => {
           action: openImmersiveLearning,
           children: [
             {
-              id: 'immersive-main-tabs',
-              label: 'Mode tabs',
-              description: 'Primary navigation within Immersive Learning.',
+              id: 'immersive-my-library',
+              label: 'My Library',
+              description: 'Access your saved documents and resources.',
               steps: [
-                'Subject, Simulator, Research.',
-                'Coach, LaTeX, Assignment.',
-                'Use these to switch learning views.'
+                'View uploaded PDFs and files.',
+                'Organize your study materials.',
+                'Quick access to recent documents.'
+              ],
+              icon: FileText
+            },
+            {
+              id: 'immersive-text',
+              label: 'Immersive Text',
+              description: 'AI-powered text analysis and study.',
+              steps: [
+                'Upload or paste text content.',
+                'Get AI explanations and summaries.',
+                'Interactive reading experience.'
               ],
               icon: BookOpen
             },
             {
-              id: 'immersive-dashboard-tabs',
-              label: 'Dashboard tabs',
-              description: 'Organize notebooks and spaces.',
+              id: 'immersive-robotics-vision',
+              label: 'Robotics Vision',
+              description: 'Visual AI analysis and recognition.',
               steps: [
-                'Notebooks for lesson content.',
-                'Spaces for saved work.',
-                'Search within each list.'
+                'Upload images for analysis.',
+                'Get AI-powered visual insights.',
+                'Interactive visual learning tools.'
               ],
-              icon: BookOpen
+              icon: Scan
             },
             {
-              id: 'immersive-notebook-tabs',
-              label: 'Notebook tabs',
-              description: 'Notebook activity sections.',
+              id: 'immersive-code-lab',
+              label: 'Code Lab',
+              description: 'Interactive coding environment.',
               steps: [
-                'Summary, Mindmap.',
-                'Audio, Chat.',
-                'Switch tabs for different study modes.'
+                'Write and run code snippets.',
+                'Get AI code explanations.',
+                'Practice coding exercises.'
               ],
-              icon: BookOpen
+              icon: FileText
             },
             {
-              id: 'immersive-assignments',
-              label: 'Assignment tabs',
-              description: 'Assignment preparation modes.',
+              id: 'immersive-voxel-lab',
+              label: 'Voxel Lab',
+              description: '3D voxel visualization workspace.',
               steps: [
-                'Exam Prep.',
-                'LaTeX Prep.',
-                'Switch to match your workload.'
+                'Create 3D voxel models.',
+                'Visualize molecular structures.',
+                'Interactive 3D manipulation.'
               ],
-              icon: BookOpen
+              icon: Layers3
             },
             {
-              id: 'immersive-audio-video',
-              label: 'Audio and video tabs',
-              description: 'Lesson media modes.',
+              id: 'immersive-study-tools',
+              label: 'Study Tools',
+              description: 'Flashcards, quizzes, and study aids.',
               steps: [
-                'Video for interactive lessons.',
-                'Audio for podcast style.',
-                'Use based on your focus.'
+                'Create flashcards from content.',
+                'Take practice quizzes.',
+                'Track your learning progress.'
               ],
-              icon: BookOpen
+              icon: Sparkles,
+              action: () => openImmersiveLearning('assignment'),
+              children: [
+                {
+                  id: 'study-extract-formulas',
+                  label: 'Extract Formulas',
+                  description: 'Automatically identify and compile a cheat sheet of all formulas from your uploaded notes using AI.',
+                  steps: ['Upload a PDF or document with formulas.', 'AI scans and extracts all mathematical formulas.', 'Review and export your formula cheat sheet.'],
+                  icon: FileText
+                },
+                {
+                  id: 'study-check-my-work',
+                  label: 'Check My Work',
+                  description: 'Upload your answers or solutions and get AI-powered feedback with annotations and corrections.',
+                  steps: ['Upload your homework or problem solutions.', 'AI analyzes your work for errors.', 'Receive detailed feedback and suggestions.'],
+                  icon: Sparkles
+                },
+                {
+                  id: 'study-data-plotter',
+                  label: 'Data Plotter',
+                  description: 'Build Chart.js visualizations, tune interactions, and browse the Awesome Chart.js library catalog.',
+                  steps: ['Input your data or paste from a spreadsheet.', 'Choose chart type and customize styling.', 'Export or embed your visualization.'],
+                  icon: LineChart
+                },
+                {
+                  id: 'study-chattutor-whiteboard',
+                  label: 'ChatTutor Whiteboard',
+                  description: 'Chat + multi-page whiteboard with Mermaid diagrams, GeoGebra math, and collaborative notes.',
+                  steps: ['Start a conversation with the AI tutor.', 'Draw diagrams or write equations on the whiteboard.', 'AI responds with visual explanations.'],
+                  icon: MessageSquare
+                },
+                {
+                  id: 'study-flashcards',
+                  label: 'Flashcards',
+                  description: 'Convert your notes into a set of digital flashcards for spaced repetition learning.',
+                  steps: ['Upload notes or enter content manually.', 'AI generates question-answer pairs.', 'Study with spaced repetition algorithm.'],
+                  icon: Layers3
+                },
+                {
+                  id: 'study-latex-prep',
+                  label: 'LaTeX Prep',
+                  description: 'Generate clean LaTeX notes and equations from your source material.',
+                  steps: ['Upload your handwritten or typed notes.', 'AI converts to professional LaTeX format.', 'Download or copy the LaTeX code.'],
+                  icon: FileText
+                },
+                {
+                  id: 'study-timeline-generator',
+                  label: 'Timeline Generator',
+                  description: 'Create a week-by-week study schedule based on the density of your material.',
+                  steps: ['Upload your syllabus or course material.', 'Set your start and end dates.', 'Get an optimized study timeline.'],
+                  icon: Clock
+                },
+                {
+                  id: 'study-simulation',
+                  label: 'Simulation',
+                  description: 'Build an interactive simulation to explore the concept step-by-step with live parameters.',
+                  steps: ['Describe the concept to simulate.', 'AI generates an interactive simulation.', 'Adjust parameters and observe changes.'],
+                  icon: Sparkles
+                },
+                {
+                  id: 'study-3d-simulation',
+                  label: '3D Simulation',
+                  description: 'Upload a PDF and generate a single-file 3D interactive simulation.',
+                  steps: ['Upload a document describing a 3D concept.', 'AI creates a 3D interactive model.', 'Rotate, zoom, and explore the model.'],
+                  icon: Layers3
+                },
+                {
+                  id: 'study-3d-explorer',
+                  label: '3D Explorer',
+                  description: 'Load and manipulate 3D models with gesture controls for molecular and structural visualization.',
+                  steps: ['Search for a molecule or structure.', 'Load the 3D model into the viewer.', 'Use gestures to rotate and inspect.'],
+                  icon: Layers3
+                },
+                {
+                  id: 'study-audio-lesson',
+                  label: 'Audio Lesson',
+                  description: 'Generate a narrated audio walkthrough of the key concepts from your material.',
+                  steps: ['Upload your study material.', 'AI generates a narrated explanation.', 'Listen while commuting or exercising.'],
+                  icon: Headphones
+                },
+                {
+                  id: 'study-video-lesson',
+                  label: 'Video Lesson',
+                  description: 'Create a short visual explainer with voiceover and key frames.',
+                  steps: ['Describe the topic for the video.', 'AI generates visual slides with narration.', 'Watch or share your video lesson.'],
+                  icon: Video
+                },
+                {
+                  id: 'study-mind-map',
+                  label: 'Mind Map',
+                  description: 'Organize the topic into a connected visual map of ideas and relationships.',
+                  steps: ['Enter your topic or upload notes.', 'AI generates a connected mind map.', 'Expand, edit, and explore relationships.'],
+                  icon: Target
+                },
+                {
+                  id: 'study-visual-activity',
+                  label: 'Visual Activity',
+                  description: 'Launch a visual activity with interactive prompts and diagrams for hands-on learning.',
+                  steps: ['Choose or describe an activity type.', 'Interact with visual elements and prompts.', 'Complete the activity and review results.'],
+                  icon: ImageIcon
+                },
+                {
+                  id: 'study-lab-manual-explorer',
+                  label: 'Lab Manual Explorer',
+                  description: 'Upload lab manuals and get AI-powered topic maps, grounded Q&A, and schematic generation.',
+                  steps: ['Upload your lab manual PDF.', 'AI extracts procedures and concepts.', 'Ask questions or generate schematics.'],
+                  icon: BookOpen
+                }
+              ]
             },
             {
-              id: 'immersive-video-content',
-              label: 'Video content tabs',
-              description: 'Segments within video lessons.',
+              id: 'immersive-notebook',
+              label: 'Notebook',
+              description: 'Take notes and organize thoughts.',
               steps: [
-                'Summary and Key Concepts.',
-                'Clips and Transcript.',
-                'Use to dive deeper.'
+                'Create study notebooks.',
+                'Organize notes by topic.',
+                'Sync with your content.'
               ],
-              icon: BookOpen
-            },
-            {
-              id: 'immersive-video-interactive',
-              label: 'Video interactive tabs',
-              description: 'Activities alongside video lessons.',
-              steps: [
-                'Chat, Quiz, Flashcards.',
-                'Complete quizzes for recall.',
-                'Review flashcards for retention.'
-              ],
-              icon: BookOpen
-            },
-            {
-              id: 'immersive-visual-activity',
-              label: 'Visual activity tabs',
-              description: 'Interactive visual tasks.',
-              steps: [
-                'Image-based activity.',
-                '3D activity.',
-                'Pick the format you prefer.'
-              ],
-              icon: BookOpen
+              icon: PenLine
             }
           ]
         },
@@ -3051,7 +3035,7 @@ Here is the learner's question: ${message}`;
   }
 
   return (
-    <div className="min-h-screen bg-[#0b0f14] text-foreground dark">
+    <div className="min-h-screen bg-[#0b0f14] text-foreground dark flex flex-col">
       {/* Header */}
       {true && (
         <header
@@ -3343,10 +3327,11 @@ Here is the learner's question: ${message}`;
 
 
 
-      {/* Fullscreen NMR viewer */}
-      {
-        showNmrFullscreen ? (
-          <div className="flex h-[calc(100vh-5rem)] flex-col">
+      <div className="flex-1 min-h-0">
+        {/* Fullscreen NMR viewer */}
+        {
+          showNmrFullscreen ? (
+            <div className="flex h-full flex-col">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-slate-800 px-4 md:px-6 py-3" style={{ backgroundColor: '#212121' }}>
               <div>
                 <h2 className="text-sm font-semibold text-white">NMRium Viewer (Fullscreen)</h2>
@@ -3428,34 +3413,47 @@ Here is the learner's question: ${message}`;
             </div>
           </div>
         ) : showGeminiLiveWorkspace ? (
-          <GeminiLiveWorkspace
-            onClose={() => setShowGeminiLiveWorkspace(false)}
-            apiKey={apiKey}
-          />
-        ) : (
-          <div className="flex h-[calc(100vh-5rem)]">
-            <FeatureSidebar
-              groups={featureGroups}
-              collapsed={featureSidebarCollapsed}
-              activeId={activeFeatureId}
-              onToggle={() => setFeatureSidebarCollapsed(prev => !prev)}
-              onSelect={(feature) => {
-                setActiveFeatureId(feature.id);
-                if (feature.action) {
-                  feature.action();
-                } else {
-                  setActiveFeatureGuide(feature);
-                }
-              }}
-              onHelp={(feature) => setActiveFeatureGuide(feature)}
+            <GeminiLiveWorkspace
+              onClose={() => setShowGeminiLiveWorkspace(false)}
+              apiKey={apiKey}
             />
-            {/* Sources Panel */}
-            {documentViewerOpen && (
-              <>
-                <div
-                  className="relative z-30 border-r border-slate-700/50 bg-slate-900 flex flex-col shadow-xl"
-                  style={{ width: sourcesWidth, minWidth: 280 }}
-                >
+          ) : (
+            <div className="flex h-full">
+              <FeatureSidebar
+                groups={featureGroups}
+                collapsed={featureSidebarCollapsed}
+                activeId={activeFeatureId}
+                onToggle={() => setFeatureSidebarCollapsed(prev => !prev)}
+                onSelect={(feature) => {
+                  setActiveFeatureId(feature.id);
+                  if (feature.action) {
+                    feature.action();
+                  } else {
+                    // For items without actions, route to the appropriate parent feature
+                    const id = feature.id;
+                    if (id.startsWith('study-') || id.startsWith('immersive-')) {
+                      openImmersiveLearning();
+                    } else if (id.startsWith('doc-studio-')) {
+                      openDocStudio();
+                    } else if (id.startsWith('socratic-')) {
+                      openSocraticLearning();
+                    } else if (id.startsWith('feynman-')) {
+                      openFeynmanLearning();
+                    } else if (id.startsWith('3d-') || id.startsWith('nmr-') || id.startsWith('canvas-') || id.startsWith('workspace-') || id.startsWith('planner-')) {
+                      // These are workspace-level items, just set as active
+                      // The parent action would have been called already
+                    }
+                  }
+                }}
+                onHelp={(feature) => setActiveFeatureGuide(feature)}
+              />
+              {/* Sources Panel */}
+              {documentViewerOpen && (
+                <>
+                  <div
+                    className="relative z-30 border-r border-slate-700/50 bg-slate-900 flex flex-col shadow-xl"
+                    style={{ width: sourcesWidth, minWidth: 280 }}
+                  >
                   {/* Sources Header */}
                   <div className="relative px-4 py-4 border-b border-slate-700/50 overflow-hidden" style={{ backgroundColor: '#171717' }}>
                     <div className="relative flex items-center justify-between">
@@ -4123,6 +4121,7 @@ Here is the learner's question: ${message}`;
           </div>
         )
       }
+      </div>
 
       {/* Settings Modal */}
       {

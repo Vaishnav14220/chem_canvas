@@ -11,77 +11,90 @@
   .bg-molecule-teal {
     background-color: #14b8a6;
   }
+
   .text-molecule-teal {
     color: #14b8a6;
   }
+
   .bg-molecule-purple {
     background-color: #a855f7;
   }
+
   .text-molecule-purple {
     color: #a855f7;
   }
+
   .bg-molecule-600 {
     background-color: #0ea5e9;
   }
+
   .shadow-molecule-teal\/25 {
     --tw-shadow-color: rgba(20, 184, 166, 0.25);
     box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
   }
+
   .shadow-molecule-purple\/30 {
     --tw-shadow-color: rgba(168, 85, 247, 0.3);
     box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
   }
+
   .bg-science-500 {
     background-color: #0ea5e9;
   }
+
   .text-science-500 {
     color: #0ea5e9;
   }
+
   .bg-molecule-rose {
     background-color: #f43f5e;
   }
+
   .text-molecule-rose {
     color: #f43f5e;
   }
-  
+
   /* Animation for slow spin */
   @keyframes spin-slow {
     from {
       transform: rotate(0deg);
     }
+
     to {
       transform: rotate(360deg);
     }
   }
-  
+
   .animate-spin-slow {
     animation: spin-slow 3s linear infinite;
   }
-  
+
   /* Shimmer animation for status badges */
   @keyframes shimmer {
     0% {
       transform: translateX(-100%);
     }
+
     100% {
       transform: translateX(100%);
     }
   }
-  
+
   .animate-shimmer {
     animation: shimmer 3s ease-in-out infinite;
   }
-  
+
   /* Button shimmer effect */
   @keyframes button-shimmer {
     0% {
       transform: translateX(-100%) skewX(-15deg);
     }
+
     100% {
       transform: translateX(200%) skewX(-15deg);
     }
   }
-  
+
   .button-shimmer::before {
     content: '';
     position: absolute;
@@ -93,39 +106,41 @@
     transform: translateX(-100%) skewX(-15deg);
     transition: transform 0.6s;
   }
-  
+
   .button-shimmer:hover::before {
     transform: translateX(200%) skewX(-15deg);
   }
-  
+
   /* Shimmer slide animation for enhanced buttons */
   @keyframes shimmer-slide {
     0% {
       transform: translateX(-100%);
     }
+
     100% {
       transform: translateX(100%);
     }
   }
-  
+
   .animate-shimmer-slide {
     animation: shimmer-slide 2s ease-in-out infinite;
   }
-  
+
   /* Shine animation for borders */
   @keyframes shine {
     0% {
       background-position: 0% 50%;
     }
+
     100% {
       background-position: 200% 50%;
     }
   }
-  
+
   .animate-shine {
     animation: shine 3s linear infinite;
   }
-  
+
   /* Special button shimmer overlay */
   .special-button-shimmer {
     position: absolute;
@@ -135,7 +150,7 @@
     animation: shimmer 2s infinite;
     pointer-events: none;
   }
-  
+
   .special-button-shimmer:hover {
     animation-play-state: paused;
   }
@@ -280,32 +295,40 @@
     --card-foreground: 224 71% 14%;
     --popover: 0 0% 100%;
     --popover-foreground: 224 71% 14%;
-    
+
     /* Primary - Professional Blue */
     --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
-    
+
     /* Secondary - Subtle Gray-Blue */
     --secondary: 216 33% 97%;
     --secondary-foreground: 224 71% 14%;
-    
+
     /* Muted - Neutral Gray */
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
-    
+
     /* Accent - Teal (complementary) */
     --accent: 175 85% 50%;
     --accent-foreground: 0 0% 100%;
-    
+
     /* Semantic Colors */
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    
+
     /* Border & Input */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
     --ring: 217 91% 60%;
     --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
@@ -316,32 +339,40 @@
     --card-foreground: 210 40% 98%;
     --popover: 224 71% 14%;
     --popover-foreground: 210 40% 98%;
-    
+
     --primary: 217 91% 60%;
     --primary-foreground: 224 71% 14%;
-    
+
     --secondary: 216 33% 25%;
     --secondary-foreground: 210 40% 98%;
-    
+
     --muted: 216 33% 25%;
     --muted-foreground: 215 20% 65%;
-    
+
     --accent: 175 85% 50%;
     --accent-foreground: 224 71% 14%;
-    
+
     --destructive: 0 85% 45%;
     --destructive-foreground: 210 40% 98%;
-    
+
     --border: 216 33% 25%;
     --input: 216 33% 25%;
     --ring: 217 91% 70%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   * {
     @apply border-border;
     box-sizing: border-box;
   }
-  
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -387,15 +418,15 @@
   .gradient-border {
     position: relative;
     background: linear-gradient(white, white) padding-box,
-                linear-gradient(135deg, #667eea 0%, #764ba2 100%) border-box;
+      linear-gradient(135deg, #667eea 0%, #764ba2 100%) border-box;
     border: 2px solid transparent;
   }
-  
+
   .glass-effect {
     backdrop-filter: blur(10px);
     background: rgba(255, 255, 255, 0.8);
   }
-  
+
   .animate-fade-in {
     animation: fadeIn 0.3s ease-in;
   }
@@ -419,11 +450,11 @@
   .animate-glow {
     animation: glow 2s ease-in-out infinite alternate;
   }
-  
+
   .animate-slide-up {
     animation: slideUp 0.3s ease-out;
   }
-  
+
   .animate-pulse-slow {
     animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
@@ -437,6 +468,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -447,6 +479,7 @@
     transform: translateY(10px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -454,9 +487,12 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: .7;
   }
@@ -467,6 +503,7 @@
     transform: translateX(100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -474,9 +511,12 @@
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0px);
   }
+
   50% {
     transform: translateY(-10px);
   }
@@ -486,6 +526,7 @@
   from {
     box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
   }
+
   to {
     box-shadow: 0 0 30px rgba(59, 130, 246, 0.8), 0 0 40px rgba(59, 130, 246, 0.3);
   }
@@ -493,9 +534,12 @@
 
 /* Blinking cursor animation for typing effect */
 @keyframes blink {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0;
   }
@@ -506,6 +550,7 @@
   from {
     width: 0;
   }
+
   to {
     width: 100%;
   }
@@ -513,9 +558,12 @@
 
 /* Pulse glow for active states */
 @keyframes pulseGlow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 5px rgba(139, 92, 246, 0.5);
   }
+
   50% {
     box-shadow: 0 0 20px rgba(139, 92, 246, 0.8), 0 0 30px rgba(139, 92, 246, 0.4);
   }
@@ -526,6 +574,7 @@
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
@@ -536,12 +585,15 @@
     transform: translateX(-100%);
     opacity: 0;
   }
+
   25% {
     opacity: 0.4;
   }
+
   50% {
     opacity: 0.85;
   }
+
   100% {
     transform: translateX(120%);
     opacity: 0;
@@ -568,6 +620,7 @@
   from {
     stroke-dashoffset: 0;
   }
+
   to {
     stroke-dashoffset: -280;
   }
@@ -577,6 +630,7 @@
   from {
     stroke-dashoffset: 0;
   }
+
   to {
     stroke-dashoffset: 280;
   }
@@ -592,10 +646,13 @@
 }
 
 @keyframes markerPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     box-shadow: 0 0 22px rgba(56, 189, 248, 0.65);
   }
+
   50% {
     transform: scale(1.35);
     box-shadow: 0 0 32px rgba(251, 191, 36, 0.8);
@@ -744,7 +801,7 @@
   margin: 0;
 }
 
-.katex-display > .katex {
+.katex-display>.katex {
   text-align: center;
 }
 
@@ -839,13 +896,15 @@ input[type="range"]::-moz-range-thumb:hover {
 
 /* Canvas Analysis Panel Styles */
 .analysis-panel {
-  max-height: 44rem; /* 704px */
+  max-height: 44rem;
+  /* 704px */
   overflow: hidden;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
 
 .analysis-panel .analysis-content {
-  height: calc(100% - 90px); /* Account for larger header height */
+  height: calc(100% - 90px);
+  /* Account for larger header height */
   overflow: hidden;
 }
 
@@ -873,7 +932,8 @@ input[type="range"]::-moz-range-thumb:hover {
 }
 
 /* Ensure proper spacing and no overlapping */
-.correction-item, .suggestion-item {
+.correction-item,
+.suggestion-item {
   margin-bottom: 0.75rem;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -881,7 +941,8 @@ input[type="range"]::-moz-range-thumb:hover {
   position: relative;
 }
 
-.correction-item:last-child, .suggestion-item:last-child {
+.correction-item:last-child,
+.suggestion-item:last-child {
   margin-bottom: 0;
 }
 
@@ -1184,9 +1245,26 @@ input[type="range"]::-moz-range-thumb:hover {
 
 /* Shake animation for wrong answers */
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
-  20%, 40%, 60%, 80% { transform: translateX(4px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-4px);
+  }
+
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(4px);
+  }
 }
 
 .animate-shake {
@@ -1219,6 +1297,7 @@ input[type="range"]::-moz-range-thumb:hover {
   font-size: 0.8rem;
   color: rgba(148, 163, 184, 0.95);
 }
+
 /* Molecule summon animation */
 
 /* Deep Agent Progress Animation */
@@ -1227,10 +1306,12 @@ input[type="range"]::-moz-range-thumb:hover {
     transform: translateX(-100%);
     width: 50%;
   }
+
   50% {
     transform: translateX(0%);
     width: 100%;
   }
+
   100% {
     transform: translateX(200%);
     width: 50%;
@@ -1243,10 +1324,13 @@ input[type="range"]::-moz-range-thumb:hover {
 
 /* Deep Agent Thinking Pulse */
 @keyframes thinking-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.6;
     transform: scale(1);
   }
+
   50% {
     opacity: 1;
     transform: scale(1.05);
@@ -1259,9 +1343,12 @@ input[type="range"]::-moz-range-thumb:hover {
 
 /* Agent Node Glow Effect */
 @keyframes agent-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
   }
+
   50% {
     box-shadow: 0 0 25px rgba(139, 92, 246, 0.6), 0 0 35px rgba(139, 92, 246, 0.3);
   }
@@ -1276,6 +1363,7 @@ input[type="range"]::-moz-range-thumb:hover {
   0% {
     stroke-dashoffset: 100;
   }
+
   100% {
     stroke-dashoffset: 0;
   }
@@ -1283,4 +1371,81 @@ input[type="range"]::-moz-range-thumb:hover {
 
 .edge-active {
   animation: edge-flow-active 1s linear infinite;
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ========================================
+   EXCALIDRAW UI CUSTOMIZATIONS  
+   ======================================== */
+
+/* Hide Excalidraw's active tool tooltip/label (the "Pen (P)" badge) */
+.excalidraw .layer-ui__wrapper__top-right .ToolIcon__keybinding,
+.excalidraw .layer-ui__wrapper__top-right .ToolIcon__title,
+.excalidraw .App-toolbar__active-tool,
+.excalidraw [class*="ToolIcon__keybinding"],
+.excalidraw .layer-ui__wrapper .ToolIcon_type_floating,
+.excalidraw .App-toolbar__divider+.ToolIcon__icon--floating,
+.excalidraw .floating-element {
+  display: none !important;
+}
+
+/* Hide the active tool indicator that appears as floating text */
+.excalidraw .layer-ui__wrapper [class*="floating"],
+.excalidraw .layer-ui__wrapper .HintViewer,
+.excalidraw .HintViewer {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* ========================================
+   GLOBAL OVERFLOW FIXES
+   ======================================== */
+
+/* Prevent page overflow */
+html,
+body {
+  overflow-x: hidden !important;
+  overflow-y: auto;
+  max-width: 100vw;
+}
+
+#root {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Fix overflow in main layout containers */
+.flex-1 {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+/* Ensure sidebar doesn't cause overflow */
+aside {
+  flex-shrink: 0;
+}
+
+/* Fix content area overflow */
+main,
+[class*="main-content"],
+[class*="content-area"] {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* Make sure modals and overlays don't overflow */
+.fixed {
+  max-width: 100vw;
 }

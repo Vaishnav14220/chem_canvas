@@ -99,6 +99,8 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
     const [isChecking, setIsChecking] = useState(false);
     const [annotatedImage, setAnnotatedImage] = useState<{ data: string; mimeType: string } | null>(initialDraft?.annotatedImage ?? null);
     const [checkingFeedback, setCheckingFeedback] = useState<string | null>(initialDraft?.checkingFeedback ?? null);
+    const [isFeedbackFullscreen, setIsFeedbackFullscreen] = useState(false);
+    const [feedbackZoom, setFeedbackZoom] = useState(100);
 
     // Formula extraction state
     const [extractedFormulas, setExtractedFormulas] = useState<FormulaItem[] | null>(initialDraft?.extractedFormulas ?? null);
@@ -239,6 +241,24 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
             referenceText
         );
         if (!hasContent) return;
+        const isSyncedDraft = Boolean(
+            initialDraft &&
+            initialDraft.featureId === selectedFeature &&
+            initialDraft.fileData === fileData &&
+            initialDraft.fileContent === fileContent &&
+            initialDraft.fileName === fileName &&
+            (initialDraft.topic ?? '') === (topic ?? '') &&
+            initialDraft.generatedHtml === generatedHtml &&
+            (initialDraft.previewHtml ?? '') === (previewHtml ?? '') &&
+            initialDraft.extractedFormulas === extractedFormulas &&
+            initialDraft.sourceMarkdown === sourceMarkdown &&
+            initialDraft.annotatedImage === annotatedImage &&
+            initialDraft.checkingFeedback === checkingFeedback &&
+            initialDraft.referenceFileData === referenceFileData &&
+            initialDraft.referenceFileName === referenceFileName &&
+            initialDraft.referenceText === referenceText
+        );
+        if (isSyncedDraft) return;
         onDraftChange({
             featureId: selectedFeature as StudyToolsFeatureId,
             fileData,
@@ -270,7 +290,8 @@ export const InteractiveAssignmentWorkspace: React.FC<InteractiveAssignmentWorks
         referenceFileData,
         referenceFileName,
         referenceText,
-        onDraftChange
+        onDraftChange,
+        initialDraft
     ]);
 
     // Remove any external polyfill.io scripts the model might inject so previews don't fail on blocked domains
@@ -2394,6 +2415,17 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-white">
                                 <div className="text-sm font-semibold text-slate-800 uppercase tracking-[0.12em]">Corrections &amp; Feedback</div>
                                 <div className="flex items-center gap-2">
+                                    {(annotatedImage || checkingFeedback) && (
+                                        <button
+                                            onClick={() => {
+                                                setFeedbackZoom(100);
+                                                setIsFeedbackFullscreen(true);
+                                            }}
+                                            className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200"
+                                        >
+                                            Full screen
+                                        </button>
+                                    )}
                                     {annotatedImage && (
                                         <>
                                             <button
@@ -2411,6 +2443,7 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                                                 onClick={() => {
                                                     setAnnotatedImage(null);
                                                     setCheckingFeedback(null);
+                                                    setIsFeedbackFullscreen(false);
                                                 }}
                                                 className="px-2 py-1 text-xs bg-red-600/10 text-red-500 rounded hover:bg-red-600/20"
                                             >
@@ -2476,6 +2509,86 @@ IMPORTANT: Return ONLY the raw HTML code starting with <!DOCTYPE html> and endin
                             </div>
                         </div>
                     </div>
+                    {isFeedbackFullscreen && (annotatedImage || checkingFeedback) && (
+                        <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-sm">
+                            <div className="flex h-full flex-col">
+                                <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-800 bg-slate-900">
+                                    <div className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-200">
+                                        Corrections &amp; Feedback
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {annotatedImage && (
+                                            <div className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1 text-xs text-slate-200">
+                                                <button
+                                                    onClick={() => setFeedbackZoom((prev) => Math.max(50, prev - 25))}
+                                                    className="px-2 py-1 rounded hover:bg-slate-700"
+                                                >
+                                                    -
+                                                </button>
+                                                <span>{feedbackZoom}%</span>
+                                                <button
+                                                    onClick={() => setFeedbackZoom((prev) => Math.min(300, prev + 25))}
+                                                    className="px-2 py-1 rounded hover:bg-slate-700"
+                                                >
+                                                    +
+                                                </button>
+                                                <button
+                                                    onClick={() => setFeedbackZoom(100)}
+                                                    className="px-2 py-1 rounded hover:bg-slate-700"
+                                                >
+                                                    Fit
+                                                </button>
+                                            </div>
+                                        )}
+                                        {annotatedImage && (
+                                            <button
+                                                onClick={() => {
+                                                    const link = document.createElement('a');
+                                                    link.href = `data:${annotatedImage.mimeType};base64,${annotatedImage.data}`;
+                                                    link.download = 'annotated-work.png';
+                                                    link.click();
+                                                }}
+                                                className="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-500"
+                                            >
+                                                Save
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setIsFeedbackFullscreen(false)}
+                                            className="px-3 py-1 text-xs bg-slate-800 text-slate-200 rounded hover:bg-slate-700"
+                                        >
+                                            <span className="inline-flex items-center gap-2">
+                                                <X className="w-3.5 h-3.5" />
+                                                Close
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-auto p-6">
+                                    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+                                        {annotatedImage && (
+                                            <div className="w-full rounded-xl bg-white p-4 shadow-2xl overflow-auto">
+                                                <img
+                                                    src={`data:${annotatedImage.mimeType};base64,${annotatedImage.data}`}
+                                                    alt="Annotated feedback"
+                                                    className="max-w-none"
+                                                    style={{ width: `${feedbackZoom}%` }}
+                                                />
+                                            </div>
+                                        )}
+                                        {checkingFeedback && (
+                                            <div className="w-full rounded-xl border border-slate-200 bg-white p-6 text-slate-700 shadow-lg">
+                                                <div className="text-xs font-semibold text-emerald-500 uppercase tracking-wide mb-3">
+                                                    Feedback Summary
+                                                </div>
+                                                <p className="text-sm whitespace-pre-wrap">{checkingFeedback}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );

@@ -1414,7 +1414,7 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-slate-100">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-slate-100 overflow-hidden">
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
         <div className="flex items-center gap-3">
           <button
@@ -1442,8 +1442,8 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex min-h-0 flex-1 overflow-hidden h-full">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
           <div className="flex min-h-0 flex-1 flex-col gap-3">
             {currentPage?.type === 'ggb' || currentPage?.type === 'mermaid' ? (
               <div className="flex min-h-0 flex-1 gap-3">
@@ -1488,7 +1488,7 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
           </div>
         </div>
 
-        <div className="flex w-full max-w-md flex-col border-l border-slate-200 bg-white">
+        <div className="flex min-h-0 w-full max-w-md flex-col border-l border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold text-slate-700">Tutor Chat</div>

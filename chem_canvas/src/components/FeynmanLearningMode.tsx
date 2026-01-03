@@ -55,6 +55,7 @@ import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { extractTextFromDocument } from '../utils/documentTextExtractor';
 import { addFileToSourceLibrary } from '../utils/sourceLibrary';
+import { generateVisionContent, streamTextContent } from '../services/geminiService';
 import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
 import { loadFeatureSession, saveFeatureSession } from '../utils/featureSessionStorage';
 import { ConnectionState } from './GeminiLive/types';
@@ -616,31 +617,74 @@ Keep responses conversational, brief, and focused on checking understanding.`
         try {
             const imageData = await excalidrawRef.current.exportToImage();
             if (!imageData) {
-                console.error('Failed to export drawing');
+                console.error('[Feynman] Failed to export drawing - no elements on canvas');
+                // Add a system message to inform the user there's nothing to share
+                const emptyCanvasMessage: TutorChatMessage = {
+                    role: 'assistant',
+                    content: "I don't see anything on the canvas to share. Please draw something first, then click 'Share to Chat' again!",
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, emptyCanvasMessage]);
+                setIsLoading(false);
                 return;
             }
 
             const userMessage: TutorChatMessage = {
                 role: 'user',
-                content: '[Submitted a visual explanation]',
-                timestamp: new Date()
+                content: `[Submitted a visual explanation for "${topic}"]`,
+                timestamp: new Date(),
+                image: {
+                    src: `data:image/png;base64,${imageData}`,
+                    alt: 'User drawing from the canvas'
+                }
             };
-            setMessages(prev => [...prev, userMessage]);
+            const nextMessages = [...messages, userMessage];
+            setMessages(nextMessages);
 
-            const drawingContext = `The learner has submitted a visual explanation/diagram for the topic "${topic}". Please evaluate their visual representation and provide feedback.`;
+            // Use Vision API to analyze the drawing and generate Feynman tutor response
+            const feynmanVisionPrompt = `You are a Feynman Technique tutor analyzing the learner's visual explanation.
 
-            const response = await generateFeynmanResponse(
-                drawingContext,
-                topic,
-                messages,
-                isTeachBackMode
-            );
+TOPIC: "${currentTopic}"
+
+The learner has drawn a diagram/visual explanation on the canvas. Look at the attached image and:
+
+1. DESCRIBE what you see: What elements, labels, arrows, or concepts are shown?
+2. EVALUATE correctness: Are the concepts represented accurately?
+3. IDENTIFY gaps: What's missing or incomplete in their visual explanation?
+4. FIND misconceptions: Are there any visual errors or conceptual mistakes?
+5. PROVIDE feedback: Give specific, constructive feedback based on EXACTLY what you see.
+
+Be SPECIFIC about the actual drawing - reference specific elements you see.
+Use a supportive, encouraging tone while identifying areas for improvement.
+End with a question or suggestion for their next step.
+
+Respond in markdown format suitable for a chat message.`;
+
+            let aiResponse = '';
+            try {
+                // Use gemini-3-pro-preview with thinking for deep analysis
+                aiResponse = await new Promise<string>((resolve, reject) => {
+                    let fullResponse = '';
+                    streamTextContent(
+                        feynmanVisionPrompt,
+                        (chunk) => { fullResponse += chunk; },
+                        {
+                            model: 'gemini-3-pro-preview',
+                            thinking: 'high',
+                            inlineData: { mimeType: 'image/png', data: imageData },
+                            timeout: 120000
+                        }
+                    ).then(() => resolve(fullResponse)).catch(reject);
+                });
+            } catch (visionError) {
+                console.error('[Feynman] Vision analysis failed:', visionError);
+                aiResponse = "I had trouble analyzing your drawing. Could you try sharing it again, or describe what you drew?";
+            }
 
             const assistantMessage: TutorChatMessage = {
                 role: 'assistant',
-                content: response.assistant_message_md,
-                timestamp: new Date(),
-                tutor_response: response
+                content: aiResponse,
+                timestamp: new Date()
             };
 
             setMessages(prev => [...prev, assistantMessage]);
@@ -1188,7 +1232,14 @@ Context: ${recentContext}`;
                                     </div>
                                 ) : (
                                     <div className="max-w-[85%] bg-blue-500 text-white p-3 px-4 rounded-2xl rounded-tr-sm shadow-sm">
-                                        <p className="text-sm">{message.content}</p>
+                                        {message.image && (
+                                            <img
+                                                src={message.image.src}
+                                                alt={message.image.alt || 'Shared canvas'}
+                                                className="mb-2 max-h-40 w-full rounded-lg bg-white object-contain"
+                                            />
+                                        )}
+                                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                                     </div>
                                 )}
                             </motion.div>
@@ -1260,7 +1311,7 @@ Context: ${recentContext}`;
                                 disabled={isLoading}
                             />
                             <button
-                            onClick={() => handleSendMessage()}
+                                onClick={() => handleSendMessage()}
                                 disabled={!inputValue.trim() || isLoading}
                                 className="p-3 bg-blue-500 text-white rounded-none hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >

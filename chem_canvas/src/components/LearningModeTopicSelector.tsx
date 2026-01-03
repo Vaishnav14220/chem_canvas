@@ -292,9 +292,9 @@ Document content is attached.`;
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="fixed left-1/2 top-32 z-[60] w-full max-w-3xl -translate-x-1/2 px-4"
+                className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6"
             >
-                <Card className="rounded-2xl border-slate-800/80 bg-[#171717] text-slate-100 shadow-2xl backdrop-blur">
+                <Card className="w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-2xl border-slate-800/80 bg-[#171717] text-slate-100 shadow-2xl backdrop-blur">
                     {step === 'mode-selection' ? (
                         /* =========================================================================
                            STEP 1: MODE SELECTION LAUNCHPAD
@@ -457,25 +457,39 @@ Document content is attached.`;
                                             Select from your library or upload a file for context.
                                         </FieldHelp>
                                         <FieldContent className="gap-3">
-                                            <SourceSelector className="w-full" variant="black" />
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <SourceSelector
+                                                    className="flex-1 min-w-[220px]"
+                                                    variant="black"
+                                                    onUploadRequest={() => fileInputRef.current?.click()}
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    className="border-transparent bg-[#111111] text-slate-100 shadow-[0_10px_22px_-18px_rgba(0,0,0,0.9)] hover:bg-[#1b1b1b] hover:text-slate-100"
+                                                >
+                                                    Upload PDF
+                                                </Button>
+                                            </div>
+                                            <input
+                                                ref={fileInputRef}
+                                                type="file"
+                                                accept=".pdf,.txt,.md,.html"
+                                                onChange={e => handleFileUpload(e.target.files)}
+                                                className="hidden"
+                                            />
                                             {documents.length === 0 ? (
                                                 <div
                                                     onClick={() => fileInputRef.current?.click()}
                                                     onDragOver={handleDragOver}
                                                     onDragLeave={handleDragLeave}
                                                     onDrop={handleDrop}
-                                                    className={`cursor-pointer rounded-lg border border-transparent p-4 text-center text-sm text-slate-400 shadow-[0_12px_26px_-20px_rgba(0,0,0,0.9)] transition ${isDragOver
-                                                        ? 'bg-[#1b1b1b] text-slate-200'
+                                                    className={`cursor-pointer rounded-lg border border-slate-800/80 p-4 text-center text-sm text-slate-300 shadow-[0_12px_26px_-20px_rgba(0,0,0,0.9)] transition ${isDragOver
+                                                        ? 'bg-[#1f1f1f] text-slate-200'
                                                         : 'bg-[#111111] hover:bg-[#1b1b1b]'
                                                         }`}
                                                 >
-                                                    <input
-                                                        ref={fileInputRef}
-                                                        type="file"
-                                                        accept=".pdf,.txt,.md,.html"
-                                                        onChange={e => handleFileUpload(e.target.files)}
-                                                        className="hidden"
-                                                    />
                                                     <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-transparent bg-[#111111] text-slate-300 shadow-[0_8px_18px_-12px_rgba(0,0,0,0.85)]">
                                                         <Upload className="h-4 w-4" />
                                                     </div>

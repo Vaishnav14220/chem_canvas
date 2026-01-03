@@ -707,11 +707,15 @@ export const ExcalidrawCanvas = forwardRef<ExcalidrawCanvasRef, ExcalidrawCanvas
 
         try {
           const { exportToBlob } = await loadExportUtils();
-          const elements = excalidrawAPIRef.current.getSceneElements();
+          const allElements = excalidrawAPIRef.current.getSceneElements();
           const appState = excalidrawAPIRef.current.getAppState();
 
+          // Filter out deleted elements - Excalidraw may keep them in scene for undo
+          const elements = allElements.filter((el: any) => !el.isDeleted);
+          console.log(`[ExcalidrawCanvas] Export: ${elements.length} visible elements (${allElements.length} total including deleted)`);
+
           if (!elements || elements.length === 0) {
-            console.warn('[ExcalidrawCanvas] No elements to export');
+            console.warn('[ExcalidrawCanvas] No visible elements to export');
             return null;
           }
 

@@ -1,4 +1,5 @@
-import { ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, HelpCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export type FeatureItem = {
@@ -34,6 +35,21 @@ const FeatureSidebar: React.FC<FeatureSidebarProps> = ({
   onSelect,
   onHelp
 }) => {
+  // Track which children with grandchildren are expanded
+  const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
+
+  const toggleChildExpanded = (childId: string) => {
+    setExpandedChildren(prev => {
+      const next = new Set(prev);
+      if (next.has(childId)) {
+        next.delete(childId);
+      } else {
+        next.add(childId);
+      }
+      return next;
+    });
+  };
+
   return (
     <aside
       className={`flex h-full flex-col border-r border-slate-800/70 bg-[#111111] ${collapsed ? 'w-16' : 'w-64'} transition-all duration-200`}
@@ -103,36 +119,97 @@ const FeatureSidebar: React.FC<FeatureSidebarProps> = ({
                       {item.children.map(child => {
                         const ChildIcon = child.icon;
                         const isChildActive = child.id === activeId;
+                        const hasGrandchildren = child.children && child.children.length > 0;
+                        const isExpanded = expandedChildren.has(child.id);
                         return (
-                          <div
-                            key={child.id}
-                            className={`group flex w-full items-center rounded-lg transition-all duration-200 ${isChildActive
-                              ? 'bg-[#1a1a1a] text-white'
-                              : 'text-slate-400 hover:bg-[#181818] hover:text-slate-100'
-                              }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => onSelect(child)}
-                              className="flex flex-1 items-center gap-2 px-2 py-1.5 text-left text-[11px] font-medium"
-                              title={child.label}
+                          <div key={child.id} className="space-y-1">
+                            <div
+                              className={`group flex w-full items-center rounded-lg transition-all duration-200 ${isChildActive
+                                ? 'bg-[#1a1a1a] text-white'
+                                : 'text-slate-400 hover:bg-[#181818] hover:text-slate-100'
+                                }`}
                             >
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-800 bg-[#151515] text-slate-300">
-                                <ChildIcon className="h-3 w-3" />
-                              </span>
-                              <span className="truncate">{child.label}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onHelp(child);
-                              }}
-                              className="mr-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-600 hover:text-slate-300"
-                              title="View Guide"
-                            >
-                              <HelpCircle className="h-3 w-3" />
-                            </button>
+                              {/* Toggle button for grandchildren */}
+                              {hasGrandchildren && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleChildExpanded(child.id);
+                                  }}
+                                  className="ml-1 p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                                  title={isExpanded ? 'Collapse' : 'Expand'}
+                                >
+                                  <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}`} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => onSelect(child)}
+                                className={`flex flex-1 items-center gap-2 py-1.5 text-left text-[11px] font-medium ${hasGrandchildren ? 'px-1' : 'px-2'}`}
+                                title={child.label}
+                              >
+                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-800 bg-[#151515] text-slate-300">
+                                  <ChildIcon className="h-3 w-3" />
+                                </span>
+                                <span className="truncate">{child.label}</span>
+                                {hasGrandchildren && (
+                                  <span className="ml-auto text-[9px] text-slate-500">({child.children!.length})</span>
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onHelp(child);
+                                }}
+                                className="mr-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-600 hover:text-slate-300"
+                                title="View Guide"
+                              >
+                                <HelpCircle className="h-3 w-3" />
+                              </button>
+                            </div>
+                            {/* Grandchildren (third level) - collapsible */}
+                            {hasGrandchildren && isExpanded && (
+                              <div className="space-y-0.5 pl-8">
+                                {child.children!.map(grandchild => {
+                                  const GrandchildIcon = grandchild.icon;
+                                  const isGrandchildActive = grandchild.id === activeId;
+                                  return (
+                                    <div
+                                      key={grandchild.id}
+                                      className={`group flex w-full items-center rounded-md transition-all duration-200 ${isGrandchildActive
+                                        ? 'bg-[#181818] text-white'
+                                        : 'text-slate-500 hover:bg-[#161616] hover:text-slate-200'
+                                        }`}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => onSelect(grandchild)}
+                                        className="flex flex-1 items-center gap-1.5 px-1.5 py-1 text-left text-[10px] font-medium"
+                                        title={grandchild.label}
+                                      >
+                                        <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-800/50 bg-[#131313] text-slate-400">
+                                          <GrandchildIcon className="h-2.5 w-2.5" />
+                                        </span>
+                                        <span className="truncate">{grandchild.label}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onHelp(grandchild);
+                                        }}
+                                        className="mr-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-slate-600 hover:text-slate-300"
+                                        title="View Guide"
+                                      >
+                                        <HelpCircle className="h-2.5 w-2.5" />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}

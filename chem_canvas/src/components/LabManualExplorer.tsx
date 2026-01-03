@@ -608,7 +608,8 @@ export const LabManualExplorer: React.FC<LabManualExplorerProps> = ({
         if (analysis?.conceptGraph) {
             generateGraphFromAnalysis(analysis.conceptGraph);
         }
-    }, [analysis, generateGraphFromAnalysis]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [analysis]);
     const selectedTopicId = selectedTopic?.id || null;
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -799,7 +800,8 @@ export const LabManualExplorer: React.FC<LabManualExplorerProps> = ({
 
         setNodes(flowNodes);
         setEdges(flowEdges);
-    }, [analysis, setNodes, setEdges]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [setNodes, setEdges]);
 
     // ============================================================================
     // Chat Handler
@@ -956,16 +958,16 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
     }, [analysis]);
 
     return (
-        <div className="flex flex-col h-full w-full bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="flex flex-col h-full w-full" style={{ backgroundColor: '#0f0f0f' }}>
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 flex-shrink-0" style={{ backgroundColor: '#1f1f1f' }}>
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg">
+                    <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center shadow-lg">
                         <Microscope className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold text-slate-900">Lab Manual Explorer</h1>
-                        <p className="text-xs text-slate-500">
+                        <h1 className="text-lg font-bold text-white">Lab Manual Explorer</h1>
+                        <p className="text-xs text-slate-400">
                             {file?.name || fileLabel || 'Upload a lab manual to get started'}
                         </p>
                     </div>
@@ -973,27 +975,27 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                 {onClose && (
                     <button
                         onClick={onClose}
-                        className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                        className="p-2 rounded-lg hover:bg-slate-700 transition-colors"
                     >
-                        <X className="w-5 h-5 text-slate-500" />
+                        <X className="w-5 h-5 text-slate-400" />
                     </button>
                 )}
             </div>
 
             <div className="flex flex-1 overflow-hidden min-h-0">
                 {/* Left Panel - Upload & Analysis Status */}
-                <div className="w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
+                <div className="w-80 flex-shrink-0 border-r border-slate-700/50 flex flex-col overflow-hidden" style={{ backgroundColor: '#1f1f1f' }}>
                     <div className="p-4 space-y-4 overflow-y-auto flex-1">
                         {/* File Upload */}
                         <div className="space-y-2">
-                            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                                 1. Upload Lab Manual
                             </label>
                             <div
                                 onClick={() => fileInputRef.current?.click()}
                                 className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all ${file
-                                    ? 'border-green-300 bg-green-50'
-                                    : 'border-slate-200 hover:border-amber-400 hover:bg-amber-50/30'
+                                    ? 'border-green-600 bg-green-900/20'
+                                    : 'border-slate-600 hover:border-amber-500 hover:bg-amber-900/10'
                                     }`}
                             >
                                 <input
@@ -1025,7 +1027,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                 )}
                             </div>
                             {extractError && (
-                                <div className="flex items-start gap-2 text-red-600 text-xs bg-red-50 p-2 rounded-lg">
+                                <div className="flex items-start gap-2 text-red-400 text-xs bg-red-900/30 p-2 rounded-lg">
                                     <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                                     <span>{extractError}</span>
                                 </div>
@@ -1035,17 +1037,17 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                         {/* Analysis Progress */}
                         {isAnalyzing && (
                             <div className="space-y-2">
-                                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                                     2. Analyzing Document
                                 </label>
-                                <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                                <div className="bg-amber-900/30 rounded-xl p-4 border border-amber-700/50">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <Loader2 className="w-4 h-4 text-amber-600 animate-spin" />
-                                        <span className="text-sm font-medium text-amber-800">{analysisProgress.stage}</span>
+                                        <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+                                        <span className="text-sm font-medium text-amber-400">{analysisProgress.stage}</span>
                                     </div>
-                                    <div className="w-full bg-amber-200 rounded-full h-2">
+                                    <div className="w-full bg-amber-900/50 rounded-full h-2">
                                         <div
-                                            className="bg-amber-600 h-2 rounded-full transition-all duration-300"
+                                            className="bg-amber-500 h-2 rounded-full transition-all duration-300"
                                             style={{ width: `${analysisProgress.progress}%` }}
                                         />
                                     </div>
@@ -1056,24 +1058,24 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                         {/* Analysis Summary */}
                         {analysis && !isAnalyzing && (
                             <div className="space-y-3">
-                                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                                     Analysis Complete
                                 </label>
 
-                                <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-4 border border-emerald-200">
+                                <div className="bg-emerald-900/30 rounded-xl p-4 border border-emerald-700/50">
                                     <div className="flex items-center gap-2 mb-3">
-                                        <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                        <span className="font-semibold text-emerald-800">{analysis.outline.title}</span>
+                                        <CheckCircle className="w-5 h-5 text-emerald-500" />
+                                        <span className="font-semibold text-emerald-400">{analysis.outline.title}</span>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2 text-xs">
-                                        <div className="bg-white/60 rounded-lg p-2 text-center">
-                                            <div className="text-lg font-bold text-blue-600">{analysis.outline.topics.length}</div>
-                                            <div className="text-slate-600">Topics</div>
+                                        <div className="bg-black/40 rounded-lg p-2 text-center">
+                                            <div className="text-lg font-bold text-blue-400">{analysis.outline.topics.length}</div>
+                                            <div className="text-slate-400">Topics</div>
                                         </div>
-                                        <div className="bg-white/60 rounded-lg p-2 text-center">
-                                            <div className="text-lg font-bold text-amber-600">{analysis.devices?.devices?.length || 0}</div>
-                                            <div className="text-slate-600">Devices</div>
+                                        <div className="bg-black/40 rounded-lg p-2 text-center">
+                                            <div className="text-lg font-bold text-amber-400">{analysis.devices?.devices?.length || 0}</div>
+                                            <div className="text-slate-400">Devices</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1082,7 +1084,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                 {hasDevices && (
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                                            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                                                 Detected Apparatus
                                             </span>
                                         </div>
@@ -1090,11 +1092,11 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                             {(analysis.devices?.devices || []).map((device, idx) => (
                                                 <div
                                                     key={idx}
-                                                    className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg border border-amber-100"
+                                                    className="flex items-start gap-2 p-2 bg-amber-900/20 rounded-lg border border-amber-700/30"
                                                 >
-                                                    <FlaskConical className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                                                    <FlaskConical className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                                                     <div className="flex-1 min-w-0">
-                                                        <div className="text-xs font-medium text-slate-800 truncate">{device.name}</div>
+                                                        <div className="text-xs font-medium text-slate-200 truncate">{device.name}</div>
                                                         <div className="text-[10px] text-slate-500 truncate">{device.role}</div>
                                                         {device.safety.length > 0 && (
                                                             <div className="flex items-center gap-1 mt-1">
@@ -1120,7 +1122,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                     onClick={() => setActiveTab('topics')}
                                     className={`flex flex-col items-center justify-center gap-0.5 px-2 py-2 rounded-lg text-[10px] font-medium transition-all ${activeTab === 'topics'
                                         ? 'bg-blue-600 text-white shadow-sm'
-                                        : 'text-slate-600 hover:bg-slate-100'
+                                        : 'text-slate-400 hover:bg-slate-800'
                                         }`}
                                 >
                                     <Network className="w-4 h-4" />
@@ -1130,7 +1132,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                     onClick={() => setActiveTab('chat')}
                                     className={`flex flex-col items-center justify-center gap-0.5 px-2 py-2 rounded-lg text-[10px] font-medium transition-all ${activeTab === 'chat'
                                         ? 'bg-blue-600 text-white shadow-sm'
-                                        : 'text-slate-600 hover:bg-slate-100'
+                                        : 'text-slate-400 hover:bg-slate-800'
                                         }`}
                                 >
                                     <MessageSquare className="w-4 h-4" />
@@ -1145,7 +1147,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                     }}
                                     className={`flex flex-col items-center justify-center gap-0.5 px-2 py-2 rounded-lg text-[10px] font-medium transition-all ${activeTab === 'visual'
                                         ? 'bg-blue-600 text-white shadow-sm'
-                                        : 'text-slate-600 hover:bg-slate-100'
+                                        : 'text-slate-400 hover:bg-slate-800'
                                         }`}
                                 >
                                     <Eye className="w-4 h-4" />
@@ -1161,7 +1163,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                         }}
                                         className={`flex flex-col items-center justify-center gap-0.5 px-2 py-2 rounded-lg text-[10px] font-medium transition-all ${activeTab === 'schematic'
                                             ? 'bg-blue-600 text-white shadow-sm'
-                                            : 'text-slate-600 hover:bg-slate-100'
+                                            : 'text-slate-400 hover:bg-slate-800'
                                             }`}
                                     >
                                         <Microscope className="w-4 h-4" />
@@ -1174,11 +1176,11 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                 </div>
 
                 {/* Main Content Area */}
-                <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+                <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-white">
                     {!analysis && !isAnalyzing && (
                         <div className="flex-1 flex items-center justify-center">
                             <div className="text-center max-w-md p-8">
-                                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-xl">
+                                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-black flex items-center justify-center shadow-xl">
                                     <BookOpen className="w-10 h-10 text-white" />
                                 </div>
                                 <h2 className="text-2xl font-bold text-slate-900 mb-2">Upload a Lab Manual</h2>
@@ -1187,7 +1189,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                                 </p>
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-105"
+                                    className="px-6 py-3 bg-black text-white font-semibold rounded-xl shadow-lg hover:bg-gray-800 transition-all"
                                 >
                                     <Upload className="w-5 h-5 inline mr-2" />
                                     Choose File
@@ -1406,7 +1408,7 @@ Return ONLY valid JSON array, no markdown, no extra text.`;
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

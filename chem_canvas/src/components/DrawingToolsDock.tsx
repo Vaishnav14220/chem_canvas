@@ -1,11 +1,11 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { Dock, DockIcon } from './ui/dock';
 import { AnimatePresence, motion } from 'framer-motion';
-import { 
-  PenTool, 
-  Eraser, 
-  Move, 
-  RotateCw, 
+import {
+  PenTool,
+  Eraser,
+  Move,
+  RotateCw,
   MousePointer2,
   Hand,
   Type,
@@ -24,7 +24,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
   const centerX = 12;
   const centerY = 12;
   const ringRadius = 5.5;
-  
+
   // Glucose pyranose ring: 5 carbons + 1 oxygen in a 6-membered ring
   // Positions for ring atoms (chair conformation simplified to 2D)
   const ringAtoms = [
@@ -35,7 +35,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
     { angle: -150, type: 'C', label: 'C5' }, // Bottom-left
     { angle: 150, type: 'O', label: 'O' }    // Top-left (oxygen)
   ];
-  
+
   // Hydroxyl groups and substituents attached to each carbon
   const substituents = [
     { carbonIdx: 0, angle: 90, offset: 2.5, type: 'OH' },   // C1 - OH up
@@ -44,7 +44,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
     { carbonIdx: 3, angle: -90, offset: 2.5, type: 'OH' },  // C4 - OH down
     { carbonIdx: 4, angle: -150, offset: 2.5, type: 'CH2OH' }, // C5 - CH2OH
   ];
-  
+
   return (
     <svg
       viewBox="0 0 24 24"
@@ -71,7 +71,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
             const y1 = centerY - ringRadius * Math.sin(angle1);
             const x2 = centerX + ringRadius * Math.cos(angle2);
             const y2 = centerY - ringRadius * Math.sin(angle2);
-            
+
             return (
               <motion.line
                 key={`bond-${i}`}
@@ -94,14 +94,14 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
               />
             );
           })}
-          
+
           {/* Ring atoms (Carbons and Oxygen) */}
           {ringAtoms.map((atom, i) => {
             const angle = (atom.angle * Math.PI) / 180;
             const x = centerX + ringRadius * Math.cos(angle);
             const y = centerY - ringRadius * Math.sin(angle);
             const isOxygen = atom.type === 'O';
-            
+
             return (
               <motion.circle
                 key={`ring-atom-${i}`}
@@ -125,7 +125,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
               />
             );
           })}
-          
+
           {/* Substituents (OH groups and CH2OH) */}
           {substituents.map((sub, i) => {
             const carbonAtom = ringAtoms[sub.carbonIdx];
@@ -135,7 +135,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
             const carbonY = centerY - ringRadius * Math.sin(carbonAngle);
             const subX = carbonX + sub.offset * Math.cos(subAngle);
             const subY = carbonY - sub.offset * Math.sin(subAngle);
-            
+
             return (
               <g key={`sub-${i}`}>
                 {/* Bond from carbon to substituent */}
@@ -158,7 +158,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
                     ease: "easeInOut"
                   }}
                 />
-                
+
                 {/* OH group or CH2OH */}
                 {sub.type === 'OH' ? (
                   <>
@@ -239,7 +239,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
               </g>
             );
           })}
-          
+
           {/* Additional hydrogens on ring carbons */}
           {[0, 1, 2, 3, 4].map((i) => {
             const atom = ringAtoms[i];
@@ -250,7 +250,7 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
             const atomY = centerY - ringRadius * Math.sin(angle);
             const hX = atomX + 2 * Math.cos(hAngle);
             const hY = atomY - 2 * Math.sin(hAngle);
-            
+
             return (
               <motion.circle
                 key={`h-${i}`}
@@ -278,12 +278,12 @@ const MethaneIcon: React.FC<{ className?: string }> = ({ className }) => {
   );
 };
 
-export type DrawingTool = 
-  | 'select' 
-  | 'pen' 
-  | 'eraser' 
-  | 'move' 
-  | 'rotate' 
+export type DrawingTool =
+  | 'select'
+  | 'pen'
+  | 'eraser'
+  | 'move'
+  | 'rotate'
   | 'pan'
   | 'textbox'
   | 'square'
@@ -332,9 +332,9 @@ const shortcutMap: Record<string, DrawingTool> = {
   'l': 'minus',
 };
 
-export default function DrawingToolsDock({ 
-  currentTool, 
-  onToolChange, 
+export default function DrawingToolsDock({
+  currentTool,
+  onToolChange,
   className,
   position = 'bottom',
   layout = 'floating',
@@ -354,12 +354,12 @@ export default function DrawingToolsDock({
   // Keyboard shortcut handler
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't trigger shortcuts if typing in an input
-    if (e.target instanceof HTMLInputElement || 
-        e.target instanceof HTMLTextAreaElement ||
-        e.ctrlKey || e.metaKey || e.altKey) {
+    if (e.target instanceof HTMLInputElement ||
+      e.target instanceof HTMLTextAreaElement ||
+      e.ctrlKey || e.metaKey || e.altKey) {
       return;
     }
-    
+
     const key = e.key.toLowerCase();
     const tool = shortcutMap[key];
     if (tool) {
@@ -383,9 +383,9 @@ export default function DrawingToolsDock({
   };
 
   const isVertical = position === 'left' || position === 'right';
-  
+
   // Determine chevron icon based on position
-  const ChevronIcon = isVertical 
+  const ChevronIcon = isVertical
     ? (position === 'left' ? ChevronRight : ChevronLeft)
     : (position === 'bottom' ? ChevronUp : ChevronDown);
 
@@ -429,37 +429,38 @@ export default function DrawingToolsDock({
           >
             <div
               className={cn(
-                "flex flex-col items-center gap-2 rounded-2xl border border-cyan-500/20",
-                "bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95",
-                "shadow-2xl shadow-black/50 backdrop-blur-xl p-2",
-                isVertical && "w-[56px]"
+                "flex flex-col items-center gap-0.5 rounded-xl border border-slate-700/50",
+                "bg-gradient-to-b from-[#14171A]/98 via-[#1A1D21]/98 to-[#14171A]/98",
+                "shadow-xl shadow-black/50 backdrop-blur-xl p-1.5",
+                isVertical && "w-10"
               )}
             >
-              <Dock 
-                iconSize={30} 
-                iconMagnification={30} 
-                iconDistance={80}
+              <Dock
+                iconSize={26}
+                iconMagnification={26}
+                iconDistance={60}
                 disableMagnification={true}
                 className={cn(
-                  hasExtras ? "bg-transparent border-transparent shadow-none" : "bg-gradient-to-b from-[#1C2025]/95 via-[#22262B]/95 to-[#1C2025]/95 border border-cyan-500/20 shadow-2xl shadow-black/50",
-                  isVertical && "flex-col h-auto w-[52px] !w-[52px] gap-0.5 p-1"
+                  hasExtras ? "bg-transparent border-transparent shadow-none" : "bg-gradient-to-b from-[#14171A]/98 via-[#1A1D21]/98 to-[#14171A]/98 border border-slate-700/40 shadow-xl shadow-black/50",
+                  isVertical && "flex-col h-auto w-8 !w-8 gap-0.5 p-0"
                 )}
               >
-                {/* Main Drawing Tools */}
                 {tools.map((tool) => (
                   <DockIcon
                     key={tool.id}
                     onClick={() => onToolChange(tool.id)}
-                    size={30}
+                    size={26}
                     className={cn(
-                      "transition-all duration-200 relative group !w-[30px] !h-[30px]",
-                      currentTool === tool.id 
-                        ? "bg-gradient-to-br from-cyan-500/40 to-blue-500/30 text-cyan-300 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20" 
-                        : "text-slate-400 hover:text-cyan-300 hover:bg-slate-700/60"
+                      "transition-all duration-150 relative group flex items-center justify-center",
+                      "!w-[26px] !h-[26px] rounded-md",
+                      currentTool === tool.id
+                        ? "bg-cyan-500/25 text-cyan-300 ring-1 ring-cyan-500/40"
+                        : "text-slate-400 hover:text-cyan-300 hover:bg-slate-700/40"
                     )}
                   >
-                    <tool.icon 
-                      className="w-5 h-5 transition-all duration-200 relative z-10"
+                    <tool.icon
+                      className="w-3.5 h-3.5 transition-all duration-150"
+                      strokeWidth={1.75}
                     />
                     <span className="sr-only">{tool.label}</span>
                     {/* Tooltip */}
@@ -467,7 +468,7 @@ export default function DrawingToolsDock({
                       "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
                       "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
                       "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
-                      isVertical 
+                      isVertical
                         ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
                         : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
                     )}>
@@ -481,25 +482,26 @@ export default function DrawingToolsDock({
 
                 {/* Divider */}
                 <div className={cn(
-                  "bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent",
-                  isVertical ? "h-px w-7 my-0.5" : "w-px h-7 mx-0.5"
+                  "bg-slate-600/30",
+                  isVertical ? "h-px w-5 my-0.5" : "w-px h-5 mx-0.5"
                 )} />
 
-                {/* Shape Tools */}
                 {shapeTools.map((tool) => (
                   <DockIcon
                     key={tool.id}
                     onClick={() => onToolChange(tool.id)}
-                    size={30}
+                    size={26}
                     className={cn(
-                      "transition-all duration-200 relative group !w-[30px] !h-[30px]",
-                      currentTool === tool.id 
-                        ? "bg-gradient-to-br from-purple-500/40 to-pink-500/30 text-purple-300 ring-2 ring-purple-500/60 shadow-lg shadow-purple-500/20" 
-                        : "text-slate-400 hover:text-purple-300 hover:bg-slate-700/60"
+                      "transition-all duration-150 relative group flex items-center justify-center",
+                      "!w-[26px] !h-[26px] rounded-md",
+                      currentTool === tool.id
+                        ? "bg-violet-500/25 text-violet-300 ring-1 ring-violet-500/40"
+                        : "text-slate-400 hover:text-violet-300 hover:bg-slate-700/40"
                     )}
                   >
-                    <tool.icon 
-                      className="w-5 h-5 transition-all duration-200 relative z-10"
+                    <tool.icon
+                      className="w-3.5 h-3.5 transition-all duration-150"
+                      strokeWidth={1.75}
                     />
                     <span className="sr-only">{tool.label}</span>
                     {/* Tooltip */}
@@ -507,7 +509,7 @@ export default function DrawingToolsDock({
                       "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
                       "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
                       "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
-                      isVertical 
+                      isVertical
                         ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
                         : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
                     )}>
@@ -522,22 +524,22 @@ export default function DrawingToolsDock({
                 {/* Divider */}
                 {onChemistryToolsClick && (
                   <>
-                <div className={cn(
-                  "bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent",
-                  isVertical ? "h-px w-7 my-0.5" : "w-px h-7 mx-0.5"
-                )} />
-                    
-                    {/* Chemistry Tools Button */}
+                    <div className={cn(
+                      "bg-slate-600/30",
+                      isVertical ? "h-px w-5 my-0.5" : "w-px h-5 mx-0.5"
+                    )} />
+
                     <DockIcon
                       onClick={onChemistryToolsClick}
-                      size={30}
+                      size={26}
                       className={cn(
-                        "transition-all duration-200 relative group !w-[30px] !h-[30px]",
-                        "text-slate-400 hover:text-emerald-300 hover:bg-slate-700/60"
+                        "transition-all duration-150 relative group flex items-center justify-center",
+                        "!w-[26px] !h-[26px] rounded-md",
+                        "text-slate-400 hover:text-emerald-300 hover:bg-slate-700/40"
                       )}
                     >
-                      <MethaneIcon 
-                        className="w-5 h-5 transition-all duration-200 relative z-10"
+                      <MethaneIcon
+                        className="w-3.5 h-3.5 transition-all duration-150"
                       />
                       <span className="sr-only">Chemistry Tools</span>
                       {/* Tooltip */}
@@ -545,7 +547,7 @@ export default function DrawingToolsDock({
                         "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
                         "bg-gradient-to-b from-slate-800 to-slate-900 text-white text-xs px-2 py-1 rounded-md",
                         "border border-slate-600/50 shadow-lg whitespace-nowrap z-50",
-                        isVertical 
+                        isVertical
                           ? (position === 'left' ? "left-full ml-2 top-1/2 -translate-y-1/2" : "right-full mr-2 top-1/2 -translate-y-1/2")
                           : (position === 'bottom' ? "bottom-full mb-2 left-1/2 -translate-x-1/2" : "top-full mt-2 left-1/2 -translate-x-1/2")
                       )}>
@@ -568,7 +570,7 @@ export default function DrawingToolsDock({
 
       {/* Tooltip showing current tool - only show when expanded */}
       {!isCollapsed && (
-        <motion.div 
+        <motion.div
           key={currentTool}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -604,10 +606,10 @@ export default function DrawingToolsDock({
 }
 
 // Compact version for smaller screens or embedded use
-export function DrawingToolsDockCompact({ 
-  currentTool, 
-  onToolChange, 
-  className 
+export function DrawingToolsDockCompact({
+  currentTool,
+  onToolChange,
+  className
 }: Omit<DrawingToolsDockProps, 'position'>) {
   const mainTools = tools.slice(0, 4); // Only show first 4 tools
 
@@ -619,8 +621,8 @@ export function DrawingToolsDockCompact({
           onClick={() => onToolChange(tool.id)}
           className={cn(
             "p-2 rounded-lg transition-all duration-200",
-            currentTool === tool.id 
-              ? "bg-cyan-500/30 text-cyan-400" 
+            currentTool === tool.id
+              ? "bg-cyan-500/30 text-cyan-400"
               : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
           )}
           title={`${tool.label}${tool.shortcut ? ` (${tool.shortcut})` : ''}`}
