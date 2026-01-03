@@ -378,7 +378,7 @@ export function UnifiedDock({
   };
 
   return (
-    <div className={cn("fixed bottom-6 left-1/2 -translate-x-1/2 z-50", className)}>
+    <div className={cn("fixed bottom-12 left-1/2 -translate-x-1/2 z-50", className)}>
       <AnimatePresence>
         {isExpanded && selectedCharacter !== null && (
           <motion.div

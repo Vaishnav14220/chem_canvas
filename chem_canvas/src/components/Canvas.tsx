@@ -624,7 +624,7 @@ export default function Canvas({
 }: CanvasProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+
   // Store registration callbacks in refs to avoid re-triggering on every render
   const onRegisterSnapshotHandlerRef = useRef(onRegisterSnapshotHandler);
   const onRegisterTextInjectionHandlerRef = useRef(onRegisterTextInjectionHandler);
@@ -636,7 +636,7 @@ export default function Canvas({
   const onRegisterGetShapesHandlerRef = useRef(onRegisterGetShapesHandler);
   const onRegisterSetShapesHandlerRef = useRef(onRegisterSetShapesHandler);
   const onRegisterQuickActionHandlersRef = useRef(onRegisterQuickActionHandlers);
-  
+
   // Update refs when props change (but don't trigger re-renders)
   useEffect(() => {
     onRegisterSnapshotHandlerRef.current = onRegisterSnapshotHandler;
@@ -1720,7 +1720,7 @@ export default function Canvas({
   const canvasSizeRef = useRef({ width: 0, height: 0, dpr: 1 });
   const redrawRafRef = useRef<number | null>(null);
   const redrawPendingRef = useRef(false);
-  const drawFrameRef = useRef<() => void>(() => {});
+  const drawFrameRef = useRef<() => void>(() => { });
   const gridCacheRef = useRef<{ key: string; canvas: HTMLCanvasElement | null }>({ key: '', canvas: null });
   const hoveredShapeIdRef = useRef<string | null>(null);
   const pendingHoverIdRef = useRef<string | null>(null);
@@ -2127,24 +2127,24 @@ export default function Canvas({
 
     // Function to check if a position overlaps with any occupied area
     const isOccupied = (x: number, y: number, w: number, h: number) => {
-      return occupiedAreas.some(area => 
+      return occupiedAreas.some(area =>
         !(x + w < area.left || x > area.right || y + h < area.top || y > area.bottom)
       );
     };
 
     // Function to check if position is within canvas bounds
     const isInBounds = (x: number, y: number, w: number, h: number) => {
-      return x >= minMargin && 
-             y >= minMargin && 
-             x + w <= canvasWidth - minMargin && 
-             y + h <= canvasHeight - minMargin;
+      return x >= minMargin &&
+        y >= minMargin &&
+        x + w <= canvasWidth - minMargin &&
+        y + h <= canvasHeight - minMargin;
     };
 
     // Strategy 1: Try center-right area first (good for reading flow)
     const centerY = canvasHeight / 2 - textHeight / 2;
     const rightAreaX = canvasWidth * 0.55;
-    if (isInBounds(rightAreaX, centerY, textWidth, textHeight) && 
-        !isOccupied(rightAreaX, centerY, textWidth, textHeight)) {
+    if (isInBounds(rightAreaX, centerY, textWidth, textHeight) &&
+      !isOccupied(rightAreaX, centerY, textWidth, textHeight)) {
       return { x: rightAreaX, y: centerY };
     }
 
@@ -2152,7 +2152,7 @@ export default function Canvas({
     if (occupiedAreas.length > 0) {
       const lowestBottom = Math.max(...occupiedAreas.map(a => a.bottom));
       if (isInBounds(minMargin, lowestBottom + padding, textWidth, textHeight) &&
-          !isOccupied(minMargin, lowestBottom + padding, textWidth, textHeight)) {
+        !isOccupied(minMargin, lowestBottom + padding, textWidth, textHeight)) {
         return { x: minMargin, y: lowestBottom + padding };
       }
     }
@@ -2160,7 +2160,7 @@ export default function Canvas({
     // Strategy 3: Try top-right corner (common empty area)
     const topRightX = canvasWidth - textWidth - minMargin;
     if (isInBounds(topRightX, minMargin, textWidth, textHeight) &&
-        !isOccupied(topRightX, minMargin, textWidth, textHeight)) {
+      !isOccupied(topRightX, minMargin, textWidth, textHeight)) {
       return { x: topRightX, y: minMargin };
     }
 
@@ -2168,7 +2168,7 @@ export default function Canvas({
     if (occupiedAreas.length > 0) {
       const rightmostRight = Math.max(...occupiedAreas.map(a => a.right));
       if (isInBounds(rightmostRight + padding, minMargin, textWidth, textHeight) &&
-          !isOccupied(rightmostRight + padding, minMargin, textWidth, textHeight)) {
+        !isOccupied(rightmostRight + padding, minMargin, textWidth, textHeight)) {
         return { x: rightmostRight + padding, y: minMargin };
       }
     }
@@ -2183,16 +2183,16 @@ export default function Canvas({
           // Calculate score based on distance from occupied areas
           const minDist = occupiedAreas.length > 0
             ? Math.min(...occupiedAreas.map(area => {
-                const centerX = (area.left + area.right) / 2;
-                const centerY = (area.top + area.bottom) / 2;
-                return Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
-              }))
+              const centerX = (area.left + area.right) / 2;
+              const centerY = (area.top + area.bottom) / 2;
+              return Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+            }))
             : 1000;
-          
+
           // Prefer positions that are not too far from center but away from content
           const centerDist = Math.sqrt(
-            Math.pow(x + textWidth/2 - canvasWidth/2, 2) + 
-            Math.pow(y + textHeight/2 - canvasHeight/2, 2)
+            Math.pow(x + textWidth / 2 - canvasWidth / 2, 2) +
+            Math.pow(y + textHeight / 2 - canvasHeight / 2, 2)
           );
           const score = minDist - centerDist * 0.3; // Balance between distance and centering
 
@@ -2219,14 +2219,14 @@ export default function Canvas({
 
     for (const word of words) {
       currentLine.push(word);
-      
+
       // Check if we should start a new line
       // Prefer breaking at punctuation or after 10-13 words
-      const shouldBreak = 
+      const shouldBreak =
         currentLine.length >= maxWordsPerLine ||
         (currentLine.length >= 10 && /[,;:]$/.test(word)) ||
         (currentLine.length >= 8 && /[.!?]$/.test(word));
-      
+
       if (shouldBreak) {
         lines.push(currentLine.join(' '));
         currentLine = [];
@@ -2250,10 +2250,10 @@ export default function Canvas({
     const highlightRanges: Array<{ start: number; end: number; color: string }> = [];
     let cleanText = '';
     let i = 0;
-    
+
     // Use bright yellow highlight for maximum readability
     const highlightColor = '#fbbf24'; // Amber/gold highlight - high contrast
-    
+
     while (i < text.length) {
       // Check for ** (bold markers)
       if (text[i] === '*' && text[i + 1] === '*') {
@@ -2265,23 +2265,23 @@ export default function Canvas({
           const startPos = cleanText.length;
           cleanText += boldText;
           const endPos = cleanText.length;
-          
+
           // Add highlight range with theme-appropriate color
           highlightRanges.push({
             start: startPos,
             end: endPos,
             color: highlightColor
           });
-          
+
           i = closeIndex + 2; // Skip past closing **
           continue;
         }
       }
-      
+
       cleanText += text[i];
       i++;
     }
-    
+
     return { cleanText, highlightRanges };
   }, [isDarkMode]);
 
@@ -2294,12 +2294,12 @@ export default function Canvas({
     // First split by existing newlines, then wrap each paragraph
     const paragraphs = parsedText.split('\n').filter(p => p.trim());
     const allLines: string[] = [];
-    
+
     paragraphs.forEach((paragraph, pIndex) => {
       // Wrap paragraph into lines of 10-13 words
       const wrappedLines = wrapTextIntoLines(paragraph, 12);
       allLines.push(...wrappedLines);
-      
+
       // Add empty line between paragraphs (except last)
       if (pIndex < paragraphs.length - 1) {
         allLines.push('');
@@ -2308,10 +2308,10 @@ export default function Canvas({
 
     // Filter out empty lines
     const displayLines = allLines.filter(line => line.trim());
-    
+
     // Join all lines into a single multiline text
     const fullText = displayLines.join('\n');
-    
+
     // Recalculate highlight ranges for the wrapped text
     // Since we join with \n, we need to map original positions to new positions
     const adjustedRanges = initialRanges.map(range => {
@@ -2327,11 +2327,11 @@ export default function Canvas({
       }
       return range;
     });
-    
+
     const fontSize = 26; // Optimal size for Satisfy font readability
     const lineHeight = fontSize + 12; // Line height for multiline text
     const charWidth = 12; // Approximate char width for Satisfy font at this size
-    
+
     // Calculate dimensions for the text box
     const maxLineLength = Math.max(...displayLines.map(l => l.length));
     const textBoxWidth = Math.min(600, Math.max(maxLineLength * charWidth, 300));
@@ -2341,7 +2341,7 @@ export default function Canvas({
     const position = findEmptySpace(textBoxWidth + 40, textBoxHeight);
 
     const shapeId = `handwriting-${Date.now()}`;
-    
+
     // Create a single text shape with multiline support
     const textShape: Shape = {
       id: shapeId,
@@ -2360,21 +2360,21 @@ export default function Canvas({
       isHandwriting: true,
       highlightRanges: adjustedRanges // Store highlight ranges
     };
-    
+
     // Add to history ref
     canvasHistoryRef.current = [...canvasHistoryRef.current, textShape];
-    
+
     // Trigger initial redraw
     setForceRedraw(prev => prev + 1);
 
     // Animate typing character by character for the entire text
     const charDelay = 25; // ms per character - fast but visible
     let currentIndex = 0;
-    
+
     const animateTyping = () => {
       if (currentIndex <= fullText.length) {
         const currentText = fullText.substring(0, currentIndex);
-        
+
         // Calculate which highlights are currently visible (partial or full)
         const currentHighlights = adjustedRanges
           .filter(range => currentIndex > range.start)
@@ -2382,32 +2382,32 @@ export default function Canvas({
             ...range,
             end: Math.min(range.end, currentIndex) // Clip to current position
           }));
-        
+
         // Update the shape in the ref with the current partial text
         canvasHistoryRef.current = canvasHistoryRef.current.map(shape => {
           if (shape.id === shapeId) {
-            return { 
-              ...shape, 
+            return {
+              ...shape,
               text: currentText,
               highlightRanges: currentHighlights
             };
           }
           return shape;
         });
-        
+
         // Trigger redraw
         setForceRedraw(prev => prev + 1);
-        
+
         currentIndex++;
-        
+
         // Add slight extra delay for newlines (like a pause between lines)
         const nextChar = fullText[currentIndex - 1];
         const delay = nextChar === '\n' ? charDelay * 4 : charDelay;
-        
+
         setTimeout(animateTyping, delay);
       }
     };
-    
+
     // Start animation after a brief delay
     setTimeout(animateTyping, 100);
   }, [findEmptySpace, wrapTextIntoLines, parseMarkdownBold]);
@@ -2415,11 +2415,11 @@ export default function Canvas({
   // Store handler refs that need to be updated
   const handleHandwritingInjectionRef = useRef(handleHandwritingInjection);
   const handleExternalTextInjectionRef = useRef(handleExternalTextInjection);
-  
+
   useEffect(() => {
     handleHandwritingInjectionRef.current = handleHandwritingInjection;
   }, [handleHandwritingInjection]);
-  
+
   useEffect(() => {
     handleExternalTextInjectionRef.current = handleExternalTextInjection;
   }, [handleExternalTextInjection]);
@@ -2427,7 +2427,7 @@ export default function Canvas({
   // Register handwriting handler - only once on mount
   useEffect(() => {
     if (onRegisterHandwritingHandlerRef.current) {
-      onRegisterHandwritingHandlerRef.current((...args: Parameters<typeof handleHandwritingInjection>) => 
+      onRegisterHandwritingHandlerRef.current((...args: Parameters<typeof handleHandwritingInjection>) =>
         handleHandwritingInjectionRef.current(...args)
       );
     }
@@ -2439,7 +2439,7 @@ export default function Canvas({
     }
     appendMarkdownEntry(payload.text, payload.heading);
   }, [appendMarkdownEntry]);
-  
+
   const handleExternalMarkdownInjectionRef = useRef(handleExternalMarkdownInjection);
   useEffect(() => {
     handleExternalMarkdownInjectionRef.current = handleExternalMarkdownInjection;
@@ -2448,7 +2448,7 @@ export default function Canvas({
   // Register text injection handler - only once on mount
   useEffect(() => {
     if (onRegisterTextInjectionHandlerRef.current) {
-      onRegisterTextInjectionHandlerRef.current((...args: Parameters<typeof handleExternalTextInjection>) => 
+      onRegisterTextInjectionHandlerRef.current((...args: Parameters<typeof handleExternalTextInjection>) =>
         handleExternalTextInjectionRef.current(...args)
       );
     }
@@ -2457,7 +2457,7 @@ export default function Canvas({
   // Register markdown injection handler - only once on mount
   useEffect(() => {
     if (onRegisterMarkdownInjectionHandlerRef.current) {
-      onRegisterMarkdownInjectionHandlerRef.current((payload: { text: string; heading?: string }) => 
+      onRegisterMarkdownInjectionHandlerRef.current((payload: { text: string; heading?: string }) =>
         handleExternalMarkdownInjectionRef.current(payload)
       );
     }
@@ -3613,15 +3613,15 @@ export default function Canvas({
   const handleExternalMoleculeInsertionRef = useRef(handleExternalMoleculeInsertion);
   const handleExternalProteinInsertionRef = useRef(handleExternalProteinInsertion);
   const handleExternalReactionInsertionRef = useRef(handleExternalReactionInsertion);
-  
+
   useEffect(() => {
     handleExternalMoleculeInsertionRef.current = handleExternalMoleculeInsertion;
   }, [handleExternalMoleculeInsertion]);
-  
+
   useEffect(() => {
     handleExternalProteinInsertionRef.current = handleExternalProteinInsertion;
   }, [handleExternalProteinInsertion]);
-  
+
   useEffect(() => {
     handleExternalReactionInsertionRef.current = handleExternalReactionInsertion;
   }, [handleExternalReactionInsertion]);
@@ -3629,7 +3629,7 @@ export default function Canvas({
   // Register molecule injection handler - only once on mount
   useEffect(() => {
     if (onRegisterMoleculeInjectionHandlerRef.current) {
-      onRegisterMoleculeInjectionHandlerRef.current((...args: Parameters<typeof handleExternalMoleculeInsertion>) => 
+      onRegisterMoleculeInjectionHandlerRef.current((...args: Parameters<typeof handleExternalMoleculeInsertion>) =>
         handleExternalMoleculeInsertionRef.current(...args)
       );
     }
@@ -3638,7 +3638,7 @@ export default function Canvas({
   // Register protein injection handler - only once on mount
   useEffect(() => {
     if (onRegisterProteinInjectionHandlerRef.current) {
-      onRegisterProteinInjectionHandlerRef.current((...args: Parameters<typeof handleExternalProteinInsertion>) => 
+      onRegisterProteinInjectionHandlerRef.current((...args: Parameters<typeof handleExternalProteinInsertion>) =>
         handleExternalProteinInsertionRef.current(...args)
       );
     }
@@ -3647,7 +3647,7 @@ export default function Canvas({
   // Register reaction injection handler - only once on mount
   useEffect(() => {
     if (onRegisterReactionInjectionHandlerRef.current) {
-      onRegisterReactionInjectionHandlerRef.current((...args: Parameters<typeof handleExternalReactionInsertion>) => 
+      onRegisterReactionInjectionHandlerRef.current((...args: Parameters<typeof handleExternalReactionInsertion>) =>
         handleExternalReactionInsertionRef.current(...args)
       );
     }
@@ -6043,21 +6043,21 @@ export default function Canvas({
   };
 
   const drawText = (
-    ctx: CanvasRenderingContext2D, 
-    x: number, 
-    y: number, 
-    text: string, 
-    color: string, 
-    size: number, 
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    text: string,
+    color: string,
+    size: number,
     isHandwriting?: boolean,
     highlightRanges?: Array<{ start: number; end: number; color: string }>,
     showBox?: boolean // Only show box when dragging/resizing
   ) => {
     ctx.save();
-    
+
     // Use Satisfy font for handwriting, Inter for regular text
-    ctx.font = isHandwriting 
-      ? `${size}px "Satisfy", cursive` 
+    ctx.font = isHandwriting
+      ? `${size}px "Satisfy", cursive`
       : `${size}px "Inter", sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -6078,7 +6078,7 @@ export default function Canvas({
 
       // Create roughjs canvas for hand-drawn box effect
       const rc = rough.canvas(ctx.canvas);
-      
+
       // Draw hand-drawn rectangle background
       rc.rectangle(boxX, boxY, boxWidth, boxHeight, {
         fill: 'rgba(15, 23, 42, 0.85)', // Dark slate background
@@ -6094,7 +6094,7 @@ export default function Canvas({
       ctx.shadowBlur = 8;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 0;
-      
+
       // Reset shadow for text
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
@@ -6111,7 +6111,7 @@ export default function Canvas({
       const lineEndIndex = globalCharIndex + line.length;
 
       // Check if we have highlights for this line
-      const lineHighlights = highlightRanges?.filter(h => 
+      const lineHighlights = highlightRanges?.filter(h =>
         h.start < lineEndIndex && h.end > lineStartIndex
       ) || [];
 
@@ -6126,9 +6126,9 @@ export default function Canvas({
 
         while (charIndex < line.length) {
           const globalIdx = lineStartIndex + charIndex;
-          
+
           // Find if current position is in a highlight
-          const activeHighlight = lineHighlights.find(h => 
+          const activeHighlight = lineHighlights.find(h =>
             globalIdx >= h.start && globalIdx < h.end
           );
 
@@ -6139,15 +6139,15 @@ export default function Canvas({
               line.length
             );
             const highlightText = line.substring(charIndex, highlightEndInLine);
-            
+
             // Measure text width for highlight background
             const textWidth = ctx.measureText(highlightText).width;
-            
+
             // Draw highlight using roughjs for hand-drawn effect
             const highlightHeight = size * 0.85;
             const highlightY = lineY + size * 0.1;
             const padding = 4;
-            
+
             // Use roughjs rectangle with fill for marker effect
             rc.rectangle(
               currentX - padding,
@@ -6164,11 +6164,11 @@ export default function Canvas({
                 seed: Math.floor(currentX * 100) // Consistent randomness based on position
               }
             );
-            
+
             // Draw the text on top in dark color for readability on bright highlight
             ctx.fillStyle = '#1e293b';
             ctx.fillText(highlightText, currentX, lineY);
-            
+
             currentX += textWidth;
             charIndex = highlightEndInLine;
           } else {
@@ -6177,12 +6177,12 @@ export default function Canvas({
               .filter(h => h.start > globalIdx)
               .map(h => h.start - lineStartIndex)
               .sort((a, b) => a - b)[0] ?? line.length;
-            
+
             const normalText = line.substring(charIndex, nextHighlightStart);
-            
+
             ctx.fillStyle = color;
             ctx.fillText(normalText, currentX, lineY);
-            
+
             currentX += ctx.measureText(normalText).width;
             charIndex = nextHighlightStart;
           }
@@ -7328,7 +7328,7 @@ export default function Canvas({
       )}
 
       {/* Right-side Controls + Drawing Tools */}
-      <div className="absolute right-6 top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-3 transform">
+      <div className="absolute right-6 top-32 z-10 flex flex-col items-end gap-3 transform">
         {showToolsDock && onToolChange && (
           <DrawingToolsDock
             currentTool={currentTool as DrawingTool}
