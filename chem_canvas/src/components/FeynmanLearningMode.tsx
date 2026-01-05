@@ -47,7 +47,7 @@ import {
     generateMermaidDiagram
 } from '../services/socraticFeynmanTutorService';
 import { ExcalidrawCanvas, ExcalidrawCanvasRef } from './ExcalidrawCanvas/ExcalidrawCanvas';
-import { TaskPanel, TaskItem } from './TaskPanel';
+import { TaskItem } from './TaskPanel';
 import { FeynmanProgress, FeynmanStage } from './FeynmanProgress';
 import { LearningScoreCard, MisconceptionItem, ConceptItem, InsightItem } from './LearningScoreCard';
 import { ClassroomSimulation } from './ClassroomSimulation';
@@ -266,6 +266,15 @@ Keep responses conversational, brief, and focused on checking understanding.`
             geminiLive.connect();
         }
     }, [geminiLive]);
+
+    const normalizeMermaidDiagram = useCallback((diagram: string) => {
+        if (!diagram) return diagram;
+        let normalized = diagram.trim();
+        normalized = normalized.replace(/^(flowchart|graph)\s+(LR|RL)\b/i, '$1 TD');
+        normalized = normalized.replace(/^flowchart\s*$/i, 'flowchart TD');
+        normalized = normalized.replace(/^graph\s*$/i, 'graph TD');
+        return normalized;
+    }, []);
 
     const handleStartSpeaking = useCallback(() => {
         if (geminiLive.connectionState === ConnectionState.CONNECTED || geminiLive.connectionState === ConnectionState.CONNECTING) {
@@ -589,7 +598,7 @@ Keep responses conversational, brief, and focused on checking understanding.`
                 const recentContext = messages.slice(-2).map(m => `${m.role}: ${m.content}`).join('\n');
                 try {
                     const mermaidSyntax = await generateMermaidDiagram(diagramTopic, recentContext);
-                    await excalidrawRef.current.drawMermaid(mermaidSyntax);
+                    await excalidrawRef.current.drawMermaid(normalizeMermaidDiagram(mermaidSyntax));
                 } catch (diagErr) {
                     console.error('[Feynman] Auto-diagram failed:', diagErr);
                 }
@@ -791,10 +800,11 @@ Respond in markdown format suitable for a chat message.`;
 
             // Generate Mermaid diagram
             const mermaidSyntax = await generateMermaidDiagram(currentTopic, recentContext);
-            console.log('[Feynman] Generated Mermaid:', mermaidSyntax);
+            const normalizedMermaid = normalizeMermaidDiagram(mermaidSyntax);
+            console.log('[Feynman] Generated Mermaid:', normalizedMermaid);
 
             // Draw on canvas
-            await excalidrawRef.current.drawMermaid(mermaidSyntax);
+            await excalidrawRef.current.drawMermaid(normalizedMermaid);
 
             // Add system message about the diagram
             const diagramMessage: TutorChatMessage = {
@@ -958,7 +968,34 @@ Context: ${recentContext}`;
             )}
 
             {/* Main Split Layout */}
-            <div className="flex flex-1 overflow-hidden">
+            <div className="relative flex flex-1 overflow-hidden">
+                {currentTasks.length > 0 && currentTasks[0] && !currentTasks[0].completed && (
+                    <div className="absolute top-3 left-1/2 z-20 w-[min(640px,90%)] -translate-x-1/2">
+                        <div className="bg-white rounded-xl border border-blue-200 shadow-lg px-4 py-3">
+                            <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                                    <Target className="w-4 h-4 text-white" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="text-[11px] font-semibold text-blue-600 uppercase tracking-wide mb-1">
+                                        Current Task
+                                    </div>
+                                    <p className="text-sm text-gray-800 leading-relaxed">
+                                        {currentTasks[0].text}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setCurrentTasks(prev =>
+                                        prev.map(t => t.id === currentTasks[0].id ? { ...t, completed: true } : t)
+                                    )}
+                                    className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-none hover:bg-green-600 transition-colors flex-shrink-0"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Left: Canvas Area (~70%) */}
                 <div className="flex-[7] flex flex-col min-w-0 overflow-hidden">
@@ -1025,35 +1062,6 @@ Context: ${recentContext}`;
 
                     {/* Canvas Area - Clean white background */}
                     <div className="flex-1 relative bg-white mx-4 min-h-0 overflow-hidden">
-                        {/* Task Overlay - Positioned on canvas */}
-                        {currentTasks.length > 0 && currentTasks[0] && !currentTasks[0].completed && (
-                            <div className="absolute top-4 left-4 z-10 max-w-md">
-                                <div className="bg-white rounded-xl border-2 border-blue-200 shadow-lg p-4">
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                                            <Target className="w-4 h-4 text-white" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">
-                                                Your Task
-                                            </div>
-                                            <p className="text-sm text-gray-800 leading-relaxed">
-                                                {currentTasks[0].text}
-                                            </p>
-                                        </div>
-                                        <button
-                                            onClick={() => setCurrentTasks(prev =>
-                                                prev.map(t => t.id === currentTasks[0].id ? { ...t, completed: true } : t)
-                                            )}
-                                            className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-none hover:bg-green-600 transition-colors flex-shrink-0"
-                                        >
-                                            Done
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
                         <ExcalidrawCanvas
                             ref={excalidrawRef}
                             isOpen={true}
@@ -1278,24 +1286,6 @@ Context: ${recentContext}`;
                     </div>
 
                     {/* Slim Task Indicator - Above input */}
-                    {currentTasks.length > 0 && currentTasks[0] && !currentTasks[0].completed && (
-                        <div className="px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 border-t border-blue-100">
-                            <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                                    <Target className="w-3 h-3 text-white" />
-                                </div>
-                                <span className="text-sm text-gray-700 truncate flex-1">
-                                    <span className="font-medium text-blue-600">Task:</span> {currentTasks[0].text.substring(0, 80)}{currentTasks[0].text.length > 80 ? '...' : ''}
-                                </span>
-                                <button
-                                    onClick={() => setCurrentTasks(prev => prev.map(t => t.id === currentTasks[0].id ? { ...t, completed: true } : t))}
-                                    className="text-xs px-2 py-1 bg-green-500 text-white rounded-none hover:bg-green-600 transition-colors"
-                                >
-                                    Done
-                                </button>
-                            </div>
-                        </div>
-                    )}
 
                     {/* Input Area */}
                     <div className="p-4 bg-white border-t border-gray-200">

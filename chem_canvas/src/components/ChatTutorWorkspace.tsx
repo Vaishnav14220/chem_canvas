@@ -9,7 +9,7 @@ import { generateTextContent, streamTextContent } from '../services/geminiServic
 import { ExcalidrawCanvas, type ExcalidrawCanvasRef } from './ExcalidrawCanvas';
 import { getSharedGeminiApiKey } from '../firebase/apiKeys';
 import { getPreferredGeminiLanguage } from '../utils/geminiPreferences';
-import { loadFeatureSession, saveFeatureSession } from '../utils/featureSessionStorage';
+import { clearFeatureSession, loadFeatureSession, saveFeatureSession } from '../utils/featureSessionStorage';
 import { useGeminiLive } from './GeminiLive/hooks/useGeminiLive';
 import { ConnectionState } from './GeminiLive/types';
 import GeminiLiveVoiceStatus from './GeminiLive/GeminiLiveVoiceStatus';
@@ -46,7 +46,7 @@ type Message = {
 };
 
 type Block = {
-  type: 'mermaid' | 'ggbscript' | 'note' | 'canvas';
+  type: 'mermaid' | 'ggb' | 'note' | 'canvas';
   pageId: string;
   title?: string;
   content: string;
@@ -137,8 +137,8 @@ const buildPrompt = (history: Message[], input: string, pages: Page[], initialNo
 
   const pageSummary = pages.length
     ? pages
-        .map((page) => `- ${page.id} (${page.type}) "${page.title}"`)
-        .join('\n')
+      .map((page) => `- ${page.id} (${page.type}) "${page.title}"`)
+      .join('\n')
     : 'None';
 
   const trimmedNotes = initialNotes?.trim().slice(0, 8000);
@@ -155,19 +155,48 @@ const buildPrompt = (history: Message[], input: string, pages: Page[], initialNo
 
 const parseBlocks = (text: string): { cleaned: string; blocks: Block[] } => {
   const regex = /```(mermaid|ggbscript|note|canvas)\[([^\];\n]+)(?:;([^\]\n]+))?\]\s*([\s\S]*?)```/g;
+  const fallbackMermaidRegex = /```mermaid\s*([\s\S]*?)```/g;
   const blocks: Block[] = [];
+  const usedIds = new Set<string>();
+  const normalizeId = (value: string) => value.trim().replace(/[^A-Za-z0-9_]/g, '_');
   let match: RegExpExecArray | null = null;
 
   while ((match = regex.exec(text)) !== null) {
+    // Normalize 'ggbscript' to 'ggb' to match PageType
+    const blockType = match[1] === 'ggbscript' ? 'ggb' : match[1] as Block['type'];
+    const pageId = match[2].trim();
+    usedIds.add(normalizeId(pageId));
     blocks.push({
-      type: match[1] as Block['type'],
-      pageId: match[2].trim(),
+      type: blockType,
+      pageId,
       title: match[3]?.trim(),
       content: match[4].trim(),
     });
   }
 
-  const cleaned = text.replace(regex, '').replace(/\n{3,}/g, '\n\n');
+  const cleanedFromBracketed = text.replace(regex, '');
+  let fallbackMatch: RegExpExecArray | null = null;
+  let mermaidIndex = 1;
+
+  while ((fallbackMatch = fallbackMermaidRegex.exec(cleanedFromBracketed)) !== null) {
+    const content = fallbackMatch[1].trim();
+    if (!content) continue;
+    let candidate = `mermaid_${mermaidIndex}`;
+    while (usedIds.has(candidate)) {
+      mermaidIndex += 1;
+      candidate = `mermaid_${mermaidIndex}`;
+    }
+    usedIds.add(candidate);
+    blocks.push({
+      type: 'mermaid',
+      pageId: candidate,
+      title: 'Mermaid Diagram',
+      content,
+    });
+    mermaidIndex += 1;
+  }
+
+  const cleaned = cleanedFromBracketed.replace(fallbackMermaidRegex, '').replace(/\n{3,}/g, '\n\n');
   return { cleaned, blocks };
 };
 
@@ -706,7 +735,7 @@ const MermaidPage: React.FC<{ code: string }> = ({ code }) => {
   useEffect(() => {
     if (!code) return;
     let cancelled = false;
-    const attempts = [150, 400, 800];
+    const attempts = [150, 400, 800, 1200, 2000];
 
     const draw = async (delay: number) => {
       if (cancelled) return;
@@ -845,6 +874,8 @@ const ChatTutorWorkspace: React.FC<ChatTutorWorkspaceProps> = ({
   const autoNotesQueueRef = useRef<Set<string>>(new Set());
   const pagesRef = useRef<Page[]>([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
   const hasRestoredSessionRef = useRef(false);
 
   const currentPage = useMemo(() => pages.find((page) => page.id === currentPageId) || pages[0], [pages, currentPageId]);
@@ -1102,7 +1133,7 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
         return;
       }
 
-      if (block.type === 'ggbscript') {
+      if (block.type === 'ggb') {
         const result = ensurePage(resolved.id, 'ggb', block.title);
         updatePageContent(result.id, 'ggb', normalizeGgbScript(block.content), block.title);
         maybeSelectPage(result.id, result.created);
@@ -1349,9 +1380,46 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
     }
   };
 
+  const handleChatScroll = useCallback(() => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+    const threshold = 32;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom <= threshold;
+  }, []);
+
+  const handleChatScrollIntent = useCallback(() => {
+    shouldAutoScrollRef.current = false;
+  }, []);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = chatScrollRef.current;
+    if (!container) return;
+    const threshold = 32;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom > threshold) {
+      return;
+    }
+    shouldAutoScrollRef.current = true;
+    container.scrollTo({ top: container.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
   }, [messages, isStreaming]);
+
+  const handleNewChat = useCallback(() => {
+    setMessages([]);
+    setInput('');
+    setPages([]);
+    pagesRef.current = [];
+    setCurrentPageId(null);
+    setAttachments([]);
+    setShowVoicePanel(false);
+    processedBlocksRef.current.clear();
+    processedActionsRef.current.clear();
+    autoNotesGeneratedRef.current.clear();
+    autoNotesQueueRef.current.clear();
+    autoNotesRunningRef.current = false;
+    hasRestoredSessionRef.current = false;
+    clearFeatureSession('chat-tutor');
+  }, []);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -1390,20 +1458,20 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
     const displayNotes = mathOnly ? buildMathOnlyDisplay(rawNotes) : rawNotes;
 
     return (
-    <div className="flex h-full w-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        <StickyNote className="h-3.5 w-3.5" />
-        Page Notes
+      <div className="flex h-full w-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <StickyNote className="h-3.5 w-3.5" />
+          Page Notes
+        </div>
+        <div className="mt-2 text-xs font-semibold text-slate-500">
+          {currentPage ? `Note on ${currentPage.title || currentPage.id}` : 'Note'}
+        </div>
+        <div className="prose prose-sm mt-2 flex-1 max-w-none overflow-auto text-slate-900 prose-p:text-slate-900 prose-li:text-slate-900 prose-strong:text-slate-900 prose-headings:text-slate-900">
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+            {displayNotes || 'No notes yet.'}
+          </ReactMarkdown>
+        </div>
       </div>
-      <div className="mt-2 text-xs font-semibold text-slate-500">
-        {currentPage ? `Note on ${currentPage.title || currentPage.id}` : 'Note'}
-      </div>
-      <div className="prose prose-sm mt-2 flex-1 max-w-none overflow-auto text-slate-900 prose-p:text-slate-900 prose-li:text-slate-900 prose-strong:text-slate-900 prose-headings:text-slate-900">
-        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-          {displayNotes || 'No notes yet.'}
-        </ReactMarkdown>
-      </div>
-    </div>
     );
   };
 
@@ -1432,6 +1500,13 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={handleNewChat}
+            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-300"
+            type="button"
+          >
+            New Chat
+          </button>
+          <button
             onClick={handleAddPage}
             className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-300"
             type="button"
@@ -1442,9 +1517,9 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden h-full">
-        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="flex min-h-0 flex-1 overflow-hidden h-full">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 p-4 overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
             {currentPage?.type === 'ggb' || currentPage?.type === 'mermaid' ? (
               <div className="flex min-h-0 flex-1 gap-3">
                 <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1471,11 +1546,10 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
                   key={page.id}
                   type="button"
                   onClick={() => setCurrentPageId(page.id)}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                    currentPage?.id === page.id
-                      ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                  }`}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${currentPage?.id === page.id
+                    ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}
                 >
                   <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-slate-100 text-[10px] font-semibold text-slate-600">
                     {index + 1}
@@ -1488,7 +1562,7 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
           </div>
         </div>
 
-        <div className="flex min-h-0 w-full max-w-md flex-col border-l border-slate-200 bg-white">
+        <div className="flex min-h-0 h-full w-full max-w-md flex-col border-l border-slate-200 bg-white overflow-hidden">
           <div className="border-b border-slate-200 px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold text-slate-700">Tutor Chat</div>
@@ -1502,7 +1576,14 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div
+            ref={chatScrollRef}
+            onScroll={handleChatScroll}
+            onWheel={handleChatScrollIntent}
+            onTouchMove={handleChatScrollIntent}
+            onPointerDown={handleChatScrollIntent}
+            className="flex-1 min-h-0 overflow-y-auto p-4"
+          >
             {showVoicePanel && (
               <div className="mb-4">
                 <GeminiLiveVoiceStatus
@@ -1542,11 +1623,10 @@ If the student requests a visual, suggest adding it to the whiteboard.`,
                 ) : (
                   <div
                     key={message.id}
-                    className={`rounded-2xl px-3 py-2 text-sm ${
-                      message.role === 'user'
-                        ? 'bg-indigo-50 text-indigo-900'
-                        : 'bg-slate-50 text-slate-800'
-                    }`}
+                    className={`rounded-2xl px-3 py-2 text-sm ${message.role === 'user'
+                      ? 'bg-indigo-50 text-indigo-900'
+                      : 'bg-slate-50 text-slate-800'
+                      }`}
                   >
                     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                       {message.content}

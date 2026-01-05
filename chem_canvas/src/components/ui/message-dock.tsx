@@ -176,7 +176,7 @@ export function MessageDock({
 
   useEffect(() => {
     if (!closeOnClickOutside) return;
-    
+
     const handleClickOutside = (event: MouseEvent) => {
       if (dockRef.current && !dockRef.current.contains(event.target as Node)) {
         setExpandedCharacter(null);
@@ -215,18 +215,18 @@ export function MessageDock({
   const hoverAnimation = shouldReduceMotion
     ? { scale: 1.02 }
     : {
-        scale: 1.05,
-        y: -8,
-        transition: {
-          type: "spring",
-          stiffness: 400,
-          damping: 25,
-        },
-      };
+      scale: 1.05,
+      y: -8,
+      transition: {
+        type: "spring" as const,
+        stiffness: 400,
+        damping: 25,
+      },
+    };
 
   const handleCharacterClick = (index: number) => {
     const character = characters[index];
-    
+
     if (expandedCharacter === index) {
       setExpandedCharacter(null);
       setMessageInput("");
@@ -241,11 +241,11 @@ export function MessageDock({
   const handleSendMessage = () => {
     if (messageInput.trim() && expandedCharacter !== null) {
       const character = characters[expandedCharacter];
-      
+
       onMessageSend?.(messageInput, character, expandedCharacter);
-      
+
       setMessageInput("");
-      
+
       if (closeOnSend) {
         setExpandedCharacter(null);
         onDockToggle?.(false);
@@ -265,9 +265,9 @@ export function MessageDock({
   const menuSizeClass = isCompact ? "w-10 h-10" : "w-12 h-12";
   const iconClass = isCompact ? "w-4 h-4" : "w-5 h-5";
 
-  const defaultPositionClasses = position === "top" 
+  const defaultPositionClasses = position === "top"
     ? "fixed top-6 left-1/2 -translate-x-1/2 z-[9999]"
-    : "fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999]";
+    : "fixed bottom-12 left-1/2 -translate-x-1/2 z-[9999]";
 
   return (
     <motion.div
@@ -294,10 +294,10 @@ export function MessageDock({
             ? `linear-gradient(to right, ${getGradientColors(selectedCharacter)})`
             : undefined,
         }}
-        transition={enableAnimations ? { 
-          type: "spring", 
-          stiffness: isExpanded ? 300 : 500, 
-          damping: isExpanded ? 30 : 35, 
+        transition={enableAnimations ? {
+          type: "spring",
+          stiffness: isExpanded ? 300 : 500,
+          damping: isExpanded ? 30 : 35,
           mass: isExpanded ? 0.8 : 0.6,
           background: {
             duration: 0.2 * animationDuration,
@@ -308,30 +308,30 @@ export function MessageDock({
         <div className="flex items-center gap-2 relative">
           {showSparkleButton && (
             <motion.div
-            className="flex items-center justify-center gap-2"
-            animate={{
-              opacity: isExpanded ? 0 : 1,
-              x: isExpanded ? -20 : 0,
-              scale: isExpanded ? 0.8 : 1,
-            }}
-            transition={{
-              type: "spring",
-              stiffness: 400,
-              damping: 30,
-              delay: isExpanded ? 0 : 0,
-            }}
-          >
-            <motion.button
-              className={cn(
-                `${sparkleSizeClass} flex items-center justify-center cursor-pointer rounded-full transition-all duration-200`,
-                isLiveActive 
-                  ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse ring-2 ring-red-500/60 text-red-200"
-                  : "bg-gradient-to-br from-cyan-500/30 to-emerald-500/30 hover:from-cyan-500/40 hover:to-emerald-500/40 hover:ring-2 hover:ring-cyan-500/50 text-cyan-200"
-              )}
-              onClick={onSparkleClick}
-              whileHover={
-                !isExpanded
-                  ? {
+              className="flex items-center justify-center gap-2"
+              animate={{
+                opacity: isExpanded ? 0 : 1,
+                x: isExpanded ? -20 : 0,
+                scale: isExpanded ? 0.8 : 1,
+              }}
+              transition={{
+                type: "spring",
+                stiffness: 400,
+                damping: 30,
+                delay: isExpanded ? 0 : 0,
+              }}
+            >
+              <motion.button
+                className={cn(
+                  `${sparkleSizeClass} flex items-center justify-center cursor-pointer rounded-full transition-all duration-200`,
+                  isLiveActive
+                    ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse ring-2 ring-red-500/60 text-red-200"
+                    : "bg-gradient-to-br from-cyan-500/30 to-emerald-500/30 hover:from-cyan-500/40 hover:to-emerald-500/40 hover:ring-2 hover:ring-cyan-500/50 text-cyan-200"
+                )}
+                onClick={onSparkleClick}
+                whileHover={
+                  !isExpanded
+                    ? {
                       scale: 1.05,
                       transition: {
                         type: "spring",
@@ -339,91 +339,91 @@ export function MessageDock({
                         damping: 25,
                       },
                     }
-                  : undefined
-              }
-              whileTap={{ scale: 0.95 }}
-              aria-label="Sparkle"
-            >
-              <span className={cn("text-2xl", isCompact && "text-xl")}>✨</span>
-            </motion.button>
-
-            {/* Screen Share Button */}
-            {onStartScreenShare && onStopScreenShare && (
-              <motion.button
-                className={cn(
-                  `${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border`,
-                  isScreenSharing
-                    ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 hover:from-red-500/50 hover:to-orange-500/50 text-red-300 border-red-500/30"
-                    : "bg-gradient-to-br from-blue-500/30 to-indigo-500/30 hover:from-blue-500/40 hover:to-indigo-500/40 text-blue-200 border-blue-500/30"
-                )}
-                onClick={isScreenSharing ? onStopScreenShare : onStartScreenShare}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                whileHover={{ scale: 1.05 }}
+                    : undefined
+                }
                 whileTap={{ scale: 0.95 }}
-                title={isScreenSharing ? 'Stop Screen Share' : 'Start Screen Share'}
+                aria-label="Sparkle"
               >
-                {isScreenSharing ? (
-                  <MonitorOff className={iconClass} />
-                ) : (
-                  <Monitor className={iconClass} />
-                )}
+                <span className={cn("text-2xl", isCompact && "text-xl")}>✨</span>
               </motion.button>
-            )}
 
-            {/* Share Canvas Button */}
-            {isLiveActive && showShareCanvas && onShareCanvas && (
-              <motion.button
-                className={`${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-all duration-300 border border-blue-500/20`}
-                onClick={onShareCanvas}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                title="Share Canvas"
-              >
-                <ImageIcon className={iconClass} />
-              </motion.button>
-            )}
-
-            {/* Live status indicator */}
-            {isLiveActive && (
-              <motion.div
-                className="relative flex items-center gap-2"
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              >
-                <div className="relative w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                  <div className="relative z-10 flex items-center justify-center">
-                    {isListening ? (
-                      <Mic className={cn(iconClass, "text-pink-500 animate-pulse")} />
-                    ) : isSpeaking ? (
-                      <Activity className={cn(iconClass, "text-cyan-500 animate-pulse")} />
-                    ) : (
-                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    )}
-                  </div>
-                  {/* Ping indicator */}
-                  <span className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
-                  </span>
-                </div>
-                
-                {/* Disconnect button */}
+              {/* Screen Share Button */}
+              {onStartScreenShare && onStopScreenShare && (
                 <motion.button
-                  className={`${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all duration-300 border border-red-500/20`}
-                  onClick={onDisconnect}
+                  className={cn(
+                    `${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 border`,
+                    isScreenSharing
+                      ? "bg-gradient-to-br from-red-500/40 to-orange-500/40 hover:from-red-500/50 hover:to-orange-500/50 text-red-300 border-red-500/30"
+                      : "bg-gradient-to-br from-blue-500/30 to-indigo-500/30 hover:from-blue-500/40 hover:to-indigo-500/40 text-blue-200 border-blue-500/30"
+                  )}
+                  onClick={isScreenSharing ? onStopScreenShare : onStartScreenShare}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  title="Disconnect"
+                  title={isScreenSharing ? 'Stop Screen Share' : 'Start Screen Share'}
                 >
-                  <PhoneOff className={iconClass} />
+                  {isScreenSharing ? (
+                    <MonitorOff className={iconClass} />
+                  ) : (
+                    <Monitor className={iconClass} />
+                  )}
                 </motion.button>
-              </motion.div>
-            )}
-          </motion.div>
+              )}
+
+              {/* Share Canvas Button */}
+              {isLiveActive && showShareCanvas && onShareCanvas && (
+                <motion.button
+                  className={`${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-all duration-300 border border-blue-500/20`}
+                  onClick={onShareCanvas}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Share Canvas"
+                >
+                  <ImageIcon className={iconClass} />
+                </motion.button>
+              )}
+
+              {/* Live status indicator */}
+              {isLiveActive && (
+                <motion.div
+                  className="relative flex items-center gap-2"
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                >
+                  <div className="relative w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                    <div className="relative z-10 flex items-center justify-center">
+                      {isListening ? (
+                        <Mic className={cn(iconClass, "text-pink-500 animate-pulse")} />
+                      ) : isSpeaking ? (
+                        <Activity className={cn(iconClass, "text-cyan-500 animate-pulse")} />
+                      ) : (
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      )}
+                    </div>
+                    {/* Ping indicator */}
+                    <span className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                    </span>
+                  </div>
+
+                  {/* Disconnect button */}
+                  <motion.button
+                    className={`${actionSizeClass} flex items-center justify-center cursor-pointer rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all duration-300 border border-red-500/20`}
+                    onClick={onDisconnect}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    title="Disconnect"
+                  >
+                    <PhoneOff className={iconClass} />
+                  </motion.button>
+                </motion.div>
+              )}
+            </motion.div>
           )}
 
           {/* Separator */}
@@ -514,8 +514,8 @@ export function MessageDock({
                     isExpanded && !isSelected
                       ? index * 0.05
                       : isExpanded
-                      ? 0.1
-                      : 0,
+                        ? 0.1
+                        : 0,
                 }}
               >
                 <motion.button
@@ -524,12 +524,12 @@ export function MessageDock({
                     isSelected && isExpanded
                       ? "bg-white/90 ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/20"
                       : cn(
-                          character.backgroundColor || "bg-slate-800/80",
-                          "hover:bg-slate-700/40 hover:ring-2 hover:ring-cyan-500/30"
-                        )
+                        character.backgroundColor || "bg-slate-800/80",
+                        "hover:bg-slate-700/40 hover:ring-2 hover:ring-cyan-500/30"
+                      )
                   )}
                   onClick={() => handleCharacterClick(actualIndex)}
-                  whileHover={!isExpanded ? { scale: 1.05, ...hoverAnimation } : { scale: 1.05 }}
+                  whileHover={!isExpanded ? hoverAnimation : { scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   aria-label={`Message ${character.name}`}
                 >
@@ -577,8 +577,8 @@ export function MessageDock({
                 className="w-[300px] absolute left-14 right-0 bg-transparent border-none outline-none text-sm font-medium z-50 text-foreground placeholder-muted-foreground"
                 autoFocus={autoFocus}
                 initial={{ opacity: 0, x: 20 }}
-                animate={{ 
-                  opacity: 1, 
+                animate={{
+                  opacity: 1,
                   x: 0,
                   transition: {
                     delay: 0.2,
@@ -587,7 +587,7 @@ export function MessageDock({
                     damping: 30,
                   }
                 }}
-                exit={{ 
+                exit={{
                   opacity: 0,
                   transition: {
                     duration: 0.1,
@@ -622,85 +622,85 @@ export function MessageDock({
             >
               <AnimatePresence mode="wait">
                 {!isExpanded ? (
-                <motion.button
-                  key="menu"
-                  className={`${menuSizeClass} flex items-center justify-center cursor-pointer`}
-                  whileHover={{
-                    scale: 1.02,
-                    y: -2,
-                    transition: {
-                      type: "spring",
-                      stiffness: 400,
-                      damping: 25,
-                    },
-                  }}
-                  whileTap={{ scale: 0.95 }}
-                  aria-label="Menu"
-                  initial={{ opacity: 0, rotate: -90 }}
-                  animate={{ opacity: 1, rotate: 0 }}
-                  exit={{ opacity: 0, rotate: 90 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="text-muted-foreground"
+                  <motion.button
+                    key="menu"
+                    className={`${menuSizeClass} flex items-center justify-center cursor-pointer`}
+                    whileHover={{
+                      scale: 1.02,
+                      y: -2,
+                      transition: {
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 25,
+                      },
+                    }}
+                    whileTap={{ scale: 0.95 }}
+                    aria-label="Menu"
+                    initial={{ opacity: 0, rotate: -90 }}
+                    animate={{ opacity: 1, rotate: 0 }}
+                    exit={{ opacity: 0, rotate: 90 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   >
-                    <line x1="3" y1="6" x2="21" y2="6" />
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="18" x2="21" y2="18" />
-                  </svg>
-                </motion.button>
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className="text-muted-foreground"
+                    >
+                      <line x1="3" y1="6" x2="21" y2="6" />
+                      <line x1="3" y1="12" x2="21" y2="12" />
+                      <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                  </motion.button>
                 ) : (
-                <motion.button
-                  key="send"
-                  onClick={handleSendMessage}
-                  className={`${actionSizeClass} flex items-center justify-center rounded-full bg-background/90 hover:bg-background transition-colors disabled:opacity-50 cursor-pointer relative z-30 border border-border/50`}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  disabled={!messageInput.trim()}
-                  initial={{ opacity: 0, scale: 0, rotate: -90 }}
-                  animate={{ 
-                    opacity: 1, 
-                    scale: 1, 
-                    rotate: 0,
-                    transition: {
-                      delay: 0.25,
-                      type: "spring",
-                      stiffness: 400,
-                      damping: 30,
-                    }
-                  }}
-                  exit={{ 
-                    opacity: 0, 
-                    scale: 0, 
-                    rotate: 90,
-                    transition: {
-                      duration: 0.1,
-                      ease: "easeIn"
-                    }
-                  }}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="text-muted-foreground"
+                  <motion.button
+                    key="send"
+                    onClick={handleSendMessage}
+                    className={`${actionSizeClass} flex items-center justify-center rounded-full bg-background/90 hover:bg-background transition-colors disabled:opacity-50 cursor-pointer relative z-30 border border-border/50`}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    disabled={!messageInput.trim()}
+                    initial={{ opacity: 0, scale: 0, rotate: -90 }}
+                    animate={{
+                      opacity: 1,
+                      scale: 1,
+                      rotate: 0,
+                      transition: {
+                        delay: 0.25,
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 30,
+                      }
+                    }}
+                    exit={{
+                      opacity: 0,
+                      scale: 0,
+                      rotate: 90,
+                      transition: {
+                        duration: 0.1,
+                        ease: "easeIn"
+                      }
+                    }}
                   >
-                    <path d="m22 2-7 20-4-9-9-4z" />
-                    <path d="M22 2 11 13" />
-                  </svg>
-                </motion.button>
-              )}
-            </AnimatePresence>
-          </motion.div>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className="text-muted-foreground"
+                    >
+                      <path d="m22 2-7 20-4-9-9-4z" />
+                      <path d="M22 2 11 13" />
+                    </svg>
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </motion.div>
           )}
         </div>
       </motion.div>

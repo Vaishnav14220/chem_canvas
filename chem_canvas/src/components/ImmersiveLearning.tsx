@@ -146,6 +146,7 @@ interface ImmersiveLearningProps {
     onClose: () => void;
     apiKey?: string;
     initialMode?: LearningMode;
+    initialAssignmentFeature?: string | null;
 }
 
 type LearningMode = 'source' | 'immersive-text' | 'audio-video' | 'mindmap' | 'simulation' | 'robotics' | 'visual-activity' | 'code-lab' | 'replicube-lab' | 'assignment' | 'latex-assignment' | 'notebook' | 'learning-theories' | 'socratic' | 'feynman-enhanced' | 'pdf-study';
@@ -1389,7 +1390,12 @@ sys.stderr = StringIO()
     );
 };
 
-const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey, initialMode }) => {
+const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({
+    onClose,
+    apiKey,
+    initialMode,
+    initialAssignmentFeature
+}) => {
     const { addSource } = useSourceStore();
 
     // Initialize Gemini Live
@@ -1517,9 +1523,10 @@ const ImmersiveLearning: React.FC<ImmersiveLearningProps> = ({ onClose, apiKey, 
 
     const [userSpaces, setUserSpaces] = useState<LocalUserSpace[]>([]);
 
-    const [activeMode, setActiveMode] = useState<LearningMode>(initialMode ?? 'source'); // Start with workspace manager
-    const [assignmentTab, setAssignmentTab] = useState<'exam-prep' | 'latex-prep'>('exam-prep');
-    const [isLoading, setIsLoading] = useState(false);
+      const [activeMode, setActiveMode] = useState<LearningMode>(initialMode ?? 'source'); // Start with workspace manager
+      const [assignmentTab, setAssignmentTab] = useState<'exam-prep' | 'latex-prep'>('exam-prep');
+      const [isLoading, setIsLoading] = useState(false);
+      const skipAutoRestore = Boolean(initialMode === 'assignment' && initialAssignmentFeature);
 
     const persistWorkspace = useCallback((workspace: LocalImmersiveWorkspace) => {
         const uid = getLocalUserKey();
@@ -2439,7 +2446,8 @@ Respond in JSON format only:
             'notebook': { name: 'Notebook', description: 'Research notebook and AI-powered learning workspace', emoji: '📓' },
             'learning-theories': { name: 'Learning Theories', description: 'AI-powered optimal learning approach selection', emoji: '🎓' },
             'socratic': { name: 'Socratic Tutor', description: 'Learn through Socratic dialogue', emoji: '🤔' },
-            'feynman-enhanced': { name: 'Feynman Method', description: 'Learn by teaching', emoji: '👨‍🏫' }
+            'feynman-enhanced': { name: 'Feynman Method', description: 'Learn by teaching', emoji: '👨‍🏫' },
+            'pdf-study': { name: 'PDF Study Mode', description: 'Study with PDF documents and AI chat', emoji: '📑' }
         };
         return metadata[mode] || { name: 'Unknown', description: 'Unknown space type', emoji: '❓' };
     };
@@ -2591,15 +2599,15 @@ Respond in JSON format only:
     };
 
     // Load workspaces from IndexedDB on mount (fallback to legacy localStorage once)
-    useEffect(() => {
-        let isActive = true;
-        setIsLoadingWorkspaces(true);
+      useEffect(() => {
+          let isActive = true;
+          setIsLoadingWorkspaces(true);
 
-        const loadWorkspaces = async () => {
-            try {
-                const keys = getLocalStorageKeys();
-                const uid = getLocalUserKey();
-                let workspaces = await listImmersiveLearningWorkspaces<LocalImmersiveWorkspace>({ userId: uid });
+          const loadWorkspaces = async () => {
+              try {
+                  const keys = getLocalStorageKeys();
+                  const uid = getLocalUserKey();
+                  let workspaces = await listImmersiveLearningWorkspaces<LocalImmersiveWorkspace>({ userId: uid });
 
                 if (!workspaces.length) {
                     const saved = localStorage.getItem(keys.WORKSPACES);
@@ -2618,31 +2626,32 @@ Respond in JSON format only:
                     workspaces.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
                     setSavedWorkspaces(workspaces);
                 }
-                const active = localStorage.getItem(keys.ACTIVE);
-                if (active) setActiveWorkspaceId(active);
-            } catch (e) {
-                console.error('Failed to load workspaces:', e);
-            } finally {
-                if (isActive) {
-                    setIsLoadingWorkspaces(false);
-                }
-            }
-        };
+                  const active = localStorage.getItem(keys.ACTIVE);
+                  if (active && !skipAutoRestore) setActiveWorkspaceId(active);
+              } catch (e) {
+                  console.error('Failed to load workspaces:', e);
+              } finally {
+                  if (isActive) {
+                      setIsLoadingWorkspaces(false);
+                  }
+              }
+          };
 
-        void loadWorkspaces();
-        return () => {
-            isActive = false;
-        };
-    }, [getLocalStorageKeys, getLocalUserKey, persistWorkspaces]);
+          void loadWorkspaces();
+          return () => {
+              isActive = false;
+          };
+      }, [getLocalStorageKeys, getLocalUserKey, persistWorkspaces, skipAutoRestore]);
 
-    useEffect(() => {
-        if (!activeWorkspaceId) return;
-        if (hasAutoRestoredWorkspaceRef.current === activeWorkspaceId) return;
-        const workspace = savedWorkspaces.find(ws => ws.id === activeWorkspaceId);
-        if (!workspace) return;
-        hasAutoRestoredWorkspaceRef.current = activeWorkspaceId;
-        void openWorkspace(workspace);
-    }, [activeWorkspaceId, savedWorkspaces, openWorkspace]);
+      useEffect(() => {
+          if (skipAutoRestore) return;
+          if (!activeWorkspaceId) return;
+          if (hasAutoRestoredWorkspaceRef.current === activeWorkspaceId) return;
+          const workspace = savedWorkspaces.find(ws => ws.id === activeWorkspaceId);
+          if (!workspace) return;
+          hasAutoRestoredWorkspaceRef.current = activeWorkspaceId;
+          void openWorkspace(workspace);
+      }, [activeWorkspaceId, savedWorkspaces, openWorkspace, skipAutoRestore]);
 
     // Auto-save to active workspace when content changes (local, debounced)
     // Saves all mode-specific content so users can resume where they left off
@@ -6913,14 +6922,17 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         labManualWorkspaceIdRef.current = labManualWorkspaceId;
     }, [labManualWorkspaceId]);
 
-    useEffect(() => {
-        try {
-            const keys = getLocalStorageKeys();
-            const stored = localStorage.getItem(keys.SESSION);
-            if (!stored) return;
-            const parsed = JSON.parse(stored) as {
-                activeMode?: LearningMode;
-                assignmentTab?: 'exam-prep' | 'latex-prep';
+      useEffect(() => {
+          if (skipAutoRestore) {
+              return;
+          }
+          try {
+              const keys = getLocalStorageKeys();
+              const stored = localStorage.getItem(keys.SESSION);
+              if (!stored) return;
+              const parsed = JSON.parse(stored) as {
+                  activeMode?: LearningMode;
+                  assignmentTab?: 'exam-prep' | 'latex-prep';
                 selectedAssignmentFeature?: string | null;
                 showWorkspaceManager?: boolean;
                 showAssignmentDashboard?: boolean;
@@ -6954,16 +6966,21 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         } catch (error) {
             console.error('[ImmersiveLearning] Failed to restore session state:', error);
         }
-    }, [getLocalStorageKeys]);
+      }, [getLocalStorageKeys, skipAutoRestore]);
 
     useEffect(() => {
         if (initialMode !== 'assignment') {
             return;
         }
-        setSelectedAssignmentFeature(null);
         setAssignmentTab('exam-prep');
-        setShowAssignmentDashboard(true);
-    }, [initialMode]);
+        if (initialAssignmentFeature) {
+            setSelectedAssignmentFeature(initialAssignmentFeature);
+            setShowAssignmentDashboard(false);
+        } else {
+            setSelectedAssignmentFeature(null);
+            setShowAssignmentDashboard(true);
+        }
+    }, [initialMode, initialAssignmentFeature]);
 
     useEffect(() => {
         try {
@@ -6974,15 +6991,18 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                 selectedAssignmentFeature,
                 showWorkspaceManager,
                 showAssignmentDashboard,
-                assignmentFileData,
-                assignmentFileContent,
+                // Exclude large file data to prevent quota errors
                 assignmentFileName,
                 assignmentTopic,
                 assignmentUseToT,
                 studyToolsDraftWorkspaceIds,
                 labManualWorkspaceId,
             };
-            localStorage.setItem(keys.SESSION, JSON.stringify(payload));
+            const payloadString = JSON.stringify(payload);
+            // Skip if too large (>100KB) to prevent quota issues
+            if (payloadString.length < 100000) {
+                localStorage.setItem(keys.SESSION, payloadString);
+            }
         } catch (error) {
             console.error('[ImmersiveLearning] Failed to persist session state:', error);
         }
@@ -6992,8 +7012,6 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
         selectedAssignmentFeature,
         showWorkspaceManager,
         showAssignmentDashboard,
-        assignmentFileData,
-        assignmentFileContent,
         assignmentFileName,
         assignmentTopic,
         assignmentUseToT,
@@ -7580,7 +7598,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                             setSelectedAssignmentFeature(null);
                             setShowAssignmentDashboard(true);
                         }}
-                        initialTopic={fallbackTopic}
+                        initialTopic={fallbackTopic ?? undefined}
                         initialNotes={assignmentFileContent}
                     />
                 </div>
@@ -7761,7 +7779,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                         if (pendingFile) {
                                             await handleFileUpload({
                                                 target: { files: [pendingFile] }
-                                            } as React.ChangeEvent<HTMLInputElement>);
+                                            } as unknown as React.ChangeEvent<HTMLInputElement>);
                                             setPendingFile(null);
                                             return;
                                         }
@@ -7934,7 +7952,6 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                                 {/* Terminal Progress Component */}
                                 <ProgressTerminal
                                     stages={terminalStages}
-                                    subSteps={terminalSubSteps}
                                     title="immersive-learning"
                                 />
 
@@ -13801,7 +13818,7 @@ Provide the executable ${codeLabLanguage} code in a standard markdown code block
                         : activeMode === 'mindmap' || activeMode === 'notebook' || activeMode === 'assignment' || activeMode === 'latex-assignment' || activeMode === 'code-lab' || activeMode === 'replicube-lab' || activeMode === 'robotics' || activeMode === 'visual-activity' || activeMode === 'audio-video' || activeMode === 'simulation'
                             ? 'h-full rounded-none shadow-none'
                             : 'min-h-full rounded-none shadow-none bg-[#0f1117]'
-                        } overflow-hidden`}>
+                        } min-h-0 overflow-hidden`}>
                         {renderContent()}
                     </div>
                 </div>

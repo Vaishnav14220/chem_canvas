@@ -261,6 +261,7 @@ const App: React.FC = () => {
   const [showAIWord, setShowAIWord] = useState(false);
   const [showYouTubeVideos, setShowYouTubeVideos] = useState(false);
   const [immersiveInitialMode, setImmersiveInitialMode] = useState<'assignment' | 'notebook' | 'immersive-text' | null>(null);
+  const [immersiveInitialAssignmentFeature, setImmersiveInitialAssignmentFeature] = useState<string | null>(null);
   const [showExcalidrawCanvas, setShowExcalidrawCanvas] = useState(false);
   const [showSocraticLearning, setShowSocraticLearning] = useState(false);
   const [showFeynmanLearning, setShowFeynmanLearning] = useState(false);
@@ -1369,13 +1370,21 @@ const App: React.FC = () => {
     resetToWorkspace();
   };
 
-  const openImmersiveLearning = (mode?: 'assignment' | 'notebook' | 'immersive-text') => {
+  const openImmersiveLearning = (
+    mode?: 'assignment' | 'notebook' | 'immersive-text',
+    options?: { assignmentFeature?: string | null }
+  ) => {
     resetToWorkspace();
     setImmersiveInitialMode(mode ?? null);
+    setImmersiveInitialAssignmentFeature(options?.assignmentFeature ?? null);
     setShowYouTubeVideos(true);
     void captureToolClick('immersive_learning');
     startFeature('immersive_learning');
   };
+
+  const openChatTutorQuickAccess = useCallback(() => {
+    openImmersiveLearning('assignment', { assignmentFeature: 'tile-tutor' });
+  }, [openImmersiveLearning]);
 
   const openSocraticLearning = () => {
     resetToWorkspace();
@@ -3975,28 +3984,46 @@ Here is the learner's question: ${message}`;
                           titleColor: 'text-violet-200',
                           bodyColor: 'text-violet-100/80'
                         },
-                        {
-                          id: 'pdf-study' as const,
-                          label: 'PDF Study Mode',
-                          description: 'Upload PDF to chat with AI and generate real-time notes.',
-                          icon: Mic,
-                          accent: 'border-transparent bg-[#171717]/70 text-slate-100 shadow-[0_10px_25px_-18px_rgba(15,23,42,0.85)]',
-                          ring: 'ring-rose-500/40',
-                          recommended: false,
-                          titleColor: 'text-rose-200',
-                          bodyColor: 'text-rose-100/80',
-                          badge: 'New'
-                        }
-                      ].map((mode) => {
-                        const Icon = mode.icon;
-                        const isActive = chatMode === mode.id;
-                        return (
-                          <button
-                            key={mode.id}
-                            type="button"
-                            onClick={() => handleChatModeChange(mode.id)}
-                            className={`group relative flex h-full flex-col items-center gap-3 rounded-2xl border border-transparent px-5 py-6 text-left transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#1f1f1f] hover:shadow-[0_16px_30px_-18px_rgba(15,23,42,0.9)] ${mode.accent} ${isActive ? `ring-2 ${mode.ring}` : ''}`}
-                          >
+                          {
+                            id: 'pdf-study' as const,
+                            label: 'PDF Study Mode',
+                            description: 'Upload PDF to chat with AI and generate real-time notes.',
+                            icon: Mic,
+                            accent: 'border-transparent bg-[#171717]/70 text-slate-100 shadow-[0_10px_25px_-18px_rgba(15,23,42,0.85)]',
+                            ring: 'ring-rose-500/40',
+                            recommended: false,
+                            titleColor: 'text-rose-200',
+                            bodyColor: 'text-rose-100/80',
+                            badge: 'New'
+                          },
+                          {
+                            id: 'chat-tutor' as const,
+                            label: 'Chat Tutor',
+                            description: 'Quick access to the ChatTutor whiteboard with diagrams and notes.',
+                            icon: MessageSquare,
+                            accent: 'border-transparent bg-[#171717]/70 text-slate-100 shadow-[0_10px_25px_-18px_rgba(15,23,42,0.85)]',
+                            ring: 'ring-cyan-500/40',
+                            recommended: false,
+                            titleColor: 'text-cyan-200',
+                            bodyColor: 'text-cyan-100/80',
+                            badge: 'Quick'
+                          }
+                        ].map((mode) => {
+                          const Icon = mode.icon;
+                          const isActive = chatMode === mode.id;
+                          return (
+                            <button
+                              key={mode.id}
+                              type="button"
+                              onClick={() => {
+                                if (mode.id === 'chat-tutor') {
+                                  openChatTutorQuickAccess();
+                                  return;
+                                }
+                                handleChatModeChange(mode.id);
+                              }}
+                              className={`group relative flex h-full flex-col items-center gap-3 rounded-2xl border border-transparent px-5 py-6 text-left transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#1f1f1f] hover:shadow-[0_16px_30px_-18px_rgba(15,23,42,0.9)] ${mode.accent} ${isActive ? `ring-2 ${mode.ring}` : ''}`}
+                            >
                             {mode.recommended && (
                               <span className="absolute -top-3 left-6 rounded-full bg-blue-600 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white shadow-lg shadow-blue-600/30">
                                 Recommended
@@ -4321,16 +4348,18 @@ Here is the learner's question: ${message}`;
       {/* YouTube Videos */}
       {
         showYouTubeVideos && (
-          <div className="fixed inset-0 z-[60] bg-background">
-            <YouTubeVideos
-              onClose={() => {
-                setShowYouTubeVideos(false);
-                setImmersiveInitialMode(null);
-                endCurrentFeature();
-              }}
-              apiKey={apiKey}
-              initialMode={immersiveInitialMode ?? undefined}
-            />
+            <div className="fixed inset-0 z-[60] bg-background">
+              <YouTubeVideos
+                onClose={() => {
+                  setShowYouTubeVideos(false);
+                  setImmersiveInitialMode(null);
+                  setImmersiveInitialAssignmentFeature(null);
+                  endCurrentFeature();
+                }}
+                apiKey={apiKey}
+                initialMode={immersiveInitialMode ?? undefined}
+                initialAssignmentFeature={immersiveInitialAssignmentFeature ?? undefined}
+              />
           </div>
         )
       }
